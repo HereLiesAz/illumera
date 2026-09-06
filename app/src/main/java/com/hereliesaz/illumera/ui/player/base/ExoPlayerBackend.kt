@@ -1574,7 +1574,6 @@ class ExoPlayerBackend(
     private fun resolvePreferredAudioTrack(): String? {
         val primary = playbackSettings.preferredAudioLanguage.trim()
         val secondary = playbackSettings.preferredAudioLanguageSecondary.trim()
-        if (primary.isEmpty() && secondary.isEmpty()) return null
 
         val options = _audioTracks.value
         if (options.isEmpty()) return null
@@ -1587,13 +1586,18 @@ class ExoPlayerBackend(
             val match = findTrackByLanguage(options, secondary)
             if (match != null) return match.id
         }
+        // No language configured ("Default") — still force English over whatever
+        // ExoPlayer's own heuristic would otherwise land on, when a track is
+        // actually tagged as English. Leaves untagged sources untouched.
+        if (primary.isEmpty() && secondary.isEmpty()) {
+            findTrackByLanguage(options, "en")?.let { return it.id }
+        }
         return null
     }
 
     private fun resolvePreferredSubtitleTrack(): String? {
         val primary = playbackSettings.preferredSubtitleLanguage.trim()
         val secondary = playbackSettings.preferredSubtitleLanguageSecondary.trim()
-        if (primary.isEmpty() && secondary.isEmpty()) return null
 
         if (primary == "#off") return SUBTITLE_OFF_ID
         if (primary.isEmpty() && secondary == "#off") return SUBTITLE_OFF_ID
@@ -1608,6 +1612,11 @@ class ExoPlayerBackend(
             if (secondary == "#off") return SUBTITLE_OFF_ID
             val match = findSubtitleTrackByLanguage(options, secondary)
             if (match != null) return match.id
+        }
+        // No language configured ("Default") — same aggressive English fallback as
+        // audio, so closed captions come on automatically when an English track exists.
+        if (primary.isEmpty() && secondary.isEmpty()) {
+            findSubtitleTrackByLanguage(options, "en")?.let { return it.id }
         }
         return null
     }
