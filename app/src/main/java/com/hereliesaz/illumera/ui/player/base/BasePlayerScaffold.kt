@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -1343,7 +1344,7 @@ private fun PlayerControlsOverlay(
                             contentDescription = "Subtitles",
                             onClick = onShowSubtitlePanel,
                             onFocused = onResetHideTimer,
-                            buttonSize = 36.dp,
+                            buttonSize = 44.dp,
                             iconSize = 18.dp
                         )
                     }
@@ -1354,7 +1355,7 @@ private fun PlayerControlsOverlay(
                             contentDescription = "Audio tracks",
                             onClick = onShowAudioPanel,
                             onFocused = onResetHideTimer,
-                            buttonSize = 36.dp,
+                            buttonSize = 44.dp,
                             iconSize = 20.dp
                         )
                     }
@@ -1365,7 +1366,7 @@ private fun PlayerControlsOverlay(
                             contentDescription = "Episodes",
                             onClick = onShowEpisodesPanel,
                             onFocused = onResetHideTimer,
-                            buttonSize = 36.dp,
+                            buttonSize = 44.dp,
                             iconSize = 18.dp
                         )
                     }
@@ -1376,7 +1377,7 @@ private fun PlayerControlsOverlay(
                             contentDescription = "More sources",
                             onClick = onShowSourcesPanel,
                             onFocused = onResetHideTimer,
-                            buttonSize = 36.dp,
+                            buttonSize = 44.dp,
                             iconSize = 18.dp
                         )
                     }
@@ -1449,11 +1450,19 @@ private fun FocusableSeekBar(
     val isFocused by interactionSource.collectIsFocusedAsState()
     val latestPosition = rememberUpdatedState(currentPosition)
     val latestDuration = rememberUpdatedState(duration)
+    // Tracks the position last requested mid-drag, so consecutive scrub deltas stack
+    // against each other rather than against the player's actual (async, laggier)
+    // reported position — otherwise a fast drag would stutter/overshoot.
+    var lastRequestedPositionMs by remember { mutableStateOf<Long?>(null) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(20.dp)
+            // Visually a thin 18dp bar (see ProgressBar below), but the touchable area
+            // is grown to Android's 48dp minimum target size so it's reliably tappable
+            // and draggable with a finger, not just precisely clickable with a D-pad
+            // cursor. The bar stays centered within it.
+            .height(48.dp)
             .then(
                 if (focusRequester != null) Modifier.focusRequester(focusRequester)
                 else Modifier
@@ -1465,15 +1474,29 @@ private fun FocusableSeekBar(
                 if (it.isFocused) onFocused()
             }
             .pointerInput(Unit) {
-                detectTapGestures(onTap = { offset ->
+                fun seekToRatio(ratio: Float) {
                     val totalDuration = latestDuration.value
-                    if (totalDuration > 0 && size.width > 0) {
-                        val ratio = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                        val target = (ratio * totalDuration).toLong()
-                        onFocused()
-                        onSeekBy(target - latestPosition.value)
+                    if (totalDuration <= 0) return
+                    val target = (ratio.coerceIn(0f, 1f) * totalDuration).toLong()
+                    val base = lastRequestedPositionMs ?: latestPosition.value
+                    onSeekBy(target - base)
+                    lastRequestedPositionMs = target
+                }
+                detectHorizontalDragGestures(
+                    onDragStart = { offset ->
+                        if (size.width > 0) {
+                            onFocused()
+                            seekToRatio(offset.x / size.width.toFloat())
+                        }
+                    },
+                    onDragEnd = { lastRequestedPositionMs = null },
+                    onDragCancel = { lastRequestedPositionMs = null },
+                    onHorizontalDrag = { change, _ ->
+                        if (size.width > 0) {
+                            seekToRatio(change.position.x / size.width.toFloat())
+                        }
                     }
-                })
+                )
             }
             .onKeyEvent { keyEvent ->
                 if (keyEvent.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) {
@@ -1493,7 +1516,8 @@ private fun FocusableSeekBar(
                     else -> false
                 }
             }
-            .focusable(interactionSource = interactionSource)
+            .focusable(interactionSource = interactionSource),
+        contentAlignment = Alignment.Center
     ) {
         ProgressBar(
             currentPosition = currentPosition,
@@ -1656,8 +1680,12 @@ private fun PauseBrandOverlay(
                 AsyncImage(
                     model = logoUrl,
                     contentDescription = primaryText,
+                    // Was a hardcoded 360dp with no surrounding width constraint — on a
+                    // phone screen (minus this Column's 102dp of horizontal padding)
+                    // that overflows past the screen edge. Cap instead of fix.
                     modifier = Modifier
-                        .width(360.dp)
+                        .fillMaxWidth()
+                        .widthIn(max = 360.dp)
                         .height(120.dp),
                     contentScale = ContentScale.Fit
                 )

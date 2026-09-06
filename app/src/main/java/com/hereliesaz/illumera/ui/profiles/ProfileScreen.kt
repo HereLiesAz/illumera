@@ -8,11 +8,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -58,6 +61,8 @@ import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidInput
 import com.hereliesaz.illumera.ui.components.CenterCarouselRow
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
+import com.hereliesaz.illumera.ui.util.rememberIsTvDevice
 import com.hereliesaz.illumera.ui.theme.LumeraTheme
 import com.hereliesaz.illumera.ui.theme.ThemeManager
 import kotlinx.coroutines.delay
@@ -206,7 +211,12 @@ fun ProfileSelectorView(
             }
         }
         
+        // Centered and non-scrolling on TV/wide screens (deliberate), but on a phone-width
+        // screen 2+ profile cards (120dp each, 32dp gaps) plus the Add card can exceed the
+        // screen width with nothing to bring the rest into view — so scroll there instead.
+        val isCompactProfiles = LocalConfiguration.current.screenWidthDp < 600
         Row(
+            modifier = if (isCompactProfiles) Modifier.horizontalScroll(rememberScrollState()) else Modifier,
             horizontalArrangement = Arrangement.spacedBy(32.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -365,7 +375,7 @@ private fun ProfileInitialSetupDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(520.dp)
+                .width(rememberDialogWidth(520))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -423,7 +433,7 @@ private fun CopyProfileSelectionDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(560.dp)
+                .width(rememberDialogWidth(560))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -483,7 +493,7 @@ private fun ScratchConfirmDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(520.dp)
+                .width(rememberDialogWidth(520))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -536,7 +546,7 @@ private fun StremioConnectDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(520.dp)
+                .width(rememberDialogWidth(520))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -679,7 +689,7 @@ fun ProfileOptionsDialog(
         Dialog(onDismissRequest = onDismiss) {
             Box(
                 modifier = Modifier
-                    .width(400.dp)
+                    .width(rememberDialogWidth(400))
                     .clip(RoundedCornerShape(24.dp))
                     .background(Color.Black)
                     .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -770,7 +780,7 @@ fun DeleteConfirmationDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(400.dp)
+                .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
@@ -840,7 +850,7 @@ fun WizardNameStep(initialName: String, onNext: (String) -> Unit, onCancel: () -
         )
         Spacer(Modifier.height(32.dp))
 
-        Box(modifier = Modifier.width(400.dp)) {
+        Box(modifier = Modifier.width(rememberDialogWidth(400))) {
             VoidInput(
                 value = name,
                 onValueChange = { name = it },
@@ -1200,9 +1210,13 @@ fun ProfileCard(
     
     val editInteractionSource = remember { MutableInteractionSource() }
     val isEditFocused by editInteractionSource.collectIsFocusedAsState()
-    
-    // Pencil is visible when either card or pencil is focused
-    val isPencilVisible = isCardFocused || isEditFocused
+
+    // Pencil is visible when either card or pencil is focused (D-pad) — but touch
+    // taps don't produce a persistent "focused" state the way D-pad navigation does,
+    // so on a phone/tablet the pencil would otherwise stay invisible and undiscoverable.
+    // Always show it there instead, same as NavDrawer/TopNavigationBar's touch handling.
+    val isTv = rememberIsTvDevice()
+    val isPencilVisible = isCardFocused || isEditFocused || !isTv
     
     val context = LocalContext.current
 

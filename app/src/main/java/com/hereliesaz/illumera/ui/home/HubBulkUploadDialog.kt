@@ -28,6 +28,7 @@ import com.hereliesaz.illumera.domain.HubShape
 import com.hereliesaz.illumera.remote_input.HubServerManager
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 
 /**
  * Dialog to show QR code for Bulk Image Upload.
@@ -82,7 +83,7 @@ fun HubBulkUploadDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))

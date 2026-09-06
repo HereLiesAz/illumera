@@ -32,6 +32,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import androidx.compose.ui.window.Dialog
 import com.hereliesaz.illumera.data.model.StremioAddonItem
 import kotlinx.coroutines.delay
@@ -72,7 +73,7 @@ fun AddonImportDialog(
     ) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(rememberDialogWidth(420))
                 .heightIn(max = 480.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)

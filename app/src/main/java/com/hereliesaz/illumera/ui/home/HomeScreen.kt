@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -99,7 +100,15 @@ fun HomeScreen(
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     val infoTopPadding = if (isTopNav) 60.dp else 30.dp
-    val startPadding = if (isTopNav) 50.dp else 120.dp
+    // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
+    // wide/TV screen; on a phone that margin alone eats a third of the available width,
+    // so trim it down there while still clearing the drawer.
+    val isCompactHome = LocalConfiguration.current.screenWidthDp < 600
+    val startPadding = when {
+        isTopNav -> 50.dp
+        isCompactHome -> 96.dp
+        else -> 120.dp
+    }
 
     val screenName = remember(tab) {
         when (tab) {
@@ -400,7 +409,11 @@ fun CinematicLayout(
                         Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
                             Box(
                                 modifier = Modifier
-                                    .width(700.dp)
+                                    // Was a hardcoded 700dp — nearly double a phone's
+                                    // entire screen width. Use the actual available
+                                    // width instead (already correctly constrained by
+                                    // the parent's padding/weight above).
+                                    .fillMaxWidth()
                                     .height(90.dp),
                                 contentAlignment = Alignment.BottomStart
                             ) {
@@ -411,6 +424,7 @@ fun CinematicLayout(
                                         contentScale = ContentScale.Fit,
                                         alignment = Alignment.BottomStart,
                                         modifier = Modifier
+                                            .fillMaxWidth()
                                             .widthIn(max = 500.dp)
                                             .heightIn(max = 90.dp),
                                         error = {
@@ -455,7 +469,11 @@ fun CinematicLayout(
                                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
                                 color = Color.White.copy(0.85f),
                                 textAlign = TextAlign.Start,
-                                modifier = Modifier.width(450.dp)
+                                // Same fix as the logo/title Box above — was a fixed
+                                // 450dp, overflowing a phone screen; fillMaxWidth with a
+                                // cap preserves the original comfortable reading width
+                                // on TV while actually fitting on a phone.
+                                modifier = Modifier.fillMaxWidth().widthIn(max = 450.dp)
                             )
                         }
                     }

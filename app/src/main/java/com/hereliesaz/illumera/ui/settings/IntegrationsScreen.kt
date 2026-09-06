@@ -12,7 +12,9 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,12 +39,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -423,24 +427,27 @@ private fun ConnectStremioDialog(
                 .fillMaxSize(),
             contentAlignment = Alignment.TopCenter
         ) {
+            val isCompact = LocalConfiguration.current.screenWidthDp < 600
             Box(
                 modifier = Modifier
                     .padding(top = 65.dp)
-                    .width(900.dp)
+                    .width(if (isCompact) rememberDialogWidth(900) else 900.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
                     .imePadding()
                     .padding(horizontal = 32.dp, vertical = 24.dp)
+                    .then(if (isCompact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(40.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // LEFT: Header + Manual Input
+                // Below 600dp, the email/password form and the QR panel can't sit
+                // side by side without both being crushed — stack them instead.
+                val formAndQr = @Composable {
+                    // LEFT: Header + Manual Input. Uses fillMaxWidth(fraction) rather than
+                    // RowScope/ColumnScope.weight since this content is shared between a
+                    // Row (wide screens) and a Column (narrow screens) below via a plain
+                    // (no-receiver) lambda, where weight() wouldn't resolve.
                     Column(
-                        modifier = Modifier.weight(1.3f)
+                        modifier = if (isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.65f)
                     ) {
                         // Header
                         Text(
@@ -514,17 +521,26 @@ private fun ConnectStremioDialog(
                         }
                     }
 
-                    // Vertical Divider
+                    // Divider — vertical between the two side-by-side panels, or a
+                    // full-width horizontal rule when stacked on a narrow screen.
                     Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(160.dp)
-                            .background(Color.White.copy(0.1f))
+                        modifier = if (isCompact) {
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp)
+                                .height(1.dp)
+                                .background(Color.White.copy(0.1f))
+                        } else {
+                            Modifier
+                                .width(1.dp)
+                                .height(160.dp)
+                                .background(Color.White.copy(0.1f))
+                        }
                     )
 
                     // RIGHT: QR Code (compact)
                     Column(
-                        modifier = Modifier.weight(0.7f),
+                        modifier = if (isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.35f),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
@@ -576,6 +592,23 @@ private fun ConnectStremioDialog(
                     }
                 }
 
+                if (isCompact) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        formAndQr()
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(40.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        formAndQr()
+                    }
+                }
+
                 // Loading overlay
                 if (isLoading) {
                     Box(
@@ -610,7 +643,7 @@ private fun FacebookLoginDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -700,7 +733,7 @@ private fun StremioManagementDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(400.dp)
+                .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -850,7 +883,7 @@ private fun DisconnectConfirmDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(350.dp)
+                .width(rememberDialogWidth(350))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -1002,7 +1035,7 @@ private fun TmdbSettingsDialog(
             Box(
                 modifier = Modifier
                     .padding(top = 65.dp)
-                    .width(460.dp)
+                    .width(rememberDialogWidth(460))
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -1340,7 +1373,7 @@ private fun DebridDialog(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .width(460.dp)
+                    .width(rememberDialogWidth(460))
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -1484,7 +1517,7 @@ private fun TraktAuthDialog(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(
                 modifier = Modifier
-                    .width(460.dp)
+                    .width(rememberDialogWidth(460))
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))

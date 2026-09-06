@@ -11,9 +11,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,17 +167,19 @@ fun ThemeEditorScreen(
         } else false
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(vertical = 16.dp)
-    ) {
-        // Left panel: Preview
+    // Below 600dp the 0.4/0.6 side-by-side split leaves each panel too cramped for its
+    // content (a live theme preview on one side, sliders on the other) — stack them
+    // instead, same treatment as the Stremio connect dialog's form/QR split.
+    val isCompactThemeEditor = LocalConfiguration.current.screenWidthDp < 600
+
+    val leftPanel: @Composable () -> Unit = {
+        // Left panel: Preview. Uses fillMaxWidth(fraction) rather than RowScope.weight
+        // since this content is shared between a Row (wide) and a Column (narrow) below.
         Column(
             modifier = Modifier
-                .weight(0.4f)
-                .fillMaxHeight()
-                .padding(end = 24.dp)
+                .then(if (isCompactThemeEditor) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.4f))
+                .then(if (isCompactThemeEditor) Modifier.height(240.dp) else Modifier.fillMaxHeight())
+                .padding(end = if (isCompactThemeEditor) 0.dp else 24.dp)
         ) {
             Text(
                 text = if (isEditing) "Edit Theme" else "Create Theme",
@@ -195,9 +200,9 @@ fun ThemeEditorScreen(
                     } else false
                 }
             )
-            
+
             Spacer(Modifier.height(16.dp))
-            
+
             // Live preview
             ThemePreview(
                 primaryColor = primaryColor,
@@ -205,12 +210,14 @@ fun ThemeEditorScreen(
                 modifier = Modifier.weight(1f)
             )
         }
-        
+    }
+
+    val rightPanel: @Composable () -> Unit = {
         // Right panel: Color editing
         Column(
             modifier = Modifier
-                .weight(0.6f)
-                .fillMaxHeight()
+                .then(if (isCompactThemeEditor) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.6f))
+                .then(if (isCompactThemeEditor) Modifier else Modifier.fillMaxHeight())
         ) {
             Text(
                 text = "Colors",
@@ -332,6 +339,28 @@ fun ThemeEditorScreen(
                         .focusRequester(saveButtonFocus)
                 )
             }
+        }
+    }
+
+    if (isCompactThemeEditor) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            leftPanel()
+            Spacer(Modifier.height(24.dp))
+            rightPanel()
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 16.dp)
+        ) {
+            leftPanel()
+            rightPanel()
         }
     }
 }
