@@ -131,9 +131,9 @@ object DefaultThemes {
     val ALL = listOf(VOID, ILLUMERA, NEON, OCEAN, SUNSET, EMERALD, AMBER, CRIMSON, SLATE)
 
     /**
-     * Get a built-in theme by ID, returns VOID as fallback.
+     * Get a built-in theme by ID, returns ILLUMERA (the app default) as fallback.
      */
     fun getById(id: String): ThemeEntity {
-        return ALL.find { it.id == id } ?: VOID
+        return ALL.find { it.id == id } ?: ILLUMERA
     }
 }

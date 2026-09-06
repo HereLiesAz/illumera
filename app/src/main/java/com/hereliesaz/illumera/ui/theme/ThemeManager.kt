@@ -35,7 +35,7 @@ class ThemeManager @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, DefaultThemes.ALL)
 
     // Currently selected theme based on profile
-    private val _currentTheme = MutableStateFlow<ThemeEntity>(DefaultThemes.VOID)
+    private val _currentTheme = MutableStateFlow<ThemeEntity>(DefaultThemes.ILLUMERA)
     val currentTheme: StateFlow<ThemeEntity> = _currentTheme.asStateFlow()
 
     init {
@@ -59,7 +59,7 @@ class ThemeManager @Inject constructor(
      */
     fun resetTheme() {
         _currentProfileId.value = null
-        _currentTheme.value = DefaultThemes.VOID
+        _currentTheme.value = DefaultThemes.ILLUMERA
     }
 
     fun setCurrentProfile(profileId: Int, themeId: String) {

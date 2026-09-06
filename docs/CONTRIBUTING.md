@@ -30,9 +30,16 @@ push, not after CI tells you).
 ## Before opening a PR
 
 - Run `./gradlew assembleDebug` (and `lint`/`test` if you touched logic
-  those cover) locally — CI's release build takes ~15–20 minutes because it
-  rebuilds the Stremio Media3 fork from source, so it is not a substitute
-  for a fast local check.
+  those cover) locally first — faster feedback than waiting on CI.
+- Every PR against `main` also runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+  automatically (`:app:assembleDebug`, no secrets required) and, on
+  non-draft PRs, two independent adversarial reviews —
+  [`glee-review.yml`](../.github/workflows/glee-review.yml) (Claude) and
+  [`glee-review-antigravity.yml`](../.github/workflows/glee-review-antigravity.yml)
+  (Google's Antigravity SDK) — both looking for correctness bugs,
+  unbacked claims in the PR description, and missing test coverage; see
+  [`ci/README.md`](../ci/README.md) for what each needs to actually run.
+  Neither replaces the release build's slower checks below.
 - If your change touches `playbackcore/`, the Stremio AAR pipeline, or
   `gradle/libs.versions.toml`'s `media3` version, say so explicitly in the
   PR description — those changes need the full CI release build to verify

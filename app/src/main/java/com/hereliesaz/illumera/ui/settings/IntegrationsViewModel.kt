@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.model.StremioAddonItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
@@ -123,6 +124,18 @@ class IntegrationsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Mirrors Stremio's own behavior: once an account is connected, its avatar
+     * (a Facebook photo, for accounts created via Facebook login) becomes this
+     * profile's avatar.
+     */
+    private suspend fun applyStremioAvatarToProfile() {
+        val avatarUrl = stremioAuthManager.getStoredAvatarUrl() ?: return
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+        val profile = dao.getProfileById(profileId) ?: return
+        dao.insertProfile(profile.copy(avatarRef = ProfileAssets.urlAvatarRef(avatarUrl)))
+    }
+
     fun updateTmdbEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
@@ -154,6 +167,7 @@ class IntegrationsViewModel @Inject constructor(
             result.fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(isLoading = false)
+                    applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     // Auto-sync addons and continue-watching after login
                     syncAddons()
@@ -187,6 +201,7 @@ class IntegrationsViewModel @Inject constructor(
             result.fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Success)
+                    applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     syncAddons()
                     syncLibrary()

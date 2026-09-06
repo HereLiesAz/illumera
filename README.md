@@ -45,14 +45,15 @@ import your existing addon collection and sync Continue Watching progress.
 ### Content Discovery
 - Customizable dashboard with cinematic and simple layout modes
 - Hero carousel with auto-scrolling featured content
-- Global search across all addons
+- Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history
 - Continue watching with progress tracking and auto-resume
 - Dashboard row/category reordering (D-pad up/down or tap ▲▼ in reorder mode)
 - Row display modes: infinite scroll, finite with a "View More" card that opens a grid, or linear
 
 ### Advanced Video Player
 - Adaptive streaming (HLS, DASH, HTTP progressive)
-- Multiple audio track and subtitle selection
+- Multiple audio track and subtitle selection, defaulting to English when a
+  source tags one (overridable per-profile in Settings)
 - Subtitle customization (size, position, timing offset)
 - Playback speed control
 - Source switching mid-playback
@@ -65,7 +66,8 @@ import your existing addon collection and sync Continue Watching progress.
 
 ### Profiles & Theming
 - Multiple user profiles with separate settings and addons
-- Custom profile avatars (upload via phone)
+- Custom profile avatars (upload via phone), or automatically pulled from a
+  connected Stremio account's Facebook photo, same as stremio-web
 - Built-in themes and a full custom theme editor
 - Per-profile theme, layout, and playback preferences
 
