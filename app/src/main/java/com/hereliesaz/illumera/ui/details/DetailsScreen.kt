@@ -831,6 +831,7 @@ fun DetailsScreen(
             onDismiss = { viewModel.closeSidebar() },
             onBack = { viewModel.goBackInSidebar() },
             onEpisodeSelected = { episode ->
+                viewModel.rememberEpisodeBrowsePosition(streamId, episode)
                 val trackId = episodePlaybackId(streamId, episode)
                 val epStreamId = episodeStreamId(streamId, episode)
                 val epTitle = episodeDisplayTitle(episode)

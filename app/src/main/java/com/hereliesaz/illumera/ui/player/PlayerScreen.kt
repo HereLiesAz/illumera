@@ -137,6 +137,19 @@ fun PlayerScreen(
 
     DisposableEffect(playbackController) {
         onDispose {
+            // Safety net: persist whatever progress was reached even if this
+            // composable leaves composition without going through persistAndBack
+            // (e.g. a parent popping the destination directly) — saveProgress is
+            // idempotent, so this is a no-op when persistAndBack already saved.
+            val state = playbackController.uiState.value
+            viewModel.saveProgress(
+                id = movieId,
+                type = mediaType,
+                title = title,
+                poster = poster,
+                position = state.positionMs.coerceAtLeast(0L),
+                duration = state.durationMs.takeIf { it > 0L }
+            )
             playbackController.release()
         }
     }
@@ -210,44 +223,41 @@ fun PlayerScreen(
         val hasError = !uiState.errorMessage.isNullOrBlank()
         val position = uiState.positionMs.coerceAtLeast(0L)
         val duration = uiState.durationMs.takeIf { it > 0L }
-        val remaining = duration?.minus(position) ?: Long.MAX_VALUE
-        val completionRatio = if (duration != null && duration > 0L) {
-            position.toDouble() / duration.toDouble()
-        } else {
-            0.0
-        }
+        // Single source of truth for "close enough to done to count as watched" —
+        // shared with the periodic/session-end saves in PlayerViewModel.saveProgress
+        // so a session that ends near the end of playback is never left showing as
+        // partially watched by one path while another already treats it as done.
+        val completed = duration != null && viewModel.isCompleted(position, duration)
 
         // Trakt: pause keeps item in continue watching, stop marks as watched
-        if (!hasError && duration != null && duration > 0L) {
-            if (completionRatio >= 0.90 || remaining <= 30_000L) {
+        if (!hasError && duration != null) {
+            if (completed) {
                 viewModel.scrobbleStop(movieId, mediaType, position, duration)
             } else {
                 viewModel.scrobblePause(movieId, mediaType, position, duration, force = true)
             }
         }
 
-        // Don't save progress when exiting due to error
-        if (!hasError) {
-            if (completionRatio >= 0.98 || remaining <= 30_000L) {
-                viewModel.markCompleted(movieId)
-            } else {
-                viewModel.saveProgress(
-                    id = movieId,
-                    type = mediaType,
-                    title = title,
-                    poster = poster,
-                    position = position,
-                    duration = duration
-                )
-            }
-        }
+        // Save whatever progress was made even if the session is ending because the
+        // source errored out — the position reached before the error is still real
+        // watch progress and shouldn't be discarded (only the Trakt stop/pause call
+        // above is skipped on error, since scrobbling a dead-source exit as a normal
+        // stop would be misleading).
+        viewModel.saveProgress(
+            id = movieId,
+            type = mediaType,
+            title = title,
+            poster = poster,
+            position = position,
+            duration = duration
+        )
         val selectedSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
             ?: videoUrl
         onBack(
             PlayerSessionResult(
                 positionMs = if (hasError) 0L else position,
                 durationMs = duration,
-                isCompleted = !hasError && (completionRatio >= 0.98 || remaining <= 30_000L),
+                isCompleted = !hasError && completed,
                 selectedSourceUrl = selectedSourceUrl,
                 selectedAudioTrackId = uiState.selectedAudioTrackId,
                 selectedSubtitleTrackId = uiState.selectedSubtitleTrackId,

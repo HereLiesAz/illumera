@@ -44,7 +44,10 @@ import kotlinx.coroutines.launch
 
 sealed class SidebarState {
     data object Closed : SidebarState()
-    data class Episodes(val videos: List<MetaVideo>) : SidebarState()
+    /** [initialFocusEpisodeId] is a durably-remembered "last browsed" episode (a
+     *  `":$season:$episode"` suffix, matched the same way as [currentEpisodeId] in
+     *  [GlassSidebar]) used only on a fresh open with nothing currently playing. */
+    data class Episodes(val videos: List<MetaVideo>, val initialFocusEpisodeId: String? = null) : SidebarState()
     data class Sources(val streamTitle: String, val streams: List<Stream>?, val selectedStreamId: String? = null) : SidebarState()
 }
 
@@ -132,28 +135,40 @@ fun GlassSidebar(
     var savedIndex by remember { mutableIntStateOf(0) }
     var previousState by remember { mutableStateOf<SidebarState>(SidebarState.Closed) }
 
+    // Locates which season/index an episode id (or a ":$season:$episode" suffix) falls
+    // at within this series' videos. Returns null if not found.
+    fun locateEpisode(videos: List<MetaVideo>, episodeId: String): Pair<Int, Int>? {
+        val seasonMap = videos.filter { it.season > 0 }.groupBy { it.season }
+        for ((season, eps) in seasonMap) {
+            val idx = eps.indexOfFirst { ep ->
+                ep.id == episodeId || episodeId.endsWith(":${ep.season}:${ep.episode}")
+            }
+            if (idx >= 0) return season to idx
+        }
+        return null
+    }
+
     // When sidebar opens with episodes, auto-navigate to the currently playing episode,
-    // reset to the beginning if freshly opened from details (Closed→Episodes),
+    // land on the last-browsed episode if freshly opened from details (Closed→Episodes),
     // or preserve position when returning from sources (Sources→Episodes).
     LaunchedEffect(state, currentEpisodeId) {
         if (state is SidebarState.Episodes) {
-            if (currentEpisodeId != null) {
-                val seasonMap = state.videos.filter { it.season > 0 }.groupBy { it.season }
-                for ((season, eps) in seasonMap) {
-                    val idx = eps.indexOfFirst { ep ->
-                        ep.id == currentEpisodeId || currentEpisodeId.endsWith(":${ep.season}:${ep.episode}")
-                    }
-                    if (idx >= 0) {
-                        savedSeason = season
-                        savedIndex = idx
-                        break
-                    }
-                }
+            val located = currentEpisodeId?.let { locateEpisode(state.videos, it) }
+            if (located != null) {
+                savedSeason = located.first
+                savedIndex = located.second
             } else if (previousState is SidebarState.Closed) {
-                // Fresh open from details screen — reset to first episode
-                savedSeason = null
-                savedIndex = 0
-                runCatching { episodesListState.scrollToItem(0) }
+                // Fresh open from details screen — land on whatever episode was last
+                // browsed for this series, if any, otherwise the very first episode.
+                val remembered = state.initialFocusEpisodeId?.let { locateEpisode(state.videos, it) }
+                if (remembered != null) {
+                    savedSeason = remembered.first
+                    savedIndex = remembered.second
+                } else {
+                    savedSeason = null
+                    savedIndex = 0
+                    runCatching { episodesListState.scrollToItem(0) }
+                }
             }
             // Sources→Episodes: keep savedSeason/savedIndex from the episode click
         }
@@ -265,7 +280,20 @@ fun EpisodesContent(
         LazyColumn(
             state = listState, // Using the hoisted state
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.dpadNavigation(onDismiss, trapLeft = false, repeatGate = repeatGate)
+            modifier = Modifier.dpadNavigation(
+                onBack = {
+                    // Back-key hierarchy: browsing episodes goes up to the season tabs
+                    // first (if there are any); a second back from there (the tabs row
+                    // has no back interception of its own) falls through to onDismiss.
+                    if (seasons.isNotEmpty()) {
+                        runCatching { tabRequester.requestFocus() }
+                    } else {
+                        onDismiss()
+                    }
+                },
+                trapLeft = false,
+                repeatGate = repeatGate
+            )
         ) {
             if (episodes.isEmpty()) item { Text("No episodes found.", color = Color.Gray) }
             else {

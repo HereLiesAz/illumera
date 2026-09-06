@@ -10,11 +10,15 @@ import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 private const val DEFAULT_WATCHED_THRESHOLD = 0.85 // matches ProfileEntity.watchedThreshold's default
+private const val NEAR_END_MS = 30_000L
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -23,6 +27,29 @@ class PlayerViewModel @Inject constructor(
     private val stremioLibrarySyncManager: StremioLibrarySyncManager,
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
+
+    // Cached once per session so every completion check (periodic saves, session-end
+    // save, the Trakt stop/pause decision in PlayerScreen) agrees on the same number
+    // instead of each call site re-deriving — or hardcoding — its own threshold.
+    private val _watchedThreshold = MutableStateFlow(DEFAULT_WATCHED_THRESHOLD)
+    val watchedThreshold: StateFlow<Double> = _watchedThreshold.asStateFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val profileId = profileConfigurationManager.getLastActiveProfileId()
+            val threshold = profileId?.let { dao.getProfileById(it)?.watchedThreshold }
+            if (threshold != null) {
+                _watchedThreshold.value = threshold / 100.0
+            }
+        }
+    }
+
+    fun isCompleted(positionMs: Long, durationMs: Long): Boolean {
+        if (durationMs <= 0L) return false
+        val remaining = durationMs - positionMs
+        val completionRatio = positionMs.toDouble() / durationMs.toDouble()
+        return completionRatio >= _watchedThreshold.value || remaining <= NEAR_END_MS
+    }
 
     fun saveProgress(
         id: String,
@@ -44,14 +71,13 @@ class PlayerViewModel @Inject constructor(
             val safeDuration = (duration ?: existing?.duration ?: safePosition)
                 .coerceAtLeast(safePosition)
 
-            val remaining = safeDuration - safePosition
-            val completionRatio = if (safeDuration > 0L) safePosition.toDouble() / safeDuration.toDouble() else 0.0
-
-            val profileId = profileConfigurationManager.getLastActiveProfileId()
-            val watchedThreshold = profileId?.let { dao.getProfileById(it)?.watchedThreshold }
-                ?.let { it / 100.0 } ?: DEFAULT_WATCHED_THRESHOLD
-
-            val isCompleted = completionRatio >= watchedThreshold || remaining <= 30_000L
+            val completed = isCompleted(safePosition, safeDuration)
+            // A session that ends near the end of the video (or past the watched
+            // threshold) counts as fully watched, even if it never reached the
+            // literal final frame — so it reads as 100% complete everywhere
+            // (progress bars, Continue Watching, resume position) instead of
+            // leaving a few seconds of "unwatched" tail behind.
+            val finalPosition = if (completed) safeDuration else safePosition
 
             val entry = WatchHistoryEntity(
                 id = id,
@@ -59,11 +85,11 @@ class PlayerViewModel @Inject constructor(
                 poster = poster ?: existing?.poster,
                 background = existing?.background,
                 logo = existing?.logo,
-                position = safePosition,
+                position = finalPosition,
                 duration = safeDuration,
                 lastWatched = System.currentTimeMillis(),
                 type = type.ifBlank { "movie" },
-                watched = isCompleted,
+                watched = completed,
                 scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
             )
             dao.upsertHistory(entry)
@@ -71,16 +97,6 @@ class PlayerViewModel @Inject constructor(
             // both periodically during playback and at session end, so this
             // relies on StremioLibrarySyncManager's own internal throttle
             // rather than rate-limiting here.
-            stremioLibrarySyncManager.syncLibrary()
-        }
-    }
-
-    fun markCompleted(id: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val existing = dao.getHistoryItem(id)
-            if (existing != null) {
-                dao.upsertHistory(existing.copy(watched = true, lastWatched = System.currentTimeMillis()))
-            }
             stremioLibrarySyncManager.syncLibrary()
         }
     }
@@ -108,7 +124,10 @@ class PlayerViewModel @Inject constructor(
     suspend fun getResumePosition(id: String): Long {
         return withContext(Dispatchers.IO) {
             val item = dao.getHistoryItem(id)
-            item?.position?.takeIf { it > 0 } ?: 0L
+            // A completed item is saved with position == duration (see saveProgress) so it
+            // reads as 100% everywhere — but that means literally resuming from it would
+            // seek straight to end-of-file. Replaying a finished item starts over instead.
+            if (item == null || item.watched) 0L else item.position.takeIf { it > 0 } ?: 0L
         }
     }
 }
