@@ -297,7 +297,16 @@ fun DetailsScreen(
     Box(modifier = Modifier.fillMaxSize().background(bg)) {
         // Loading sweep — solid bg with subtle light sweep while data loads
         if (!contentReady) {
-            com.hereliesaz.illumera.ui.components.DetailsLoadingSweep()
+            if (state.isLoading) {
+                com.hereliesaz.illumera.ui.components.DetailsLoadingSweep()
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else {
+                Text(
+                    text = "Unable to load details. Go back and try again.",
+                    color = textColor,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
         if (showMovieContent) {
             val currentMovie = requireNotNull(movie)
@@ -371,6 +380,16 @@ fun DetailsScreen(
                         modifier = Modifier
                             .widthIn(max = 450.dp)
                             .heightIn(max = 90.dp),
+                        loading = {
+                            Text(
+                                text = currentMovie.name,
+                                style = titleStyle,
+                                color = textColor,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                softWrap = true
+                            )
+                        },
                         error = {
                             Text(
                                 text = currentMovie.name,
