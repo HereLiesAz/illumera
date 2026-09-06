@@ -176,6 +176,17 @@ class DetailsViewModel @Inject constructor(
                 loadedContentKey = requestKey
                 // Use resolved ID for streams — guarantees IMDb format for stream addons
                 val streamFetchId = if (details.id.startsWith("tt")) details.id else resolvedId
+                // Publish usable details before any watch-history or enrichment work.
+                _state.value = _state.value.copy(
+                    meta = details,
+                    resolvedId = streamFetchId,
+                    contentKey = requestKey,
+                    isLoading = false,
+                    tmdbEnabled = isTmdbEnabled,
+                    tmdbLoading = isTmdbEnabled
+                )
+                loadTmdbEnrichment(details.type, streamFetchId, requestKey)
+
                 val resumePlaybackId = if (details.type == "series") {
                     val latest = dao.getLatestSeriesEpisodeHistory("${streamFetchId}:%")
                     if (latest != null && !latest.watched) {
@@ -202,31 +213,17 @@ class DetailsViewModel @Inject constructor(
                     buildEpisodeProgressMap(streamFetchId)
                 } else emptyMap()
 
+                if (requestVersion != loadRequestVersion) return@launch
+                // Preserve interactions and enrichment that arrived during the lookups.
                 _state.value = _state.value.copy(
-                    meta = details,
-                    resolvedId = streamFetchId,
-                    contentKey = requestKey,
-                    isLoading = false,
                     resumePlaybackId = resumePlaybackId,
                     isMovieWatched = isMovieWatched,
-                    episodeProgressMap = episodeProgressMap,
-                    autoPlayStream = null,
-                    addonSubtitles = emptyList(),
-                    availableStreams = emptyList(),
-                    tmdbEnrichment = null,
-                    tmdbRecommendations = emptyList(),
-                    tmdbTrailer = null,
-                    tmdbCollection = emptyList(),
-                    tmdbCollectionName = null,
-                    tmdbEnabled = isTmdbEnabled,
-                    tmdbLoading = isTmdbEnabled
+                    episodeProgressMap = episodeProgressMap
                 )
                 // Update next-up entry when details load
                 if (details.type == "series") {
                     computeAndStoreNextUp(streamFetchId, details.name, details.poster, details.videos)
                 }
-                // Fire TMDB enrichment in background (non-blocking)
-                loadTmdbEnrichment(details.type, streamFetchId, requestKey)
 
                 // Prefetch streams so they're ready when the user hits Play
                 val prefetchId = if (resumePlaybackId != null) {
@@ -248,6 +245,10 @@ class DetailsViewModel @Inject constructor(
                 throw ce
             } catch (e: Exception) {
                 if (requestVersion != loadRequestVersion) return@launch
+                if (_state.value.contentKey == requestKey && _state.value.meta != null) {
+                    Log.w("DetailsViewModel", "Optional detail work failed", e)
+                    return@launch
+                }
                 loadedContentKey = null
                 _state.value = _state.value.copy(
                     meta = null,
