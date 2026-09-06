@@ -220,6 +220,12 @@ fun BasePlayerScaffold(
     // error overlay it was opened from.
     var sourcesPanelOpenedFromError by remember { mutableStateOf(false) }
 
+    // Set when the sources panel was opened as the last stop of the back-key hierarchy
+    // (playing → sources list → exit), rather than by the user tapping the sources
+    // control — closing it in that case should exit the player, same as the dead-source
+    // case above, instead of just returning to the still-playing video underneath.
+    var sourcesPanelOpenedAsBackStop by remember { mutableStateOf(false) }
+
     val hasError = !uiState.errorMessage.isNullOrBlank()
 
     // --- Autoplay next episode (reset when playback controller changes, i.e. new episode) ---
@@ -376,11 +382,13 @@ fun BasePlayerScaffold(
 
     fun closePanel() {
         markInteraction()
-        if (activePanel == PlayerPanel.SOURCES && sourcesPanelOpenedFromError) {
-            // Opened in place of exiting on a dead source — closing it (by back, or by
-            // picking a source that also failed) should still land on Details, not the
-            // now-meaningless error overlay underneath.
+        if (activePanel == PlayerPanel.SOURCES && (sourcesPanelOpenedFromError || sourcesPanelOpenedAsBackStop)) {
+            // Opened in place of exiting (a dead source, or as the terminal hop of the
+            // back-key hierarchy) — closing it should exit the player rather than
+            // return to whatever was underneath (a now-meaningless error overlay, or
+            // the still-playing video).
             sourcesPanelOpenedFromError = false
+            sourcesPanelOpenedAsBackStop = false
             activePanel = PlayerPanel.NONE
             onBack()
             return
@@ -388,6 +396,23 @@ fun BasePlayerScaffold(
         activePanel = PlayerPanel.NONE
         if (showControls) {
             scheduleHideControls()
+        }
+    }
+
+    // Back-key hierarchy terminal step: leaving an actively playing source goes to its
+    // sources list first (mirroring "back while browsing episodes" landing on the season
+    // tabs before closing) rather than jumping straight out of the player. A second back
+    // (closePanel(), via sourcesPanelOpenedAsBackStop above) then actually exits. Skipped
+    // when there's only one source, since there's nothing meaningful to show a list of.
+    fun exitPlaybackOrShowSourcesList() {
+        if (sources.size > 1) {
+            markInteraction()
+            sourcesPanelOpenedAsBackStop = true
+            activePanel = PlayerPanel.SOURCES
+            showControls = true
+            showSeekOverlay = false
+        } else {
+            onBack()
         }
     }
 
@@ -448,14 +473,14 @@ fun BasePlayerScaffold(
             }
             showControls -> {
                 if (uiState.isEnded && nextEpisodeInfo == null) {
-                    onBack()
+                    exitPlaybackOrShowSourcesList()
                     return
                 }
                 markInteraction()
                 showControls = false
                 showSeekOverlay = false
             }
-            else -> onBack()
+            else -> exitPlaybackOrShowSourcesList()
         }
     }
 

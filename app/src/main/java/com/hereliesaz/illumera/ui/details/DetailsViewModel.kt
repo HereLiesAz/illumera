@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.StreamQuality
+import com.hereliesaz.illumera.data.player.EpisodeBrowseStore
 import com.hereliesaz.illumera.data.player.PlaybackTrackSelectionStore
 import com.hereliesaz.illumera.data.player.SourceSelectionStore
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
@@ -53,6 +54,7 @@ private const val STREAMS_CACHE_TTL_MS = 3 * 60_000L
 class DetailsViewModel @Inject constructor(
     private val dao: AddonDao,
     private val sourceSelectionStore: SourceSelectionStore,
+    private val episodeBrowseStore: EpisodeBrowseStore,
     private val playbackTrackSelectionStore: PlaybackTrackSelectionStore,
     private val repository: AddonRepository,
     private val subtitleRepository: SubtitleRepository,
@@ -622,13 +624,21 @@ class DetailsViewModel @Inject constructor(
 
     // 1. Open Episodes (Series)
     fun openEpisodes() {
-        val videos = _state.value.meta?.videos ?: emptyList()
+        val meta = _state.value.meta
+        val videos = meta?.videos ?: emptyList()
+        val initialFocusEpisodeId = meta?.id?.let { episodeBrowseStore.getRememberedEpisodeSuffix(it) }
         _state.value = _state.value.copy(
             autoPlayStream = null,
             addonSubtitles = emptyList(),
             availableStreams = emptyList(),
-            sidebarState = SidebarState.Episodes(videos)
+            sidebarState = SidebarState.Episodes(videos, initialFocusEpisodeId = initialFocusEpisodeId)
         )
+    }
+
+    /** Remembers which episode was last browsed for this series, so reopening the
+     *  episode list later lands back on the same season/episode. */
+    fun rememberEpisodeBrowsePosition(seriesId: String, episode: MetaVideo) {
+        episodeBrowseStore.rememberEpisode(seriesId, episode.season, episode.episode)
     }
 
     private fun prefetchStreams(type: String, id: String) {
@@ -709,13 +719,21 @@ class DetailsViewModel @Inject constructor(
             }
         }
 
+        // Even when the picker has to be shown (forced, no auto-play match, or nothing
+        // playable), highlight and focus whichever source was last picked for this item
+        // — so reopening the sources list doesn't lose your place in it.
+        val highlightedStreamId = if (rememberSourceSelection) {
+            sourceSelectionStore.findPreferredStream(sourceSelectionId, streams)
+                ?.let { it.addonTransportUrl ?: it.url }
+        } else null
+
         // Update sidebar with results
         _state.value = _state.value.copy(
             isLoadingStreams = false,
             autoPlayStream = null,
             addonSubtitles = addonSubtitles,
             availableStreams = streams,
-            sidebarState = SidebarState.Sources(displayTitle, streams)
+            sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = highlightedStreamId)
         )
     }
 
@@ -731,12 +749,16 @@ class DetailsViewModel @Inject constructor(
                 val addonSubtitles = subtitlesDeferred.await()
                 streamsCache[key] = StreamsCacheEntry(rawStreams, addonSubtitles, System.currentTimeMillis())
 
-                if (_state.value.sidebarState is SidebarState.Sources) {
+                val openSources = _state.value.sidebarState as? SidebarState.Sources
+                if (openSources != null) {
                     val streams = sortStreams(rawStreams)
                     _state.value = _state.value.copy(
                         addonSubtitles = addonSubtitles,
                         availableStreams = streams,
-                        sidebarState = SidebarState.Sources(displayTitle, streams)
+                        // Preserve whatever was already highlighted/focused rather than
+                        // recomputing it, so a silent background refresh never yanks
+                        // focus away from where the user currently is in the list.
+                        sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = openSources.selectedStreamId)
                     )
                 }
             } catch (_: Exception) {
