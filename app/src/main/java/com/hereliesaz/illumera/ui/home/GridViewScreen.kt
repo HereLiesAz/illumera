@@ -60,6 +60,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.components.LumeraCard
+import com.hereliesaz.illumera.ui.util.touchClick
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 
 private const val COLUMNS = 6
@@ -422,6 +423,7 @@ fun GridViewScreen(
                             }
                         }
                         .focusable()
+                        .touchClick(onClick = onBack)
                         .size(30.dp)
                         .graphicsLayer {
                             scaleX = -backIconScale // Mirror horizontally + animated scale

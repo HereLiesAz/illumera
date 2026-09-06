@@ -316,7 +316,8 @@ fun HeroCarousel(
                 Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
                     Box(
                         modifier = Modifier
-                            .width(600.dp)
+                            // Was a hardcoded 600dp — overflows a phone screen outright.
+                            .fillMaxWidth()
                             .height(70.dp),
                         contentAlignment = Alignment.BottomStart
                     ) {
@@ -327,6 +328,7 @@ fun HeroCarousel(
                                 contentScale = ContentScale.Fit,
                                 alignment = Alignment.BottomStart,
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .widthIn(max = 400.dp)
                                     .heightIn(max = 70.dp),
                                 error = {
@@ -374,8 +376,11 @@ fun HeroCarousel(
                             ),
                             color = Color.White.copy(0.75f),
                             textAlign = TextAlign.Start,
+                            // Was a hardcoded 500dp — overflows a phone screen; capped
+                            // fillMaxWidth preserves the original width on TV.
                             modifier = Modifier
-                                .width(500.dp)
+                                .fillMaxWidth()
+                                .widthIn(max = 500.dp)
                                 .height(60.dp) // Fixed height to prevent layout shift
                         )
                     }

@@ -55,6 +55,7 @@ import com.hereliesaz.illumera.data.player.PlaybackTrackSelectionStore
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import com.hereliesaz.illumera.data.torrent.TorrentService
 import com.hereliesaz.illumera.data.player.SourceSelectionStore
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import com.hereliesaz.illumera.ui.MainViewModel
 import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.details.DetailsScreen
@@ -258,7 +259,7 @@ private fun PlayerChoiceDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(rememberDialogWidth(480))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -307,7 +308,7 @@ private fun UpdateAvailableDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(rememberDialogWidth(480))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -379,7 +380,7 @@ private fun UpdateDownloadingDialog(progress: Float, downloadedMb: Float, totalM
     Dialog(onDismissRequest = {}) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(rememberDialogWidth(480))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -430,7 +431,7 @@ private fun UpdateErrorDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(rememberDialogWidth(480))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -485,7 +486,7 @@ private fun UpdateReadyToInstallDialog(
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(480.dp)
+                .width(rememberDialogWidth(480))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
@@ -2323,7 +2324,7 @@ class MainActivity : ComponentActivity() {
                         Dialog(onDismissRequest = { showTrailerError = false }) {
                             Box(
                                 modifier = Modifier
-                                    .width(380.dp)
+                                    .width(rememberDialogWidth(380))
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(MaterialTheme.colorScheme.background)
                                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))

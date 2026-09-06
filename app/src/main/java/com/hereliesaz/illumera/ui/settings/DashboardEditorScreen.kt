@@ -9,10 +9,12 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import com.hereliesaz.illumera.ui.util.touchClick
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -28,6 +30,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -189,10 +192,19 @@ fun DashboardEditorScreen(
             val cinematicButtonWidth = newHubButtonWidth + if (isTopNav) topNavCinematicWidthOffset else leftNavCinematicWidthOffset
             val layoutControlsWidth = simpleButtonWidth + controlButtonSpacing + cinematicButtonWidth
 
+            // The tab row + action buttons need ~530dp combined (fixed optically-tuned
+            // widths); that overflows a phone-compact Settings pane (~312dp available),
+            // so let it scroll horizontally there instead of overlapping.
+            val isCompactDashboardEditor = LocalConfiguration.current.screenWidthDp < 600
             Row(
                 modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .fillMaxWidth()
+                    .then(if (isCompactDashboardEditor) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                // SpaceBetween needs a bounded width to compute a gap; under
+                // horizontalScroll the row is measured with relaxed/unbounded width, so
+                // use a fixed gap there instead — SpaceBetween otherwise pushes the
+                // trailing action buttons off to an enormous, effectively-infinite offset.
+                horizontalArrangement = if (isCompactDashboardEditor) Arrangement.spacedBy(24.dp) else Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(modifier = Modifier.onFocusChanged { isAnyTabFocused.value = it.hasFocus }) {

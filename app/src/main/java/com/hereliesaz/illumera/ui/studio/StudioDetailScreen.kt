@@ -240,8 +240,13 @@ private fun HeroSection(entity: TmdbEntityDetail, accentColor: Color, textColor:
             )
         }
 
-        // Info column
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Info column — weighted (matching the equivalent CastDetailScreen hero) so it's
+        // constrained to the remaining row width instead of measuring unconstrained next
+        // to the fixed-width logo box, which could push its text past the screen edge.
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             val kindLabel = if (entity.kind == "network") "Network" else "Production Company"
             Text(
                 text = kindLabel,

@@ -32,7 +32,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -197,8 +199,13 @@ fun ThemeScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         // --- THEME GRID ---
+        // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
+        // gap) below its content width on a phone screen; drop to 2 columns there. The
+        // column count feeds the left-edge (D-pad back) check below so it stays correct.
+        val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
+        val themeColumnCount = if (isCompactTheme) 2 else 4
         LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
+            columns = GridCells.Fixed(themeColumnCount),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(top = 12.dp, bottom = 50.dp),
@@ -207,7 +214,7 @@ fun ThemeScreen(
             items(filteredThemes, key = { it.id }) { theme ->
                 val isFirst = filteredThemes.indexOf(theme) == 0
                 // Only first column items should go back on Left
-                val isLeftEdge = filteredThemes.indexOf(theme) % 4 == 0
+                val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
                 
                 ThemeCard(
                     theme = theme,
@@ -392,7 +399,9 @@ private fun ThemeCard(
             Text(
                 text = theme.name,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White
+                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(Modifier.height(12.dp))

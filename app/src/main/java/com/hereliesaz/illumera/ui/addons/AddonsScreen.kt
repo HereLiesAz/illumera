@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -667,7 +668,7 @@ fun VoidDialog(
     Dialog(onDismissRequest = onDismissRequest) {
         Box(
             modifier = modifier
-                .width(400.dp)
+                .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))

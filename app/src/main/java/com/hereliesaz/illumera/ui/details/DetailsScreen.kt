@@ -13,8 +13,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -513,15 +515,21 @@ fun DetailsScreen(
 
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                                // Redirect focus to the Play button before the system
-                                // resolves the Down target, so the below-hero content
-                                // always receives focus from the same horizontal position.
-                                firstButtonFocusRequester.requestFocus()
+                        // On a narrow phone screen this row of buttons can need more
+                        // width than is available (especially with Trailer + Clear
+                        // Progress both present); scrolling keeps every button reachable
+                        // instead of letting the trailing ones render off-screen.
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                    // Redirect focus to the Play button before the system
+                                    // resolves the Down target, so the below-hero content
+                                    // always receives focus from the same horizontal position.
+                                    firstButtonFocusRequester.requestFocus()
+                                }
+                                false
                             }
-                            false
-                        }
                     ) {
                         ExpandableIconButton(
                             label = playLabel,
@@ -600,12 +608,16 @@ fun DetailsScreen(
                 } else {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                                firstButtonFocusRequester.requestFocus()
+                        // See the series-case Row above: keeps every button reachable
+                        // on a narrow phone screen instead of clipping the trailing ones.
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                    firstButtonFocusRequester.requestFocus()
+                                }
+                                false
                             }
-                            false
-                        }
                     ) {
                         ExpandableIconButton(
                             label = if (resumePlaybackId != null) "Resume" else "Play Movie",

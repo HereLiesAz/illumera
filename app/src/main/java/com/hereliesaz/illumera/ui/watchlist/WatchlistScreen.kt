@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -126,7 +127,14 @@ fun WatchlistScreen(
     LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
 
     val isTopNav = currentProfile?.navPosition == "top"
-    val startPadding = if (isTopNav) 50.dp else 120.dp
+    // See HomeScreen.kt's identical startPadding: 120dp clears the side NavDrawer plus a
+    // comfortable margin on a wide/TV screen, but wastes a third of a phone's width.
+    val isCompactWatchlist = LocalConfiguration.current.screenWidthDp < 600
+    val startPadding = when {
+        isTopNav -> 50.dp
+        isCompactWatchlist -> 96.dp
+        else -> 120.dp
+    }
     val topPadding = if (isTopNav) 24.dp else 16.dp
 
     androidx.compose.runtime.CompositionLocalProvider(com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds) {

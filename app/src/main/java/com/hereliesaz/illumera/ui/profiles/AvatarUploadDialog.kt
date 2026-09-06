@@ -31,6 +31,7 @@ import androidx.compose.ui.window.Dialog
 import com.hereliesaz.illumera.remote_input.AvatarServerManager
 import com.hereliesaz.illumera.remote_input.ServerInfo
 import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
+import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import com.hereliesaz.illumera.ui.util.rememberIsTvDevice
 import kotlinx.coroutines.delay
 import java.io.File
@@ -116,7 +117,7 @@ fun AvatarUploadDialog(
     }) {
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
