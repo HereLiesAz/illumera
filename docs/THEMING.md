@@ -25,8 +25,11 @@ Defined as constants in `ui/theme/DefaultThemes.kt`, in `DefaultThemes.ALL`:
 
 `Illumera` is the app's own brand theme, built from the logo's palette (see
 [`BRANDING.md`](BRANDING.md)) — pink primary, orange-tinted muted text,
-deep magenta-black background. `Void` (pure black/white) is the fallback
-default used before a profile's theme has resolved.
+deep magenta-black background. It's the default theme: new profiles start
+on it (`ProfileEntity.themeId` defaults to `"illumera"`), and it's the
+fallback used before a profile's theme has resolved or for an unrecognized
+theme id (`DefaultThemes.getById`). `Void` (pure black/white) is just
+another built-in preset, no longer the fallback.
 
 ### Adding a built-in theme
 
@@ -48,7 +51,7 @@ default used before a profile's theme has resolved.
   always listed first and never shadowed by a same-`id` DB row.
 - `currentTheme: StateFlow<ThemeEntity>` — resolved for whichever profile
   is active via `setCurrentProfile(profileId, themeId)`; falls back to
-  `DefaultThemes.VOID` via `resetTheme()`.
+  `DefaultThemes.ILLUMERA` via `resetTheme()`.
 
 `LumeraTheme` (`ui/theme/Theme.kt`) is the Compose `MaterialTheme` wrapper
 that turns a `ThemeEntity` into actual Compose `ColorScheme`/`Typography`;

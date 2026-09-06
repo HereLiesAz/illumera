@@ -8,7 +8,7 @@ data class ProfileEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
 
-    val themeId: String = "void",
+    val themeId: String = "illumera",
 
     val avatarRef: String = "avatar_1",
 

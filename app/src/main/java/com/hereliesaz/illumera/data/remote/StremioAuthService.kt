@@ -68,7 +68,24 @@ data class StremioLoginResponse(
 )
 
 data class StremioAuthResult(
-    @SerializedName("authKey") val authKey: String
+    @SerializedName("authKey") val authKey: String,
+    val user: StremioUser? = null
+)
+
+/**
+ * The `user` field on a login response — its `avatar` is the account's
+ * profile picture (a Facebook photo URL, for accounts created via Facebook
+ * login), mirroring what stremio-web reads as `profile.auth.user.avatar`.
+ */
+data class StremioUser(
+    @SerializedName("_id") val id: String? = null,
+    val avatar: String? = null
+)
+
+/** Result of a successful [StremioAuthService.login] call. */
+data class StremioLoginResult(
+    val authKey: String,
+    val avatarUrl: String? = null
 )
 
 data class StremioAddonCollectionRequest(
@@ -145,11 +162,13 @@ class StremioAuthService @Inject constructor() {
     }
 
     /**
-     * Authenticates with Stremio and returns the authKey. When [facebook] is true,
-     * [password] carries the one-time Facebook login token from [pollFacebookLogin]
-     * rather than an actual password — this is how Stremio's own web client does it.
+     * Authenticates with Stremio and returns the authKey plus the account's avatar
+     * URL, when it has one (Facebook-created accounts carry their FB photo here).
+     * When [facebook] is true, [password] carries the one-time Facebook login token
+     * from [pollFacebookLogin] rather than an actual password — this is how
+     * Stremio's own web client does it.
      */
-    suspend fun login(email: String, password: String, facebook: Boolean = false): String = withContext(Dispatchers.IO) {
+    suspend fun login(email: String, password: String, facebook: Boolean = false): StremioLoginResult = withContext(Dispatchers.IO) {
         val requestBody = gson.toJson(StremioLoginRequest(email = email, password = password, facebook = facebook))
 
         val request = Request.Builder()
@@ -161,16 +180,18 @@ class StremioAuthService @Inject constructor() {
         try {
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string()
-            
+
             if (!response.isSuccessful || responseBody == null) {
                 throw StremioAuthError.NetworkError("Server returned ${response.code}")
             }
-            
+
             val loginResponse = gson.fromJson(responseBody, StremioLoginResponse::class.java)
-            
-            loginResponse.result?.authKey
-                ?: throw StremioAuthError.InvalidCredentials()
-                
+            val result = loginResponse.result ?: throw StremioAuthError.InvalidCredentials()
+
+            StremioLoginResult(
+                authKey = result.authKey,
+                avatarUrl = result.user?.avatar?.takeIf { it.isNotBlank() }
+            )
         } catch (e: StremioAuthError) {
             throw e
         } catch (e: Exception) {

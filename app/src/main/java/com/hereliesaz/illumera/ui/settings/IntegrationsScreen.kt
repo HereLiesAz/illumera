@@ -1275,17 +1275,18 @@ private fun IntegrationButton(
 
     val bgColor = if (!enabled) Color.White.copy(0.05f) else Color.White.copy(0.08f)
 
+    // Unfocused is always plain white/dimmed — isDestructive/isPrimary only color the
+    // button once it's actually the one focused, so which action needs a deliberate
+    // move to reach is never ambiguous.
     val textColor = when {
         !enabled -> Color.White.copy(0.3f)
         isFocused -> activeColor
-        isDestructive || isPrimary -> activeColor.copy(alpha = 0.95f)
         else -> Color.White
     }
 
     val borderColor = when {
         !enabled -> Color.White.copy(0.1f)
         isFocused -> activeColor
-        isDestructive || isPrimary -> activeColor.copy(alpha = 0.75f)
         else -> Color.White.copy(0.2f)
     }
 

@@ -6,7 +6,10 @@ import java.io.File
 object ProfileAssets {
     // Prefix for custom uploaded avatars
     private const val CUSTOM_PREFIX = "custom:"
-    
+
+    // Prefix for a remote avatar URL (e.g. a Stremio account's Facebook photo)
+    private const val URL_PREFIX = "url:"
+
     // We map the "Safe String" to the "Unsafe ID"
     val AVATAR_MAP = mapOf(
         "avatar_1" to R.drawable.avatar_1,
@@ -33,7 +36,18 @@ object ProfileAssets {
     fun isCustomAvatar(avatarRef: String): Boolean {
         return avatarRef.startsWith(CUSTOM_PREFIX)
     }
-    
+
+    /**
+     * Wraps a remote image URL (e.g. a Stremio account's Facebook photo) as an
+     * avatarRef value.
+     */
+    fun urlAvatarRef(url: String): String = "$URL_PREFIX$url"
+
+    /** Check if the avatar reference is a remote URL avatar. */
+    fun isUrlAvatar(avatarRef: String): Boolean = avatarRef.startsWith(URL_PREFIX)
+
+    private fun getUrlAvatarUrl(avatarRef: String): String = avatarRef.removePrefix(URL_PREFIX)
+
     /**
      * Get the file path for a custom avatar (strips the "custom:" prefix).
      */
@@ -75,10 +89,10 @@ object ProfileAssets {
      * )
      */
     fun getAvatarSource(avatarRef: String): Any {
-        return if (isCustomAvatar(avatarRef)) {
-            getCustomAvatarFile(avatarRef) ?: R.drawable.avatar_1
-        } else {
-            getAvatarRes(avatarRef)
+        return when {
+            isCustomAvatar(avatarRef) -> getCustomAvatarFile(avatarRef) ?: R.drawable.avatar_1
+            isUrlAvatar(avatarRef) -> getUrlAvatarUrl(avatarRef)
+            else -> getAvatarRes(avatarRef)
         }
     }
 }

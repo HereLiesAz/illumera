@@ -14,14 +14,15 @@ TV, MVVM with Hilt dependency injection, Room for local persistence.
 ## Data layer (`app/src/main/java/com/hereliesaz/illumera/data/`)
 
 **Persistence** (`data/local/`, `data/model/`): a single Room database
-(`LumeraDatabase`, currently migrated through version 44) with one DAO,
+(`LumeraDatabase`, currently migrated through version 45) with one DAO,
 `AddonDao`, that — despite the name — covers addons, catalog configs, hub
-rows/items, profiles, themes, watch history, watchlist, and series
-"next up" tracking. Entities: `AddonEntity`, `CatalogConfigEntity`,
-`HubRowEntity`/`HubRowItemEntity`, `ProfileEntity`, `ThemeEntity`,
-`WatchHistoryEntity`, `WatchlistEntity`, `SeriesNextUpEntity`. Model
-sub-packages (`model/debrid`, `model/introdb`, `model/stremio`,
-`model/tmdb`, `model/trakt`) hold API DTOs.
+rows/items, profiles, themes, watch history, watchlist, series
+"next up" tracking, and recent searches. Entities: `AddonEntity`,
+`CatalogConfigEntity`, `HubRowEntity`/`HubRowItemEntity`, `ProfileEntity`,
+`ThemeEntity`, `WatchHistoryEntity`, `WatchlistEntity`,
+`SeriesNextUpEntity`, `RecentSearchEntity`. Model sub-packages
+(`model/debrid`, `model/introdb`, `model/stremio`, `model/tmdb`,
+`model/trakt`) hold API DTOs.
 
 **Repositories** (`data/repository/`): `AddonRepository` (Stremio catalog
 fetch/paginate/search — see below), `IntroRepository` (IntroDB skip-segment
@@ -40,6 +41,13 @@ Offcloud, Debrid-Link, EasyDebrid), `tmdb` (metadata enrichment), `trakt`
 `profile` (active-profile/session state), `stream` (stream parsing and
 quality sorting), `trailer` (YouTube trailer extraction), `update` (see
 below).
+
+A Facebook-created Stremio account's login response carries its FB photo as
+`user.avatar`; on a successful `auth` login this is applied to the active
+profile's avatar automatically (`ProfileAssets.urlAvatarRef` wraps it as a
+`"url:<url>"` `avatarRef`, which the avatar-rendering call sites already
+hand straight to Coil), mirroring stremio-web's own
+`profile.auth.user.avatar` behavior.
 
 ## Dependency injection (`di/`)
 

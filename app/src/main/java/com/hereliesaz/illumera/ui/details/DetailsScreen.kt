@@ -67,6 +67,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -280,6 +281,17 @@ fun DetailsScreen(
         label = "content_reveal"
     )
 
+    // Darken + blur the content behind the Episodes/Sources sidebar, or the
+    // centered loading spinner for auto-resolve paths, while either is showing —
+    // so it's unmistakable which layer is actually interactive right now.
+    val sidebarOpen = sidebarState !is SidebarState.Closed
+    val showLoadingOverlay = (state.isLoadingStreams && sidebarState is SidebarState.Closed) || isTrailerLoading
+    val backgroundBlur by animateDpAsState(
+        targetValue = if (sidebarOpen || showLoadingOverlay) 16.dp else 0.dp,
+        animationSpec = tween(durationMillis = 300),
+        label = "details_background_blur"
+    )
+
     Box(modifier = Modifier.fillMaxSize().background(bg)) {
         // Loading sweep — solid bg with subtle light sweep while data loads
         if (!contentReady) {
@@ -288,7 +300,7 @@ fun DetailsScreen(
         if (showMovieContent) {
             val currentMovie = requireNotNull(movie)
             val bgImage = currentMovie.background ?: currentMovie.poster
-            Box(modifier = Modifier.alpha(contentAlpha)) {
+            Box(modifier = Modifier.alpha(contentAlpha).blur(backgroundBlur)) {
             AsyncImage(
                 model = bgImage,
                 contentDescription = null,
@@ -851,8 +863,13 @@ fun DetailsScreen(
         )
 
         // Centered loading spinner for auto-resolve paths (remembered source, auto-select)
-        if ((state.isLoadingStreams && sidebarState is SidebarState.Closed) || isTrailerLoading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (showLoadingOverlay) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator(color = accentColor)
             }
         }
@@ -1057,7 +1074,7 @@ private fun DialogButton(
             .background(Color.White.copy(0.08f))
             .border(
                 1.dp,
-                if (isFocused) activeColor else if (isDestructive) activeColor.copy(0.75f) else Color.White.copy(0.2f),
+                if (isFocused) activeColor else Color.White.copy(0.2f),
                 RoundedCornerShape(8.dp)
             )
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
@@ -1067,11 +1084,10 @@ private fun DialogButton(
         Text(
             text = text.uppercase(),
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = when {
-                isFocused -> activeColor
-                isDestructive -> activeColor.copy(0.95f)
-                else -> Color.White
-            }
+            // Unfocused is always plain white — isDestructive only colors the button once
+            // it's actually the one focused, so which action needs a deliberate move to
+            // reach is never ambiguous.
+            color = if (isFocused) activeColor else Color.White
         )
     }
 }

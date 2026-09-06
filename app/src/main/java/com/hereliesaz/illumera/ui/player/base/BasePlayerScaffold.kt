@@ -73,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
@@ -688,9 +689,16 @@ fun BasePlayerScaffold(
                 })
             }
     ) {
+        // Darken + blur the video behind any sliding-in panel (sources, episodes,
+        // subtitles, audio) so it's unmistakable which layer is actually interactive.
+        val videoBlur by animateDpAsState(
+            targetValue = if (panelOpen || episodeSwitchOpen) 16.dp else 0.dp,
+            animationSpec = tween(durationMillis = 300),
+            label = "player_video_blur"
+        )
         ComposePlayerSurface(
             renderSurface = renderSurface,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize().blur(videoBlur)
         )
 
         AnimatedVisibility(
