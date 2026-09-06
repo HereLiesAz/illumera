@@ -29,6 +29,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +71,12 @@ fun SettingsScreen(
     var displayedSection by remember { mutableStateOf(SettingsSection.Personalization) }
     var isContentFocused by remember { mutableStateOf(false) }
     var isTransitioning by remember { mutableStateOf(false) } // LOCK: prevent re-entry
+    // Below this width the side-by-side sidebar+content split wraps section
+    // labels one letter per line, so narrow (phone) screens instead get a
+    // full-width section list with the content sliding over it, like the
+    // details screen's sources panel (GlassSidebarScaffold).
+    val isCompact = LocalConfiguration.current.screenWidthDp < 600
+    var contentPanelOpen by remember { mutableStateOf(false) }
 
     val sidebarListRequester = remember { FocusRequester() }
     val contentPaneRequester = remember { FocusRequester() }
@@ -94,7 +101,10 @@ fun SettingsScreen(
     // 2. Top Nav AND Screen is Focused (Handle = Open Nav/Go Back)
     // Disabled when Top Nav AND Screen NOT Focused (Nav is focused) -> Let Nav handle Close.
     BackHandler(enabled = !isTopNav || isScreenFocused) {
-        if (isContentFocused) {
+        if (isCompact && contentPanelOpen) {
+            contentPanelOpen = false
+            itemRequesters[selectedSection]?.requestFocus()
+        } else if (isContentFocused) {
             itemRequesters[selectedSection]?.requestFocus()
         } else {
             drawerRequester.requestFocus()
@@ -123,191 +133,259 @@ fun SettingsScreen(
         label = "colStartPadding"
     )
 
+    // FUNCTION: Enter Content Logic (with lock)
+    fun enterContent(section: SettingsSection) {
+        if (isTransitioning) return // BLOCKED
+        isTransitioning = true
+        selectedSection = section
+        displayedSection = section
+        contentPanelOpen = true
+        scope.launch {
+            delay(400) // Wait for animation
+            contentPaneRequester.requestFocus()
+            isTransitioning = false // UNLOCK
+        }
+    }
+
+    val sidebarContent: @Composable () -> Unit = {
+        Text(
+            "Settings",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 20.sp
+            ),
+            color = Color.White,
+            modifier = Modifier.padding(bottom = 32.dp, start = 16.dp)
+        )
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .focusRequester(sidebarListRequester)
+                .padding(top = 0.dp, bottom = 10.dp)
+        ) {
+            SettingsSection.entries.forEach { section ->
+                key(section) {
+                    val isSelected = selectedSection == section
+                    val isFirstSection = section == SettingsSection.entries.first()
+
+                    val focusModifier = Modifier
+                        .focusRequester(itemRequesters[section]!!)
+                        .then(if (isSelected) Modifier.focusRequester(entryRequester) else Modifier)
+                        .onPreviewKeyEvent {
+                            if (it.type == KeyEventType.KeyDown) {
+                                when (it.key) {
+                                    Key.DirectionLeft -> {
+                                        if (!isTransitioning) {
+                                            drawerRequester.requestFocus()
+                                        }
+                                        true
+                                    }
+                                    Key.Back -> {
+                                        if (!isTransitioning) {
+                                            drawerRequester.requestFocus()
+                                            true
+                                        } else false
+                                    }
+                                    Key.DirectionUp -> {
+                                        // Up on first section -> go to drawer/topnav (ONLY in top nav mode)
+                                        if (isFirstSection && !isTransitioning && isTopNav) {
+                                            drawerRequester.requestFocus()
+                                            true
+                                        } else false
+                                    }
+                                    Key.DirectionRight, Key.DirectionCenter, Key.Enter -> {
+                                        enterContent(section)
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            } else false
+                        }
+
+                    SettingsSidebarItem(
+                        label = section.label,
+                        iconRes = section.iconRes,
+                        isSelected = isSelected,
+                        modifier = focusModifier,
+                        onClick = { if (!isTransitioning) enterContent(section) }, // GATED
+                        onFocus = { selectedSection = section }
+                    )
+                }
+            }
+        }
+    }
+
+    val contentPane: @Composable () -> Unit = {
+        AnimatedContent(
+            targetState = displayedSection,
+            transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
+            label = "SettingsContent"
+        ) { target ->
+            when (target) {
+                SettingsSection.Personalization -> {
+                    PersonalizationSettings(
+                        currentProfile = currentProfile,
+                        viewModel = viewModel,
+                        onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
+                    )
+                }
+                SettingsSection.Theme -> {
+                    ThemeSettings(
+                        currentProfile = currentProfile,
+                        onGoBack = { itemRequesters[selectedSection]?.requestFocus() },
+                        isTopNav = isTopNav
+                    )
+                }
+                SettingsSection.Dashboard -> {
+                    DashboardEditorScreen(
+                        onBack = {
+                            onDashboardChanged() // Invalidate home screen cache
+                            itemRequesters[selectedSection]?.requestFocus()
+                        },
+                        isTopNav = isTopNav,
+                        currentProfile = currentProfile
+                    )
+                }
+                SettingsSection.Playback -> {
+                    PlaybackSettings(
+                        currentProfile = currentProfile,
+                        viewModel = viewModel,
+                        onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
+                    )
+                }
+                SettingsSection.SourcePreferences -> {
+                    SourcePreferencesSettings(
+                        currentProfile = currentProfile,
+                        viewModel = viewModel,
+                        onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
+                    )
+                }
+                SettingsSection.Addons -> {
+                    AddonsScreen(
+                        onBack = { itemRequesters[selectedSection]?.requestFocus() },
+                        isTopNav = isTopNav
+                    )
+                }
+                SettingsSection.Integrations -> {
+                    IntegrationsScreen(
+                        onBack = { itemRequesters[selectedSection]?.requestFocus() }
+                    )
+                }
+                SettingsSection.About -> {
+                    AboutSettings(
+                        onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
+                    )
+                }
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onFocusChanged { isScreenFocused = it.hasFocus }
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(start = rowStartPadding)
-        ) {
+        if (isCompact) {
+            // --- PHONE / NARROW LAYOUT ---
+            // Full-width section list; the content pane slides in from the
+            // right over it (same treatment as the details screen's sources
+            // panel) instead of squeezing both into a side-by-side row.
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
+                        .onFocusChanged { if (it.hasFocus) { isContentFocused = false; onContentFocusChanged(false) } }
+                        .rememberLastFocus()
+                ) {
+                    sidebarContent()
+                }
 
-        // --- LEFT SIDEBAR ---
-        Column(
-            modifier = Modifier
-                .weight(0.28f)
-                .fillMaxHeight()
-                .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
-                .onFocusChanged { if (it.hasFocus) { isContentFocused = false; onContentFocusChanged(false) } }
-                .rememberLastFocus()
-        ) {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 20.sp
-                ),
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 32.dp, start = 16.dp)
-            )
+                if (contentPanelOpen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                contentPanelOpen = false
+                                itemRequesters[selectedSection]?.requestFocus()
+                            }
+                    )
+                }
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                AnimatedVisibility(
+                    visible = contentPanelOpen,
+                    enter = slideInHorizontally(tween(300)) { it },
+                    exit = slideOutHorizontally(tween(300)) { it },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .focusProperties {
+                                if (isTopNav) {
+                                    up = FocusRequester.Cancel
+                                }
+                            }
+                            .focusGroup()
+                            .focusRequester(contentPaneRequester)
+                            .rememberLastFocus()
+                            .onFocusChanged { if (it.hasFocus) { isContentFocused = true; onContentFocusChanged(true) } }
+                    ) {
+                        Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 24.dp, end = 24.dp)) {
+                            contentPane()
+                        }
+                    }
+                }
+            }
+        } else {
+            // --- TV / WIDE LAYOUT ---
+            Row(
                 modifier = Modifier
-                    .focusRequester(sidebarListRequester)
-                    .padding(top = 0.dp, bottom = 10.dp)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(start = rowStartPadding)
             ) {
-                SettingsSection.entries.forEach { section ->
-                    key(section) {
-                        val isSelected = selectedSection == section
+                // --- LEFT SIDEBAR ---
+                Column(
+                    modifier = Modifier
+                        .weight(0.28f)
+                        .fillMaxHeight()
+                        .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
+                        .onFocusChanged { if (it.hasFocus) { isContentFocused = false; onContentFocusChanged(false) } }
+                        .rememberLastFocus()
+                ) {
+                    sidebarContent()
+                }
 
-                        // FUNCTION: Enter Content Logic (with lock)
-                        fun enterContent() {
-                            if (isTransitioning) return // BLOCKED
-                            isTransitioning = true
-                            selectedSection = section
-                            displayedSection = section
-                            scope.launch {
-                                delay(400) // Wait for animation
-                                contentPaneRequester.requestFocus()
-                                isTransitioning = false // UNLOCK
+                // --- RIGHT CONTENT ---
+                Box(
+                    modifier = Modifier
+                        .weight(0.72f) // Expanded content area
+                        .fillMaxHeight()
+                        .focusProperties {
+                            if (isTopNav) {
+                                up = FocusRequester.Cancel
                             }
                         }
-
-                        val isFirstSection = section == SettingsSection.entries.first()
-
-                        val focusModifier = Modifier
-                            .focusRequester(itemRequesters[section]!!)
-                            .then(if (isSelected) Modifier.focusRequester(entryRequester) else Modifier)
-                            .onPreviewKeyEvent {
-                                if (it.type == KeyEventType.KeyDown) {
-                                    when (it.key) {
-                                        Key.DirectionLeft -> {
-                                            if (!isTransitioning) {
-                                                drawerRequester.requestFocus()
-                                            }
-                                            true
-                                        }
-                                        Key.Back -> {
-                                            if (!isTransitioning) {
-                                                drawerRequester.requestFocus()
-                                                true
-                                            } else false
-                                        }
-                                        Key.DirectionUp -> {
-                                            // Up on first section -> go to drawer/topnav (ONLY in top nav mode)
-                                            if (isFirstSection && !isTransitioning && isTopNav) {
-                                                drawerRequester.requestFocus()
-                                                true
-                                            } else false
-                                        }
-                                        Key.DirectionRight, Key.DirectionCenter, Key.Enter -> {
-                                            enterContent()
-                                            true
-                                        }
-                                        else -> false
-                                    }
-                                } else false
-                            }
-
-                        SettingsSidebarItem(
-                            label = section.label,
-                            iconRes = section.iconRes,
-                            isSelected = isSelected,
-                            modifier = focusModifier,
-                            onClick = { if (!isTransitioning) enterContent() }, // GATED
-                            onFocus = { selectedSection = section }
-                        )
+                        .focusGroup()
+                        .focusRequester(contentPaneRequester)
+                        .rememberLastFocus()
+                        .onFocusChanged { if (it.hasFocus) { isContentFocused = true; onContentFocusChanged(true) } }
+                ) {
+                    // INCREASED PADDING: Gutter 64dp (Sidebar ends at weight 0.28, this starts at 0 without extra padding logic, so we add start padding here)
+                    Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 64.dp, end = 80.dp)) {
+                        contentPane()
                     }
                 }
             }
         }
-
-        // --- RIGHT CONTENT ---
-        Box(
-            modifier = Modifier
-                .weight(0.72f) // Expanded content area
-                .fillMaxHeight()
-                .focusProperties {
-                    if (isTopNav) {
-                        up = FocusRequester.Cancel
-                    }
-                }
-                .focusGroup()
-                .focusRequester(contentPaneRequester)
-                .rememberLastFocus()
-                .onFocusChanged { if (it.hasFocus) { isContentFocused = true; onContentFocusChanged(true) } }
-        ) {
-            // INCREASED PADDING: Gutter 64dp (Sidebar ends at weight 0.28, this starts at 0 without extra padding logic, so we add start padding here)
-            Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 64.dp, end = 80.dp)) {
-                AnimatedContent(
-                    targetState = displayedSection,
-                    transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
-                    label = "SettingsContent"
-                ) { target ->
-                    when (target) {
-                        SettingsSection.Personalization -> {
-                            PersonalizationSettings(
-                                currentProfile = currentProfile,
-                                viewModel = viewModel,
-                                onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
-                            )
-                        }
-                        SettingsSection.Theme -> {
-                            ThemeSettings(
-                                currentProfile = currentProfile,
-                                onGoBack = { itemRequesters[selectedSection]?.requestFocus() },
-                                isTopNav = isTopNav
-                            )
-                        }
-                        SettingsSection.Dashboard -> {
-                            DashboardEditorScreen(
-                                onBack = {
-                                    onDashboardChanged() // Invalidate home screen cache
-                                    itemRequesters[selectedSection]?.requestFocus()
-                                },
-                                isTopNav = isTopNav,
-                                currentProfile = currentProfile
-                            )
-                        }
-                        SettingsSection.Playback -> {
-                            PlaybackSettings(
-                                currentProfile = currentProfile,
-                                viewModel = viewModel,
-                                onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
-                            )
-                        }
-                        SettingsSection.SourcePreferences -> {
-                            SourcePreferencesSettings(
-                                currentProfile = currentProfile,
-                                viewModel = viewModel,
-                                onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
-                            )
-                        }
-                        SettingsSection.Addons -> {
-                            AddonsScreen(
-                                onBack = { itemRequesters[selectedSection]?.requestFocus() },
-                                isTopNav = isTopNav
-                            )
-                        }
-                        SettingsSection.Integrations -> {
-                            IntegrationsScreen(
-                                onBack = { itemRequesters[selectedSection]?.requestFocus() }
-                            )
-                        }
-                        SettingsSection.About -> {
-                            AboutSettings(
-                                onGoBack = { itemRequesters[selectedSection]?.requestFocus() }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
     }
 }
 
