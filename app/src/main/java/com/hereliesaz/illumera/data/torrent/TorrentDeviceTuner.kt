@@ -14,6 +14,9 @@ object TorrentDeviceTuner {
     private const val KEY_CACHE_MB = "cache_mb"
     private const val KEY_CONNECTION_LIMIT = "connection_limit"
 
+    const val MIN_CONNECTION_LIMIT = 20
+    const val MAX_CONNECTION_LIMIT = 25
+
     data class Settings(
         val cacheSizeMb: Int,
         val connectionsLimit: Int
@@ -26,7 +29,7 @@ object TorrentDeviceTuner {
                 context = context,
                 settings = Settings(
                     cacheSizeMb = prefs.getInt(KEY_CACHE_MB, 192),
-                    connectionsLimit = prefs.getInt(KEY_CONNECTION_LIMIT, 120)
+                    connectionsLimit = prefs.getInt(KEY_CONNECTION_LIMIT, 22)
                 )
             )
         }
@@ -73,9 +76,9 @@ object TorrentDeviceTuner {
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
         val base = when {
-            totalRamMb <= 1536L || cores <= 2 -> Settings(cacheSizeMb = 96, connectionsLimit = 80)
-            totalRamMb <= 3072L || cores <= 4 -> Settings(cacheSizeMb = 192, connectionsLimit = 120)
-            else -> Settings(cacheSizeMb = 384, connectionsLimit = 180)
+            totalRamMb <= 1536L || cores <= 2 -> Settings(cacheSizeMb = 96, connectionsLimit = 20)
+            totalRamMb <= 3072L || cores <= 4 -> Settings(cacheSizeMb = 192, connectionsLimit = 22)
+            else -> Settings(cacheSizeMb = 384, connectionsLimit = 25)
         }
 
         return sanitizeSettings(context, base)
@@ -84,7 +87,7 @@ object TorrentDeviceTuner {
     private fun sanitizeSettings(context: Context, settings: Settings): Settings {
         return Settings(
             cacheSizeMb = settings.cacheSizeMb.coerceIn(64, maxSafeCacheMb(context)),
-            connectionsLimit = settings.connectionsLimit.coerceIn(40, 200)
+            connectionsLimit = settings.connectionsLimit.coerceIn(MIN_CONNECTION_LIMIT, MAX_CONNECTION_LIMIT)
         )
     }
 
