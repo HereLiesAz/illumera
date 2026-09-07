@@ -321,6 +321,32 @@ fun BasePlayerScaffold(
         }
     }
 
+    // An exhausted queue should leave the player through the normal session-end
+    // callback so progress is saved and Details is restored. Do not interrupt a
+    // pending episode/source selection or an autoplay handoff.
+    var completionExitFired by remember(playbackController, currentPlaybackId) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(
+        playbackController,
+        currentPlaybackId,
+        uiState.isEnded,
+        hasError,
+        nextEpisodeInfo,
+        isEpisodeSwitchLoading,
+        episodeSwitchSources,
+        episodeSwitchTitle,
+        autoplayFired
+    ) {
+        if (uiState.isEnded && !hasError && nextEpisodeInfo == null &&
+            !isEpisodeSwitchLoading && episodeSwitchSources == null &&
+            episodeSwitchTitle == null && !autoplayFired && !completionExitFired
+        ) {
+            completionExitFired = true
+            onBack()
+        }
+    }
+
     // Re-focus buttons when controls hide
     LaunchedEffect(showControls, overlayVisible, showPlayNextButton) {
         if (!showControls) {
