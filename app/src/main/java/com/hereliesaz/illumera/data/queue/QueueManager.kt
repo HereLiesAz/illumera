@@ -298,9 +298,10 @@ class QueueManager @Inject constructor(
                     }
             }
 
+            val latestDismissedKeys = dismissedSuggestionKeys()
             val ranked = candidates
                 .distinctBy { it.stableKey }
-                .filter { it.stableKey !in dismissedKeys }
+                .filter { it.stableKey !in latestDismissedKeys }
                 .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
                 .sortedWith(
                     compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }
@@ -309,9 +310,10 @@ class QueueManager @Inject constructor(
                 .take(SUGGESTION_COUNT * 4)
                 .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
 
+            val latestState = _state.value
             val existing = if (preserveExisting) {
-                current.suggestions
-                    .filter { it.stableKey !in dismissedKeys }
+                latestState.suggestions
+                    .filter { it.stableKey !in latestDismissedKeys }
                     .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
             } else {
                 emptyList()
@@ -321,7 +323,7 @@ class QueueManager @Inject constructor(
                 .distinctBy { it.stableKey }
                 .take(SUGGESTION_COUNT)
 
-            commit(_state.value.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
             resolveMissingArtwork()
         } catch (_: Exception) {
             _state.value = _state.value.copy(isRefreshingSuggestions = false)
@@ -356,7 +358,6 @@ class QueueManager @Inject constructor(
 
     private fun normalizeId(id: String): String {
         val value = id.lowercase()
-        if (value.startsWith("tmdb:") || value.startsWith("tt")) return value
         val parts = value.split(':')
         return if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
             parts.dropLast(2).joinToString(":")

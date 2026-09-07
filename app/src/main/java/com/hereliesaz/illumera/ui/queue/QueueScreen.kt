@@ -101,9 +101,13 @@ fun QueueSection(
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(state.preferences.enabled, state.suggestions.size) {
-        if (state.preferences.enabled && state.suggestions.size < QueueManager.SUGGESTION_COUNT) {
-            queueManager.ensureSuggestions()
+    LaunchedEffect(state.preferences.enabled) {
+        if (state.preferences.enabled) {
+            if (state.preferences.onlyUnseenSuggestions) {
+                queueManager.refreshSuggestions()
+            } else {
+                queueManager.ensureSuggestions()
+            }
         }
     }
 
@@ -246,7 +250,10 @@ fun QueueSection(
                     queueManager.moveSuggestion(item.stableKey, targetIndex)
                 },
                 onRemoveSuggestion = { item ->
-                    queueManager.removeSuggestion(item.stableKey)
+                    scope.launch {
+                        queueManager.removeSuggestion(item.stableKey)
+                        queueManager.ensureSuggestions()
+                    }
                 },
                 actions = { item, _ ->
                     IconButton(onClick = { queueManager.rateSuggestion(item.stableKey, -1) }) {
