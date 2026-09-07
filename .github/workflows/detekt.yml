@@ -53,7 +53,7 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh api graphql --field tagName=$DETEKT_RELEASE_TAG --raw-field query='
+        gh api graphql --field tagName="$DETEKT_RELEASE_TAG" --raw-field query='
           query getReleaseAssetDownloadUrl($tagName: String!) {
             repository(name: "detekt", owner: "detekt") {
               release(tagName: $tagName) {
@@ -70,14 +70,16 @@ jobs:
           }
         ' 1> gh_response.json
 
-        DETEKT_RELEASE_SHA=$(jq --raw-output '.data.repository.release.releaseAssets.tagCommit.oid' gh_response.json)
-        if [ $DETEKT_RELEASE_SHA != "37f0a1d006977512f1f216506cd695039607c3e5" ]; then
+        DETEKT_RELEASE_SHA=$(jq --raw-output '.data.repository.release.tagCommit.oid' gh_response.json)
+        if [ "$DETEKT_RELEASE_SHA" != "37f0a1d006977512f1f216506cd695039607c3e5" ]; then
           echo "Release tag doesn't match expected commit SHA"
+          echo "Expected: 37f0a1d006977512f1f216506cd695039607c3e5"
+          echo "Actual:   $DETEKT_RELEASE_SHA"
           exit 1
         fi
 
         DETEKT_DOWNLOAD_URL=$(jq --raw-output '.data.repository.release.releaseAssets.nodes[0].downloadUrl' gh_response.json)
-        echo "download_url=$DETEKT_DOWNLOAD_URL" >> $GITHUB_OUTPUT
+        echo "download_url=$DETEKT_DOWNLOAD_URL" >> "$GITHUB_OUTPUT"
 
     # Sets up the detekt cli
     - name: Setup Detekt
