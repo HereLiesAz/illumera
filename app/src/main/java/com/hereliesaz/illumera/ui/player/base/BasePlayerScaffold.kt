@@ -1785,9 +1785,9 @@ private fun PlayerErrorOverlay(
                 background = Color(0xFF8B1E1E).copy(alpha = 0.85f)
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 PlayerErrorButton(
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
