@@ -1,5 +1,6 @@
 #include "ass_direct.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <android/log.h>
@@ -20,6 +21,8 @@ struct AssDirectContext {
 };
 
 AssDirectContext *ass_direct_init(int width, int height, float font_scale) {
+    if (width <= 0 || height <= 0) return NULL;
+
     AssDirectContext *ctx = calloc(1, sizeof(AssDirectContext));
     if (!ctx) return NULL;
 
@@ -102,23 +105,88 @@ void ass_direct_process_data(AssDirectContext *ctx, const char *data, int size) 
     ass_process_data(ctx->ass_track, (char *)data, size);
 }
 
+static int rgba_buffer_size(const AssDirectContext *ctx, size_t *out_size) {
+    if (!ctx || !out_size || ctx->width <= 0 || ctx->height <= 0) return 0;
+
+    const size_t width = (size_t)ctx->width;
+    const size_t height = (size_t)ctx->height;
+    if (width > SIZE_MAX / height) return 0;
+
+    const size_t pixels = width * height;
+    if (pixels > SIZE_MAX / 4u) return 0;
+
+    *out_size = pixels * 4u;
+    return 1;
+}
+
 int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixels) {
     if (!ctx || !ctx->ass_track || !ctx->ass_renderer || !out_pixels)
         return 0;
+
+    size_t output_size = 0;
+    if (!rgba_buffer_size(ctx, &output_size)) {
+        LOGE("Invalid render dimensions: %dx%d", ctx->width, ctx->height);
+        return 0;
+    }
 
     int changed = 0;
     ASS_Image *img = ass_render_frame(ctx->ass_renderer, ctx->ass_track,
                                       time_ms, &changed);
 
-    // Clear output buffer
-    memset(out_pixels, 0, ctx->width * ctx->height * 4);
+    memset(out_pixels, 0, output_size);
 
     if (!img) return 0;
 
-    // Composite all ASS_Image layers into the RGBA output buffer
+    // Composite all ASS_Image layers into the RGBA output buffer. Clip every
+    // libass image to the destination frame before doing pointer arithmetic.
     int has_content = 0;
     while (img) {
-        if (img->w == 0 || img->h == 0) {
+        if (!img->bitmap || img->stride <= 0 || img->w <= 0 || img->h <= 0) {
+            img = img->next;
+            continue;
+        }
+
+        int src_x = 0;
+        int src_y = 0;
+        int dst_x = img->dst_x;
+        int dst_y = img->dst_y;
+        int draw_w = img->w;
+        int draw_h = img->h;
+
+        if (dst_x < 0) {
+            if (dst_x == INT32_MIN) {
+                img = img->next;
+                continue;
+            }
+            src_x = -dst_x;
+            if (src_x >= draw_w) {
+                img = img->next;
+                continue;
+            }
+            draw_w -= src_x;
+            dst_x = 0;
+        }
+        if (dst_y < 0) {
+            if (dst_y == INT32_MIN) {
+                img = img->next;
+                continue;
+            }
+            src_y = -dst_y;
+            if (src_y >= draw_h) {
+                img = img->next;
+                continue;
+            }
+            draw_h -= src_y;
+            dst_y = 0;
+        }
+        if (dst_x >= ctx->width || dst_y >= ctx->height) {
+            img = img->next;
+            continue;
+        }
+
+        if (draw_w > ctx->width - dst_x) draw_w = ctx->width - dst_x;
+        if (draw_h > ctx->height - dst_y) draw_h = ctx->height - dst_y;
+        if (draw_w <= 0 || draw_h <= 0) {
             img = img->next;
             continue;
         }
@@ -129,18 +197,14 @@ int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixel
         uint8_t b = (img->color >> 8) & 0xFF;
         uint8_t a = 255 - (img->color & 0xFF);
 
-        uint8_t *src = img->bitmap;
-        for (int y = 0; y < img->h; y++) {
-            if (img->dst_y + y < 0 || img->dst_y + y >= ctx->height) {
-                src += img->stride;
-                continue;
-            }
-            uint8_t *dst = out_pixels + ((img->dst_y + y) * ctx->width + img->dst_x) * 4;
-            for (int x = 0; x < img->w; x++) {
-                if (img->dst_x + x < 0 || img->dst_x + x >= ctx->width) {
-                    dst += 4;
-                    continue;
-                }
+        for (int y = 0; y < draw_h; y++) {
+            const size_t src_row = (size_t)(src_y + y) * (size_t)img->stride;
+            const uint8_t *src = img->bitmap + src_row + (size_t)src_x;
+            const size_t pixel_index =
+                (size_t)(dst_y + y) * (size_t)ctx->width + (size_t)dst_x;
+            uint8_t *dst = out_pixels + pixel_index * 4u;
+
+            for (int x = 0; x < draw_w; x++) {
                 uint8_t alpha = (uint8_t)(((uint32_t)src[x] * a) >> 8);
                 if (alpha == 0) {
                     dst += 4;
@@ -162,7 +226,6 @@ int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixel
                 }
                 dst += 4;
             }
-            src += img->stride;
         }
         img = img->next;
     }
