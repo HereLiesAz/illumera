@@ -11,7 +11,9 @@ of a known crash is added as a comment on the existing open issue instead of
 opening a duplicate.
 
 An email relay via [Resend](https://resend.com) is also supported and runs
-independently — configure either, both, or neither.
+independently — configure either GitHub, email, or both. `AUTH_TOKEN` is
+required in every environment; the worker fails closed with HTTP 503 if it is
+missing.
 
 ## Setup
 
@@ -23,7 +25,7 @@ independently — configure either, both, or neither.
 3. **Secrets**:
    ```bash
    npx wrangler secret put GITHUB_TOKEN     # the token from step 1
-   npx wrangler secret put AUTH_TOKEN       # shared secret the app must send
+   npx wrangler secret put AUTH_TOKEN       # required shared secret the app sends
    ```
    `wrangler.toml`'s `[vars]` block already points `GITHUB_OWNER`/`GITHUB_REPO`
    at `HereLiesAz/illumera` — change it there if you fork this.
@@ -38,5 +40,15 @@ independently — configure either, both, or neither.
    - the `ACRA_URL` / `ACRA_TOKEN` GitHub Actions secrets on this repo for
      CI-built releases (see `../ci/README.md`).
 
-Without `AUTH_TOKEN` set, the worker accepts unauthenticated requests —
-only skip it for local testing, never for a public deployment.
+## Local testing
+
+Authentication is still required when testing locally. Use a throwaway local
+secret rather than disabling authentication, for example:
+
+```bash
+npx wrangler dev --var AUTH_TOKEN:local-crash-test-token
+```
+
+Configure the local app build to send the same value as `acra.token`. Do not
+reuse a production `AUTH_TOKEN` for local development or commit either value
+to the repository.
