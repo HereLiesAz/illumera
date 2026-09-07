@@ -7,7 +7,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -44,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -63,10 +63,6 @@ class QueueViewModel @Inject constructor(
     val queueManager: QueueManager
 ) : ViewModel()
 
-/**
- * Standalone wrapper retained for compatibility with the old Queue destination.
- * The same content is now also embedded directly in WatchlistScreen.
- */
 @Composable
 fun QueueScreen(
     queueManager: QueueManager,
@@ -83,7 +79,8 @@ fun QueueScreen(
                 queueManager = queueManager,
                 entryRequester = entryRequester,
                 startPadding = 96.dp,
-                onOpenItem = onOpenItem
+                onOpenItem = onOpenItem,
+                requestEntryFocus = true
             )
         }
     }
@@ -149,12 +146,20 @@ fun QueueSection(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 2.dp)
             )
-            QueueOption("Movies", state.preferences.includeMovies, queueManager::setIncludeMovies)
-            QueueOption("Episodes", state.preferences.includeEpisodes, queueManager::setIncludeEpisodes)
             QueueOption(
-                "Whole shows — play straight through",
-                state.preferences.includeWholeShows,
-                queueManager::setIncludeWholeShows
+                label = "Movies",
+                checked = state.preferences.includeMovies,
+                onCheckedChange = queueManager::setIncludeMovies
+            )
+            QueueOption(
+                label = "Episodes",
+                checked = state.preferences.includeEpisodes,
+                onCheckedChange = queueManager::setIncludeEpisodes
+            )
+            QueueOption(
+                label = "Whole shows — play straight through",
+                checked = state.preferences.includeWholeShows,
+                onCheckedChange = queueManager::setIncludeWholeShows
             )
 
             Text(
@@ -163,17 +168,19 @@ fun QueueSection(
                 modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 2.dp)
             )
             QueueOption(
-                "Play history",
-                QueueSuggestionSource.PLAY_HISTORY in state.preferences.suggestionSources
-            ) { enabled ->
-                queueManager.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, enabled)
-            }
+                label = "Play history",
+                checked = QueueSuggestionSource.PLAY_HISTORY in state.preferences.suggestionSources,
+                onCheckedChange = { enabled ->
+                    queueManager.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, enabled)
+                }
+            )
             QueueOption(
-                "Trakt",
-                QueueSuggestionSource.TRAKT in state.preferences.suggestionSources
-            ) { enabled ->
-                queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, enabled)
-            }
+                label = "Trakt",
+                checked = QueueSuggestionSource.TRAKT in state.preferences.suggestionSources,
+                onCheckedChange = { enabled ->
+                    queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, enabled)
+                }
+            )
 
             Button(
                 onClick = { scope.launch { queueManager.refreshSuggestions() } },
@@ -262,33 +269,46 @@ private fun QueueOption(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val shape = RoundedCornerShape(10.dp)
+    val accent = MaterialTheme.colorScheme.primary
+
+    val backgroundColor = when {
+        isFocused -> accent.copy(alpha = .24f)
+        checked -> accent.copy(alpha = .11f)
+        else -> Color.Transparent
+    }
+    val borderWidth = when {
+        isFocused -> 2.dp
+        checked -> 1.dp
+        else -> 0.dp
+    }
+    val borderColor = when {
+        isFocused -> accent
+        checked -> accent.copy(alpha = .55f)
+        else -> Color.Transparent
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = .18f)
-                else MaterialTheme.colorScheme.surface.copy(alpha = .01f),
-                shape
-            )
-            .border(
-                width = if (isFocused) 2.dp else 0.dp,
-                color = if (isFocused) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
-                shape = shape
-            )
+            .background(backgroundColor, shape)
+            .border(borderWidth, borderColor, shape)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
             ) { onCheckedChange(!checked) }
             .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked = checked, onCheckedChange = null)
         Text(
             text = label,
-            color = if (isFocused) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = .82f)
+            color = when {
+                isFocused -> MaterialTheme.colorScheme.onSurface
+                checked -> MaterialTheme.colorScheme.onSurface
+                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = .82f)
+            },
+            fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
