@@ -14,7 +14,10 @@ import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 import com.hereliesaz.illumera.data.remote.StremioAddonEntry
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,7 +51,22 @@ class ProfileConfigurationManager @Inject constructor(
         context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     }
 
+    private val runtimeMutex = Mutex()
     private var startupRuntimeCaptured = false
+
+    /**
+     * Runs profile-scoped background work while preventing a profile switch from
+     * replacing the shared runtime tables underneath it. If the requested profile
+     * is no longer active when the lock is acquired, the work is cancelled rather
+     * than writing into another profile's runtime state.
+     */
+    suspend fun <T> withActiveProfileRuntime(profileId: Int, block: suspend () -> T): T =
+        runtimeMutex.withLock {
+            if (getLastActiveProfileId() != profileId) {
+                throw CancellationException("Active profile changed before refresh started")
+            }
+            block()
+        }
 
     /**
      * Allows captureStartupRuntimeIfNeeded() to run again. Call after runtime
@@ -92,7 +110,7 @@ class ProfileConfigurationManager @Inject constructor(
         saveRuntimeState(activeId)
     }
 
-    suspend fun loadRuntimeState(profileId: Int) {
+    suspend fun loadRuntimeState(profileId: Int) = runtimeMutex.withLock {
         val existingSnapshot = readSnapshot(profileId)
         val snapshot = existingSnapshot ?: if (!needsInitialSetup(profileId)) {
             captureRuntimeSnapshot().also {
