@@ -418,6 +418,8 @@ fun PlaybackSettings(
                 }
             }
 
+            TorrentTuningSettings(onGoBack = onGoBack)
+
             // LANGUAGE PREFERENCES SECTION
             Spacer(Modifier.height(12.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
