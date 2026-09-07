@@ -95,6 +95,21 @@ class TorrentService : Service() {
                 }
                 engine.start()
 
+                // Tune the local transport for this device before adding the source.
+                // Tuning is optional: a settings endpoint failure must never block playback.
+                val tuning = TorrentDeviceTuner.getOrCreateSettings(this@TorrentService)
+                val tuningApplied = api.applyStreamingSettings(
+                    cacheSizeMb = tuning.cacheSizeMb,
+                    connectionsLimit = tuning.connectionsLimit
+                )
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        TAG,
+                        "Torrent auto-tuning: cache=${tuning.cacheSizeMb}MB, " +
+                            "connections=${tuning.connectionsLimit}, applied=$tuningApplied"
+                    )
+                }
+
                 // Phase 2: Add torrent
                 if (BuildConfig.DEBUG) Log.d(TAG, "Adding magnet: ${magnet.take(120)}...")
                 withContext(Dispatchers.Main) {
