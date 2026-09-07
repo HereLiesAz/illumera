@@ -50,6 +50,7 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
                     status = o.get("status")?.asString,
                     progress = o.get("progress")?.asInt,
                     addedAt = o.get("added")?.asString,
+                    infoHash = o.get("hash")?.asString,
                     directLinks = o.get("links")?.asArrayOrNull()?.mapNotNull { it.asString } ?: emptyList()
                 )
             } ?: emptyList()
@@ -70,7 +71,7 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
                     directLinks = listOfNotNull(link)
                 )
             } ?: emptyList()
-            is DebridResult.Failure -> emptyList() // downloads endpoint failing shouldn't sink the whole library
+            is DebridResult.Failure -> emptyList()
         }
 
         return DebridResult.Success(torrents + downloads)
@@ -80,7 +81,6 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
         val restricted = item.directLinks.firstOrNull()
             ?: return DebridResult.Failure("No link available for this item")
 
-        // Downloads are already unrestricted; only torrents' links need /unrestrict/link.
         if (item.status == "downloaded" && restricted.contains("/d/")) {
             return DebridResult.Success(restricted)
         }
