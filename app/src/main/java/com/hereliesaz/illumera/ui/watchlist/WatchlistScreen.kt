@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,17 +19,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,14 +46,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
+import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
 import com.hereliesaz.illumera.ui.home.InfiniteLoopRow
 import com.hereliesaz.illumera.ui.home.UpKeyDebouncer
+import com.hereliesaz.illumera.ui.queue.QueueSection
 
 @Composable
 fun WatchlistScreen(
@@ -89,10 +91,8 @@ fun WatchlistScreen(
 
     val upKeyDebouncer = remember { UpKeyDebouncer() }
     val dpadRepeatGate = remember { DpadRepeatGate() }
-
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
 
-    // Redirect focus when the focused item was removed (e.g., unwatchlisted from details)
     LaunchedEffect(movies, series) {
         val key = lastFocusedKey ?: return@LaunchedEffect
         val parts = key.split("_")
@@ -100,16 +100,14 @@ fun WatchlistScreen(
         val itemId = parts.getOrNull(1)
         if (itemId == null) return@LaunchedEffect
 
-        val items = if (rowIndex == 0) movies else series
-        val stillExists = items.any { it.id == itemId }
-        if (!stillExists && items.isNotEmpty()) {
-            // Focus the last item in the same row (closest to where the removed item was)
-            val fallbackItem = items.last()
-            val fallbackIndex = items.lastIndex
+        val rowItems = if (rowIndex == 0) movies else series
+        val stillExists = rowItems.any { it.id == itemId }
+        if (!stillExists && rowItems.isNotEmpty()) {
+            val fallbackItem = rowItems.last()
+            val fallbackIndex = rowItems.lastIndex
             lastFocusedKey = "${rowIndex}_${fallbackItem.id}_$fallbackIndex"
             viewModel.lastFocusedKey = lastFocusedKey
-        } else if (!stillExists && items.isEmpty()) {
-            // Row is now empty — focus the other row if it exists
+        } else if (!stillExists && rowItems.isEmpty()) {
             val otherItems = if (rowIndex == 0) series else movies
             if (otherItems.isNotEmpty()) {
                 val otherRow = if (rowIndex == 0) 1 else 0
@@ -122,13 +120,10 @@ fun WatchlistScreen(
         }
     }
 
-    // Resolve missing posters (e.g., items pulled from Trakt)
     LaunchedEffect(movies) { movies.forEach { viewModel.resolvePosterIfNeeded(it) } }
     LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
 
     val isTopNav = currentProfile?.navPosition == "top"
-    // See HomeScreen.kt's identical startPadding: 120dp clears the side NavDrawer plus a
-    // comfortable margin on a wide/TV screen, but wastes a third of a phone's width.
     val isCompactWatchlist = LocalConfiguration.current.screenWidthDp < 600
     val startPadding = when {
         isTopNav -> 50.dp
@@ -136,27 +131,29 @@ fun WatchlistScreen(
         else -> 120.dp
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
+    val hasWatchlistMedia = movies.isNotEmpty() || series.isNotEmpty()
 
-    androidx.compose.runtime.CompositionLocalProvider(com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (movies.isEmpty() && series.isEmpty() && debridState.items.isEmpty() && debridProvider == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "Your watchlist is empty",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = topPadding + 20.dp, bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (!hasWatchlistMedia) {
+                item {
+                    Text(
+                        text = "Your watchlist is empty",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(start = startPadding, top = 12.dp, bottom = 4.dp)
+                    )
+                }
             }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = topPadding),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(top = 20.dp))
 
-                if (movies.isNotEmpty()) {
+            if (movies.isNotEmpty()) {
+                item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
                         isTopNav = isTopNav,
@@ -180,8 +177,10 @@ fun WatchlistScreen(
                         externalListState = viewModel.movieRowState
                     )
                 }
+            }
 
-                if (series.isNotEmpty()) {
+            if (series.isNotEmpty()) {
+                item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
                         isTopNav = isTopNav,
@@ -205,8 +204,21 @@ fun WatchlistScreen(
                         externalListState = viewModel.seriesRowState
                     )
                 }
+            }
 
-                if (debridProvider != null) {
+            item {
+                QueueSection(
+                    entryRequester = entryRequester,
+                    startPadding = startPadding,
+                    requestEntryFocus = !hasWatchlistMedia,
+                    onOpenItem = { queueItem: QueueItem ->
+                        onMovieClick(queueItem.toMetaItem())
+                    }
+                )
+            }
+
+            if (debridProvider != null) {
+                item {
                     DebridLibrarySection(
                         provider = debridProvider,
                         state = debridState,
@@ -218,7 +230,6 @@ fun WatchlistScreen(
             }
         }
     }
-    } // CompositionLocalProvider
 }
 
 @Composable
@@ -241,7 +252,10 @@ private fun DebridLibrarySection(
             )
             if (state.isLoading) {
                 Spacer(Modifier.width(12.dp))
-                CircularProgressIndicator(modifier = Modifier.width(16.dp).height(16.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.width(16.dp).height(16.dp),
+                    strokeWidth = 2.dp
+                )
             }
         }
 
@@ -257,7 +271,7 @@ private fun DebridLibrarySection(
         } else {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(start = startPadding, end = 24.dp)
+                contentPadding = PaddingValues(start = startPadding, end = 24.dp)
             ) {
                 items(state.items, key = { it.id }) { item ->
                     DebridItemCard(
@@ -331,9 +345,10 @@ private fun DebridItemCard(
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        onDelete()
-                    },
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onDelete() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
