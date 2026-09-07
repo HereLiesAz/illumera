@@ -349,6 +349,8 @@ class IntegrationsViewModel @Inject constructor(
      * Disconnects from Stremio.
      */
     fun disconnect() {
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+        stremioAuthManager.clearCredentialsForProfile(profileId)
         stremioAuthManager.disconnect()
         viewModelScope.launch {
             _events.send(IntegrationsEvent.Disconnected)

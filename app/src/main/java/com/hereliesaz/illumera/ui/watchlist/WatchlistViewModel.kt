@@ -35,6 +35,7 @@ class WatchlistViewModel @Inject constructor(
     private val resolveFailureCooldownMs = 5 * 60_000L
 
     var lastFocusedKey: String? = null
+    var lastQueueFocusedKey: String? = null
 
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
