@@ -13,10 +13,14 @@ import androidx.compose.ui.input.pointer.pointerInput
  */
 fun Modifier.touchClick(
     enabled: Boolean = true,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ): Modifier {
     if (!enabled) return this
-    return pointerInput(onClick) {
-        detectTapGestures(onTap = { onClick() })
+    return pointerInput(onClick, onLongClick) {
+        detectTapGestures(
+            onTap = { onClick() },
+            onLongPress = onLongClick?.let { longClick -> { longClick() } }
+        )
     }
 }
