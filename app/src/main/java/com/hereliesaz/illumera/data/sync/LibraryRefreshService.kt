@@ -10,11 +10,15 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
+import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
@@ -43,6 +47,7 @@ class LibraryRefreshService : Service() {
     @Inject lateinit var stremioAuthManager: StremioAuthManager
     @Inject lateinit var stremioLibrarySyncManager: StremioLibrarySyncManager
     @Inject lateinit var addonRepository: AddonRepository
+    @Inject lateinit var dao: AddonDao
     @Inject lateinit var profileConfigurationManager: ProfileConfigurationManager
     @Inject lateinit var traktAuthManager: TraktAuthManager
     @Inject lateinit var traktSyncManager: TraktSyncManager
@@ -59,6 +64,25 @@ class LibraryRefreshService : Service() {
         private const val ACTION_CANCEL = "com.hereliesaz.illumera.action.CANCEL_LIBRARY_REFRESH"
 
         fun start(context: Context) {
+            // The refresh is intentionally user-visible. If notifications are disabled,
+            // do not start a foreground sync whose progress/cancel affordance would be
+            // hidden; take the user directly to this app's notification settings instead.
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                Toast.makeText(
+                    context,
+                    "Enable Illumera notifications to run a background library refresh.",
+                    Toast.LENGTH_LONG
+                ).show()
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                return
+            }
+
             val intent = Intent(context, LibraryRefreshService::class.java)
                 .setAction(ACTION_REFRESH)
             ContextCompat.startForegroundService(context, intent)
@@ -76,9 +100,19 @@ class LibraryRefreshService : Service() {
         startForegroundCompat("Preparing library refresh…")
 
         if (refreshJob?.isActive != true) {
+            val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId()
+            if (initiatingProfileId == null) {
+                updateNotification("No active profile to refresh")
+                stopForegroundCompat()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
             refreshJob = scope.launch {
                 try {
-                    refreshConnectedData()
+                    profileConfigurationManager.withActiveProfileRuntime(initiatingProfileId) {
+                        refreshConnectedData(initiatingProfileId)
+                    }
                     updateNotification("Library refresh complete")
                 } catch (e: CancellationException) {
                     Log.i(TAG, "Library refresh cancelled")
@@ -96,52 +130,104 @@ class LibraryRefreshService : Service() {
         return START_NOT_STICKY
     }
 
-    private suspend fun refreshConnectedData() {
+    private suspend fun refreshConnectedData(profileId: Int) {
+        val failures = mutableListOf<String>()
+
         // Stremio Continue Watching is a true two-way network sync.
         if (stremioAuthManager.getStoredAuthKey() != null) {
             updateNotification("Syncing Stremio library…")
             stremioLibrarySyncManager.syncLibrary(force = true)
+                .onFailure {
+                    failures += "Stremio library: ${it.message ?: "sync failed"}"
+                    Log.w(TAG, "Stremio library sync failed", it)
+                }
 
             // Refresh the account's addon collection from Stremio so the
             // connected-library state is checked as part of this explicit sync.
             updateNotification("Refreshing Stremio addon data…")
             stremioAuthManager.fetchAddons()
+                .onFailure {
+                    failures += "Stremio addons: ${it.message ?: "refresh failed"}"
+                    Log.w(TAG, "Stremio addon refresh failed", it)
+                }
         }
 
-        // Refresh manifests for addons already installed on this profile. The
-        // repository preserves existing user customizations; newly discovered
-        // catalog entries stay hidden by default during a refresh.
+        // Refresh manifests for addons already installed on this profile. Reconcile
+        // catalog rows against the new manifest so catalogs removed upstream do not
+        // linger in dashboards or custom hub rows.
         updateNotification("Refreshing installed addons…")
         val installedAddons = addonRepository.getAddons().firstOrNull().orEmpty()
         for (addon in installedAddons) {
             val manifestUrl = "${addon.transportUrl.trimEnd('/')}/manifest.json"
             runCatching {
+                val manifest = addonRepository.fetchManifest(manifestUrl)
+                val validConfigIds = manifest.catalogs.orEmpty()
+                    .map { "${addon.transportUrl}/${it.type}/${it.id}" }
+                    .toSet()
+
                 addonRepository.installAddonWithConfig(
                     url = manifestUrl,
                     home = false,
                     movies = false,
                     series = false
                 )
+
+                val addonConfigs = dao.getAllCatalogConfigs().firstOrNull().orEmpty()
+                    .filter { it.transportUrl == addon.transportUrl && it.uniqueId in validConfigIds }
+                val staleConfigIds = dao.getAllCatalogConfigs().firstOrNull().orEmpty()
+                    .filter { it.transportUrl == addon.transportUrl && it.uniqueId !in validConfigIds }
+                    .map { it.uniqueId }
+                    .toSet()
+
+                if (staleConfigIds.isNotEmpty()) {
+                    val hubItems = dao.getAllHubRowItems().firstOrNull().orEmpty()
+                        .filter { it.configUniqueId in staleConfigIds }
+                    hubItems.forEach { dao.deleteHubRowItem(it.hubRowId, it.configUniqueId) }
+                }
+
+                // Replace this addon's config set atomically enough for the serialized
+                // profile runtime: retained configs keep their customizations, new ones
+                // remain hidden, and removed ones disappear.
+                dao.deleteCatalogConfigs(addon.transportUrl)
+                if (addonConfigs.isNotEmpty()) dao.saveCatalogConfigs(addonConfigs)
             }.onFailure { error ->
+                failures += "${addon.name}: ${error.message ?: "manifest refresh failed"}"
                 Log.w(TAG, "Could not refresh addon ${addon.name}: ${error.message}")
             }
-        }
-        if (installedAddons.isNotEmpty()) {
-            runCatching { profileConfigurationManager.saveActiveRuntimeState() }
-                .onFailure { Log.w(TAG, "Could not persist refreshed addon state", it) }
-            profileConfigurationManager.resetStartupCapture()
         }
 
         // Trakt refreshes are only attempted when the user connected Trakt.
         if (traktAuthManager.getAccessToken() != null) {
             updateNotification("Syncing Trakt watchlist…")
             traktSyncManager.syncWatchlist()
+                .onFailure {
+                    failures += "Trakt watchlist: ${it.message ?: "sync failed"}"
+                    Log.w(TAG, "Trakt watchlist sync failed", it)
+                }
 
             updateNotification("Syncing playback progress…")
-            traktSyncManager.syncPlaybackProgress()
+            runCatching { traktSyncManager.syncPlaybackProgress() }
+                .onFailure {
+                    failures += "Trakt playback: ${it.message ?: "sync failed"}"
+                    Log.w(TAG, "Trakt playback sync failed", it)
+                }
 
             updateNotification("Syncing watched history…")
-            traktSyncManager.syncSeriesNextUp()
+            runCatching { traktSyncManager.syncSeriesNextUp() }
+                .onFailure {
+                    failures += "Trakt history: ${it.message ?: "sync failed"}"
+                    Log.w(TAG, "Trakt history sync failed", it)
+                }
+        }
+
+        // Persist only after every remote service has had a chance to modify addon,
+        // watch-history, and next-up state. The profile runtime lock guarantees this
+        // snapshot belongs to the profile that initiated the refresh.
+        profileConfigurationManager.saveRuntimeState(profileId)
+        profileConfigurationManager.resetStartupCapture()
+
+        if (failures.isNotEmpty()) {
+            throw IllegalStateException(failures.joinToString("; "))
         }
     }
 
