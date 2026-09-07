@@ -224,6 +224,39 @@ fun PersonalizationSettings(
                 blockUp = false
             )
         }
+
+        Spacer(Modifier.height(15.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Spacer(Modifier.height(15.dp))
+
+        Text(
+            "Navigation",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+            color = Color.White.copy(0.7f),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        SettingToggleRow(
+            label = "Movies",
+            subtitle = "Show Movies in the main navigation",
+            isChecked = currentProfile.menuMoviesEnabled,
+            onCheckedChange = { viewModel.updateMenuMoviesEnabled(currentProfile.id, it) },
+            onBack = onGoBack
+        )
+        SettingToggleRow(
+            label = "Series",
+            subtitle = "Show Series in the main navigation",
+            isChecked = currentProfile.menuSeriesEnabled,
+            onCheckedChange = { viewModel.updateMenuSeriesEnabled(currentProfile.id, it) },
+            onBack = onGoBack
+        )
+        SettingToggleRow(
+            label = "Watchlist",
+            subtitle = "Show Watchlist in the main navigation",
+            isChecked = currentProfile.menuWatchlistEnabled,
+            onCheckedChange = { viewModel.updateMenuWatchlistEnabled(currentProfile.id, it) },
+            onBack = onGoBack
+        )
     }
 }
 
