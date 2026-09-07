@@ -1,5 +1,6 @@
 name: Queue build check
 
+# Branch-local compile gate for queue/source work.
 on:
   push:
     branches:
