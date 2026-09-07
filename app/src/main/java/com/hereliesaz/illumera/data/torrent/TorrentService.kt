@@ -78,12 +78,17 @@ class TorrentService : Service() {
     private fun startDownload(magnet: String, fileIdx: Int, fileName: String = "") {
         downloadJob?.cancel()
 
+        // Refresh the small validated tracker cache opportunistically; current playback
+        // can immediately use the previous cache (or the built-in fallback list).
+        scope.launch { TorrentTrackerCache.updateIfNeeded(this@TorrentService) }
+        val preparedMagnet = TorrentMagnetSanitizer.prepare(this, magnet)
+
         // Drop previous torrent to free TorrServer's RAM cache
         val previousMagnet = currentMagnet
-        currentMagnet = magnet
+        currentMagnet = preparedMagnet
 
         downloadJob = scope.launch {
-            if (previousMagnet != null && previousMagnet != magnet) {
+            if (previousMagnet != null && previousMagnet != preparedMagnet) {
                 if (BuildConfig.DEBUG) Log.d(TAG, "Dropping previous torrent")
                 api.dropTorrent(previousMagnet)
             }
@@ -111,17 +116,17 @@ class TorrentService : Service() {
                 }
 
                 // Phase 2: Add torrent
-                if (BuildConfig.DEBUG) Log.d(TAG, "Adding magnet: ${magnet.take(120)}...")
+                if (BuildConfig.DEBUG) Log.d(TAG, "Adding magnet: ${preparedMagnet.take(120)}...")
                 withContext(Dispatchers.Main) {
                     onStreamProgress?.invoke(TorrentProgress(status = "Fetching metadata..."))
                 }
-                api.addTorrent(magnet)
+                api.addTorrent(preparedMagnet)
 
                 // Phase 3: Resolve correct video file, then start streaming
-                val targetFileIndex = resolveFileIndex(magnet, fileIdx, fileName)
+                val targetFileIndex = resolveFileIndex(preparedMagnet, fileIdx, fileName)
                 if (BuildConfig.DEBUG) Log.d(TAG, "Streaming file index: $targetFileIndex")
 
-                val streamUrl = api.getStreamUrl(magnet, targetFileIndex)
+                val streamUrl = api.getStreamUrl(preparedMagnet, targetFileIndex)
                 updateNotification("Streaming...")
                 withContext(Dispatchers.Main) {
                     onStreamProgress?.invoke(TorrentProgress(status = "Starting playback..."))
@@ -132,7 +137,7 @@ class TorrentService : Service() {
                 while (isActive) {
                     delay(1000)
                     try {
-                        val stats = api.getTorrentStats(magnet)
+                        val stats = api.getTorrentStats(preparedMagnet)
                         // Show determinate progress only while preloading (< target)
                         val progress = if (stats.preloadedBytes in 1 until PRELOAD_TARGET_BYTES.toLong()) {
                             stats.preloadedBytes.toFloat() / PRELOAD_TARGET_BYTES
