@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.res.painterResource
@@ -883,7 +884,11 @@ fun BasePlayerScaffold(
                         showControls = true
                         showSeekOverlay = false
                     }
-                } else null
+                } else null,
+                onRetry = {
+                    markInteraction()
+                    playbackController.retryPlayback()
+                }
             )
         }
 
@@ -1755,7 +1760,8 @@ private fun PauseBrandOverlay(
 private fun PlayerErrorOverlay(
     errorMessage: String,
     onBack: () -> Unit,
-    onSwitchSource: (() -> Unit)? = null
+    onSwitchSource: (() -> Unit)? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     val backFocusRequester = remember { FocusRequester() }
 
@@ -1789,6 +1795,13 @@ private fun PlayerErrorOverlay(
                     onClick = onBack,
                     focusRequester = backFocusRequester
                 )
+                if (onRetry != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.Refresh,
+                        label = "RETRY",
+                        onClick = onRetry
+                    )
+                }
                 if (onSwitchSource != null) {
                     PlayerErrorButton(
                         icon = Icons.Default.SwapHoriz,
