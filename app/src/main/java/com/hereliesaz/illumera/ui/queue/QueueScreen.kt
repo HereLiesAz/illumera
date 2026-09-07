@@ -1,17 +1,24 @@
 package com.hereliesaz.illumera.ui.queue
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,29 +33,69 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
 import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.queue.QueueSuggestionSource
+import com.hereliesaz.illumera.ui.components.LumeraCard
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
+@HiltViewModel
+class QueueViewModel @Inject constructor(
+    val queueManager: QueueManager
+) : ViewModel()
+
+/**
+ * Standalone wrapper retained for compatibility with the old Queue destination.
+ * The same content is now also embedded directly in WatchlistScreen.
+ */
 @Composable
 fun QueueScreen(
     queueManager: QueueManager,
     entryRequester: FocusRequester,
     onOpenItem: (QueueItem) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 84.dp, bottom = 40.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        item {
+            QueueSection(
+                queueManager = queueManager,
+                entryRequester = entryRequester,
+                startPadding = 96.dp,
+                onOpenItem = onOpenItem
+            )
+        }
+    }
+}
+
+@Composable
+fun QueueSection(
+    entryRequester: FocusRequester,
+    startPadding: Dp,
+    onOpenItem: (QueueItem) -> Unit,
+    queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager,
+    requestEntryFocus: Boolean = false
 ) {
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -59,95 +106,145 @@ fun QueueScreen(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(start = 96.dp, end = 40.dp, top = 92.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    LaunchedEffect(state.manualItems, state.suggestions) {
+        queueManager.resolveMissingArtwork()
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Text("Queue", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Text("Your lineup, then ten suggestions.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = .65f))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (state.preferences.enabled) "Enabled" else "Disabled")
-                    Switch(
-                        checked = state.preferences.enabled,
-                        onCheckedChange = queueManager::setEnabled,
-                        modifier = Modifier.focusRequester(entryRequester)
-                    )
-                }
-            }
+        Column(modifier = Modifier.padding(start = startPadding, end = 32.dp)) {
+            Text(
+                text = "Queue",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Your lineup, followed by suggestions.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .62f)
+            )
         }
 
-        item {
-            Column(
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface.copy(alpha = .55f), RoundedCornerShape(14.dp)).padding(16.dp)
-            ) {
-                Text("Automatic lineup", fontWeight = FontWeight.Bold)
-                QueueOption("Movies", state.preferences.includeMovies, queueManager::setIncludeMovies)
-                QueueOption("Episodes", state.preferences.includeEpisodes, queueManager::setIncludeEpisodes)
-                QueueOption("Whole shows — play straight through", state.preferences.includeWholeShows, queueManager::setIncludeWholeShows)
-                Spacer(Modifier.height(8.dp))
-                Text("Suggestion sources", fontWeight = FontWeight.SemiBold)
-                QueueOption(
-                    "Play history",
-                    QueueSuggestionSource.PLAY_HISTORY in state.preferences.suggestionSources
-                ) { queueManager.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, it) }
-                QueueOption(
-                    "Trakt",
-                    QueueSuggestionSource.TRAKT in state.preferences.suggestionSources
-                ) { queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, it) }
-                Button(
-                    onClick = { scope.launch { queueManager.refreshSuggestions() } },
-                    enabled = state.preferences.enabled && !state.isRefreshingSuggestions
-                ) {
-                    Icon(Icons.Default.Refresh, null)
-                    Text(if (state.isRefreshingSuggestions) " Refreshing…" else " Refresh suggestions")
-                }
-            }
-        }
+        Column(
+            modifier = Modifier
+                .padding(start = startPadding, end = 32.dp)
+                .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surface.copy(alpha = .5f),
+                    RoundedCornerShape(14.dp)
+                )
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            QueueOption(
+                label = "Queue enabled",
+                checked = state.preferences.enabled,
+                onCheckedChange = queueManager::setEnabled,
+                modifier = if (requestEntryFocus) Modifier.focusRequester(entryRequester) else Modifier
+            )
 
-        item {
-            Text("Your lineup", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                text = "Automatic lineup",
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 2.dp)
+            )
+            QueueOption("Movies", state.preferences.includeMovies, queueManager::setIncludeMovies)
+            QueueOption("Episodes", state.preferences.includeEpisodes, queueManager::setIncludeEpisodes)
+            QueueOption(
+                "Whole shows — play straight through",
+                state.preferences.includeWholeShows,
+                queueManager::setIncludeWholeShows
+            )
+
+            Text(
+                text = "Suggestion sources",
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 2.dp)
+            )
+            QueueOption(
+                "Play history",
+                QueueSuggestionSource.PLAY_HISTORY in state.preferences.suggestionSources
+            ) { enabled ->
+                queueManager.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, enabled)
+            }
+            QueueOption(
+                "Trakt",
+                QueueSuggestionSource.TRAKT in state.preferences.suggestionSources
+            ) { enabled ->
+                queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, enabled)
+            }
+
+            Button(
+                onClick = { scope.launch { queueManager.refreshSuggestions() } },
+                enabled = state.preferences.enabled && !state.isRefreshingSuggestions,
+                modifier = Modifier.padding(start = 8.dp, top = 6.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Text(if (state.isRefreshingSuggestions) " Refreshing…" else " Refresh suggestions")
+            }
         }
 
         if (state.manualItems.isEmpty()) {
-            item { Text("Nothing queued yet.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = .55f)) }
+            Text(
+                text = "Nothing queued yet.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .55f),
+                modifier = Modifier.padding(start = startPadding)
+            )
         } else {
-            itemsIndexed(state.manualItems, key = { _, item -> item.stableKey }) { index, item ->
-                QueueRow(
-                    item = item,
-                    label = "${index + 1}",
-                    onClick = { onOpenItem(item) },
-                    actions = {
-                        IconButton(onClick = { queueManager.move(item.stableKey, -1) }, enabled = index > 0) { Icon(Icons.Default.ArrowUpward, "Move up") }
-                        IconButton(onClick = { queueManager.move(item.stableKey, 1) }, enabled = index < state.manualItems.lastIndex) { Icon(Icons.Default.ArrowDownward, "Move down") }
-                        IconButton(onClick = { queueManager.remove(item.stableKey) }) { Icon(Icons.Default.Delete, "Remove") }
+            QueueCardRow(
+                title = "Your lineup",
+                items = state.manualItems,
+                startPadding = startPadding,
+                onOpenItem = onOpenItem,
+                actions = { item, index ->
+                    IconButton(
+                        onClick = { queueManager.move(item.stableKey, -1) },
+                        enabled = index > 0
+                    ) {
+                        Icon(Icons.Default.ArrowUpward, contentDescription = "Move up")
                     }
-                )
-            }
+                    IconButton(
+                        onClick = { queueManager.move(item.stableKey, 1) },
+                        enabled = index < state.manualItems.lastIndex
+                    ) {
+                        Icon(Icons.Default.ArrowDownward, contentDescription = "Move down")
+                    }
+                    IconButton(onClick = { queueManager.remove(item.stableKey) }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Remove")
+                    }
+                }
+            )
         }
 
-        item {
-            Text("Suggested next", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
-
-        itemsIndexed(state.suggestions, key = { _, item -> "suggestion_${item.stableKey}" }) { index, item ->
-            QueueRow(
-                item = item,
-                label = "${index + 1}",
-                onClick = { onOpenItem(item) },
-                actions = {
+        if (state.suggestions.isNotEmpty()) {
+            QueueCardRow(
+                title = "Suggested next",
+                items = state.suggestions,
+                startPadding = startPadding,
+                onOpenItem = onOpenItem,
+                actions = { item, _ ->
                     IconButton(onClick = { queueManager.rateSuggestion(item.stableKey, -1) }) {
-                        Icon(Icons.Default.ThumbDown, "Less like this", tint = if (item.rating < 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        Icon(
+                            Icons.Default.ThumbDown,
+                            contentDescription = "Less like this",
+                            tint = if (item.rating < 0) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
                     }
                     IconButton(onClick = { queueManager.rateSuggestion(item.stableKey, 1) }) {
-                        Icon(Icons.Default.ThumbUp, "More like this", tint = if (item.rating > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        Icon(
+                            Icons.Default.ThumbUp,
+                            contentDescription = "More like this",
+                            tint = if (item.rating > 0) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
                     }
                 }
             )
@@ -156,40 +253,99 @@ fun QueueScreen(
 }
 
 @Composable
-private fun QueueOption(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
-        Text(label)
+private fun QueueOption(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(10.dp)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                if (isFocused) MaterialTheme.colorScheme.primary.copy(alpha = .18f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = .01f),
+                shape
+            )
+            .border(
+                width = if (isFocused) 2.dp else 0.dp,
+                color = if (isFocused) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                shape = shape
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) { onCheckedChange(!checked) }
+            .focusable(interactionSource = interactionSource)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(
+            text = label,
+            color = if (isFocused) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = .82f)
+        )
     }
 }
 
 @Composable
-private fun QueueRow(
-    item: QueueItem,
-    label: String,
-    onClick: () -> Unit,
-    actions: @Composable () -> Unit
+private fun QueueCardRow(
+    title: String,
+    items: List<QueueItem>,
+    startPadding: Dp,
+    onOpenItem: (QueueItem) -> Unit,
+    actions: @Composable (QueueItem, Int) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = .42f), RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(label, modifier = Modifier.size(36.dp), fontWeight = FontWeight.Bold)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(item.title, fontWeight = FontWeight.SemiBold)
-            Text(
-                when {
-                    item.wholeShow -> "Whole show"
-                    item.type == "episode" && item.season != null && item.episode != null -> "S${item.season} E${item.episode}"
-                    else -> item.type.replaceFirstChar { it.uppercase() }
-                },
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f)
-            )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = startPadding, bottom = 12.dp)
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            contentPadding = PaddingValues(start = startPadding, end = 40.dp)
+        ) {
+            itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
+                Column(modifier = Modifier.width(140.dp)) {
+                    LumeraCard(
+                        title = item.title,
+                        posterUrl = item.poster,
+                        onClick = { onOpenItem(item) }
+                    )
+
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = queueSubtitle(item),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .58f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        actions(item, index)
+                    }
+                }
+            }
         }
-        actions()
     }
+}
+
+private fun queueSubtitle(item: QueueItem): String = when {
+    item.wholeShow -> "Whole show"
+    item.type == "episode" && item.season != null && item.episode != null ->
+        "S${item.season} E${item.episode}"
+    else -> item.type.replaceFirstChar { it.uppercase() }
 }
