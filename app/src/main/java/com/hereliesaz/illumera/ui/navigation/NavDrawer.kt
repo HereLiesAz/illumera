@@ -265,7 +265,8 @@ fun NavDrawer(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Middle Items
+                // Middle Items. Queue is part of Watchlist now, so it is no longer a
+                // separate visible destination.
                 DrawerItem(NavDestination.Home)
                 Spacer(modifier = Modifier.height(4.dp))
                 DrawerItem(NavDestination.Movies)
@@ -273,8 +274,6 @@ fun NavDrawer(
                 DrawerItem(NavDestination.Series)
                 Spacer(modifier = Modifier.height(4.dp))
                 DrawerItem(NavDestination.Watchlist)
-                Spacer(modifier = Modifier.height(4.dp))
-                DrawerItem(NavDestination.Queue)
 
                 Spacer(modifier = Modifier.weight(1f))
 
