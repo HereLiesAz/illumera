@@ -130,27 +130,28 @@ class QueueManager @Inject constructor(
         prefs.edit().putInt("rating_$key", normalized).apply()
     }
 
-    /** Removes a completed manual item and returns the next queued item, if queue playback is enabled. */
-    @Synchronized
-    fun advance(completedKey: String?): QueueItem? {
-        val current = _state.value
-        if (!current.preferences.enabled) return null
-        val remaining = if (completedKey == null) current.manualItems else current.manualItems.filterNot { it.stableKey == completedKey }
-        if (remaining !== current.manualItems) commit(current.copy(manualItems = remaining))
-        return remaining.firstOrNull() ?: current.suggestions.firstOrNull()
-    }
-
     @Synchronized
     fun advanceAfterPlayback(playbackId: String): QueueItem? {
         val current = _state.value
         if (!current.preferences.enabled) return null
-        val index = current.manualItems.indexOfFirst { item ->
+
+        fun matches(item: QueueItem): Boolean =
             item.id == playbackId ||
-                (item.type == "episode" && playbackId.endsWith(":${item.season}:${item.episode}"))
+                (item.type == "episode" && item.season != null && item.episode != null &&
+                    playbackId.endsWith(":${item.season}:${item.episode}"))
+
+        val manual = current.manualItems.toMutableList()
+        val manualIndex = manual.indexOfFirst(::matches)
+        if (manualIndex >= 0) manual.removeAt(manualIndex)
+
+        val suggestions = current.suggestions.toMutableList()
+        val suggestionIndex = suggestions.indexOfFirst(::matches)
+        if (suggestionIndex >= 0) suggestions.removeAt(suggestionIndex)
+
+        if (manualIndex >= 0 || suggestionIndex >= 0) {
+            commit(current.copy(manualItems = manual, suggestions = suggestions))
         }
-        val remaining = if (index >= 0) current.manualItems.toMutableList().also { it.removeAt(index) } else current.manualItems
-        if (index >= 0) commit(current.copy(manualItems = remaining))
-        return remaining.firstOrNull() ?: current.suggestions.firstOrNull()
+        return manual.firstOrNull() ?: suggestions.firstOrNull()
     }
 
     suspend fun ensureSuggestions() {
@@ -198,8 +199,6 @@ class QueueManager @Inject constructor(
                 }
             }
 
-            // Local play history participates in ranking even when Trakt is disabled: recent,
-            // unfinished items are useful continuation candidates and rated titles are suppressed.
             if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources) {
                 watched.asSequence()
                     .filter { !it.watched }
@@ -255,7 +254,16 @@ class QueueManager @Inject constructor(
         return QueueState(preferences, manual, suggestions)
     }
 
-    private fun normalizeId(id: String): String = id.substringBeforeLast(":", id).lowercase()
+    private fun normalizeId(id: String): String {
+        val value = id.lowercase()
+        if (value.startsWith("tmdb:") || value.startsWith("tt")) return value
+        val parts = value.split(':')
+        return if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
+            parts.dropLast(2).joinToString(":")
+        } else {
+            value
+        }
+    }
 
     companion object {
         private const val PREFS_FILE = "illumera_queue"
