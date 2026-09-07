@@ -1,0 +1,36 @@
+name: Apply queue feature
+
+on:
+  push:
+    branches:
+      - feature/queue-lineup
+    paths:
+      - tools/apply_queue_feature.py
+      - .github/workflows/apply-queue-feature.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feature/queue-lineup
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Apply integration patch
+        run: python tools/apply_queue_feature.py
+      - name: Commit integrated feature
+        run: |
+          rm tools/apply_queue_feature.py .github/workflows/apply-queue-feature.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Integrate queue into navigation and playback"
+          git push origin HEAD:feature/queue-lineup
