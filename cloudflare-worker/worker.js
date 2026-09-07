@@ -11,6 +11,7 @@ const MAX_REPORT_BYTES = 256 * 1024;
 const MAX_FIELD_CHARS = 2_000;
 const MAX_STACK_CHARS = 40_000;
 const MAX_JSON_CHARS = 80_000;
+const MAX_GITHUB_BODY_CHARS = 60_000;
 const REPO_PART_RE = /^[A-Za-z0-9_.-]+$/;
 
 export default {
@@ -97,7 +98,11 @@ async function relayToGitHub(report, env) {
   const dedupeLabel = `crash-${signature}`;
   const exceptionLine = singleLine(stackTrace.split("\n")[0] || "Unknown exception", 180);
 
-  const occurrence = [
+  // Escape first, then bound the final GitHub-facing text. HTML escaping can
+  // expand one input character into several output characters (e.g. '&' ->
+  // '&amp;'), so limiting only the raw stack trace is not sufficient.
+  const escapedStackTrace = escapeHtml(stackTrace);
+  const occurrence = limitGitHubBody([
     `**Occurrence** — ${markdownText(crashDate)}`,
     `- App version: \`${markdownCode(appVersion)}\``,
     `- Device: ${markdownText(brand)} ${markdownText(phoneModel)}, Android ${markdownText(androidVersion)}`,
@@ -105,9 +110,9 @@ async function relayToGitHub(report, env) {
     "",
     "<details><summary>Stack trace</summary>",
     "",
-    `<pre>${escapeHtml(stackTrace)}</pre>`,
+    `<pre>${escapedStackTrace}</pre>`,
     "</details>",
-  ].join("\n");
+  ].join("\n"));
 
   const ghHeaders = {
     Authorization: `Bearer ${env.GITHUB_TOKEN}`,
@@ -152,11 +157,11 @@ async function relayToGitHub(report, env) {
   }
 
   const title = `Crash: ${exceptionLine}`.slice(0, 250);
-  const body = [
+  const body = limitGitHubBody([
     `Automatically reported crash from v${markdownText(appVersion)} (${markdownText(brand)} ${markdownText(phoneModel)}, Android ${markdownText(androidVersion)}).`,
     "",
     occurrence,
-  ].join("\n");
+  ].join("\n"));
 
   const createResponse = await fetch(`${GITHUB_API}/repos/${repoPath}/issues`, {
     method: "POST",
@@ -291,6 +296,10 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function limitGitHubBody(value) {
+  return stringifyValue(value).slice(0, MAX_GITHUB_BODY_CHARS);
 }
 
 async function constantTimeStringEqual(left, right) {
