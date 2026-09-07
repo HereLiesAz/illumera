@@ -1,8 +1,8 @@
 name: Build and Release APK + Play AAB
 
-# Builds one signed release as APK + AAB. The AAB goes to Google Play Internal
-# testing and the same version is staged as an Alpha draft. The GitHub APK
-# release is created only after both Play operations succeed.
+# Builds a sideload-capable GitHub APK and a separate Google Play AAB.
+# The Play build omits REQUEST_INSTALL_PACKAGES and disables the self-updater;
+# Google Play owns updates for that distribution channel.
 on:
   push:
     branches:
@@ -122,7 +122,7 @@ jobs:
           KEYSTORE_RAW: ${{ secrets.KEYSTORE_RAW }}
         run: printf '%s' "$KEYSTORE_RAW" | base64 -d > release.keystore
 
-      - name: Build signed APK and AAB
+      - name: Build signed GitHub APK and Play AAB
         working-directory: illumera
         env:
           RELEASE_STORE_FILE: release.keystore
@@ -134,7 +134,7 @@ jobs:
           ACRA_URL: ${{ secrets.ACRA_URL }}
           ACRA_TOKEN: ${{ secrets.ACRA_TOKEN }}
         run: |
-          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon \
+          ./gradlew :app:assembleRelease :app:bundlePlay --no-daemon \
             -PversionNameOverride="${{ steps.version.outputs.name }}" \
             -PversionCodeOverride="${{ steps.version.outputs.code }}"
 
@@ -144,9 +144,9 @@ jobs:
         run: |
           set -euo pipefail
           APK=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -1)
-          AAB=$(find app/build/outputs/bundle/release -maxdepth 1 -name "*.aab" | head -1)
+          AAB=$(find app/build/outputs/bundle/play -maxdepth 1 -name "*.aab" | head -1)
           test -n "$APK" || { echo "No release APK produced" >&2; exit 1; }
-          test -n "$AAB" || { echo "No release AAB produced" >&2; exit 1; }
+          test -n "$AAB" || { echo "No Play AAB produced" >&2; exit 1; }
           APK_NAME="illumera-${{ steps.version.outputs.name }}.apk"
           cp "$APK" "$APK_NAME"
           printf 'apk=illumera/%s\n' "$APK_NAME" >> "$GITHUB_OUTPUT"
