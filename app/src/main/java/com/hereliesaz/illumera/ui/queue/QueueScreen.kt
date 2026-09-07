@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,9 +101,9 @@ fun QueueSection(
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(state.preferences.enabled) {
-        if (state.preferences.enabled && state.suggestions.size < 10) {
-            queueManager.refreshSuggestions()
+    LaunchedEffect(state.preferences.enabled, state.suggestions.size) {
+        if (state.preferences.enabled && state.suggestions.size < QueueManager.SUGGESTION_COUNT) {
+            queueManager.ensureSuggestions()
         }
     }
 
@@ -181,9 +185,17 @@ fun QueueSection(
                     queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, enabled)
                 }
             )
+            QueueOption(
+                label = "Only suggest things I haven't seen",
+                checked = state.preferences.onlyUnseenSuggestions,
+                onCheckedChange = { enabled ->
+                    queueManager.setOnlyUnseenSuggestions(enabled)
+                    scope.launch { queueManager.refreshSuggestions() }
+                }
+            )
 
             Button(
-                onClick = { scope.launch { queueManager.refreshSuggestions() } },
+                onClick = { scope.launch { queueManager.refreshSuggestions(resetDismissed = true) } },
                 enabled = state.preferences.enabled && !state.isRefreshingSuggestions,
                 modifier = Modifier.padding(start = 8.dp, top = 6.dp)
             ) {
@@ -230,6 +242,12 @@ fun QueueSection(
                 items = state.suggestions,
                 startPadding = startPadding,
                 onOpenItem = onOpenItem,
+                onMoveSuggestion = { item, targetIndex ->
+                    queueManager.moveSuggestion(item.stableKey, targetIndex)
+                },
+                onRemoveSuggestion = { item ->
+                    queueManager.removeSuggestion(item.stableKey)
+                },
                 actions = { item, _ ->
                     IconButton(onClick = { queueManager.rateSuggestion(item.stableKey, -1) }) {
                         Icon(
@@ -319,6 +337,8 @@ private fun QueueCardRow(
     items: List<QueueItem>,
     startPadding: Dp,
     onOpenItem: (QueueItem) -> Unit,
+    onMoveSuggestion: ((QueueItem, Int) -> Unit)? = null,
+    onRemoveSuggestion: ((QueueItem) -> Unit)? = null,
     actions: @Composable (QueueItem, Int) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -335,11 +355,50 @@ private fun QueueCardRow(
         ) {
             itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
                 Column(modifier = Modifier.width(140.dp)) {
-                    LumeraCard(
-                        title = item.title,
-                        posterUrl = item.poster,
-                        onClick = { onOpenItem(item) }
-                    )
+                    var menuExpanded by remember(item.stableKey) { mutableStateOf(false) }
+                    androidx.compose.foundation.layout.Box {
+                        LumeraCard(
+                            title = item.title,
+                            posterUrl = item.poster,
+                            onClick = { onOpenItem(item) },
+                            onLongClick = if (onMoveSuggestion != null && onRemoveSuggestion != null) {
+                                { menuExpanded = true }
+                            } else null
+                        )
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            if (onMoveSuggestion != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Move to position", fontWeight = FontWeight.SemiBold) },
+                                    onClick = {},
+                                    enabled = false
+                                )
+                                items.indices.forEach { targetIndex ->
+                                    DropdownMenuItem(
+                                        text = { Text("${targetIndex + 1}") },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onMoveSuggestion(item, targetIndex)
+                                        },
+                                        enabled = targetIndex != index
+                                    )
+                                }
+                            }
+                            if (onRemoveSuggestion != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Remove from queue") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onRemoveSuggestion(item)
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
+                                )
+                            }
+                        }
+                    }
 
                     Spacer(Modifier.height(6.dp))
                     Text(
