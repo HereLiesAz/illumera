@@ -1628,11 +1628,101 @@ fun SourcePreferencesSettings(
 
             SettingOptionRow(
                 label = "Sort By",
-                options = listOf("Quality" to "quality", "File Size" to "size"),
+                options = listOf("Quality" to "quality", "File Size" to "size", "Seeds" to "seeds"),
                 selectedOption = currentProfile.sourceSortPrimary,
                 onOptionSelected = { viewModel.updateSourceSortPrimary(currentProfile.id, it) },
                 onBack = onGoBack
             )
+
+            Spacer(Modifier.height(15.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Spacer(Modifier.height(15.dp))
+
+            Text(
+                "Auto-selection preferences",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+                color = Color.White
+            )
+            Text(
+                "These rank sources from best to worst. Missing the target never hides a source. Addon priority follows your order in Addons.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = Color.White.copy(0.6f),
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+
+            val episodeSizes = listOf(250, 500, 750, 1000, 1500, 2000, 3000)
+            val episodeLabel = "${currentProfile.sourceEpisodeTargetSizeMb} MB"
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("30-minute episode", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                FilterDropdown(
+                    currentValue = episodeLabel,
+                    options = episodeSizes.map { "$it MB" },
+                    modifier = Modifier.width(160.dp),
+                    onSelect = { value ->
+                        viewModel.updateSourceEpisodeTargetSizeMb(currentProfile.id, value.removeSuffix(" MB").toIntOrNull() ?: 750)
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            val movieSizes = listOf(1000, 2000, 3000, 4000, 5000, 8000, 10000, 15000, 20000)
+            val movieLabel = if (currentProfile.sourceMovieTargetSizeMb >= 1000 && currentProfile.sourceMovieTargetSizeMb % 1000 == 0) {
+                "${currentProfile.sourceMovieTargetSizeMb / 1000} GB"
+            } else "${currentProfile.sourceMovieTargetSizeMb} MB"
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Full-length movie", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                FilterDropdown(
+                    currentValue = movieLabel,
+                    options = movieSizes.map { if (it % 1000 == 0) "${it / 1000} GB" else "$it MB" },
+                    modifier = Modifier.width(160.dp),
+                    onSelect = { value ->
+                        val mb = if (value.endsWith(" GB")) (value.removeSuffix(" GB").toIntOrNull() ?: 3) * 1000
+                            else value.removeSuffix(" MB").toIntOrNull() ?: 3000
+                        viewModel.updateSourceMovieTargetSizeMb(currentProfile.id, mb)
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            val seedOptions = listOf(0, 1, 3, 5, 10, 20, 50, 100)
+            val seedLabel = if (currentProfile.sourceMinimumSeeds == 0) "Don't care" else "${currentProfile.sourceMinimumSeeds}+"
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Preferred minimum seeds", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                FilterDropdown(
+                    currentValue = seedLabel,
+                    options = seedOptions.map { if (it == 0) "Don't care" else "$it+" },
+                    modifier = Modifier.width(160.dp),
+                    onSelect = { value ->
+                        val seeds = if (value == "Don't care") 0 else value.removeSuffix("+").toIntOrNull() ?: 0
+                        viewModel.updateSourceMinimumSeeds(currentProfile.id, seeds)
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            SettingToggleRow(
+                label = "Try Sources Automatically",
+                subtitle = "If an auto-selected source is bogus, pause it and try the next ranked source",
+                isChecked = currentProfile.sourceAutoFallback,
+                onCheckedChange = { viewModel.updateSourceAutoFallback(currentProfile.id, it) },
+                onBack = onGoBack
+            )
+
+            if (currentProfile.sourceAutoFallback) {
+                val waitOptions = listOf(15, 30, 60, 90, 120, 180, 300)
+                val waitLabel = "${currentProfile.sourceDebridMaxWaitSeconds}s"
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Max debrid wait", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                    FilterDropdown(
+                        currentValue = waitLabel,
+                        options = waitOptions.map { "${it}s" },
+                        modifier = Modifier.width(160.dp),
+                        onSelect = { value ->
+                            viewModel.updateSourceDebridMaxWaitSeconds(currentProfile.id, value.removeSuffix("s").toIntOrNull() ?: 120)
+                        }
+                    )
+                }
+            }
 
             Spacer(Modifier.height(15.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))

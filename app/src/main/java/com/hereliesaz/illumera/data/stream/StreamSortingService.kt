@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.data.stream
 
 import com.hereliesaz.illumera.data.model.StreamQuality
 import com.hereliesaz.illumera.data.model.stremio.Stream
+import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,13 +16,16 @@ class StreamSortingService @Inject constructor() {
         addonSortOrders: Map<String, Int>,
         sortBy: String = "quality",
         maxSizeGb: Int = 0,
-        excludedFormats: Set<String> = emptySet()
+        excludedFormats: Set<String> = emptySet(),
+        preferredSizeMb: Int = 0,
+        minimumSeeds: Int = 0
     ): List<Stream> {
         val lowerPhrases = excludePhrases
             .map { it.trim().lowercase() }
             .filter { it.isNotEmpty() }
 
         val maxSizeBytes = if (maxSizeGb > 0) maxSizeGb.toLong() * 1_073_741_824L else Long.MAX_VALUE
+        val preferredSizeBytes = if (preferredSizeMb > 0) preferredSizeMb.toLong() * 1_048_576L else 0L
 
         return streams
             .map { stream -> stream to StreamParser.parse(stream) }
@@ -41,20 +45,51 @@ class StreamSortingService @Inject constructor() {
                 excludedFormats.intersect(info.formats).isEmpty()
             }
             .map { (stream, _) -> stream }
-            .sortedWith(buildComparator(addonSortOrders, sortBy))
+            .sortedWith(
+                buildComparator(
+                    addonSortOrders = addonSortOrders,
+                    sortBy = sortBy,
+                    preferredSizeBytes = preferredSizeBytes,
+                    minimumSeeds = minimumSeeds
+                )
+            )
     }
 
     private fun buildComparator(
         addonSortOrders: Map<String, Int>,
-        sortBy: String
+        sortBy: String,
+        preferredSizeBytes: Long,
+        minimumSeeds: Int
     ): Comparator<Stream> {
-        // Sort chain: chosen primary → other → seeds → addon priority
-        var comparator = when (sortBy) {
-            "size" -> sortComparatorFor("size").then(sortComparatorFor("quality"))
-            else -> sortComparatorFor("quality").then(sortComparatorFor("size"))
+        // Preferred size and minimum seeds are deliberately soft. A source never disappears
+        // merely because it misses either preference; it just gets tried later.
+        var comparator = compareBy<Stream> { stream ->
+            if (preferredSizeBytes <= 0L) 0L
+            else StreamParser.parse(stream).sizeBytes?.let { abs(it - preferredSizeBytes) } ?: Long.MAX_VALUE / 4
+        }
+
+        comparator = comparator.thenBy { stream ->
+            if (minimumSeeds <= 0) 0
+            else {
+                val seeds = StreamParser.parse(stream).seeds
+                when {
+                    seeds == null -> minimumSeeds + 1
+                    seeds >= minimumSeeds -> 0
+                    else -> minimumSeeds - seeds
+                }
+            }
+        }
+
+        // The Addons screen already owns a stable user-defined sortOrder. Put that ahead
+        // of generic tie-breakers so addon priority actually affects auto-selection.
+        comparator = comparator.thenBy { addonSortOrders[it.addonTransportUrl] ?: Int.MAX_VALUE }
+
+        comparator = when (sortBy) {
+            "size" -> comparator.then(sortComparatorFor("size")).then(sortComparatorFor("quality"))
+            "seeds" -> comparator.then(sortComparatorFor("seeds")).then(sortComparatorFor("quality"))
+            else -> comparator.then(sortComparatorFor("quality")).then(sortComparatorFor("size"))
         }
         comparator = comparator.then(sortComparatorFor("seeds"))
-        comparator = comparator.thenBy { addonSortOrders[it.addonTransportUrl] ?: Int.MAX_VALUE }
         return comparator
     }
 

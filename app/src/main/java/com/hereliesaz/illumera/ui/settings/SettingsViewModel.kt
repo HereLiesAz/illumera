@@ -237,4 +237,34 @@ class SettingsViewModel @Inject constructor(
             if (profile != null) dao.insertProfile(profile.copy(sourceExcludedFormats = formats))
         }
     }
+
+    fun updateSourceEpisodeTargetSizeMb(profileId: Int, sizeMb: Int) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceEpisodeTargetSizeMb = sizeMb)) }
+        }
+    }
+
+    fun updateSourceMovieTargetSizeMb(profileId: Int, sizeMb: Int) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceMovieTargetSizeMb = sizeMb)) }
+        }
+    }
+
+    fun updateSourceMinimumSeeds(profileId: Int, seeds: Int) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceMinimumSeeds = seeds)) }
+        }
+    }
+
+    fun updateSourceAutoFallback(profileId: Int, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceAutoFallback = enabled)) }
+        }
+    }
+
+    fun updateSourceDebridMaxWaitSeconds(profileId: Int, seconds: Int) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceDebridMaxWaitSeconds = seconds)) }
+        }
+    }
 }

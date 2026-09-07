@@ -17,16 +17,12 @@ import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Owns the currently-connected debrid provider + API key (stored encrypted, per-profile —
- * mirrors [com.hereliesaz.illumera.data.trakt.TraktAuthManager]) and routes library/stream
- * calls to the matching [DebridService] implementation.
- */
 @Singleton
 class DebridManager @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -45,6 +41,7 @@ class DebridManager @Inject constructor(
         private const val KEY_PROVIDER = "provider"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_USERNAME = "username"
+        private const val POLL_MS = 5_000L
     }
 
     private val prefs by lazy {
@@ -69,11 +66,8 @@ class DebridManager @Inject constructor(
     private val _connectedUsername = MutableStateFlow<String?>(null)
     val connectedUsername: StateFlow<String?> = _connectedUsername
 
-    init {
-        refreshConnectionState()
-    }
+    init { refreshConnectionState() }
 
-    /** Refresh connection state for the current profile (call after profile switch). */
     fun refreshConnectionState() {
         _connectedProvider.value = DebridProvider.fromId(prefs.getString(profileKey(KEY_PROVIDER), null))
         _connectedUsername.value = prefs.getString(profileKey(KEY_USERNAME), null)
@@ -91,7 +85,6 @@ class DebridManager @Inject constructor(
 
     fun getApiKey(): String? = prefs.getString(profileKey(KEY_API_KEY), null)
 
-    /** Validates the key against the provider's API and, on success, saves it as the active connection. */
     suspend fun connect(provider: DebridProvider, apiKey: String): DebridResult<DebridAccountInfo> {
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) return DebridResult.Failure("API key cannot be empty")
@@ -126,7 +119,6 @@ class DebridManager @Inject constructor(
         _connectedUsername.value = null
     }
 
-    /** Clear the debrid connection for a specific profile (e.g. when deleting the profile). */
     fun clearForProfile(profileId: Int) {
         prefs.edit()
             .remove(profileKey(KEY_PROVIDER, profileId))
@@ -149,5 +141,89 @@ class DebridManager @Inject constructor(
     suspend fun deleteItem(item: DebridItem): DebridResult<Unit> {
         val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
         return serviceFor(item.provider).deleteItem(apiKey, item)
+    }
+
+    /**
+     * Polls the connected debrid service for the torrent/file represented by a placeholder
+     * clip. We wait only while the observed progress rate says completion is plausible
+     * inside [maxWaitSeconds]; otherwise the caller can immediately try the next source.
+     */
+    suspend fun awaitPlayableSource(
+        infoHash: String?,
+        fileName: String?,
+        maxWaitSeconds: Int
+    ): String? {
+        if (maxWaitSeconds <= 0) return null
+        val provider = _connectedProvider.value ?: return null
+        val apiKey = getApiKey() ?: return null
+        val service = serviceFor(provider)
+        val wantedHash = infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        val wantedName = normalizeFileName(fileName)
+        if (wantedHash == null && wantedName == null) return null
+
+        val started = System.currentTimeMillis()
+        val deadline = started + maxWaitSeconds * 1_000L
+        var previousProgress: Int? = null
+        var previousSampleAt = started
+        var stagnantPolls = 0
+
+        while (System.currentTimeMillis() < deadline) {
+            val library = when (val result = service.listLibrary(apiKey)) {
+                is DebridResult.Success -> result.value
+                is DebridResult.Failure -> return null
+            }
+            val item = library.firstOrNull { candidate ->
+                val hashMatches = wantedHash != null && candidate.infoHash?.lowercase() == wantedHash
+                val candidateName = normalizeFileName(candidate.name)
+                val nameMatches = wantedName != null && candidateName != null &&
+                    (candidateName.contains(wantedName) || wantedName.contains(candidateName))
+                hashMatches || nameMatches
+            }
+
+            if (item != null) {
+                val progress = item.progress?.coerceIn(0, 100)
+                val status = item.status?.lowercase().orEmpty()
+                val ready = progress == 100 || status in setOf(
+                    "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
+                )
+                if (ready) {
+                    when (val stream = service.getStreamUrl(apiKey, item)) {
+                        is DebridResult.Success -> return stream.value
+                        is DebridResult.Failure -> Unit
+                    }
+                }
+
+                if (progress != null) {
+                    val now = System.currentTimeMillis()
+                    val old = previousProgress
+                    if (old != null) {
+                        if (progress <= old) stagnantPolls++ else stagnantPolls = 0
+                        val elapsedSampleSeconds = ((now - previousSampleAt).coerceAtLeast(1L)) / 1000.0
+                        val rate = (progress - old).coerceAtLeast(0) / elapsedSampleSeconds
+                        val secondsRemaining = ((deadline - now).coerceAtLeast(0L)) / 1000.0
+                        if (rate > 0.0) {
+                            val estimatedSeconds = (100 - progress) / rate
+                            if (estimatedSeconds > secondsRemaining * 1.15) return null
+                        } else if (stagnantPolls >= 3 && progress < 90) {
+                            return null
+                        }
+                    }
+                    previousProgress = progress
+                    previousSampleAt = now
+                }
+            }
+
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0L) break
+            delay(minOf(POLL_MS, remaining))
+        }
+        return null
+    }
+
+    private fun normalizeFileName(name: String?): String? {
+        val value = name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+        return value.substringAfterLast('/').substringBeforeLast('.', value.substringAfterLast('/'))
+            .replace(Regex("[^a-z0-9]+"), "")
+            .takeIf { it.length >= 6 }
     }
 }

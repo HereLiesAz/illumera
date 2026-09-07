@@ -72,6 +72,8 @@ fun PlayerScreen(
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
     onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
+    autoFallbackEnabled: Boolean = false,
+    onSuspectSource: ((PlaybackDurationStatus) -> Unit)? = null,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -95,6 +97,19 @@ fun PlayerScreen(
         }
     }
     val uiState by playbackController.uiState.collectAsState()
+    var suspectHandledForUrl by remember(videoUrl) { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, autoFallbackEnabled) {
+        if (!autoFallbackEnabled || suspectHandledForUrl || !uiState.isReady || uiState.durationMs <= 0L) return@LaunchedEffect
+        if (movieId.startsWith("trailer_") || movieId.startsWith("debrid_")) return@LaunchedEffect
+        val status = viewModel.classifyDuration(mediaType, uiState.durationMs)
+        if (status != PlaybackDurationStatus.NORMAL) {
+            suspectHandledForUrl = true
+            playbackController.pause()
+            onSuspectSource?.invoke(status)
+        }
+    }
+
     val shouldKeepScreenOn = uiState.playWhenReady || uiState.isPlaying || uiState.isBuffering
 
     DisposableEffect(hostView, shouldKeepScreenOn) {
@@ -227,7 +242,7 @@ fun PlayerScreen(
         // shared with the periodic/session-end saves in PlayerViewModel.saveProgress
         // so a session that ends near the end of playback is never left showing as
         // partially watched by one path while another already treats it as done.
-        val completed = duration != null && viewModel.isCompleted(position, duration)
+        val completed = duration != null && viewModel.isCompleted(position, duration, mediaType)
 
         // Trakt: pause keeps item in continue watching, stop marks as watched
         if (!hasError && duration != null) {

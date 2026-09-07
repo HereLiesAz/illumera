@@ -27,6 +27,7 @@ data class DebridItem(
     val status: String? = null,
     val progress: Int? = null,
     val addedAt: String? = null,
+    val infoHash: String? = null,
     /** Direct file links already known for this item, if the provider returns them up front. */
     val directLinks: List<String> = emptyList()
 )

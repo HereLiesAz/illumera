@@ -94,6 +94,7 @@ import com.hereliesaz.illumera.domain.episodeStreamId
 import com.hereliesaz.illumera.domain.episodeDisplayTitle
 import com.hereliesaz.illumera.domain.hasAired
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
+import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -127,6 +128,9 @@ fun DetailsScreen(
     autoSelectSource: Boolean = false,
     rememberSourceSelection: Boolean = true,
     onPlayClick: (String, String, String, String, String, String, Stream, List<AddonSubtitle>, List<Stream>, List<MetaVideo>) -> Unit,
+    onAddToQueue: (QueueItem) -> Unit = {},
+    queueAutoPlayId: String? = null,
+    onQueueAutoPlayConsumed: () -> Unit = {},
     onNavigateToDetails: (type: String, id: String) -> Unit = { _, _ -> },
     onNavigateToCastDetail: (personId: Int, personName: String) -> Unit = { _, _ -> },
     onNavigateToStudioDetail: (entityId: Int, entityKind: String, entityName: String, sourceType: String) -> Unit = { _, _, _, _ -> },
@@ -514,6 +518,30 @@ fun DetailsScreen(
                 val firstEpisodeSeason = firstEpisode?.season?.takeIf { it > 0 } ?: 1
                 val firstEpisodeNumber = firstEpisode?.episode?.takeIf { it > 0 } ?: 1
 
+                LaunchedEffect(queueAutoPlayId, currentMovie.id) {
+                    val requested = queueAutoPlayId ?: return@LaunchedEffect
+                    if (type == "series") {
+                        val requestedEpisode = currentMovie.videos.orEmpty().firstOrNull { ep ->
+                            requested == ep.id || requested.endsWith(":${ep.season}:${ep.episode}")
+                        } ?: resumeEpisode ?: firstEpisode
+                        if (requestedEpisode != null) {
+                            val trackId = episodePlaybackId(streamId, requestedEpisode)
+                            val epStreamId = episodeStreamId(streamId, requestedEpisode)
+                            val epTitle = episodeDisplayTitle(requestedEpisode)
+                            pendingPlaybackId = trackId
+                            pendingPlaybackType = type
+                            pendingPlaybackTitle = epTitle
+                            viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = true, rememberSourceSelection = rememberSourceSelection)
+                        }
+                    } else {
+                        pendingPlaybackId = streamId
+                        pendingPlaybackType = type
+                        pendingPlaybackTitle = currentMovie.name
+                        viewModel.loadStreams(type, streamId, currentMovie.name, autoSelectSource = true, rememberSourceSelection = rememberSourceSelection)
+                    }
+                    onQueueAutoPlayConsumed()
+                }
+
                 // No onNavigateDown — Compose's default DOWN navigation
                 // handles hero→row transitions reliably after disposal/recomposition.
 
@@ -577,6 +605,42 @@ fun DetailsScreen(
                             icon = Icons.AutoMirrored.Filled.List,
                             modifier = Modifier.focusRequester(episodesButtonFocusRequester),
                             onClick = { viewModel.openEpisodes() }
+                        )
+
+                        ExpandableIconButton(
+                            label = "Add next episode to queue",
+                            icon = Icons.Default.Add,
+                            onClick = {
+                                val ep = resumeEpisode ?: firstEpisode ?: return@ExpandableIconButton
+                                onAddToQueue(
+                                    QueueItem(
+                                        id = episodePlaybackId(streamId, ep),
+                                        type = "episode",
+                                        title = episodeDisplayTitle(ep),
+                                        poster = currentMovie.poster,
+                                        seriesId = streamId,
+                                        season = ep.season,
+                                        episode = ep.episode
+                                    )
+                                )
+                            }
+                        )
+
+                        ExpandableIconButton(
+                            label = "Queue whole show",
+                            icon = Icons.AutoMirrored.Filled.List,
+                            onClick = {
+                                onAddToQueue(
+                                    QueueItem(
+                                        id = streamId,
+                                        type = "series",
+                                        title = currentMovie.name,
+                                        poster = currentMovie.poster,
+                                        seriesId = streamId,
+                                        wholeShow = true
+                                    )
+                                )
+                            }
                         )
 
                         ExpandableIconButton(
@@ -669,6 +733,21 @@ fun DetailsScreen(
                                 onClick = { onTrailerClick(movieTrailer.key, movieTrailer.name) }
                             )
                         }
+
+                        ExpandableIconButton(
+                            label = "Add to queue",
+                            icon = Icons.Default.Add,
+                            onClick = {
+                                onAddToQueue(
+                                    QueueItem(
+                                        id = streamId,
+                                        type = "movie",
+                                        title = currentMovie.name,
+                                        poster = currentMovie.poster
+                                    )
+                                )
+                            }
+                        )
 
                         ExpandableIconButton(
                             label = if (state.isMovieWatched) "Watched" else "Mark as watched",
@@ -859,6 +938,19 @@ fun DetailsScreen(
             episodeProgressMap = state.episodeProgressMap,
             episodeEnrichmentMap = state.episodeEnrichmentMap,
             onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
+            onQueueEpisode = { episode ->
+                onAddToQueue(
+                    QueueItem(
+                        id = episodePlaybackId(streamId, episode),
+                        type = "episode",
+                        title = episodeDisplayTitle(episode),
+                        poster = movie?.poster,
+                        seriesId = streamId,
+                        season = episode.season,
+                        episode = episode.episode
+                    )
+                )
+            },
             onDismiss = { viewModel.closeSidebar() },
             onBack = { viewModel.goBackInSidebar() },
             onEpisodeSelected = { episode ->
