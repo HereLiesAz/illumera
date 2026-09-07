@@ -8,7 +8,7 @@ on:
       - .github/workflows/queue-build-check.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-debug:
@@ -23,6 +23,19 @@ jobs:
           ref: feature/queue-lineup
           path: illumera
           fetch-depth: 0
+      - name: Apply source intelligence patch
+        working-directory: illumera
+        run: python3 tools/apply_source_intelligence.py
+      - name: Commit source intelligence integration
+        working-directory: illumera
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera
+          if ! git diff --cached --quiet; then
+            git commit -m "Integrate intelligent source fallback"
+            git push origin HEAD:feature/queue-lineup
+          fi
       - name: Restore Stremio playback AAR cache
         id: stremio-cache
         uses: actions/cache@v4
