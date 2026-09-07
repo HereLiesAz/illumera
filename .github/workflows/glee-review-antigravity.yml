@@ -2,22 +2,8 @@ name: Glee PR Review (Antigravity)
 
 # Same "glee" adversarial review as glee-review.yml, run through Google's
 # Antigravity SDK instead of Claude — a second, independent set of eyes.
-#
-# Uses rsamborski/run-agy-sdk (a community action wrapping the official
-# `google-antigravity` Python SDK — not an officially supported Google
-# product), pinned to a specific commit rather than @main since the project
-# has no version tags. It stays on the action's own built-in
-# "/antigravity-review" command deliberately: that's the only path that
-# gets the safe deny-all-except-GitHub-MCP tool policy (see run_agent.py in
-# that repo) — a custom prompt string instead of the "/…" command switches
-# the agent to an unrestricted, arbitrary-command-execution policy. The
-# glee persona below rides along as `additional_context`, which the
-# built-in command's own template explicitly folds in as extra focus
-# without touching that safety behavior.
-#
-# Requires an ANTIGRAVITY_API_KEY secret (a Gemini API key from Google AI
-# Studio works too — the action also accepts GEMINI_API_KEY under the
-# hood). Without it this workflow fails at the review step only.
+# The job checks out only the trusted base revision; PR changes are reviewed
+# through GitHub rather than executed from the workspace.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -30,17 +16,18 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 jobs:
   glee-review-antigravity:
-    if: github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
+      - name: Checkout trusted base
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 1
           persist-credentials: false
 
       - name: Glee adversarial review (Antigravity)
@@ -49,12 +36,16 @@ jobs:
           api-key: ${{ secrets.ANTIGRAVITY_API_KEY }}
           mode: review
           prompt: "/antigravity-review"
-          trust-workspace: "true"
+          trust-workspace: "false"
           sandbox-profile: "true"
           additional_context: |
             You are "glee" — an adversarial auditor whose sole purpose is to
             take glee in finding failures, not to admire the work. Assume
             the author was confident and wrong somewhere; find where.
+
+            The workspace contains only the trusted base revision. Review the
+            pull-request changes through the GitHub review interface and do
+            not execute, source, build, or otherwise run code from the PR.
 
             Prioritize, in this order: correctness bugs (concrete
             inputs/state that produce a wrong result or crash, not

@@ -1,36 +1,17 @@
 /**
  * illumera Crash Report Worker
  *
- * Receives ACRA crash reports via HTTP POST from the app and relays them
- * as GitHub issues on this repo — no GitHub sign-in required on-device,
- * since only this worker (not the app or its users) holds the GitHub
- * token. Optionally also emails the report via Resend, if configured.
- *
- * Crash reports for the same underlying bug are deduplicated: a short
- * hash of the exception type + top stack frames becomes a `crash-<hash>`
- * label. A new occurrence of a known crash adds a comment to the existing
- * open issue instead of opening a duplicate; an unrecognized signature
- * opens a new issue.
- *
- * Setup:
- * 1. Create a GitHub fine-grained personal access token scoped to this
- *    repo only, with "Issues: Read and write" permission — nothing else.
- *    https://github.com/settings/personal-access-tokens/new
- * 2. Deploy this worker: npx wrangler deploy
- * 3. Set the secrets/vars:
- *      npx wrangler secret put GITHUB_TOKEN
- *      npx wrangler secret put AUTH_TOKEN        # shared secret the app sends
- *    Edit wrangler.toml's [vars] to point GITHUB_OWNER/GITHUB_REPO at your repo
- *    (defaults to HereLiesAz/illumera).
- * 4. Optional email relay via Resend (https://resend.com — free tier):
- *      npx wrangler secret put RESEND_API_KEY
- *      npx wrangler secret put REPORT_EMAIL
- * 5. Put the worker's URL + AUTH_TOKEN in local.properties (local dev) or
- *    the ACRA_URL / ACRA_TOKEN Actions secrets (CI release builds) — see
- *    ../ci/README.md.
+ * Receives authenticated ACRA crash reports and relays them as GitHub issues
+ * and, when configured, email. The worker fails closed when its shared auth
+ * secret is missing and bounds/sanitizes untrusted report input before relay.
  */
 
 const GITHUB_API = "https://api.github.com";
+const MAX_REPORT_BYTES = 256 * 1024;
+const MAX_FIELD_CHARS = 2_000;
+const MAX_STACK_CHARS = 40_000;
+const MAX_JSON_CHARS = 80_000;
+const REPO_PART_RE = /^[A-Za-z0-9_.-]+$/;
 
 export default {
   async fetch(request, env) {
@@ -39,30 +20,55 @@ export default {
       return new Response("Not found", { status: 404 });
     }
 
-    // Basic auth check to prevent spam (ACRA sends Basic auth)
-    const authHeader = request.headers.get("Authorization") || "";
-    if (env.AUTH_TOKEN) {
-      const expected = "Basic " + btoa("acra:" + env.AUTH_TOKEN);
-      if (authHeader !== expected) {
-        return new Response("Unauthorized", { status: 401 });
-      }
+    // Fail closed. A missing deployment secret must never silently turn this
+    // endpoint into an unauthenticated public issue/email relay.
+    if (!env.AUTH_TOKEN) {
+      console.error("Crash relay is not configured: AUTH_TOKEN is missing");
+      return new Response("Service unavailable", { status: 503 });
     }
 
-    let report;
+    const authHeader = request.headers.get("Authorization") || "";
+    const expectedHeader = "Basic " + btoa("acra:" + env.AUTH_TOKEN);
+    if (!(await constantTimeStringEqual(authHeader, expectedHeader))) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const declaredLength = Number(request.headers.get("Content-Length") || "0");
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REPORT_BYTES) {
+      return new Response("Payload too large", { status: 413 });
+    }
+
+    let rawBody;
     try {
-      report = await request.json();
-    } catch (e) {
+      rawBody = await request.arrayBuffer();
+    } catch {
+      return new Response("Invalid request body", { status: 400 });
+    }
+    if (rawBody.byteLength > MAX_REPORT_BYTES) {
+      return new Response("Payload too large", { status: 413 });
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(rawBody));
+    } catch {
       return new Response("Invalid JSON", { status: 400 });
     }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Response("Invalid report", { status: 400 });
+    }
 
+    const report = sanitizeReport(parsed);
     const results = await Promise.allSettled([
       relayToGitHub(report, env),
       relayToEmail(report, env),
     ]);
 
     const anySucceeded = results.some((r) => r.status === "fulfilled" && r.value);
-    for (const r of results) {
-      if (r.status === "rejected") console.error("Relay failed:", r.reason);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        console.error("Crash relay failed");
+      }
     }
 
     return anySucceeded
@@ -73,31 +79,33 @@ export default {
 
 async function relayToGitHub(report, env) {
   if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) return false;
+  if (!REPO_PART_RE.test(env.GITHUB_OWNER) || !REPO_PART_RE.test(env.GITHUB_REPO)) {
+    console.error("Invalid GitHub repository configuration");
+    return false;
+  }
 
-  const stackTrace = report.STACK_TRACE || "No stack trace";
-  const appVersion = report.APP_VERSION_NAME || "unknown";
-  const androidVersion = report.ANDROID_VERSION || "unknown";
-  const phoneModel = report.PHONE_MODEL || "unknown";
-  const brand = report.BRAND || "unknown";
-  const crashDate = report.USER_CRASH_DATE || "unknown";
-  const totalMemory = report.TOTAL_MEM_SIZE || "unknown";
-  const availableMemory = report.AVAILABLE_MEM_SIZE || "unknown";
+  const stackTrace = field(report.STACK_TRACE, "No stack trace", MAX_STACK_CHARS);
+  const appVersion = field(report.APP_VERSION_NAME);
+  const androidVersion = field(report.ANDROID_VERSION);
+  const phoneModel = field(report.PHONE_MODEL);
+  const brand = field(report.BRAND);
+  const crashDate = field(report.USER_CRASH_DATE);
+  const totalMemory = field(report.TOTAL_MEM_SIZE);
+  const availableMemory = field(report.AVAILABLE_MEM_SIZE);
 
   const signature = await crashSignature(stackTrace);
   const dedupeLabel = `crash-${signature}`;
-  const exceptionLine = stackTrace.split("\n")[0]?.trim() || "Unknown exception";
+  const exceptionLine = singleLine(stackTrace.split("\n")[0] || "Unknown exception", 180);
 
   const occurrence = [
-    `**Occurrence** — ${crashDate}`,
-    `- App version: \`${appVersion}\``,
-    `- Device: ${brand} ${phoneModel}, Android ${androidVersion}`,
-    `- Memory: ${availableMemory} available / ${totalMemory} total`,
+    `**Occurrence** — ${markdownText(crashDate)}`,
+    `- App version: \`${markdownCode(appVersion)}\``,
+    `- Device: ${markdownText(brand)} ${markdownText(phoneModel)}, Android ${markdownText(androidVersion)}`,
+    `- Memory: ${markdownText(availableMemory)} available / ${markdownText(totalMemory)} total`,
     "",
     "<details><summary>Stack trace</summary>",
     "",
-    "```",
-    stackTrace,
-    "```",
+    `<pre>${escapeHtml(stackTrace)}</pre>`,
     "</details>",
   ].join("\n");
 
@@ -110,7 +118,6 @@ async function relayToGitHub(report, env) {
   };
   const repoPath = `${env.GITHUB_OWNER}/${env.GITHUB_REPO}`;
 
-  // Look for an existing open issue with this crash's signature label.
   const searchQuery = encodeURIComponent(
     `repo:${repoPath} label:${dedupeLabel} state:open`
   );
@@ -119,15 +126,18 @@ async function relayToGitHub(report, env) {
     { headers: ghHeaders }
   );
   if (!searchResponse.ok) {
-    console.error("GitHub search failed:", await searchResponse.text());
+    console.error(`GitHub search failed with status ${searchResponse.status}`);
     return false;
   }
   const searchResult = await searchResponse.json();
   const existingIssue = searchResult.items?.[0];
 
   if (existingIssue) {
+    const issueNumber = Number(existingIssue.number);
+    if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) return false;
+
     const commentResponse = await fetch(
-      `${GITHUB_API}/repos/${repoPath}/issues/${existingIssue.number}/comments`,
+      `${GITHUB_API}/repos/${repoPath}/issues/${issueNumber}/comments`,
       {
         method: "POST",
         headers: ghHeaders,
@@ -135,7 +145,7 @@ async function relayToGitHub(report, env) {
       }
     );
     if (!commentResponse.ok) {
-      console.error("GitHub comment failed:", await commentResponse.text());
+      console.error(`GitHub comment failed with status ${commentResponse.status}`);
       return false;
     }
     return true;
@@ -143,7 +153,7 @@ async function relayToGitHub(report, env) {
 
   const title = `Crash: ${exceptionLine}`.slice(0, 250);
   const body = [
-    `Automatically reported crash from v${appVersion} (${brand} ${phoneModel}, Android ${androidVersion}).`,
+    `Automatically reported crash from v${markdownText(appVersion)} (${markdownText(brand)} ${markdownText(phoneModel)}, Android ${markdownText(androidVersion)}).`,
     "",
     occurrence,
   ].join("\n");
@@ -158,15 +168,14 @@ async function relayToGitHub(report, env) {
     }),
   });
   if (!createResponse.ok) {
-    // Labels that don't exist yet can occasionally be rejected depending on
-    // token permissions — retry once without labels rather than lose the report.
+    // Labels that don't exist can be rejected depending on token permissions.
     const retryResponse = await fetch(`${GITHUB_API}/repos/${repoPath}/issues`, {
       method: "POST",
       headers: ghHeaders,
       body: JSON.stringify({ title, body }),
     });
     if (!retryResponse.ok) {
-      console.error("GitHub issue creation failed:", await retryResponse.text());
+      console.error(`GitHub issue creation failed with status ${retryResponse.status}`);
       return false;
     }
   }
@@ -176,17 +185,18 @@ async function relayToGitHub(report, env) {
 async function relayToEmail(report, env) {
   if (!env.RESEND_API_KEY || !env.REPORT_EMAIL) return false;
 
-  const stackTrace = report.STACK_TRACE || "No stack trace";
-  const appVersion = report.APP_VERSION_NAME || "unknown";
-  const androidVersion = report.ANDROID_VERSION || "unknown";
-  const phoneModel = report.PHONE_MODEL || "unknown";
-  const brand = report.BRAND || "unknown";
-  const crashDate = report.USER_CRASH_DATE || "unknown";
-  const totalMemory = report.TOTAL_MEM_SIZE || "unknown";
-  const availableMemory = report.AVAILABLE_MEM_SIZE || "unknown";
-  const display = report.DISPLAY || "unknown";
+  const stackTrace = field(report.STACK_TRACE, "No stack trace", MAX_STACK_CHARS);
+  const appVersion = field(report.APP_VERSION_NAME);
+  const androidVersion = field(report.ANDROID_VERSION);
+  const phoneModel = field(report.PHONE_MODEL);
+  const brand = field(report.BRAND);
+  const crashDate = field(report.USER_CRASH_DATE);
+  const totalMemory = field(report.TOTAL_MEM_SIZE);
+  const availableMemory = field(report.AVAILABLE_MEM_SIZE);
+  const display = field(report.DISPLAY);
 
-  const subject = `illumera Crash - v${appVersion} - ${brand} ${phoneModel}`;
+  const subject = singleLine(`illumera Crash - v${appVersion} - ${brand} ${phoneModel}`, 180);
+  const fullReport = JSON.stringify(report, null, 2).slice(0, MAX_JSON_CHARS);
   const body = `
 ILLUMERA CRASH REPORT
 ======================
@@ -209,7 +219,7 @@ ${stackTrace}
 
 FULL REPORT (JSON)
 -------------------
-${JSON.stringify(report, null, 2)}
+${fullReport}
 `.trim();
 
   const emailResponse = await fetch("https://api.resend.com/emails", {
@@ -227,16 +237,77 @@ ${JSON.stringify(report, null, 2)}
   });
 
   if (!emailResponse.ok) {
-    console.error("Resend error:", await emailResponse.text());
+    console.error(`Resend failed with status ${emailResponse.status}`);
     return false;
   }
   return true;
 }
 
+function sanitizeReport(report) {
+  const sanitized = {};
+  for (const [key, value] of Object.entries(report)) {
+    if (!/^[A-Z0-9_]{1,80}$/.test(key)) continue;
+    const limit = key === "STACK_TRACE" ? MAX_STACK_CHARS : MAX_FIELD_CHARS;
+    sanitized[key] = stringifyValue(value).slice(0, limit);
+  }
+  return sanitized;
+}
+
+function stringifyValue(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function field(value, fallback = "unknown", max = MAX_FIELD_CHARS) {
+  const text = stringifyValue(value).trim();
+  return (text || fallback).slice(0, max);
+}
+
+function singleLine(value, max) {
+  return stringifyValue(value)
+    .replace(/[\r\n\u0000-\u001f\u007f]+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+function markdownText(value) {
+  return singleLine(value, MAX_FIELD_CHARS).replace(/[\\`*_{}\[\]()#+.!|>-]/g, "\\$&");
+}
+
+function markdownCode(value) {
+  return singleLine(value, MAX_FIELD_CHARS).replace(/`/g, "'");
+}
+
+function escapeHtml(value) {
+  return stringifyValue(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function constantTimeStringEqual(left, right) {
+  const encoder = new TextEncoder();
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(left)),
+    crypto.subtle.digest("SHA-256", encoder.encode(right)),
+  ]);
+  const a = new Uint8Array(leftDigest);
+  const b = new Uint8Array(rightDigest);
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
 /** Short, stable signature for a crash: hash of the exception type + top frames. */
 async function crashSignature(stackTrace) {
-  // Drop line numbers/memory addresses so the same bug at the same call site
-  // still hashes identically even if minor formatting differs between reports.
   const normalized = stackTrace
     .split("\n")
     .slice(0, 6)
