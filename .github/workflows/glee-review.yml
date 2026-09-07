@@ -1,15 +1,10 @@
 name: Glee PR Review
 
-# Adversarial code review, run automatically on every pull request. This is
-# the "glee" agent (an auditor whose job is to find failures, not admire
-# work) wired up as CI instead of something invoked by hand — see the
-# persona in the prompt below.
-#
-# Requires an ANTHROPIC_API_KEY secret on this repo (Settings → Secrets and
-# variables → Actions). Without it this workflow will fail at the Claude
-# step — everything else in CI is unaffected. See also
-# glee-review-antigravity.yml, the same review run through Antigravity
-# instead of Claude.
+# Adversarial code review, run automatically on every pull request. The
+# review agent is deliberately kept away from the PR's checked-out code:
+# it receives the trusted base branch plus read-only GitHub diff/view tools.
+# This prevents untrusted pull-request content from executing in the same
+# job that has access to the review API key and PR write permission.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -17,20 +12,21 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  id-token: write
 
 jobs:
   glee-review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
+      - name: Checkout trusted base
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Glee adversarial review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -51,19 +47,18 @@ jobs:
             - Missing or weak test coverage for the behavior being changed.
             - Doc/comment drift the diff introduces.
 
-            Verify each finding against the actual diff before reporting it
-            — do not report a finding you have not confirmed by reading the
-            surrounding code. If nothing survives scrutiny, say so plainly
-            in one PR comment rather than inventing nitpicks to fill space.
-
-            The PR branch is already checked out in the current working
-            directory.
+            Verify each finding against the actual diff before reporting it.
+            The workspace contains only the trusted base revision. Inspect
+            the pull request using `gh pr diff` and `gh pr view`; do not
+            execute, source, build, or otherwise run code from the PR.
+            If nothing survives scrutiny, say so plainly in one PR comment
+            rather than inventing nitpicks to fill space.
 
             Use `mcp__github_inline_comment__create_inline_comment` (with
             `confirmed: true`) for specific, file/line-anchored findings.
             Use `gh pr comment` only for a single closing summary (or to say
             nothing survived review). Only post GitHub comments — never
             submit review text as a plain chat message, and never approve,
-            merge, or push commits.
+            merge, push commits, or execute PR code.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
