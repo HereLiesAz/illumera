@@ -1,10 +1,12 @@
 package com.hereliesaz.illumera.ui.components
 
+import android.view.KeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -26,6 +28,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -33,7 +36,6 @@ import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.compose.material3.Text
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import coil.compose.AsyncImage
@@ -47,7 +49,7 @@ import com.hereliesaz.illumera.ui.util.touchClick
  * ============================================================================
  * LUMERA CARD - Netflix-Grade Optimized Media Card
  * ============================================================================
- * 
+ *
  * Optimizations applied:
  * 1. AsyncImage instead of SubcomposeAsyncImage (reduces recomposition)
  * 2. Simple zIndex switch instead of per-card animation (reduces CPU overhead)
@@ -68,12 +70,14 @@ fun LumeraCard(
     progress: Float = 0f,
     isWatched: Boolean = false,
     hasNewEpisode: Boolean = false,
-    onFocused: (() -> Unit)? = null
+    onFocused: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var dpadLongPressTriggered by remember { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
     val roundCorners = LocalRoundCorners.current
-    
+
     // Shape based on user preference
     val cardShape = if (roundCorners) RoundedCornerShape(12.dp) else RectangleShape
     val focusedCardShape = if (roundCorners) RoundedCornerShape(16.dp) else RectangleShape
@@ -89,9 +93,40 @@ fun LumeraCard(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxSize()
-                .touchClick(onClick = onClick)
+                .touchClick(onClick = onClick, onLongClick = onLongClick)
+                .onPreviewKeyEvent { event ->
+                    if (onLongClick == null) return@onPreviewKeyEvent false
+                    val native = event.nativeKeyEvent
+                    val isActivationKey = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_BUTTON_A
+                    if (!isActivationKey) return@onPreviewKeyEvent false
+
+                    when (native.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
+                                dpadLongPressTriggered = true
+                                onLongClick()
+                                true
+                            } else {
+                                dpadLongPressTriggered
+                            }
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            if (dpadLongPressTriggered) {
+                                dpadLongPressTriggered = false
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        else -> false
+                    }
+                }
                 .onFocusChanged {
                     isFocused = it.isFocused
+                    if (!it.isFocused) dpadLongPressTriggered = false
                     if (it.isFocused) onFocused?.invoke()
                 },
             shape = ClickableSurfaceDefaults.shape(
@@ -112,7 +147,7 @@ fun LumeraCard(
             )
         ) {
             val context = LocalContext.current
-            
+
             // Remembered ImageRequest to prevent recreation during recomposition
             val imageRequest = remember(posterUrl) {
                 ImageRequest.Builder(context)
@@ -125,7 +160,7 @@ fun LumeraCard(
                     .allowHardware(true) // GPU-accelerated bitmaps
                     .build()
             }
-            
+
             Box(modifier = Modifier.fillMaxSize()) {
                 // AsyncImage is lighter than SubcomposeAsyncImage - no subcomposition overhead
                 AsyncImage(
