@@ -49,6 +49,7 @@ data class QueuePreferences(
     val includeMovies: Boolean = true,
     val includeEpisodes: Boolean = true,
     val includeWholeShows: Boolean = false,
+    val onlyUnseenSuggestions: Boolean = false,
     val suggestionSources: Set<QueueSuggestionSource> = setOf(
         QueueSuggestionSource.PLAY_HISTORY,
         QueueSuggestionSource.TRAKT
@@ -90,6 +91,9 @@ class QueueManager @Inject constructor(
     fun setIncludeWholeShows(enabled: Boolean) = updatePreferences { copy(includeWholeShows = enabled) }
 
     @Synchronized
+    fun setOnlyUnseenSuggestions(enabled: Boolean) = updatePreferences { copy(onlyUnseenSuggestions = enabled) }
+
+    @Synchronized
     fun setSuggestionSource(source: QueueSuggestionSource, enabled: Boolean) {
         updatePreferences {
             val next = suggestionSources.toMutableSet().apply {
@@ -120,6 +124,27 @@ class QueueManager @Inject constructor(
         val item = items.removeAt(from)
         items.add(to, item)
         commit(_state.value.copy(manualItems = items))
+    }
+
+    @Synchronized
+    fun moveSuggestion(key: String, targetIndex: Int) {
+        val suggestions = _state.value.suggestions.toMutableList()
+        val from = suggestions.indexOfFirst { it.stableKey == key }
+        if (from < 0 || suggestions.isEmpty()) return
+        val to = targetIndex.coerceIn(0, suggestions.lastIndex)
+        if (from == to) return
+        val item = suggestions.removeAt(from)
+        suggestions.add(to, item)
+        commit(_state.value.copy(suggestions = suggestions))
+    }
+
+    @Synchronized
+    fun removeSuggestion(key: String) {
+        val current = _state.value
+        if (current.suggestions.none { it.stableKey == key }) return
+        val dismissed = dismissedSuggestionKeys().toMutableSet().apply { add(key) }
+        prefs.edit().putStringSet(KEY_DISMISSED_SUGGESTIONS, dismissed).apply()
+        commit(current.copy(suggestions = current.suggestions.filterNot { it.stableKey == key }))
     }
 
     @Synchronized
@@ -157,7 +182,9 @@ class QueueManager @Inject constructor(
     }
 
     suspend fun ensureSuggestions() {
-        if (_state.value.suggestions.size < SUGGESTION_COUNT) refreshSuggestions()
+        if (_state.value.suggestions.size < SUGGESTION_COUNT) {
+            refreshSuggestions(preserveExisting = true)
+        }
     }
 
     /**
@@ -197,21 +224,33 @@ class QueueManager @Inject constructor(
         }
     }
 
-    suspend fun refreshSuggestions() {
+    suspend fun refreshSuggestions(
+        resetDismissed: Boolean = false,
+        preserveExisting: Boolean = false
+    ) {
         val current = _state.value
         if (!current.preferences.enabled) return
+        if (resetDismissed) {
+            prefs.edit().remove(KEY_DISMISSED_SUGGESTIONS).apply()
+        }
+        val dismissedKeys = if (resetDismissed) emptySet() else dismissedSuggestionKeys()
         _state.value = current.copy(isRefreshingSuggestions = true)
         try {
             val watched = addonDao.getAllWatchHistoryOnce()
+            val seenIds = watched.map { normalizeId(it.id) }.toSet()
             val excludedIds = buildSet {
-                addAll(watched.filter { it.watched }.map { normalizeId(it.id) })
+                if (current.preferences.onlyUnseenSuggestions) {
+                    addAll(seenIds)
+                } else {
+                    addAll(watched.filter { it.watched }.map { normalizeId(it.id) })
+                }
                 addAll(current.manualItems.map { normalizeId(it.seriesId ?: it.id) })
             }
             val candidates = mutableListOf<QueueItem>()
 
             if (QueueSuggestionSource.TRAKT in current.preferences.suggestionSources) {
                 if (current.preferences.includeMovies) {
-                    runCatching { traktApi.getMovieRecommendations(30) }.getOrNull()
+                    runCatching { traktApi.getMovieRecommendations(50) }.getOrNull()
                         ?.takeIf { it.isSuccessful }?.body().orEmpty()
                         .forEach { movie ->
                             val id = movie.ids.imdb ?: movie.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
@@ -221,7 +260,7 @@ class QueueManager @Inject constructor(
                         }
                 }
                 if (current.preferences.includeEpisodes || current.preferences.includeWholeShows) {
-                    runCatching { traktApi.getShowRecommendations(30) }.getOrNull()
+                    runCatching { traktApi.getShowRecommendations(50) }.getOrNull()
                         ?.takeIf { it.isSuccessful }?.body().orEmpty()
                         .forEach { show ->
                             val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
@@ -238,7 +277,9 @@ class QueueManager @Inject constructor(
                 }
             }
 
-            if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources) {
+            if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources &&
+                !current.preferences.onlyUnseenSuggestions
+            ) {
                 watched.asSequence()
                     .filter { !it.watched }
                     .filter {
@@ -257,19 +298,40 @@ class QueueManager @Inject constructor(
                     }
             }
 
+            val latestDismissedKeys = dismissedSuggestionKeys()
             val ranked = candidates
                 .distinctBy { it.stableKey }
+                .filter { it.stableKey !in latestDismissedKeys }
                 .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
-                .sortedWith(compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }.thenBy { it.title })
-                .take(SUGGESTION_COUNT)
+                .sortedWith(
+                    compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }
+                        .thenBy { it.title }
+                )
+                .take(SUGGESTION_COUNT * 4)
                 .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
 
-            commit(_state.value.copy(suggestions = ranked, isRefreshingSuggestions = false))
+            val latestState = _state.value
+            val existing = if (preserveExisting) {
+                latestState.suggestions
+                    .filter { it.stableKey !in latestDismissedKeys }
+                    .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+            } else {
+                emptyList()
+            }
+            val existingKeys = existing.mapTo(mutableSetOf()) { it.stableKey }
+            val nextSuggestions = (existing + ranked.filter { existingKeys.add(it.stableKey) })
+                .distinctBy { it.stableKey }
+                .take(SUGGESTION_COUNT)
+
+            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
             resolveMissingArtwork()
         } catch (_: Exception) {
             _state.value = _state.value.copy(isRefreshingSuggestions = false)
         }
     }
+
+    private fun dismissedSuggestionKeys(): Set<String> =
+        prefs.getStringSet(KEY_DISMISSED_SUGGESTIONS, emptySet())?.toSet().orEmpty()
 
     private fun updatePreferences(block: QueuePreferences.() -> QueuePreferences) {
         commit(_state.value.copy(preferences = _state.value.preferences.block()))
@@ -296,7 +358,6 @@ class QueueManager @Inject constructor(
 
     private fun normalizeId(id: String): String {
         val value = id.lowercase()
-        if (value.startsWith("tmdb:") || value.startsWith("tt")) return value
         val parts = value.split(':')
         return if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
             parts.dropLast(2).joinToString(":")
@@ -310,6 +371,7 @@ class QueueManager @Inject constructor(
         private const val KEY_PREFERENCES = "preferences"
         private const val KEY_MANUAL = "manual"
         private const val KEY_SUGGESTIONS = "suggestions"
-        private const val SUGGESTION_COUNT = 10
+        private const val KEY_DISMISSED_SUGGESTIONS = "dismissed_suggestions"
+        const val SUGGESTION_COUNT = 10
     }
 }

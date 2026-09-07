@@ -69,13 +69,13 @@ fun TopNavigationBar(
 ) {
     // 1. Define groups
     // Queue now lives inside Watchlist, so only Watchlist is exposed as a top-level tab.
-    val centerItems = listOf(
-        NavDestination.Search,
-        NavDestination.Home,
-        NavDestination.Movies,
-        NavDestination.Series,
-        NavDestination.Watchlist
-    )
+    val centerItems = buildList {
+        add(NavDestination.Search)
+        add(NavDestination.Home)
+        if (currentProfile?.menuMoviesEnabled != false) add(NavDestination.Movies)
+        if (currentProfile?.menuSeriesEnabled != false) add(NavDestination.Series)
+        if (currentProfile?.menuWatchlistEnabled != false) add(NavDestination.Watchlist)
+    }
 
     // Left Logic (Settings + Menu)
     val settingsItem = NavDestination.Settings
