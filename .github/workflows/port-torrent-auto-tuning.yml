@@ -1,0 +1,179 @@
+name: Port torrent auto-tuning
+
+on:
+  push:
+    branches:
+      - feature/torrent-auto-tuning
+    paths:
+      - .github/workflows/port-torrent-auto-tuning.yml
+
+permissions:
+  contents: write
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Port device-aware TorrServer tuning
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          tuner = Path('app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrentDeviceTuner.kt')
+          tuner.write_text('''package com.hereliesaz.illumera.data.torrent
+
+import android.app.ActivityManager
+import android.content.Context
+
+/**
+ * Chooses conservative TorrServer defaults from the device's RAM and CPU count.
+ * The selected defaults are persisted once so a device does not change behaviour
+ * unexpectedly after an OS update changes the reported capabilities.
+ */
+object TorrentDeviceTuner {
+    private const val PREFS_NAME = "illumera_torrent_tuning"
+    private const val KEY_INITIALIZED = "auto_tune_initialized"
+    private const val KEY_CACHE_MB = "cache_mb"
+    private const val KEY_CONNECTION_LIMIT = "connection_limit"
+
+    data class Settings(
+        val cacheSizeMb: Int,
+        val connectionsLimit: Int
+    )
+
+    fun getOrCreateSettings(context: Context): Settings {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_INITIALIZED, false)) {
+            return Settings(
+                cacheSizeMb = prefs.getInt(KEY_CACHE_MB, 192).coerceIn(64, 512),
+                connectionsLimit = prefs.getInt(KEY_CONNECTION_LIMIT, 120).coerceIn(40, 200)
+            )
+        }
+
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+
+        val totalRamMb = (memoryInfo.totalMem / (1024L * 1024L)).coerceAtLeast(512L)
+        val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+
+        val base = when {
+            totalRamMb <= 1536L || cores <= 2 -> Settings(cacheSizeMb = 96, connectionsLimit = 80)
+            totalRamMb <= 3072L || cores <= 4 -> Settings(cacheSizeMb = 192, connectionsLimit = 120)
+            else -> Settings(cacheSizeMb = 384, connectionsLimit = 180)
+        }
+
+        // Never dedicate more than one eighth of reported RAM to TorrServer's cache.
+        val ramBoundCacheMb = (totalRamMb / 8L).toInt().coerceIn(64, 512)
+        val settings = base.copy(cacheSizeMb = minOf(base.cacheSizeMb, ramBoundCacheMb))
+
+        prefs.edit()
+            .putBoolean(KEY_INITIALIZED, true)
+            .putInt(KEY_CACHE_MB, settings.cacheSizeMb)
+            .putInt(KEY_CONNECTION_LIMIT, settings.connectionsLimit)
+            .apply()
+
+        return settings
+    }
+}
+''')
+
+          api = Path('app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrServerApi.kt')
+          text = api.read_text()
+          marker = '''    suspend fun getTorrentStats(magnetLink: String): TorrentStats =\n'''
+          addition = '''    /** Apply bounded streaming-oriented settings to the local TorrServer instance. */
+    suspend fun applyStreamingSettings(cacheSizeMb: Int, connectionsLimit: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            val boundedCacheMb = cacheSizeMb.coerceIn(64, 512)
+            val boundedConnections = connectionsLimit.coerceIn(40, 200)
+            val cacheBytes = boundedCacheMb.toLong() * 1024L * 1024L
+            val preloadPercent = ((15 * 100) / boundedCacheMb).coerceIn(3, 15)
+
+            val body = JsonObject().apply {
+                addProperty("action", "set")
+                add("sets", JsonObject().apply {
+                    addProperty("CacheSize", cacheBytes)
+                    addProperty("ReaderReadAHead", 95)
+                    addProperty("PreloadCache", preloadPercent)
+                    addProperty("ForceAllPeers", false)
+                    addProperty("ConnectionsLimit", boundedConnections)
+                    addProperty("DhtConnectionLimit", boundedConnections)
+                    addProperty("PeersListenPort", 0)
+                    addProperty("EnableIPv6", false)
+                    addProperty("DisableUPNP", false)
+                    addProperty("DisableUTP", false)
+                    addProperty("LimitSpeed", 0)
+                    addProperty("TorrentDisconnectTimeout", 3600)
+                    addProperty("RetrackersMode", 1)
+                })
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/settings")
+                .post(body.toString().toRequestBody(jsonType))
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful && BuildConfig.DEBUG) {
+                        Log.w("LumeraTorrent", "TorrServer settings HTTP ${response.code}")
+                    }
+                    response.isSuccessful
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "Failed to apply TorrServer settings", e)
+                false
+            }
+        }
+
+'''
+          if 'suspend fun applyStreamingSettings' not in text:
+              if marker not in text:
+                  raise SystemExit('TorrServerApi insertion marker not found')
+              api.write_text(text.replace(marker, addition + marker, 1))
+
+          service = Path('app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrentService.kt')
+          text = service.read_text()
+          old = '''                engine.start()\n\n                // Phase 2: Add torrent\n'''
+          new = '''                engine.start()
+
+                // Tune the local transport to this device before adding the source.
+                // Failure to apply optional tuning must never block playback.
+                val tuning = TorrentDeviceTuner.getOrCreateSettings(this@TorrentService)
+                val tuningApplied = api.applyStreamingSettings(
+                    cacheSizeMb = tuning.cacheSizeMb,
+                    connectionsLimit = tuning.connectionsLimit
+                )
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        TAG,
+                        "Torrent auto-tuning: cache=${tuning.cacheSizeMb}MB, " +
+                            "connections=${tuning.connectionsLimit}, applied=$tuningApplied"
+                    )
+                }
+
+                // Phase 2: Add torrent
+'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('TorrentService insertion marker not found')
+              service.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit ported torrent tuning
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrentDeviceTuner.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrServerApi.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/torrent/TorrentService.kt
+          git diff --cached --check
+          git commit -m "Add device-aware torrent auto-tuning"
+          git push origin HEAD:feature/torrent-auto-tuning
