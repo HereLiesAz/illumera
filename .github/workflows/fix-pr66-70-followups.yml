@@ -1,0 +1,316 @@
+name: Fix PR 66-70 review followups
+
+on:
+  push:
+    branches:
+      - fix/pr66-70-review-followups
+    paths:
+      - .github/workflows/fix-pr66-70-followups.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Apply player review fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          exo = Path('app/src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt')
+          text = exo.read_text()
+
+          text = text.replace(
+'''    var onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit) -> Unit)? = null
+''',
+'''    var onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null
+''', 1)
+
+          marker = '''    private var audioSwitchRecoveryJob: Job? = null
+'''
+          if marker not in text: raise SystemExit('audio job marker missing')
+          text = text.replace(marker, marker + '''    private val resolvedTorrentUrls = mutableMapOf<String, String>()
+''', 1)
+
+          old = '''                // A resolved torrent URL is a playable localhost URL while the source
+                // option may still contain its original magnet URI. Keep the logical
+                // source ID, but replace that option's URL with the playable URL so
+                // later seeks, retries and source-state operations do not fall back to
+                // the stale magnet URI.
+                val firstSource = normalizedSources.firstOrNull()
+                if (firstSource != null) {
+                    currentSourceId = firstSource.id
+                    val resolvedSource = firstSource.copy(url = normalizedRequest.mediaUrl)
+                    _sourceOptions.value = normalizedSources.map { source ->
+                        if (source.id == firstSource.id) resolvedSource else source
+                    }
+                    prepareSource(
+                        source = resolvedSource,
+'''
+          new = '''                // A resolved torrent URL is a playable localhost URL while the source
+                // option must retain its logical magnet URI. Keep the resolved URL
+                // separately so switching away and back can re-open the torrent instead
+                // of trying to use a localhost URL whose backing torrent was dropped.
+                val firstSource = normalizedSources.firstOrNull()
+                if (firstSource != null) {
+                    currentSourceId = firstSource.id
+                    val resolvedSource = firstSource.copy(url = normalizedRequest.mediaUrl)
+                    if (firstSource.url.startsWith("magnet:", ignoreCase = true)) {
+                        resolvedTorrentUrls[firstSource.id] = normalizedRequest.mediaUrl
+                    }
+                    prepareSource(
+                        source = resolvedSource,
+'''
+          if old not in text: raise SystemExit('initial torrent replacement block missing')
+          text = text.replace(old, new, 1)
+
+          old = '''                handler(source.url, source.fileIdx, source.fileName) { localUrl ->
+                    if (released) return@handler
+                    val resolvedSource = source.copy(url = localUrl)
+                    _sourceOptions.value = _sourceOptions.value.map { option ->
+                        if (option.id == sourceId) resolvedSource else option
+                    }
+                    switchToSource(sourceId, resolvedSource)
+                }
+'''
+          new = '''                handler(
+                    source.url,
+                    source.fileIdx,
+                    source.fileName,
+                    { localUrl ->
+                        if (released) return@handler
+                        resolvedTorrentUrls[sourceId] = localUrl
+                        switchToSource(sourceId, source.copy(url = localUrl))
+                    },
+                    { message ->
+                        if (released) return@handler
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = message.ifBlank { "Unable to open torrent source" },
+                                isBuffering = false
+                            )
+                        }
+                    }
+                )
+'''
+          if old not in text: raise SystemExit('magnet select handler block missing')
+          text = text.replace(old, new, 1)
+
+          old = '''        val source = _sourceOptions.value.firstOrNull { option -> option.id == sourceId } ?: return false
+        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val shouldAutoPlay = player.playWhenReady
+'''
+          new = '''        val logicalSource = _sourceOptions.value.firstOrNull { option -> option.id == sourceId } ?: return false
+        val source = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
+        val shouldAutoPlay = player.playWhenReady
+'''
+          if old not in text: raise SystemExit('auto retry source block missing')
+          text = text.replace(old, new, 1)
+
+          old = '''    override fun retryPlayback() {
+        if (released) return
+        val player = exoPlayer ?: return
+        val sourceId = currentSourceId ?: return
+        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+
+        ioAutoRetryCountForCurrentSource = 0
+        hasRetriedCurrentSourceAfter416 = false
+
+        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val shouldAutoPlay = player.playWhenReady
+
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                isBuffering = true
+            )
+        }
+
+        prepareSource(
+            source = source,
+            startPositionMs = resumePosition,
+            autoPlay = shouldAutoPlay,
+            resetSourceRetryBudget = true
+        )
+    }
+'''
+          new = '''    override fun retryPlayback() {
+        if (released) return
+        val player = exoPlayer ?: return
+        val sourceId = currentSourceId ?: return
+        val logicalSource = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+
+        // Invalidate any delayed automatic retry before starting the user-requested one.
+        loadToken++
+        ioAutoRetryCountForCurrentSource = 0
+        hasRetriedCurrentSourceAfter416 = false
+
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
+        val shouldAutoPlay = player.playWhenReady
+
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                isBuffering = true
+            )
+        }
+
+        if (logicalSource.url.startsWith("magnet:", ignoreCase = true)) {
+            val handler = onMagnetSourceSelected
+            if (handler != null) {
+                handler(
+                    logicalSource.url,
+                    logicalSource.fileIdx,
+                    logicalSource.fileName,
+                    { localUrl ->
+                        if (released) return@handler
+                        resolvedTorrentUrls[sourceId] = localUrl
+                        prepareSource(
+                            source = logicalSource.copy(url = localUrl),
+                            startPositionMs = resumePosition,
+                            autoPlay = shouldAutoPlay,
+                            resetSourceRetryBudget = true
+                        )
+                    },
+                    { message ->
+                        if (released) return@handler
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = message.ifBlank { "Unable to reopen torrent source" },
+                                isBuffering = false
+                            )
+                        }
+                    }
+                )
+                return
+            }
+        }
+
+        val preparedSource = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
+        prepareSource(
+            source = preparedSource,
+            startPositionMs = resumePosition,
+            autoPlay = shouldAutoPlay,
+            resetSourceRetryBudget = true
+        )
+    }
+'''
+          if old not in text: raise SystemExit('manual retry block missing')
+          text = text.replace(old, new, 1)
+          exo.write_text(text)
+
+          player = Path('app/src/main/java/com/hereliesaz/illumera/ui/player/PlayerScreen.kt')
+          text = player.read_text()
+          old = '''    onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit) -> Unit)? = null,
+'''
+          new = '''    onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null,
+'''
+          if old not in text: raise SystemExit('PlayerScreen magnet signature missing')
+          player.write_text(text.replace(old, new, 1))
+
+          main = Path('app/src/main/java/com/hereliesaz/illumera/MainActivity.kt')
+          text = main.read_text()
+          old = '''                                onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady ->
+                                    torrentProgress = TorrentProgress("Connecting to peers...")
+                                    TorrentService.onStreamReady = { localUrl ->
+                                        torrentProgress = null
+                                        onReady(localUrl)
+                                    }
+                                    TorrentService.onStreamError = { error ->
+                                        torrentProgress = null
+                                        if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Source switch error: $error")
+                                    }
+'''
+          new = '''                                onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady, onError ->
+                                    torrentProgress = TorrentProgress("Connecting to peers...")
+                                    TorrentService.onStreamReady = { localUrl ->
+                                        torrentProgress = null
+                                        onReady(localUrl)
+                                    }
+                                    TorrentService.onStreamError = { error ->
+                                        torrentProgress = null
+                                        if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Source switch error: $error")
+                                        onError(error)
+                                    }
+'''
+          if old not in text: raise SystemExit('MainActivity magnet callback missing')
+          main.write_text(text.replace(old, new, 1))
+
+          scaffold = Path('app/src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt')
+          text = scaffold.read_text()
+          old = '''            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PlayerErrorButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    label = "BACK",
+                    onClick = onBack,
+                    focusRequester = backFocusRequester
+                )
+                if (onRetry != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.Refresh,
+                        label = "RETRY",
+                        onClick = onRetry
+                    )
+                }
+                if (onSwitchSource != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.SwapHoriz,
+                        label = "SWITCH SOURCE",
+                        onClick = onSwitchSource
+                    )
+                }
+            }
+'''
+          new = '''            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                PlayerErrorButton(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    label = "BACK",
+                    onClick = onBack,
+                    focusRequester = backFocusRequester
+                )
+                if (onRetry != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.Refresh,
+                        label = "RETRY",
+                        onClick = onRetry
+                    )
+                }
+                if (onSwitchSource != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.SwapHoriz,
+                        label = "SWITCH SOURCE",
+                        onClick = onSwitchSource
+                    )
+                }
+            }
+'''
+          if old not in text: raise SystemExit('error action row missing')
+          scaffold.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/player/PlayerScreen.kt \
+                  app/src/main/java/com/hereliesaz/illumera/MainActivity.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt
+          git diff --cached --check
+          git commit -m "Address player review findings from PRs 69 and 70"
+          git push origin HEAD:fix/pr66-70-review-followups
