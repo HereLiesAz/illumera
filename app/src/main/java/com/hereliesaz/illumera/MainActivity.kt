@@ -1854,7 +1854,8 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            val tryNextRankedSource: suspend () -> Unit = nextSource@{
+                            lateinit var tryNextRankedSource: suspend () -> Unit
+                            tryNextRankedSource = nextSource@{
                                 val pending = playerState.pendingSourceSelection
                                 val candidates = pending?.candidateStreams.orEmpty()
                                 val current = playerState.currentStream
