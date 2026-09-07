@@ -1,0 +1,46 @@
+name: Port torrent manual controls
+
+on:
+  push:
+    branches:
+      - feature/torrent-manual-controls
+    paths:
+      - .github/workflows/port-torrent-manual-controls.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Wire torrent controls into Playback settings
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/hereliesaz/illumera/ui/settings/SettingsSubScreens.kt')
+          text = path.read_text()
+          marker = '''            // LANGUAGE PREFERENCES SECTION\n            Spacer(Modifier.height(12.dp))\n'''
+          replacement = '''            TorrentTuningSettings(onGoBack = onGoBack)\n\n            // LANGUAGE PREFERENCES SECTION\n            Spacer(Modifier.height(12.dp))\n'''
+          if 'TorrentTuningSettings(onGoBack = onGoBack)' not in text:
+              if marker not in text:
+                  raise SystemExit('Playback settings insertion marker not found')
+              path.write_text(text.replace(marker, replacement, 1))
+          PY
+
+      - name: Commit playback settings wiring
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/ui/settings/SettingsSubScreens.kt
+          git diff --cached --check
+          git commit -m "Expose torrent tuning in playback settings"
+          git push origin HEAD:feature/torrent-manual-controls
