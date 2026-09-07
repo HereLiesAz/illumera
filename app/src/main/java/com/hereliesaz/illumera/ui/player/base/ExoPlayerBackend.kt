@@ -493,14 +493,31 @@ class ExoPlayerBackend(
                     autoPlay = request.autoPlay
                 )
             } else {
-                // mediaUrl doesn't match any source (e.g. resolved torrent localhost URL)
-                // Play the mediaUrl directly, mark first source as current
-                currentSourceId = normalizedSources.firstOrNull()?.id
-                prepareSource(
-                    source = defaultSource,
-                    startPositionMs = request.startPositionMs,
-                    autoPlay = request.autoPlay
-                )
+                // A resolved torrent URL is a playable localhost URL while the source
+                // option may still contain its original magnet URI. Keep the logical
+                // source ID, but replace that option's URL with the playable URL so
+                // later seeks, retries and source-state operations do not fall back to
+                // the stale magnet URI.
+                val firstSource = normalizedSources.firstOrNull()
+                if (firstSource != null) {
+                    currentSourceId = firstSource.id
+                    val resolvedSource = firstSource.copy(url = normalizedRequest.mediaUrl)
+                    _sourceOptions.value = normalizedSources.map { source ->
+                        if (source.id == firstSource.id) resolvedSource else source
+                    }
+                    prepareSource(
+                        source = resolvedSource,
+                        startPositionMs = request.startPositionMs,
+                        autoPlay = request.autoPlay
+                    )
+                } else {
+                    currentSourceId = defaultSource.id
+                    prepareSource(
+                        source = defaultSource,
+                        startPositionMs = request.startPositionMs,
+                        autoPlay = request.autoPlay
+                    )
+                }
             }
         }
     }
@@ -510,7 +527,7 @@ class ExoPlayerBackend(
         val player = exoPlayer ?: return
         val wasPaused = !player.playWhenReady
         player.play()
-        if (wasPaused && player.playbackState == Player.STATE_READY) {
+        if (wasPaused && player.playbackState == Player.STATE_READY && !isTorrentStream) {
             // Force a codec flush on resume to prevent indefinite buffering on
             // certain MKV files. Seeking to current position + 1ms ensures
             // ExoPlayer doesn't optimise the seek away, while CLOSEST_SYNC
@@ -572,6 +589,9 @@ class ExoPlayerBackend(
                 handler(source.url, source.fileIdx, source.fileName) { localUrl ->
                     if (released) return@handler
                     val resolvedSource = source.copy(url = localUrl)
+                    _sourceOptions.value = _sourceOptions.value.map { option ->
+                        if (option.id == sourceId) resolvedSource else option
+                    }
                     switchToSource(sourceId, resolvedSource)
                 }
                 return
