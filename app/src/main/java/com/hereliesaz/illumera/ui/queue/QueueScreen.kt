@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -41,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.queue.QueueSuggestionSource
+import kotlinx.coroutines.launch
 
 @Composable
 fun QueueScreen(
@@ -49,6 +51,7 @@ fun QueueScreen(
     onOpenItem: (QueueItem) -> Unit
 ) {
     val state by queueManager.state.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.preferences.enabled) {
         if (state.preferences.enabled && state.suggestions.size < 10) {
@@ -96,7 +99,7 @@ fun QueueScreen(
                     QueueSuggestionSource.TRAKT in state.preferences.suggestionSources
                 ) { queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, it) }
                 Button(
-                    onClick = { kotlinx.coroutines.MainScope().launch { queueManager.refreshSuggestions() } },
+                    onClick = { scope.launch { queueManager.refreshSuggestions() } },
                     enabled = state.preferences.enabled && !state.isRefreshingSuggestions
                 ) {
                     Icon(Icons.Default.Refresh, null)
