@@ -50,8 +50,14 @@ data class ProfileEntity(
     val sourceSortSecondary: String = "size",     // "quality", "size", "seeds"
     val sourceEnabledQualities: String = "4k,1080p,720p,unknown",
     val sourceExcludePhrases: String = "",
-    val sourceMaxSizeGb: Int = 0,                // 0 = no limit
+    val sourceMaxSizeGb: Int = 0,                  // 0 = no hard limit
     val sourceExcludedFormats: String = "",       // comma-separated: "dv,hdr,dts,dolby,hevc,av1,3d"
+    // Soft auto-selection preferences. These rank sources; they do not hide them.
+    val sourceEpisodeTargetSizeMb: Int = 750,      // preferred size for a ~30 minute episode
+    val sourceMovieTargetSizeMb: Int = 3000,       // preferred size for a full-length movie
+    val sourceMinimumSeeds: Int = 5,               // preferred minimum, not a blocker
+    val sourceAutoFallback: Boolean = true,         // try the next ranked source when the current one is bogus
+    val sourceDebridMaxWaitSeconds: Int = 120,      // maximum time to wait for a debrid download
     val skipIntro: Boolean = true,
 
     val preferredAudioLanguage: String = "",
