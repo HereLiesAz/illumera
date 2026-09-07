@@ -562,6 +562,7 @@ class ExoPlayerBackend(
         if (released) return
         if (sourceId == currentSourceId) return
         val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+        _uiState.update { it.copy(errorMessage = null) }
 
         // Magnet URLs need TorrentService — delegate to the callback
         if (source.url.startsWith("magnet:")) {
@@ -1300,6 +1301,33 @@ class ExoPlayerBackend(
             )
         }
         return true
+    }
+
+    override fun retryPlayback() {
+        if (released) return
+        val player = exoPlayer ?: return
+        val sourceId = currentSourceId ?: return
+        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+
+        ioAutoRetryCountForCurrentSource = 0
+        hasRetriedCurrentSourceAfter416 = false
+
+        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val shouldAutoPlay = player.playWhenReady
+
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                isBuffering = true
+            )
+        }
+
+        prepareSource(
+            source = source,
+            startPositionMs = resumePosition,
+            autoPlay = shouldAutoPlay,
+            resetSourceRetryBudget = true
+        )
     }
 
     private fun isParsingErrorNearEnd(error: PlaybackException): Boolean {
