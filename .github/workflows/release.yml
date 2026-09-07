@@ -197,6 +197,7 @@ jobs:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PACKAGE_NAME: com.hereliesaz.illumera
           VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
           python -m pip install --quiet google-auth requests
@@ -209,6 +210,7 @@ jobs:
 
           package_name = os.environ["PACKAGE_NAME"]
           version_code = os.environ["VERSION_CODE"]
+          version_name = os.environ["VERSION_NAME"]
           info = json.loads(os.environ["PLAY_SERVICE_ACCOUNT_JSON"])
 
           credentials = service_account.Credentials.from_service_account_info(
@@ -234,12 +236,15 @@ jobs:
               response.raise_for_status()
               track = response.json()
 
+          # Preserve non-draft Alpha releases, but replace any older Alpha draft
+          # with this build so there is always exactly one current draft.
           releases = [
               release for release in track.get("releases", [])
-              if version_code not in [str(code) for code in release.get("versionCodes", [])]
+              if release.get("status") != "draft"
+              and version_code not in [str(code) for code in release.get("versionCodes", [])]
           ]
           releases.append({
-              "name": f"illumera {os.environ.get('GITHUB_RUN_NUMBER', version_code)}",
+              "name": f"illumera {version_name}",
               "versionCodes": [version_code],
               "status": "draft",
           })
