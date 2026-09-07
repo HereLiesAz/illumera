@@ -1,0 +1,196 @@
+name: Fix queue review comments
+
+on:
+  push:
+    branches:
+      - feature/queue-suggestion-management
+    paths:
+      - .github/workflows/fix-queue-review-comments.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply review fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manager = Path('app/src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt')
+          text = manager.read_text()
+
+          old = '''            val ranked = candidates
+                .distinctBy { it.stableKey }
+                .filter { it.stableKey !in dismissedKeys }
+                .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+                .sortedWith(
+                    compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }
+                        .thenBy { it.title }
+                )
+                .take(SUGGESTION_COUNT * 4)
+                .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
+
+            val existing = if (preserveExisting) {
+                current.suggestions
+                    .filter { it.stableKey !in dismissedKeys }
+                    .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+            } else {
+                emptyList()
+            }
+            val existingKeys = existing.mapTo(mutableSetOf()) { it.stableKey }
+            val nextSuggestions = (existing + ranked.filter { existingKeys.add(it.stableKey) })
+                .distinctBy { it.stableKey }
+                .take(SUGGESTION_COUNT)
+
+            commit(_state.value.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+'''
+          new = '''            val latestDismissedKeys = dismissedSuggestionKeys()
+            val ranked = candidates
+                .distinctBy { it.stableKey }
+                .filter { it.stableKey !in latestDismissedKeys }
+                .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+                .sortedWith(
+                    compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }
+                        .thenBy { it.title }
+                )
+                .take(SUGGESTION_COUNT * 4)
+                .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
+
+            val latestState = _state.value
+            val existing = if (preserveExisting) {
+                latestState.suggestions
+                    .filter { it.stableKey !in latestDismissedKeys }
+                    .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+            } else {
+                emptyList()
+            }
+            val existingKeys = existing.mapTo(mutableSetOf()) { it.stableKey }
+            val nextSuggestions = (existing + ranked.filter { existingKeys.add(it.stableKey) })
+                .distinctBy { it.stableKey }
+                .take(SUGGESTION_COUNT)
+
+            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+'''
+          if old not in text:
+              raise SystemExit('merge block marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    private fun normalizeId(id: String): String {
+        val value = id.lowercase()
+        if (value.startsWith("tmdb:") || value.startsWith("tt")) return value
+        val parts = value.split(':')
+        return if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
+            parts.dropLast(2).joinToString(":")
+        } else {
+            value
+        }
+    }
+'''
+          new = '''    private fun normalizeId(id: String): String {
+        val value = id.lowercase()
+        val parts = value.split(':')
+        return if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
+            parts.dropLast(2).joinToString(":")
+        } else {
+            value
+        }
+    }
+'''
+          if old not in text:
+              raise SystemExit('normalizeId marker not found')
+          text = text.replace(old, new, 1)
+          manager.write_text(text)
+
+          screen = Path('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt')
+          text = screen.read_text()
+          old = '''    LaunchedEffect(state.preferences.enabled, state.suggestions.size) {
+        if (state.preferences.enabled && state.suggestions.size < QueueManager.SUGGESTION_COUNT) {
+            queueManager.ensureSuggestions()
+        }
+    }
+'''
+          new = '''    LaunchedEffect(state.preferences.enabled) {
+        if (state.preferences.enabled) {
+            if (state.preferences.onlyUnseenSuggestions) {
+                queueManager.refreshSuggestions()
+            } else {
+                queueManager.ensureSuggestions()
+            }
+        }
+    }
+'''
+          if old not in text:
+              raise SystemExit('queue refill effect marker not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                onRemoveSuggestion = { item ->
+                    queueManager.removeSuggestion(item.stableKey)
+                },
+'''
+          new = '''                onRemoveSuggestion = { item ->
+                    scope.launch {
+                        queueManager.removeSuggestion(item.stableKey)
+                        queueManager.ensureSuggestions()
+                    }
+                },
+'''
+          if old not in text:
+              raise SystemExit('remove suggestion callback marker not found')
+          text = text.replace(old, new, 1)
+          screen.write_text(text)
+
+          card = Path('app/src/main/java/com/hereliesaz/illumera/ui/home/LumeraCard.kt')
+          text = card.read_text()
+          import_marker = 'import androidx.compose.ui.platform.LocalContext\n'
+          imports = 'import androidx.compose.ui.semantics.onLongClick\nimport androidx.compose.ui.semantics.semantics\n'
+          if imports not in text:
+              if import_marker not in text:
+                  raise SystemExit('semantics import marker not found')
+              text = text.replace(import_marker, import_marker + imports, 1)
+
+          old = '''            onClick = onClick,
+            modifier = Modifier
+                .fillMaxSize()
+                .touchCombinedClick(onClick = onClick, onLongClick = onLongClick)
+                .onFocusChanged {
+'''
+          new = '''            onClick = onClick,
+            modifier = Modifier
+                .fillMaxSize()
+                .touchCombinedClick(onClick = onClick, onLongClick = onLongClick)
+                .semantics {
+                    if (onLongClick != null) {
+                        this.onLongClick(label = "Manage queue item") {
+                            onLongClick.invoke()
+                            true
+                        }
+                    }
+                }
+                .onFocusChanged {
+'''
+          if old not in text:
+              raise SystemExit('card modifier marker not found')
+          text = text.replace(old, new, 1)
+          card.write_text(text)
+          PY
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/home/LumeraCard.kt
+          git diff --cached --check
+          git commit -m "Address queue suggestion review comments"
+          git push origin HEAD:feature/queue-suggestion-management
