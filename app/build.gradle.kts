@@ -73,6 +73,7 @@ android {
         // GitHub repository for auto-update system
         buildConfigField("String", "GITHUB_OWNER", "\"HereLiesAz\"")
         buildConfigField("String", "GITHUB_REPO", "\"illumera\"")
+        buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
 
         // ACRA crash reporting (loaded from local.properties)
         buildConfigField("String", "ACRA_URL", "\"$acraUrl\"")
@@ -127,6 +128,13 @@ android {
             // `assembleRelease` still produces an installable, consistently-signed
             // APK without secrets.
             signingConfig = signingConfigs.getByName("release")
+        }
+        create("play") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            // Google Play builds must use Play's update mechanism rather than the
+            // sideload updater used by the GitHub-distributed APK.
+            buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
         }
     }
 
