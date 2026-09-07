@@ -7,6 +7,7 @@ import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.remote.TraktApiService
+import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,7 +69,8 @@ data class QueueState(
 class QueueManager @Inject constructor(
     @ApplicationContext context: Context,
     private val addonDao: AddonDao,
-    private val traktApi: TraktApiService
+    private val traktApi: TraktApiService,
+    private val repository: AddonRepository
 ) {
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val gson = Gson()
@@ -158,6 +160,43 @@ class QueueManager @Inject constructor(
         if (_state.value.suggestions.size < SUGGESTION_COUNT) refreshSuggestions()
     }
 
+    /**
+     * Queue items can originate from Trakt recommendations, which only provide IDs
+     * and titles here. Resolve missing posters through the same addon metadata path
+     * used by Watchlist/Home so queue cards visually match the rest of the app.
+     */
+    suspend fun resolveMissingArtwork() {
+        val snapshot = _state.value
+        val missing = (snapshot.manualItems + snapshot.suggestions)
+            .filter { it.poster.isNullOrBlank() }
+            .distinctBy { it.stableKey }
+        if (missing.isEmpty()) return
+
+        val resolved = mutableMapOf<String, String>()
+        for (item in missing) {
+            val meta = runCatching {
+                val display = item.toMetaItem()
+                repository.resolveMetaDetails(display.type, display.id)
+            }.getOrNull()
+            val poster = meta?.poster
+            if (!poster.isNullOrBlank()) resolved[item.stableKey] = poster
+        }
+        if (resolved.isEmpty()) return
+
+        synchronized(this) {
+            val current = _state.value
+            val manual = current.manualItems.map { item ->
+                resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
+            }
+            val suggestions = current.suggestions.map { item ->
+                resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
+            }
+            if (manual != current.manualItems || suggestions != current.suggestions) {
+                commit(current.copy(manualItems = manual, suggestions = suggestions))
+            }
+        }
+    }
+
     suspend fun refreshSuggestions() {
         val current = _state.value
         if (!current.preferences.enabled) return
@@ -226,6 +265,7 @@ class QueueManager @Inject constructor(
                 .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
 
             commit(_state.value.copy(suggestions = ranked, isRefreshingSuggestions = false))
+            resolveMissingArtwork()
         } catch (_: Exception) {
             _state.value = _state.value.copy(isRefreshingSuggestions = false)
         }

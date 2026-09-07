@@ -68,14 +68,13 @@ fun TopNavigationBar(
     content: @Composable () -> Unit
 ) {
     // 1. Define groups
-    // Center: Search + Main Tabs
+    // Queue now lives inside Watchlist, so only Watchlist is exposed as a top-level tab.
     val centerItems = listOf(
         NavDestination.Search,
         NavDestination.Home,
         NavDestination.Movies,
         NavDestination.Series,
-        NavDestination.Watchlist,
-        NavDestination.Queue
+        NavDestination.Watchlist
     )
 
     // Left Logic (Settings + Menu)
