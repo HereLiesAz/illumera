@@ -1,0 +1,86 @@
+name: Port player manual retry
+
+on:
+  push:
+    branches:
+      - feature/player-manual-retry
+    paths:
+      - .github/workflows/port-player-manual-retry.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Port retry behavior
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          exo = Path('app/src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt')
+          text = exo.read_text()
+          old = '''    override fun selectSource(sourceId: String) {\n        if (released) return\n        if (sourceId == currentSourceId) return\n        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return\n'''
+          new = '''    override fun selectSource(sourceId: String) {\n        if (released) return\n        if (sourceId == currentSourceId) return\n        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return\n        _uiState.update { it.copy(errorMessage = null) }\n'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('selectSource marker not found')
+              text = text.replace(old, new, 1)
+
+          marker = '''    private fun isParsingErrorNearEnd(error: PlaybackException): Boolean {\n'''
+          retry = '''    override fun retryPlayback() {\n        if (released) return\n        val player = exoPlayer ?: return\n        val sourceId = currentSourceId ?: return\n        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return\n\n        ioAutoRetryCountForCurrentSource = 0\n        hasRetriedCurrentSourceAfter416 = false\n\n        val resumePosition = player.currentPosition.coerceAtLeast(0L)\n        val shouldAutoPlay = player.playWhenReady\n\n        _uiState.update {\n            it.copy(\n                errorMessage = null,\n                isBuffering = true\n            )\n        }\n\n        prepareSource(\n            source = source,\n            startPositionMs = resumePosition,\n            autoPlay = shouldAutoPlay,\n            resetSourceRetryBudget = true\n        )\n    }\n\n'''
+          if 'override fun retryPlayback()' not in text:
+              if marker not in text:
+                  raise SystemExit('retry insertion marker not found')
+              text = text.replace(marker, retry + marker, 1)
+          exo.write_text(text)
+
+          scaffold = Path('app/src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt')
+          text = scaffold.read_text()
+          import_marker = 'import androidx.compose.material.icons.filled.Remove\n'
+          if 'import androidx.compose.material.icons.filled.Refresh\n' not in text:
+              if import_marker not in text:
+                  raise SystemExit('Refresh import marker not found')
+              text = text.replace(import_marker, import_marker + 'import androidx.compose.material.icons.filled.Refresh\n', 1)
+
+          call_old = '''                } else null\n            )\n        }\n\n        PlayerSourceSidebar(\n'''
+          call_new = '''                } else null,\n                onRetry = {\n                    markInteraction()\n                    playbackController.retryPlayback()\n                }\n            )\n        }\n\n        PlayerSourceSidebar(\n'''
+          if 'playbackController.retryPlayback()' not in text:
+              if call_old not in text:
+                  raise SystemExit('error overlay call marker not found')
+              text = text.replace(call_old, call_new, 1)
+
+          sig_old = '''private fun PlayerErrorOverlay(\n    errorMessage: String,\n    onBack: () -> Unit,\n    onSwitchSource: (() -> Unit)? = null\n) {\n'''
+          sig_new = '''private fun PlayerErrorOverlay(\n    errorMessage: String,\n    onBack: () -> Unit,\n    onSwitchSource: (() -> Unit)? = null,\n    onRetry: (() -> Unit)? = null\n) {\n'''
+          if 'onRetry: (() -> Unit)? = null' not in text:
+              if sig_old not in text:
+                  raise SystemExit('PlayerErrorOverlay signature marker not found')
+              text = text.replace(sig_old, sig_new, 1)
+
+          button_marker = '''                if (onSwitchSource != null) {\n                    PlayerErrorButton(\n                        icon = Icons.Default.SwapHoriz,\n'''
+          button_new = '''                if (onRetry != null) {\n                    PlayerErrorButton(\n                        icon = Icons.Default.Refresh,\n                        label = "RETRY",\n                        onClick = onRetry\n                    )\n                }\n                if (onSwitchSource != null) {\n                    PlayerErrorButton(\n                        icon = Icons.Default.SwapHoriz,\n'''
+          if 'label = "RETRY"' not in text:
+              if button_marker not in text:
+                  raise SystemExit('retry button insertion marker not found')
+              text = text.replace(button_marker, button_new, 1)
+
+          scaffold.write_text(text)
+          PY
+
+      - name: Commit retry port
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt
+          git diff --cached --check
+          git commit -m "Add manual player retry and clear source-switch errors"
+          git push origin HEAD:feature/player-manual-retry
