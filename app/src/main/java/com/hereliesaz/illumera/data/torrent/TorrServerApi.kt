@@ -43,6 +43,51 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
             JsonParser.parseString(responseBody).asJsonObject
         }
 
+    /** Apply bounded streaming-oriented settings to the local TorrServer instance. */
+    suspend fun applyStreamingSettings(cacheSizeMb: Int, connectionsLimit: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            val boundedCacheMb = cacheSizeMb.coerceIn(64, 512)
+            val boundedConnections = connectionsLimit.coerceIn(40, 200)
+            val cacheBytes = boundedCacheMb.toLong() * 1024L * 1024L
+            val preloadPercent = ((15 * 100) / boundedCacheMb).coerceIn(3, 15)
+
+            val body = JsonObject().apply {
+                addProperty("action", "set")
+                add("sets", JsonObject().apply {
+                    addProperty("CacheSize", cacheBytes)
+                    addProperty("ReaderReadAHead", 95)
+                    addProperty("PreloadCache", preloadPercent)
+                    addProperty("ForceAllPeers", false)
+                    addProperty("ConnectionsLimit", boundedConnections)
+                    addProperty("DhtConnectionLimit", boundedConnections)
+                    addProperty("PeersListenPort", 0)
+                    addProperty("EnableIPv6", false)
+                    addProperty("DisableUPNP", false)
+                    addProperty("DisableUTP", false)
+                    addProperty("LimitSpeed", 0)
+                    addProperty("TorrentDisconnectTimeout", 3600)
+                    addProperty("RetrackersMode", 1)
+                })
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/settings")
+                .post(body.toString().toRequestBody(jsonType))
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful && BuildConfig.DEBUG) {
+                        Log.w("LumeraTorrent", "TorrServer settings HTTP ${response.code}")
+                    }
+                    response.isSuccessful
+                }
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "Failed to apply TorrServer settings", e)
+                false
+            }
+        }
+
     suspend fun getTorrentStats(magnetLink: String): TorrentStats =
         withContext(Dispatchers.IO) {
             val hash = extractHash(magnetLink)
