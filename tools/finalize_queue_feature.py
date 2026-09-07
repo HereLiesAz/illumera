@@ -87,23 +87,27 @@ s = replace_once(s,
     '                        } ?: resumeEpisode ?: firstEpisode\n                        if (requestedEpisode != null) {',
     'resume-aware queue autoplay')
 sidebar_anchor = '''            onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
-            onEpisodeSelected = { ep ->
+            onDismiss = { viewModel.closeSidebar() },
+            onBack = { viewModel.goBackInSidebar() },
+            onEpisodeSelected = { episode ->
 '''
 sidebar_insert = '''            onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
-            onQueueEpisode = { ep ->
+            onQueueEpisode = { episode ->
                 onAddToQueue(
                     QueueItem(
-                        id = episodePlaybackId(streamId, ep),
+                        id = episodePlaybackId(streamId, episode),
                         type = "episode",
-                        title = episodeDisplayTitle(ep),
+                        title = episodeDisplayTitle(episode),
                         poster = movie?.poster,
                         seriesId = streamId,
-                        season = ep.season,
-                        episode = ep.episode
+                        season = episode.season,
+                        episode = episode.episode
                     )
                 )
             },
-            onEpisodeSelected = { ep ->
+            onDismiss = { viewModel.closeSidebar() },
+            onBack = { viewModel.goBackInSidebar() },
+            onEpisodeSelected = { episode ->
 '''
 s = replace_once(s, sidebar_anchor, sidebar_insert, 'details episode queue callback')
 p.write_text(s)
