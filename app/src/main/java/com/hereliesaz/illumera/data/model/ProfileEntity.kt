@@ -18,6 +18,11 @@ data class ProfileEntity(
     val navPosition: String = "left",
     val splashEnabled: Boolean = true,
 
+    // Optional top-level navigation entries. Home and Search always remain available.
+    val menuMoviesEnabled: Boolean = true,
+    val menuSeriesEnabled: Boolean = true,
+    val menuWatchlistEnabled: Boolean = true,
+
     val homeTabLayout: String = "cinematic",
     val moviesTabLayout: String = "cinematic",
     val seriesTabLayout: String = "cinematic",
