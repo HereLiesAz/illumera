@@ -523,7 +523,7 @@ fun DetailsScreen(
                     if (type == "series") {
                         val requestedEpisode = currentMovie.videos.orEmpty().firstOrNull { ep ->
                             requested == ep.id || requested.endsWith(":${ep.season}:${ep.episode}")
-                        } ?: firstEpisode
+                        } ?: resumeEpisode ?: firstEpisode
                         if (requestedEpisode != null) {
                             val trackId = episodePlaybackId(streamId, requestedEpisode)
                             val epStreamId = episodeStreamId(streamId, requestedEpisode)
@@ -938,6 +938,19 @@ fun DetailsScreen(
             episodeProgressMap = state.episodeProgressMap,
             episodeEnrichmentMap = state.episodeEnrichmentMap,
             onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
+            onQueueEpisode = { episode ->
+                onAddToQueue(
+                    QueueItem(
+                        id = episodePlaybackId(streamId, episode),
+                        type = "episode",
+                        title = episodeDisplayTitle(episode),
+                        poster = movie?.poster,
+                        seriesId = streamId,
+                        season = episode.season,
+                        episode = episode.episode
+                    )
+                )
+            },
             onDismiss = { viewModel.closeSidebar() },
             onBack = { viewModel.goBackInSidebar() },
             onEpisodeSelected = { episode ->

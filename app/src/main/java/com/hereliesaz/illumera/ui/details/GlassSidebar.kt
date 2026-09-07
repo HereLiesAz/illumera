@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -123,6 +124,7 @@ fun GlassSidebar(
     episodeProgressMap: Map<String, DetailsViewModel.EpisodeProgress> = emptyMap(),
     episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(),
     onToggleWatched: (MetaVideo) -> Unit = {},
+    onQueueEpisode: (MetaVideo) -> Unit = {},
     onEpisodeSelected: (MetaVideo) -> Unit,
     onSourceSelected: (Stream) -> Unit,
     onBack: () -> Unit,
@@ -196,6 +198,7 @@ fun GlassSidebar(
                     episodeProgressMap = episodeProgressMap,
                     episodeEnrichmentMap = episodeEnrichmentMap,
                     onToggleWatched = onToggleWatched,
+                    onQueueEpisode = onQueueEpisode,
                     focusRequester = focusRequester,
                     onEpisodeClick = { ep, s, i -> savedSeason = s; savedIndex = i; onEpisodeSelected(ep) },
                     onSeasonChange = { savedSeason = it },
@@ -228,6 +231,7 @@ fun EpisodesContent(
     episodeProgressMap: Map<String, DetailsViewModel.EpisodeProgress> = emptyMap(),
     episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(),
     onToggleWatched: (MetaVideo) -> Unit = {},
+    onQueueEpisode: (MetaVideo) -> Unit = {},
     focusRequester: FocusRequester,
     onEpisodeClick: (MetaVideo, Int, Int) -> Unit,
     onSeasonChange: (Int) -> Unit,
@@ -318,6 +322,7 @@ fun EpisodesContent(
                         isWatched = epProgress?.watched ?: false,
                         enrichment = epEnrichment,
                         onToggleWatched = { onToggleWatched(ep) },
+                        onQueue = { onQueueEpisode(ep) },
                         thumbnailModifier = mod,
                         listState = listState,
                         onClick = { onEpisodeClick(ep, selectedSeason, index) }
@@ -605,6 +610,7 @@ fun EpisodeItem(
     isWatched: Boolean = false,
     enrichment: TmdbEpisodeEnrichment? = null,
     onToggleWatched: () -> Unit = {},
+    onQueue: () -> Unit = {},
     thumbnailModifier: Modifier = Modifier,
     listState: LazyListState? = null,
     onClick: () -> Unit
@@ -615,6 +621,7 @@ fun EpisodeItem(
     val primary = MaterialTheme.colorScheme.primary
     val thumbnailRequester = remember { FocusRequester() }
     val buttonRequester = remember { FocusRequester() }
+    val queueRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
 
     // Counteract BringIntoView scroll when the mark button gets focus
@@ -656,7 +663,7 @@ fun EpisodeItem(
                     RoundedCornerShape(6.dp)
                 )
                 .focusRequester(thumbnailRequester)
-                .focusProperties { left = FocusRequester.Cancel; right = buttonRequester }
+                .focusProperties { left = FocusRequester.Cancel; right = queueRequester }
                 .onFocusChanged { thumbnailFocused = it.isFocused }
                 .clickable(onClick = onClick)
                 .focusable()
@@ -774,15 +781,28 @@ fun EpisodeItem(
             }
 
             // Mark as watched button — top-right
-            WatchedToggleButton(
-                isWatched = isWatched,
-                isFocused = buttonFocused,
-                focusRequester = buttonRequester,
-                thumbnailRequester = thumbnailRequester,
-                onFocusChanged = { buttonFocused = it },
-                onClick = onToggleWatched,
-                modifier = Modifier.align(Alignment.TopEnd)
-            )
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                IconButton(
+                    onClick = onQueue,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .focusRequester(queueRequester)
+                        .focusProperties { left = thumbnailRequester; right = buttonRequester }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add episode to queue", tint = Color.White)
+                }
+                WatchedToggleButton(
+                    isWatched = isWatched,
+                    isFocused = buttonFocused,
+                    focusRequester = buttonRequester,
+                    thumbnailRequester = queueRequester,
+                    onFocusChanged = { buttonFocused = it },
+                    onClick = onToggleWatched
+                )
+            }
         }
     }
 }
