@@ -1,23 +1,25 @@
 package com.hereliesaz.illumera.ui.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
-import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.StremioAddonItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
-import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.sync.LibraryRefreshService
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
@@ -62,8 +64,8 @@ data class IntegrationsUiState(
 
 @HiltViewModel
 class IntegrationsViewModel @Inject constructor(
+    @ApplicationContext private val applicationContext: Context,
     private val stremioAuthManager: StremioAuthManager,
-    private val stremioLibrarySyncManager: StremioLibrarySyncManager,
     private val addonRepository: AddonRepository,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val dao: AddonDao,
@@ -219,15 +221,14 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     /**
-     * Pulls/pushes Continue Watching state against the connected Stremio
-     * account. Safe to call opportunistically (e.g. after login, or manually
-     * from settings) — it diffs against remote modification times so it never
-     * re-sends unchanged items.
+     * Starts the user-visible foreground refresh used for connected library
+     * network processing. The service syncs Stremio Continue Watching,
+     * refreshes addon data/manifests, and syncs Trakt state when connected.
+     * It keeps running if the user navigates away and exposes a cancel action
+     * in its ongoing notification.
      */
     fun syncLibrary() {
-        viewModelScope.launch(Dispatchers.IO) {
-            stremioLibrarySyncManager.syncLibrary(force = true)
-        }
+        LibraryRefreshService.start(applicationContext)
     }
 
     /**

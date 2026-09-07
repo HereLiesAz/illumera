@@ -51,14 +51,22 @@ class StremioLibrarySyncManager @Inject constructor(
      * Syncs Continue Watching state. [force] bypasses the opportunistic
      * throttle — use it for explicit user actions (manual "Sync" button,
      * right after login), not for per-tick playback callers.
+     *
+     * Returns a [Result] so explicit foreground refreshes can accurately tell
+     * the user when the network sync failed instead of always reporting success.
      */
-    suspend fun syncLibrary(force: Boolean = false) = withContext(Dispatchers.IO) {
-        val authKey = stremioAuthManager.getStoredAuthKey() ?: return@withContext
+    suspend fun syncLibrary(force: Boolean = false): Result<Unit> = withContext(Dispatchers.IO) {
+        val authKey = stremioAuthManager.getStoredAuthKey()
+            ?: return@withContext Result.success(Unit)
+
         syncMutex.withLock {
             val now = System.currentTimeMillis()
-            if (!force && now - lastSyncAtMs < MIN_SYNC_INTERVAL_MS) return@withContext
+            if (!force && now - lastSyncAtMs < MIN_SYNC_INTERVAL_MS) {
+                return@withContext Result.success(Unit)
+            }
             lastSyncAtMs = now
         }
+
         try {
             val remoteMtimes = stremioAuthService.datastoreMeta(authKey)
             val localItems = buildLocalLibraryView()
@@ -85,8 +93,10 @@ class StremioLibrarySyncManager @Inject constructor(
                 for (item in remoteItems) applyRemoteItem(item)
             }
             Log.i(TAG, "Library sync: pushed=${toPush.size}, pulled=${idsToPull.size}")
+            Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Library sync failed", e)
+            Result.failure(e)
         }
     }
 
