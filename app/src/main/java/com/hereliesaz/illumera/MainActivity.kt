@@ -65,6 +65,7 @@ import com.hereliesaz.illumera.ui.watchlist.WatchlistScreen
 import com.hereliesaz.illumera.ui.queue.QueueScreen
 import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.queue.QueueItem
+import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.ui.home.HomeViewModel
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
@@ -85,6 +86,7 @@ import com.hereliesaz.illumera.ui.navigation.NavDrawer
 import com.hereliesaz.illumera.ui.navigation.TopNavigationBar
 import com.hereliesaz.illumera.ui.player.PlayerScreen
 import com.hereliesaz.illumera.ui.player.PlayerSessionResult
+import com.hereliesaz.illumera.ui.player.PlaybackDurationStatus
 import com.hereliesaz.illumera.ui.player.base.PlayerSourceOption
 import com.hereliesaz.illumera.ui.player.base.NextEpisodeInfo
 import com.hereliesaz.illumera.ui.player.base.PlaybackSettings
@@ -753,6 +755,8 @@ class MainActivity : ComponentActivity() {
     lateinit var addonDao: AddonDao
     @Inject
     lateinit var streamSortingService: StreamSortingService
+    @Inject
+    lateinit var debridManager: DebridManager
     @Inject
     lateinit var queueManager: QueueManager
 
@@ -1850,6 +1854,58 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
+                            val tryNextRankedSource: suspend () -> Unit = nextSource@{
+                                val pending = playerState.pendingSourceSelection
+                                val candidates = pending?.candidateStreams.orEmpty()
+                                val current = playerState.currentStream
+                                val currentIndex = candidates.indexOfFirst { candidate ->
+                                    candidate === current || resolvePlayableSourceUrl(candidate) == selectedVideoUrl ||
+                                        (current != null && candidate.infoHash != null && candidate.infoHash == current.infoHash && candidate.addonTransportUrl == current.addonTransportUrl)
+                                }
+                                val nextStream = candidates.drop((currentIndex + 1).coerceAtLeast(0))
+                                    .firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() }
+                                if (nextStream == null) {
+                                    playerState.pendingSourceSelection = null
+                                    activeView = "details"
+                                    return@nextSource
+                                }
+
+                                val nextUrl = resolvePlayableSourceUrl(nextStream)
+                                if (nextUrl == null) {
+                                    activeView = "details"
+                                    return@nextSource
+                                }
+                                playerState.currentStream = nextStream
+                                playerState.pendingSourceSelection = PendingSourceSelection(
+                                    playbackId = selectedPlaybackId,
+                                    launchedStream = nextStream,
+                                    candidateStreams = candidates
+                                )
+                                playerState.selectedPlayerSources = buildSourcePayload(candidates, nextStream)
+
+                                if (nextUrl.startsWith("magnet:")) {
+                                    selectedVideoUrl = ""
+                                    torrentProgress = TorrentProgress("Trying next source…")
+                                    TorrentService.onStreamReady = { localUrl ->
+                                        torrentProgress = null
+                                        selectedVideoUrl = localUrl
+                                    }
+                                    TorrentService.onStreamError = {
+                                        torrentProgress = null
+                                        uiScope.launch { tryNextRankedSource() }
+                                    }
+                                    TorrentService.onStreamProgress = { torrentProgress = it }
+                                    startService(Intent(this@MainActivity, TorrentService::class.java).apply {
+                                        putExtra("MAGNET_LINK", nextUrl)
+                                        putExtra("FILE_IDX", nextStream.fileIdx ?: -1)
+                                        putExtra("FILE_NAME", nextStream.behaviorHints?.filename ?: "")
+                                    })
+                                } else {
+                                    stopService(Intent(this@MainActivity, TorrentService::class.java))
+                                    selectedVideoUrl = nextUrl
+                                }
+                            }
+
                             PlayerScreen(
                                 videoUrl = selectedVideoUrl,
                                 trailerAudioUrl = selectedTrailerAudioUrl.takeIf { it.isNotBlank() },
@@ -1942,7 +1998,7 @@ class MainActivity : ComponentActivity() {
                                                 val excludeP = StreamSortingService.parseExcludePhrases(currentProfile?.sourceExcludePhrases ?: "")
                                                 val addonOrders = addonRepository.getAddonSortOrders()
                                                 val excludedF = StreamSortingService.parseExcludedFormats(currentProfile?.sourceExcludedFormats ?: "")
-                                                streamSortingService.sortAndFilter(rawStreams, enabledQ, excludeP, addonOrders, currentProfile?.sourceSortPrimary ?: "quality", currentProfile?.sourceMaxSizeGb ?: 0, excludedF)
+                                                streamSortingService.sortAndFilter(rawStreams, enabledQ, excludeP, addonOrders, currentProfile?.sourceSortPrimary ?: "quality", currentProfile?.sourceMaxSizeGb ?: 0, excludedF, currentProfile?.sourceEpisodeTargetSizeMb ?: 750, currentProfile?.sourceMinimumSeeds ?: 5)
                                             } else rawStreams
 
                                             if (streams.isEmpty()) {
@@ -2099,7 +2155,7 @@ class MainActivity : ComponentActivity() {
                                                 val excludeP = StreamSortingService.parseExcludePhrases(currentProfile?.sourceExcludePhrases ?: "")
                                                 val addonOrders = addonRepository.getAddonSortOrders()
                                                 val excludedF = StreamSortingService.parseExcludedFormats(currentProfile?.sourceExcludedFormats ?: "")
-                                                streamSortingService.sortAndFilter(rawStreams2, enabledQ, excludeP, addonOrders, currentProfile?.sourceSortPrimary ?: "quality", currentProfile?.sourceMaxSizeGb ?: 0, excludedF)
+                                                streamSortingService.sortAndFilter(rawStreams2, enabledQ, excludeP, addonOrders, currentProfile?.sourceSortPrimary ?: "quality", currentProfile?.sourceMaxSizeGb ?: 0, excludedF, currentProfile?.sourceEpisodeTargetSizeMb ?: 750, currentProfile?.sourceMinimumSeeds ?: 5)
                                             } else rawStreams2
 
                                             if (streams.isEmpty()) {
@@ -2340,6 +2396,25 @@ class MainActivity : ComponentActivity() {
                                     startService(intent)
                                 },
                                 torrentProgress = torrentProgress,
+                                autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
+                                onSuspectSource = { status ->
+                                    uiScope.launch {
+                                        val currentStream = playerState.currentStream
+                                        if (status == PlaybackDurationStatus.DEBRID_DOWNLOADING && currentStream != null) {
+                                            val readyUrl = debridManager.awaitPlayableSource(
+                                                infoHash = currentStream.infoHash,
+                                                fileName = currentStream.behaviorHints?.filename,
+                                                maxWaitSeconds = currentProfile?.sourceDebridMaxWaitSeconds ?: 120
+                                            )
+                                            if (!readyUrl.isNullOrBlank()) {
+                                                selectedVideoUrl = readyUrl
+                                                playerState.currentStream = currentStream.copy(url = readyUrl)
+                                                return@launch
+                                            }
+                                        }
+                                        tryNextRankedSource()
+                                    }
+                                },
                                 onBack = { sessionResult ->
                                     torrentProgress = null
                                     handlePlayerSessionEnd(

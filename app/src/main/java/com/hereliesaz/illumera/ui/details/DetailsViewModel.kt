@@ -660,7 +660,7 @@ class DetailsViewModel @Inject constructor(
     }
 
     /** Applies the active profile's sort/filter preferences to a raw stream list. */
-    private suspend fun sortStreams(rawStreams: List<Stream>): List<Stream> {
+    private suspend fun sortStreams(rawStreams: List<Stream>, mediaType: String): List<Stream> {
         val activeProfileId = profileConfigurationManager.getLastActiveProfileId()
         val profile = activeProfileId?.let { dao.getProfileById(it) }
         return if (profile?.sourceSortingEnabled != false) {
@@ -669,13 +669,23 @@ class DetailsViewModel @Inject constructor(
             val addonSortOrders = dao.getAllAddons().firstOrNull()
                 ?.associate { it.transportUrl to it.sortOrder } ?: emptyMap()
             val excludedFormats = StreamSortingService.parseExcludedFormats(profile?.sourceExcludedFormats ?: "")
-            streamSortingService.sortAndFilter(rawStreams, enabledQualities, excludePhrases, addonSortOrders, profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0, excludedFormats)
+            val preferredSizeMb = if (mediaType.equals("movie", ignoreCase = true)) {
+                profile?.sourceMovieTargetSizeMb ?: 3000
+            } else {
+                profile?.sourceEpisodeTargetSizeMb ?: 750
+            }
+            streamSortingService.sortAndFilter(
+                rawStreams, enabledQualities, excludePhrases, addonSortOrders,
+                profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0,
+                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5
+            )
         } else rawStreams
     }
 
     /** Sorts a fresh (or cached) stream result and applies it to state — auto-playing a
      *  preferred/first-playable stream when appropriate, otherwise showing the sources sidebar. */
     private suspend fun applyResolvedStreams(
+        mediaType: String,
         displayTitle: String,
         sourceSelectionId: String,
         forceSourcePicker: Boolean,
@@ -684,7 +694,7 @@ class DetailsViewModel @Inject constructor(
         rawStreams: List<Stream>,
         addonSubtitles: List<AddonSubtitle>
     ) {
-        val streams = sortStreams(rawStreams)
+        val streams = sortStreams(rawStreams, mediaType)
 
         val preferredStream = if (forceSourcePicker || !rememberSourceSelection) {
             null
@@ -752,7 +762,7 @@ class DetailsViewModel @Inject constructor(
 
                 val openSources = _state.value.sidebarState as? SidebarState.Sources
                 if (openSources != null) {
-                    val streams = sortStreams(rawStreams)
+                    val streams = sortStreams(rawStreams, type)
                     _state.value = _state.value.copy(
                         addonSubtitles = addonSubtitles,
                         availableStreams = streams,
@@ -789,7 +799,7 @@ class DetailsViewModel @Inject constructor(
         if (cached != null && System.currentTimeMillis() - cached.fetchedAt <= STREAMS_CACHE_TTL_MS) {
             loadStreamsJob = viewModelScope.launch {
                 applyResolvedStreams(
-                    displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
+                    type, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, cached.streams, cached.subtitles
                 )
             }
@@ -833,7 +843,7 @@ class DetailsViewModel @Inject constructor(
                 }
 
                 applyResolvedStreams(
-                    displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
+                    type, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, rawStreams, addonSubtitles
                 )
             } catch (e: Exception) {
