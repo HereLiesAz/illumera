@@ -1,0 +1,394 @@
+name: Fix legacy PR review followups
+
+on:
+  push:
+    branches:
+      - fix/legacy-pr-review-followups
+    paths:
+      - .github/workflows/fix-legacy-review-followups.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Apply legacy review fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'missing pattern in {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, count))
+
+          # PR #65: update individual navigation columns atomically.
+          rep('app/src/main/java/com/hereliesaz/illumera/data/local/AddonDao.kt',
+          '''    @Update
+              suspend fun updateProfile(profile: ProfileEntity)
+          ''',
+          '''    @Update
+              suspend fun updateProfile(profile: ProfileEntity)
+
+              @Query("UPDATE profiles SET menuMoviesEnabled = :enabled WHERE id = :profileId")
+              suspend fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean)
+
+              @Query("UPDATE profiles SET menuSeriesEnabled = :enabled WHERE id = :profileId")
+              suspend fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean)
+
+              @Query("UPDATE profiles SET menuWatchlistEnabled = :enabled WHERE id = :profileId")
+              suspend fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean)
+          ''')
+
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/settings/SettingsViewModel.kt',
+          '''    fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuMoviesEnabled = enabled)) }
+                  }
+              }
+
+              fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuSeriesEnabled = enabled)) }
+                  }
+              }
+
+              fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuWatchlistEnabled = enabled)) }
+                  }
+              }
+          ''',
+          '''    fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.updateMenuMoviesEnabled(profileId, enabled)
+                  }
+              }
+
+              fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.updateMenuSeriesEnabled(profileId, enabled)
+                  }
+              }
+
+              fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+                      dao.updateMenuWatchlistEnabled(profileId, enabled)
+                  }
+              }
+          ''')
+
+          rep('app/src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt',
+          '''                navPosition = sourceProfile.navPosition,
+                          homeTabLayout = sourceProfile.homeTabLayout,
+          ''',
+          '''                navPosition = sourceProfile.navPosition,
+                          menuMoviesEnabled = sourceProfile.menuMoviesEnabled,
+                          menuSeriesEnabled = sourceProfile.menuSeriesEnabled,
+                          menuWatchlistEnabled = sourceProfile.menuWatchlistEnabled,
+                          homeTabLayout = sourceProfile.homeTabLayout,
+          ''')
+
+          # PR #35: never replace the remote addon collection with a partial manifest set.
+          rep('app/src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt',
+          '''            val descriptors = transportUrls.mapNotNull { url ->
+                          runCatching {
+                              StremioAddonDescriptor(
+                                  manifest = stremioAuthService.fetchRawManifest(url),
+                                  transportUrl = if (url.endsWith("manifest.json")) url else "${url.trimEnd('/')}/manifest.json",
+                                  flags = StremioAddonFlags()
+                              )
+                          }.getOrNull()
+                      }
+          ''',
+          '''            val descriptors = transportUrls.map { url ->
+                          StremioAddonDescriptor(
+                              manifest = stremioAuthService.fetchRawManifest(url),
+                              transportUrl = if (url.endsWith("manifest.json")) url else "${url.trimEnd('/')}/manifest.json",
+                              flags = StremioAddonFlags()
+                          )
+                      }
+          ''')
+
+          # PR #36: disconnect must clear the active profile-scoped credential too.
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsViewModel.kt',
+          '''    fun disconnect() {
+                  stremioAuthManager.disconnect()
+                  viewModelScope.launch {
+                      _events.send(IntegrationsEvent.Disconnected)
+                  }
+              }
+          ''',
+          '''    fun disconnect() {
+                  val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+                  stremioAuthManager.clearCredentialsForProfile(profileId)
+                  stremioAuthManager.disconnect()
+                  viewModelScope.launch {
+                      _events.send(IntegrationsEvent.Disconnected)
+                  }
+              }
+          ''')
+
+          # PR #55: don't let Play resolve to episode 1 before history/next-up lookup finishes.
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt',
+          '''        val isLoadingStreams: Boolean = false,
+                  val resumePlaybackId: String? = null,
+                  val isMovieWatched: Boolean = false,
+          ''',
+          '''        val isLoadingStreams: Boolean = false,
+                  val resumePlaybackId: String? = null,
+                  val isResumeStateReady: Boolean = false,
+                  val isMovieWatched: Boolean = false,
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt',
+          '''                _state.value = _state.value.copy(
+                          resumePlaybackId = resumePlaybackId,
+                          isMovieWatched = isMovieWatched,
+                          episodeProgressMap = episodeProgressMap
+                      )
+          ''',
+          '''                _state.value = _state.value.copy(
+                          resumePlaybackId = resumePlaybackId,
+                          isResumeStateReady = true,
+                          isMovieWatched = isMovieWatched,
+                          episodeProgressMap = episodeProgressMap
+                      )
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt',
+          '''        viewModelScope.launch {
+                  val resumePlaybackId = if (meta.type == "series") {
+          ''',
+          '''        _state.value = _state.value.copy(isResumeStateReady = false)
+                  viewModelScope.launch {
+                  val resumePlaybackId = if (meta.type == "series") {
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt',
+          '''                _state.value = _state.value.copy(
+                          resumePlaybackId = resumePlaybackId,
+                          isMovieWatched = isMovieWatched,
+                          autoPlayStream = null,
+          ''',
+          '''                _state.value = _state.value.copy(
+                          resumePlaybackId = resumePlaybackId,
+                          isResumeStateReady = true,
+                          isMovieWatched = isMovieWatched,
+                          autoPlayStream = null,
+          ''')
+
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt',
+          '''                    val playLabel = if (resumePlaybackId != null) {
+          ''',
+          '''                    val playLabel = if (!state.isResumeStateReady) {
+                              "Loading…"
+                          } else if (resumePlaybackId != null) {
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt',
+          '''                            onClick = {
+                                  val ep = resumeEpisode ?: firstEpisode ?: return@ExpandableIconButton
+          ''',
+          '''                            onClick = {
+                                  if (!state.isResumeStateReady) return@ExpandableIconButton
+                                  val ep = resumeEpisode ?: firstEpisode ?: return@ExpandableIconButton
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt',
+          '''                        label = if (resumePlaybackId != null) "Resume" else "Play Movie",
+                          icon = Icons.Default.PlayArrow,
+                          modifier = Modifier.focusRequester(firstButtonFocusRequester),
+                          onClick = {
+                              pendingPlaybackId = streamId
+          ''',
+          '''                        label = if (!state.isResumeStateReady) "Loading…" else if (resumePlaybackId != null) "Resume" else "Play Movie",
+                          icon = Icons.Default.PlayArrow,
+                          modifier = Modifier.focusRequester(firstButtonFocusRequester),
+                          onClick = {
+                              if (!state.isResumeStateReady) return@ExpandableIconButton
+                              pendingPlaybackId = streamId
+          ''')
+
+          # PR #58: canonicalize series artwork and keep only one artwork-resolution trigger.
+          rep('app/src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt',
+          '''    fun toMetaItem(): MetaItem = MetaItem(
+                  id = seriesId ?: id,
+                  type = if (type == "episode") "series" else type,
+                  name = title,
+                  poster = poster
+              )
+          ''',
+          '''    fun toMetaItem(): MetaItem {
+                  val canonicalId = seriesId ?: if (type == "episode" || type == "series") {
+                      val parts = id.split(':')
+                      if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
+                          parts.dropLast(2).joinToString(":")
+                      } else id
+                  } else id
+                  return MetaItem(
+                      id = canonicalId,
+                      type = if (type == "episode" || type == "series") "series" else type,
+                      name = title,
+                      poster = poster
+                  )
+              }
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt',
+          '''            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+                      resolveMissingArtwork()
+          ''',
+          '''            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+          ''')
+
+          # PR #58: remember/restore focus for queue cards embedded in Watchlist.
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistViewModel.kt',
+          '''    var lastFocusedKey: String? = null
+          ''',
+          '''    var lastFocusedKey: String? = null
+              var lastQueueFocusedKey: String? = null
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistScreen.kt',
+          '''                QueueSection(
+                          entryRequester = entryRequester,
+                          startPadding = startPadding,
+                          requestEntryFocus = !hasWatchlistMedia,
+                          onOpenItem = { queueItem: QueueItem ->
+          ''',
+          '''                QueueSection(
+                          entryRequester = entryRequester,
+                          startPadding = startPadding,
+                          requestEntryFocus = !hasWatchlistMedia && viewModel.lastQueueFocusedKey == null,
+                          focusedQueueKey = viewModel.lastQueueFocusedKey,
+                          onQueueFocused = { key -> viewModel.lastQueueFocusedKey = key },
+                          onOpenItem = { queueItem: QueueItem ->
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''    queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager,
+              requestEntryFocus: Boolean = false
+          ) {
+          ''',
+          '''    queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager,
+              requestEntryFocus: Boolean = false,
+              focusedQueueKey: String? = null,
+              onQueueFocused: (String) -> Unit = {}
+          ) {
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''                onOpenItem = onOpenItem,
+                          actions = { item, index ->
+          ''',
+          '''                onOpenItem = onOpenItem,
+                          focusedKey = focusedQueueKey,
+                          onFocused = onQueueFocused,
+                          actions = { item, index ->
+          ''', 1)
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''                onOpenItem = onOpenItem,
+                          onMoveSuggestion = { item, targetIndex ->
+          ''',
+          '''                onOpenItem = onOpenItem,
+                          focusedKey = focusedQueueKey,
+                          onFocused = onQueueFocused,
+                          onMoveSuggestion = { item, targetIndex ->
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''    onOpenItem: (QueueItem) -> Unit,
+              onMoveSuggestion: ((QueueItem, Int) -> Unit)? = null,
+          ''',
+          '''    onOpenItem: (QueueItem) -> Unit,
+              focusedKey: String? = null,
+              onFocused: (String) -> Unit = {},
+              onMoveSuggestion: ((QueueItem, Int) -> Unit)? = null,
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''            itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
+                      Column(modifier = Modifier.width(140.dp)) {
+          ''',
+          '''            itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
+                      val cardFocusRequester = remember(item.stableKey) { FocusRequester() }
+                      LaunchedEffect(focusedKey, item.stableKey) {
+                          if (focusedKey == item.stableKey) {
+                              kotlinx.coroutines.delay(50)
+                              runCatching { cardFocusRequester.requestFocus() }
+                          }
+                      }
+                      Column(modifier = Modifier.width(140.dp)) {
+          ''')
+          rep('app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt',
+          '''                        LumeraCard(
+                              title = item.title,
+                              posterUrl = item.poster,
+                              onClick = { onOpenItem(item) },
+          ''',
+          '''                        LumeraCard(
+                              title = item.title,
+                              posterUrl = item.poster,
+                              onClick = { onOpenItem(item) },
+                              modifier = Modifier.focusRequester(cardFocusRequester),
+                              onFocused = { onFocused(item.stableKey) },
+          ''')
+
+          # PR #36: make Play submission notes describe actual cleartext paths.
+          rep('docs/PLAY_STORE.md',
+          '''### Is all of the user data collected by your app encrypted in transit?
+          **Yes** — every network call in the app goes over HTTPS (Trakt, Stremio,
+          TMDB, debrid provider APIs, the ACRA crash-report endpoint). User-added
+          addon URLs are the one exception outside the app's control: an addon author
+          could point their manifest at a plain-`http://` endpoint, in which case that
+          specific addon's traffic wouldn't be encrypted. **[confirm]** whether Play
+          wants this caveat noted or a blanket "yes" — if the form is strictly
+          per-app-code rather than per-user-configuration, "yes" is defensible since
+          the app itself never initiates unencrypted requests to any of its own
+          integrations.
+          ''',
+          '''### Is all of the user data collected by your app encrypted in transit?
+          **[confirm against the current Play form before submitting.]** Internet-facing
+          account/provider integrations (Trakt, Stremio, TMDB, debrid APIs and crash
+          reporting) use HTTPS, but the app intentionally also uses cleartext HTTP for
+          its loopback TorrServer (`http://127.0.0.1:8090`) and local-LAN pairing flows.
+          User-configured addon endpoints may also be plain `http://`. Do **not** claim
+          that every network call is HTTPS; if Play's question requires every supported
+          transport path to be encrypted, answer **No**.
+          ''')
+          rep('docs/PLAY_STORE.md',
+          '''- "Data is encrypted in transit" → **Yes** (see above).
+          ''',
+          '''- "Data is encrypted in transit" → **[confirm]** using the current Play
+            definition; do not select Yes if the form treats the supported cleartext
+            localhost/LAN/user-configured HTTP paths as disqualifying (see above).
+          ''')
+          rep('docs/PLAY_STORE.md',
+          '''for each connected service (Stremio, Trakt, each debrid provider) that wipes
+          the locally-stored credential immediately — no waiting period, no account
+          needed to make the request. Note the scope: this deletes what *illumera*
+          ''',
+          '''for each connected service (Stremio, Trakt, each debrid provider) that wipes
+          the locally-stored credential immediately for the active profile — no waiting
+          period, no account needed to make the request. Note the scope: this deletes what *illumera*
+          ''')
+          PY
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/data/local/AddonDao.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/settings/SettingsViewModel.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsViewModel.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistScreen.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistViewModel.kt \
+                  docs/PLAY_STORE.md
+          git diff --cached --check
+          git commit -m "Address legacy PR review findings"
+          git push origin HEAD:fix/legacy-pr-review-followups
