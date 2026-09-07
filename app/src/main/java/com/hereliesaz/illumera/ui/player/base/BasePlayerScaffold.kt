@@ -47,6 +47,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -833,6 +834,17 @@ fun BasePlayerScaffold(
                     showControls = true
                     showSeekOverlay = false
                 },
+                onToggleResizeMode = {
+                    markInteraction()
+                    val nextMode = when (uiState.resizeMode) {
+                        0 -> 4 // Fit -> Zoom
+                        4 -> 3 // Zoom -> Fill
+                        3 -> 5 // Fill -> Encoded Zoom
+                        else -> 0 // Encoded Zoom -> Fit
+                    }
+                    playbackController.setResizeMode(nextMode)
+                    showControlsTemporarily()
+                },
                 showEpisodesControl = episodes.isNotEmpty() && onEpisodeSelected != null,
                 onShowEpisodesPanel = {
                     markInteraction()
@@ -1302,6 +1314,7 @@ private fun PlayerControlsOverlay(
     onShowSourcesPanel: () -> Unit,
     onShowAudioPanel: () -> Unit,
     onShowSubtitlePanel: () -> Unit,
+    onToggleResizeMode: () -> Unit,
     showEpisodesControl: Boolean = false,
     onShowEpisodesPanel: () -> Unit = {},
     onResetHideTimer: () -> Unit
@@ -1397,6 +1410,15 @@ private fun PlayerControlsOverlay(
                             iconSize = 18.dp
                         )
                     }
+
+                    ControlButton(
+                        icon = Icons.Default.AspectRatio,
+                        contentDescription = "Aspect Ratio / Resize Mode",
+                        onClick = onToggleResizeMode,
+                        onFocused = onResetHideTimer,
+                        buttonSize = 44.dp,
+                        iconSize = 18.dp
+                    )
 
                     if (showSourceControl || showAudioControl || showSubtitleControl) {
                         ControlButton(

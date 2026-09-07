@@ -406,6 +406,7 @@ class ExoPlayerBackend(
                     val pv = frame.getChildAt(0) as? PlayerView
                     if (pv != null) {
                         pv.keepScreenOn = player?.isPlaying == true
+                        applyVideoResizeMode(pv, currentUiState.resizeMode)
                         applySubtitleOffset(pv, currentUiState.subtitleVerticalOffsetPercent)
                         applySubtitleSize(pv, currentUiState.subtitleSizePercent)
                         applySubtitleCaptionStyle(pv)
@@ -726,6 +727,28 @@ class ExoPlayerBackend(
         subtitleBackgroundColor = color
         _uiState.update { it.copy(subtitleBackgroundColor = color) }
         playerView?.let { applySubtitleCaptionStyle(it) }
+    }
+
+    override fun setResizeMode(mode: Int) {
+        if (released) return
+        val normalizedMode = if (mode in 0..5) mode else 0
+        _uiState.update { it.copy(resizeMode = normalizedMode) }
+        playerView?.let { applyVideoResizeMode(it, normalizedMode) }
+    }
+
+    private fun applyVideoResizeMode(pv: PlayerView, mode: Int) {
+        val encodedZoom = mode == 5
+        pv.resizeMode = if (encodedZoom) 0 else mode
+
+        val contentFrame = pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_content_frame)
+        val targetView = contentFrame ?: (pv.videoSurfaceView as? android.view.View)
+        val scale = if (encodedZoom) 1.34f else 1.0f
+        if (targetView != null && (targetView.scaleX != scale || targetView.scaleY != scale)) {
+            targetView.scaleX = scale
+            targetView.scaleY = scale
+            targetView.requestLayout()
+            targetView.invalidate()
+        }
     }
 
     private fun applySubtitleCaptionStyle(pv: PlayerView) {
