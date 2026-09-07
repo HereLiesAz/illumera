@@ -62,7 +62,7 @@ android {
     defaultConfig {
         applicationId = "com.hereliesaz.illumera"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 37
         // The release workflow overrides these from the pushed tag (-PversionNameOverride)
         // and the GitHub Actions run number (-PversionCodeOverride) so a published release
         // actually reports the version it was tagged as, and versionCode keeps increasing —
