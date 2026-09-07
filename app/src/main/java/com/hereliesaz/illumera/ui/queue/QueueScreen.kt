@@ -65,7 +65,7 @@ fun QueueScreen(
     ) {
         item {
             Row(
-                modifier = Modifier.fillMaxWidth().focusRequester(entryRequester),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -75,7 +75,11 @@ fun QueueScreen(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (state.preferences.enabled) "Enabled" else "Disabled")
-                    Switch(checked = state.preferences.enabled, onCheckedChange = queueManager::setEnabled)
+                    Switch(
+                        checked = state.preferences.enabled,
+                        onCheckedChange = queueManager::setEnabled,
+                        modifier = Modifier.focusRequester(entryRequester)
+                    )
                 }
             }
         }
