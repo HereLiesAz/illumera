@@ -140,6 +140,23 @@ class QueueManager @Inject constructor(
         return remaining.firstOrNull() ?: current.suggestions.firstOrNull()
     }
 
+    @Synchronized
+    fun advanceAfterPlayback(playbackId: String): QueueItem? {
+        val current = _state.value
+        if (!current.preferences.enabled) return null
+        val index = current.manualItems.indexOfFirst { item ->
+            item.id == playbackId ||
+                (item.type == "episode" && playbackId.endsWith(":${item.season}:${item.episode}"))
+        }
+        val remaining = if (index >= 0) current.manualItems.toMutableList().also { it.removeAt(index) } else current.manualItems
+        if (index >= 0) commit(current.copy(manualItems = remaining))
+        return remaining.firstOrNull() ?: current.suggestions.firstOrNull()
+    }
+
+    suspend fun ensureSuggestions() {
+        if (_state.value.suggestions.size < SUGGESTION_COUNT) refreshSuggestions()
+    }
+
     suspend fun refreshSuggestions() {
         val current = _state.value
         if (!current.preferences.enabled) return

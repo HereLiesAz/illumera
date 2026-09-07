@@ -62,6 +62,9 @@ import com.hereliesaz.illumera.ui.details.DetailsScreen
 import com.hereliesaz.illumera.ui.home.GridViewScreen
 import com.hereliesaz.illumera.ui.home.HomeScreen
 import com.hereliesaz.illumera.ui.watchlist.WatchlistScreen
+import com.hereliesaz.illumera.ui.queue.QueueScreen
+import com.hereliesaz.illumera.data.queue.QueueManager
+import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.ui.home.HomeViewModel
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
@@ -750,6 +753,8 @@ class MainActivity : ComponentActivity() {
     lateinit var addonDao: AddonDao
     @Inject
     lateinit var streamSortingService: StreamSortingService
+    @Inject
+    lateinit var queueManager: QueueManager
 
     private var splashOverlay: android.view.View? = null
     private var splashIndicator: android.view.View? = null
@@ -890,6 +895,8 @@ class MainActivity : ComponentActivity() {
             var selectedPlaybackTitle by rememberSaveable { mutableStateOf("") }
             var selectedPlaybackPoster by rememberSaveable { mutableStateOf("") }
             var previousView by rememberSaveable { mutableStateOf("menu") }
+            var queueAutoPlayId by rememberSaveable { mutableStateOf<String?>(null) }
+            var queueWholeShowActive by rememberSaveable { mutableStateOf(false) }
             val playerState = remember { PlayerState() }
 
             // Debrid library items (Watchlist's cloud storage section) are pre-resolved
@@ -1020,6 +1027,7 @@ class MainActivity : ComponentActivity() {
                         val searchEntryRequester = remember { FocusRequester() }
                         val settingsEntryRequester = remember { FocusRequester() }
                         val watchlistEntryRequester = remember { FocusRequester() }
+                        val queueEntryRequester = remember { FocusRequester() }
 
                         // STATE CHANGE TRIGGER:
                         LaunchedEffect(currentNav, activeView) {
@@ -1050,6 +1058,10 @@ class MainActivity : ComponentActivity() {
                                 NavDestination.Watchlist -> {
                                     delay(200)
                                     watchlistEntryRequester.requestFocus()
+                                }
+                                NavDestination.Queue -> {
+                                    delay(200)
+                                    queueEntryRequester.requestFocus()
                                 }
                                 else -> Unit
                             }
@@ -1092,6 +1104,7 @@ class MainActivity : ComponentActivity() {
                                             NavDestination.Search -> searchEntryRequester.requestFocus()
                                             NavDestination.Settings -> settingsEntryRequester.requestFocus()
                                             NavDestination.Watchlist -> watchlistEntryRequester.requestFocus()
+                                            NavDestination.Queue -> queueEntryRequester.requestFocus()
                                             else -> {}
                                         }
                                     } else {
@@ -1108,6 +1121,7 @@ class MainActivity : ComponentActivity() {
                                         NavDestination.Search -> searchEntryRequester.requestFocus()
                                         NavDestination.Settings -> settingsEntryRequester.requestFocus()
                                         NavDestination.Watchlist -> watchlistEntryRequester.requestFocus()
+                                        NavDestination.Queue -> queueEntryRequester.requestFocus()
                                         else -> {}
                                     }
                                 }
@@ -1267,6 +1281,28 @@ class MainActivity : ComponentActivity() {
                                                         onPlayResolvedStream = onPlayResolvedStream
                                                     )
                                                 }
+                                                NavDestination.Queue -> {
+                                                    QueueScreen(
+                                                        queueManager = queueManager,
+                                                        entryRequester = queueEntryRequester,
+                                                        onOpenItem = { item ->
+                                                            selectedMovieId = item.seriesId ?: item.id
+                                                            selectedMovieType = if (item.type == "movie") "movie" else "series"
+                                                            selectedMovieTitle = item.title
+                                                            selectedMoviePoster = item.poster ?: ""
+                                                            selectedMovieBackground = ""
+                                                            selectedMovieLogo = ""
+                                                            selectedAddonBaseUrl = null
+                                                            detailsResumePlaybackHint = null
+                                                            selectedPlaybackId = item.id
+                                                            selectedPlaybackType = selectedMovieType
+                                                            selectedPlaybackTitle = item.title
+                                                            selectedPlaybackPoster = item.poster ?: ""
+                                                            previousView = "menu"
+                                                            activeView = "details"
+                                                        }
+                                                    )
+                                                }
                                                 NavDestination.Settings -> {
                                                     val homeVm = hiltViewModel<HomeViewModel>()
                                                     SettingsScreen(
@@ -1409,6 +1445,28 @@ class MainActivity : ComponentActivity() {
                                                             activeView = "details"
                                                         },
                                                         onPlayResolvedStream = onPlayResolvedStream
+                                                    )
+                                                }
+                                                NavDestination.Queue -> {
+                                                    QueueScreen(
+                                                        queueManager = queueManager,
+                                                        entryRequester = queueEntryRequester,
+                                                        onOpenItem = { item ->
+                                                            selectedMovieId = item.seriesId ?: item.id
+                                                            selectedMovieType = if (item.type == "movie") "movie" else "series"
+                                                            selectedMovieTitle = item.title
+                                                            selectedMoviePoster = item.poster ?: ""
+                                                            selectedMovieBackground = ""
+                                                            selectedMovieLogo = ""
+                                                            selectedAddonBaseUrl = null
+                                                            detailsResumePlaybackHint = null
+                                                            selectedPlaybackId = item.id
+                                                            selectedPlaybackType = selectedMovieType
+                                                            selectedPlaybackTitle = item.title
+                                                            selectedPlaybackPoster = item.poster ?: ""
+                                                            previousView = "menu"
+                                                            activeView = "details"
+                                                        }
                                                     )
                                                 }
                                                 NavDestination.Settings -> {
@@ -1617,6 +1675,9 @@ class MainActivity : ComponentActivity() {
                                         rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true,
                                         onPosterResolved = { selectedMoviePoster = it },
                                         onPlayClick = onPlayClick,
+                                        onAddToQueue = { queueManager.add(it) },
+                                        queueAutoPlayId = queueAutoPlayId,
+                                        onQueueAutoPlayConsumed = { queueAutoPlayId = null },
                                         onNavigateToDetails = { navType, navId ->
                                             val route = "detail/${java.net.URLEncoder.encode(navType, "UTF-8")}/${java.net.URLEncoder.encode(navId, "UTF-8")}"
                                             detailsNavController.navigate(route)
@@ -1747,7 +1808,7 @@ class MainActivity : ComponentActivity() {
 
                             // Compute next episode
                             val isSeries = selectedPlaybackType.equals("series", ignoreCase = true)
-                            val shouldAutoplay = currentProfile?.autoplayNextEpisode == true && isSeries
+                            val shouldAutoplay = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive) && isSeries
                             val nextEpisode = remember(selectedPlaybackId, selectedMovieId, playerState.currentEpisodeList, isSeries) {
                                 if (isSeries && playerState.currentEpisodeList.isNotEmpty()) {
                                     findNextEpisode(selectedMovieId, selectedPlaybackId, playerState.currentEpisodeList)
@@ -1810,7 +1871,7 @@ class MainActivity : ComponentActivity() {
                                     mapDV7ToHevc = currentProfile?.mapDV7ToHevc ?: false,
                                     decoderPriority = currentProfile?.decoderPriority ?: 1,
                                     frameRateMatching = currentProfile?.frameRateMatching ?: false,
-                                    autoplayNextEpisode = currentProfile?.autoplayNextEpisode ?: false,
+                                    autoplayNextEpisode = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive),
                                     autoSelectSource = currentProfile?.autoSelectSource ?: false,
                                     autoplayThresholdMode = currentProfile?.autoplayThresholdMode ?: "percentage",
                                     autoplayThresholdPercent = currentProfile?.autoplayThresholdPercent ?: 95,
@@ -1854,7 +1915,7 @@ class MainActivity : ComponentActivity() {
 
                                         uiScope.launch {
                                             // Show loading feedback immediately
-                                            val autoplay = currentProfile?.autoplayNextEpisode == true
+                                            val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
                                             val autoSelect = currentProfile?.autoSelectSource == true
                                             val willAutoResolve = autoplay || autoSelect
 
@@ -2294,8 +2355,33 @@ class MainActivity : ComponentActivity() {
                                     stopService(Intent(this@MainActivity, TorrentService::class.java))
                                     if (selectedPlaybackId.startsWith("trailer_")) {
                                         trailerReturnToken++
+                                        activeView = "details"
+                                    } else if (sessionResult.isCompleted && queueManager.state.value.preferences.enabled) {
+                                        val next = queueManager.advanceAfterPlayback(selectedPlaybackId)
+                                        if (next != null) {
+                                            selectedMovieId = next.seriesId ?: next.id
+                                            selectedMovieType = if (next.type == "movie") "movie" else "series"
+                                            selectedMovieTitle = next.title
+                                            selectedMoviePoster = next.poster ?: ""
+                                            selectedMovieBackground = ""
+                                            selectedMovieLogo = ""
+                                            selectedAddonBaseUrl = null
+                                            selectedPlaybackId = next.id
+                                            selectedPlaybackType = selectedMovieType
+                                            selectedPlaybackTitle = next.title
+                                            selectedPlaybackPoster = next.poster ?: ""
+                                            queueAutoPlayId = next.id
+                                            queueWholeShowActive = next.wholeShow
+                                            previousView = "menu"
+                                            activeView = "details"
+                                            uiScope.launch { queueManager.ensureSuggestions() }
+                                        } else {
+                                            queueWholeShowActive = false
+                                            activeView = "details"
+                                        }
+                                    } else {
+                                        activeView = "details"
                                     }
-                                    activeView = "details"
                                 }
                             )
                             }
