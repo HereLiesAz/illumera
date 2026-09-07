@@ -1,42 +1,27 @@
-name: Build and Release APK + Play AAB
+name: Release
 
-# Every push to main builds the same signed release as both APK and AAB.
-# The AAB is published to Google Play Internal testing and the same version is
-# also attached to the Alpha track as a DRAFT release. Only after both Play
-# operations succeed is the APK published as the GitHub Release asset.
-#
-# AppUpdateManager (app/src/main/java/com/hereliesaz/illumera/data/update/) polls
-# this repo's *latest* (non-prerelease) release, so the GitHub release shape must
-# keep matching what it expects: exactly one *.apk asset, and a
-# `SHA-256: <64 hex chars>` line in the release body for checksum verification.
-#
-# Required repository secret for Google Play publishing:
-#   PLAY_SERVICE_ACCOUNT_JSON
-# This is the complete Google Play Console service-account JSON. The service
-# account must have permission to manage releases for com.hereliesaz.illumera.
-#
-# Versioning: since there's no tag to read a version from, versionName is
-# MAJOR.MINOR (read from app/build.gradle.kts) with the GitHub Actions run
-# number as the patch component, e.g. 0.6.47. versionCode is the run number.
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths-ignore:
       - "**.md"
-      - "ci/README.md"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+env:
+  STREMIO_MEDIA_REF: 95781597c8e3c30d6232e77bdadecc38ad35aa17
+  STREMIO_AAR_CACHE_VERSION: v2
+
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
-    env:
-      HAS_RELEASE_KEYSTORE: ${{ secrets.KEYSTORE_RAW != '' }}
-      STREMIO_MEDIA_REF: 95781597c8e3c30d6232e77bdadecc38ad35aa17
-      STREMIO_AAR_CACHE_VERSION: v2
     steps:
       - name: Checkout illumera
         uses: actions/checkout@v4
@@ -44,20 +29,21 @@ jobs:
           path: illumera
           fetch-depth: 0
 
-      - name: Require Play publishing credentials and release key
+      - name: Validate release credentials
         env:
+          KEYSTORE_RAW: ${{ secrets.KEYSTORE_RAW }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
-          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "Missing required repository secret: PLAY_SERVICE_ACCOUNT_JSON" >&2
-            exit 1
-          fi
-          if [ "${HAS_RELEASE_KEYSTORE}" != "true" ]; then
-            echo "A real release keystore is required for Google Play publishing." >&2
-            echo "KEYSTORE_RAW and the release signing secrets must be configured." >&2
-            exit 1
-          fi
+          for name in KEYSTORE_RAW KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD PLAY_SERVICE_ACCOUNT_JSON; do
+            if [ -z "${!name}" ]; then
+              echo "Missing required repository secret: $name" >&2
+              exit 1
+            fi
+          done
 
       - name: Restore Stremio playback AAR cache
         id: stremio-cache
@@ -101,17 +87,9 @@ jobs:
             lib-decoder-ffmpeg-release.aar \
             lib-decoder-iamf-release.aar \
             lib-decoder-mpegh-release.aar; do
-            if [ ! -s "../stremio-aars/$aar" ]; then
-              echo "Missing Stremio playback artifact: $aar" >&2
-              exit 1
-            fi
+            test -s "../stremio-aars/$aar"
             cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
           done
-          sha256sum playbackcore/libs/lib-*-release.aar
-
-      - name: Grant execute permission for gradlew
-        working-directory: illumera
-        run: chmod +x gradlew
 
       - name: Resolve version
         id: version
@@ -123,17 +101,16 @@ jobs:
             BASE=$(grep -oP 'versionName\s*=.*?:\s*"\K[^"]+' app/build.gradle.kts | head -1)
           fi
           MAJOR_MINOR=$(echo "$BASE" | grep -oP '^\d+\.\d+')
-          NAME="${MAJOR_MINOR}.${{ github.run_number }}"
-          TAG="v${NAME}"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          test -n "$MAJOR_MINOR"
+          echo "name=${MAJOR_MINOR}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${MAJOR_MINOR}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Decode release keystore
         working-directory: illumera
         run: echo "${{ secrets.KEYSTORE_RAW }}" | base64 -d > release.keystore
 
-      - name: Build signed release APK and AAB
+      - name: Build signed APK and AAB
         working-directory: illumera
         env:
           RELEASE_STORE_FILE: release.keystore
@@ -145,54 +122,38 @@ jobs:
           ACRA_URL: ${{ secrets.ACRA_URL }}
           ACRA_TOKEN: ${{ secrets.ACRA_TOKEN }}
         run: |
+          chmod +x gradlew
           ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon \
             -PversionNameOverride="${{ steps.version.outputs.name }}" \
             -PversionCodeOverride="${{ steps.version.outputs.code }}"
 
-      - name: Locate and rename APK
-        id: apk
+      - name: Locate release artifacts
+        id: artifacts
         working-directory: illumera
         run: |
           set -euo pipefail
-          SRC=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -1)
-          if [ -z "$SRC" ]; then
-            echo "No APK produced under app/build/outputs/apk/release" >&2
-            exit 1
-          fi
-          DEST="illumera-${{ steps.version.outputs.name }}.apk"
-          cp "$SRC" "$DEST"
-          echo "path=illumera/$DEST" >> "$GITHUB_OUTPUT"
-          echo "name=$DEST" >> "$GITHUB_OUTPUT"
-
-      - name: Locate AAB
-        id: aab
-        working-directory: illumera
-        run: |
-          set -euo pipefail
-          SRC=$(find app/build/outputs/bundle/release -maxdepth 1 -name "*.aab" | head -1)
-          if [ -z "$SRC" ]; then
-            echo "No AAB produced under app/build/outputs/bundle/release" >&2
-            exit 1
-          fi
-          echo "path=$SRC" >> "$GITHUB_OUTPUT"
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -1)
+          AAB=$(find app/build/outputs/bundle/release -maxdepth 1 -name "*.aab" | head -1)
+          test -n "$APK" && test -n "$AAB"
+          APK_NAME="illumera-${{ steps.version.outputs.name }}.apk"
+          cp "$APK" "$APK_NAME"
+          echo "apk=illumera/$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "aab=illumera/$AAB" >> "$GITHUB_OUTPUT"
 
       - name: Compute APK SHA-256
         id: checksum
-        run: |
-          HASH=$(sha256sum "${{ steps.apk.outputs.path }}" | awk '{print $1}')
-          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+        run: echo "hash=$(sha256sum '${{ steps.artifacts.outputs.apk }}' | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Publish AAB to Google Play Internal testing
+      - name: Publish AAB to Internal testing
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.hereliesaz.illumera
-          releaseFiles: illumera/${{ steps.aab.outputs.path }}
+          releaseFiles: ${{ steps.artifacts.outputs.aab }}
           track: internal
           status: completed
 
-      - name: Add same version to Alpha as draft
-        working-directory: illumera
+      - name: Create Alpha draft
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           PACKAGE_NAME: com.hereliesaz.illumera
@@ -205,14 +166,13 @@ jobs:
           import json
           import os
           import requests
-          from google.oauth2 import service_account
           from google.auth.transport.requests import Request
+          from google.oauth2 import service_account
 
           package_name = os.environ["PACKAGE_NAME"]
           version_code = os.environ["VERSION_CODE"]
           version_name = os.environ["VERSION_NAME"]
           info = json.loads(os.environ["PLAY_SERVICE_ACCOUNT_JSON"])
-
           credentials = service_account.Credentials.from_service_account_info(
               info,
               scopes=["https://www.googleapis.com/auth/androidpublisher"],
@@ -227,19 +187,17 @@ jobs:
           response = requests.post(f"{base}/edits", headers=headers, json={})
           response.raise_for_status()
           edit_id = response.json()["id"]
-
           track_url = f"{base}/edits/{edit_id}/tracks/alpha"
+
           response = requests.get(track_url, headers=headers)
           if response.status_code == 404:
-              track = {"track": "alpha", "releases": []}
+              releases = []
           else:
               response.raise_for_status()
-              track = response.json()
+              releases = response.json().get("releases", [])
 
-          # Preserve non-draft Alpha releases, but replace any older Alpha draft
-          # with this build so there is always exactly one current draft.
           releases = [
-              release for release in track.get("releases", [])
+              release for release in releases
               if release.get("status") != "draft"
               and version_code not in [str(code) for code in release.get("versionCodes", [])]
           ]
@@ -255,17 +213,15 @@ jobs:
               json={"track": "alpha", "releases": releases},
           )
           response.raise_for_status()
-
           response = requests.post(f"{base}/edits/{edit_id}:commit", headers=headers, json={})
           response.raise_for_status()
-          print(f"Alpha draft created for versionCode {version_code}")
           PY
 
-      - name: Generate changelog since previous release
+      - name: Generate changelog
         id: changelog
         working-directory: illumera
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
           {
             echo "log<<EOF"
             if [ -n "$PREV_TAG" ]; then
@@ -273,11 +229,11 @@ jobs:
             else
               echo "- Initial release"
             fi
-            echo ""
+            echo
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Publish GitHub APK release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -286,7 +242,7 @@ jobs:
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
-          files: ${{ steps.apk.outputs.path }}
+          files: ${{ steps.artifacts.outputs.apk }}
           body: |
             ## Changes
             ${{ steps.changelog.outputs.log }}
