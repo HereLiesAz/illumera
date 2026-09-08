@@ -99,7 +99,7 @@ class ExoPlayerBackend(
      * The lambda receives (magnetUrl, fileIdx, fileName, onReady) where onReady should be
      * called with the localhost proxy URL once the torrent stream is ready.
      */
-    var onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit) -> Unit)? = null
+    var onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null
 
     override val backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER
 
@@ -125,6 +125,7 @@ class ExoPlayerBackend(
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
     private var audioSwitchRecoveryJob: Job? = null
+    private val resolvedTorrentUrls = mutableMapOf<String, String>()
     private var assHandler: AssHandler? = null
 
     private fun getOrCreateAssHandler(): AssHandler {
@@ -494,16 +495,15 @@ class ExoPlayerBackend(
                 )
             } else {
                 // A resolved torrent URL is a playable localhost URL while the source
-                // option may still contain its original magnet URI. Keep the logical
-                // source ID, but replace that option's URL with the playable URL so
-                // later seeks, retries and source-state operations do not fall back to
-                // the stale magnet URI.
+                // option must retain its logical magnet URI. Keep the resolved URL
+                // separately so switching away and back can re-open the torrent instead
+                // of trying to use a localhost URL whose backing torrent was dropped.
                 val firstSource = normalizedSources.firstOrNull()
                 if (firstSource != null) {
                     currentSourceId = firstSource.id
                     val resolvedSource = firstSource.copy(url = normalizedRequest.mediaUrl)
-                    _sourceOptions.value = normalizedSources.map { source ->
-                        if (source.id == firstSource.id) resolvedSource else source
+                    if (firstSource.url.startsWith("magnet:", ignoreCase = true)) {
+                        resolvedTorrentUrls[firstSource.id] = normalizedRequest.mediaUrl
                     }
                     prepareSource(
                         source = resolvedSource,
@@ -586,14 +586,25 @@ class ExoPlayerBackend(
             val handler = onMagnetSourceSelected
             if (handler != null) {
                 _uiState.update { it.copy(isBuffering = true) }
-                handler(source.url, source.fileIdx, source.fileName) { localUrl ->
-                    if (released) return@handler
-                    val resolvedSource = source.copy(url = localUrl)
-                    _sourceOptions.value = _sourceOptions.value.map { option ->
-                        if (option.id == sourceId) resolvedSource else option
+                handler(
+                    source.url,
+                    source.fileIdx,
+                    source.fileName,
+                    { localUrl ->
+                        if (released) return@handler
+                        resolvedTorrentUrls[sourceId] = localUrl
+                        switchToSource(sourceId, source.copy(url = localUrl))
+                    },
+                    { message ->
+                        if (released) return@handler
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = message.ifBlank { "Unable to open torrent source" },
+                                isBuffering = false
+                            )
+                        }
                     }
-                    switchToSource(sourceId, resolvedSource)
-                }
+                )
                 return
             }
         }
@@ -1296,8 +1307,10 @@ class ExoPlayerBackend(
             return false
         }
 
-        val source = _sourceOptions.value.firstOrNull { option -> option.id == sourceId } ?: return false
-        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val logicalSource = _sourceOptions.value.firstOrNull { option -> option.id == sourceId } ?: return false
+        val source = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
         val shouldAutoPlay = player.playWhenReady
 
         ioAutoRetryCountForCurrentSource += 1
@@ -1327,23 +1340,54 @@ class ExoPlayerBackend(
         if (released) return
         val player = exoPlayer ?: return
         val sourceId = currentSourceId ?: return
-        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+        val logicalSource = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
 
+        loadToken++
         ioAutoRetryCountForCurrentSource = 0
         hasRetriedCurrentSourceAfter416 = false
 
-        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: player.currentPosition.coerceAtLeast(0L)
         val shouldAutoPlay = player.playWhenReady
 
         _uiState.update {
-            it.copy(
-                errorMessage = null,
-                isBuffering = true
-            )
+            it.copy(errorMessage = null, isBuffering = true)
         }
 
+        if (logicalSource.url.startsWith("magnet:", ignoreCase = true)) {
+            val handler = onMagnetSourceSelected
+            if (handler != null) {
+                handler(
+                    logicalSource.url,
+                    logicalSource.fileIdx,
+                    logicalSource.fileName,
+                    { localUrl ->
+                        if (released) return@handler
+                        resolvedTorrentUrls[sourceId] = localUrl
+                        prepareSource(
+                            source = logicalSource.copy(url = localUrl),
+                            startPositionMs = resumePosition,
+                            autoPlay = shouldAutoPlay,
+                            resetSourceRetryBudget = true
+                        )
+                    },
+                    { message ->
+                        if (released) return@handler
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = message.ifBlank { "Unable to reopen torrent source" },
+                                isBuffering = false
+                            )
+                        }
+                    }
+                )
+                return
+            }
+        }
+
+        val preparedSource = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
         prepareSource(
-            source = source,
+            source = preparedSource,
             startPositionMs = resumePosition,
             autoPlay = shouldAutoPlay,
             resetSourceRetryBudget = true
