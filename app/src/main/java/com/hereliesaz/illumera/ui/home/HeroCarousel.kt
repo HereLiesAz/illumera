@@ -228,7 +228,7 @@ fun HeroCarousel(
                 } else false
             }
             .focusable(interactionSource = interactionSource)
-            .touchClick { onItemClick(items[safeCurrentIndex]) }
+            .touchClick(onClick = { onItemClick(items[safeCurrentIndex]) })
             .pointerInput(items.size) {
                 var totalDrag = 0f
                 detectHorizontalDragGestures(
