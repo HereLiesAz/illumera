@@ -38,21 +38,19 @@ back before spending time on a stripped flavor.
 **Yes.**
 
 ### Is all of the user data collected by your app encrypted in transit?
-**Yes** — every network call in the app goes over HTTPS (Trakt, Stremio,
-TMDB, debrid provider APIs, the ACRA crash-report endpoint). User-added
-addon URLs are the one exception outside the app's control: an addon author
-could point their manifest at a plain-`http://` endpoint, in which case that
-specific addon's traffic wouldn't be encrypted. **[confirm]** whether Play
-wants this caveat noted or a blanket "yes" — if the form is strictly
-per-app-code rather than per-user-configuration, "yes" is defensible since
-the app itself never initiates unencrypted requests to any of its own
-integrations.
+**[confirm against the current Play form before submitting.]** Internet-facing
+account/provider integrations (Trakt, Stremio, TMDB, debrid APIs and crash
+reporting) use HTTPS, but the app intentionally also uses cleartext HTTP for
+its loopback TorrServer (`http://127.0.0.1:8090`) and local-LAN pairing flows.
+User-configured addon endpoints may also be plain `http://`. Do **not** claim
+that every network call is HTTPS; if Play's question requires every supported
+transport path to be encrypted, answer **No**.
 
 ### Does your app provide a way for users to request that their data be deleted?
 **Yes, in-app.** Settings → Integrations has an explicit "Disconnect" action
 for each connected service (Stremio, Trakt, each debrid provider) that wipes
-the locally-stored credential immediately — no waiting period, no account
-needed to make the request. Note the scope: this deletes what *illumera*
+the locally-stored credential immediately for the active profile — no waiting
+period, no account needed to make the request. Note the scope: this deletes what *illumera*
 holds (the token/API key on-device). Deleting data the third-party service
 itself retains (e.g. a user's Trakt watch history on trakt.tv) is that
 service's own responsibility, governed by their account-deletion flow, not
@@ -75,7 +73,7 @@ camera/microphone/location/contacts permission and no such API usage
 anywhere in the codebase.
 
 ### Security practices to check on the form
-- "Data is encrypted in transit" → **Yes** (see above).
+- "Data is encrypted in transit" → **[confirm]** using the current Play definition; do not select Yes if the supported cleartext localhost/LAN/user-configured HTTP paths are disqualifying (see above).
 - "You can request that data be deleted" → **Yes** (see above).
 - "Data is encrypted at rest" — the three credential stores
   (`trakt_auth`, `stremio_secure_prefs`, `debrid_auth`) all use

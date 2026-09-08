@@ -96,7 +96,9 @@ fun QueueSection(
     startPadding: Dp,
     onOpenItem: (QueueItem) -> Unit,
     queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager,
-    requestEntryFocus: Boolean = false
+    requestEntryFocus: Boolean = false,
+    focusedQueueKey: String? = null,
+    onQueueFocused: (String) -> Unit = {}
 ) {
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -220,6 +222,8 @@ fun QueueSection(
                 items = state.manualItems,
                 startPadding = startPadding,
                 onOpenItem = onOpenItem,
+                focusedKey = focusedQueueKey,
+                onFocused = onQueueFocused,
                 actions = { item, index ->
                     IconButton(
                         onClick = { queueManager.move(item.stableKey, -1) },
@@ -246,6 +250,8 @@ fun QueueSection(
                 items = state.suggestions,
                 startPadding = startPadding,
                 onOpenItem = onOpenItem,
+                focusedKey = focusedQueueKey,
+                onFocused = onQueueFocused,
                 onMoveSuggestion = { item, targetIndex ->
                     queueManager.moveSuggestion(item.stableKey, targetIndex)
                 },
@@ -344,6 +350,8 @@ private fun QueueCardRow(
     items: List<QueueItem>,
     startPadding: Dp,
     onOpenItem: (QueueItem) -> Unit,
+    focusedKey: String? = null,
+    onFocused: (String) -> Unit = {},
     onMoveSuggestion: ((QueueItem, Int) -> Unit)? = null,
     onRemoveSuggestion: ((QueueItem) -> Unit)? = null,
     actions: @Composable (QueueItem, Int) -> Unit
@@ -361,6 +369,13 @@ private fun QueueCardRow(
             contentPadding = PaddingValues(start = startPadding, end = 40.dp)
         ) {
             itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
+                val cardFocusRequester = remember(item.stableKey) { FocusRequester() }
+                LaunchedEffect(focusedKey, item.stableKey) {
+                    if (focusedKey == item.stableKey) {
+                        kotlinx.coroutines.delay(50)
+                        runCatching { cardFocusRequester.requestFocus() }
+                    }
+                }
                 Column(modifier = Modifier.width(140.dp)) {
                     var menuExpanded by remember(item.stableKey) { mutableStateOf(false) }
                     androidx.compose.foundation.layout.Box {
@@ -368,6 +383,8 @@ private fun QueueCardRow(
                             title = item.title,
                             posterUrl = item.poster,
                             onClick = { onOpenItem(item) },
+                            modifier = Modifier.focusRequester(cardFocusRequester),
+                            onFocused = { onFocused(item.stableKey) },
                             onLongClick = if (onMoveSuggestion != null && onRemoveSuggestion != null) {
                                 { menuExpanded = true }
                             } else null

@@ -25,7 +25,7 @@ import com.hereliesaz.illumera.data.torrent.TorrentDeviceTuner
 /**
  * Playback-facing controls for TorrServer transport tuning.
  * Automatic mode remains the default; manual values are bounded to limits the
- * transport layer also enforces, including the device-specific RAM ceiling.
+ * bundled transport layer recommends, including the device-specific RAM ceiling.
  */
 @Composable
 fun TorrentTuningSettings(onGoBack: () -> Unit) {
@@ -121,7 +121,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
             modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
         )
         Text(
-            text = "Higher values can improve discovery but increase CPU, memory, and router load.",
+            text = "The bundled TorrServer build recommends 20–25 connections; Illumera keeps manual values inside that range.",
             color = Color.White.copy(alpha = 0.5f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
@@ -134,8 +134,8 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
                 cacheMb = settings.cacheSizeMb
                 connections = settings.connectionsLimit
             },
-            valueRange = 40f..200f,
-            steps = 15
+            valueRange = TorrentDeviceTuner.MIN_CONNECTION_LIMIT.toFloat()..TorrentDeviceTuner.MAX_CONNECTION_LIMIT.toFloat(),
+            steps = (TorrentDeviceTuner.MAX_CONNECTION_LIMIT - TorrentDeviceTuner.MIN_CONNECTION_LIMIT - 1).coerceAtLeast(0)
         )
     }
 }

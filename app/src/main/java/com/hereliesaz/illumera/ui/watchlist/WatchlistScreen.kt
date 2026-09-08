@@ -210,7 +210,9 @@ fun WatchlistScreen(
                 QueueSection(
                     entryRequester = entryRequester,
                     startPadding = startPadding,
-                    requestEntryFocus = !hasWatchlistMedia,
+                    requestEntryFocus = !hasWatchlistMedia && viewModel.lastQueueFocusedKey == null,
+                    focusedQueueKey = viewModel.lastQueueFocusedKey,
+                    onQueueFocused = { key -> viewModel.lastQueueFocusedKey = key },
                     onOpenItem = { queueItem: QueueItem ->
                         onMovieClick(queueItem.toMetaItem())
                     }
