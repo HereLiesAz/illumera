@@ -1,6 +1,8 @@
 package com.hereliesaz.illumera.ui.settings
 
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -53,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.util.DeviceFormFactor
+import com.hereliesaz.illumera.ui.util.detectDeviceFormFactor
 import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -60,6 +64,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
+import com.hereliesaz.illumera.remote_input.DebridPairingServerManager
 import com.hereliesaz.illumera.remote_input.ServerInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -71,6 +76,7 @@ fun IntegrationsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val deviceFormFactor = remember(context) { detectDeviceFormFactor(context) }
     // Dialog state
     var showConnectDialog by remember { mutableStateOf(false) }
     var showManagementDialog by remember { mutableStateOf(false) }
@@ -212,7 +218,8 @@ fun IntegrationsScreen(
             onLogin = { email, password ->
                 viewModel.login(email, password)
             },
-            onLoginWithFacebook = { viewModel.startFacebookLogin() }
+            onLoginWithFacebook = { viewModel.startFacebookLogin() },
+            deviceFormFactor = deviceFormFactor
         )
     }
 
@@ -295,7 +302,8 @@ fun IntegrationsScreen(
             isConnecting = state.debridConnecting,
             onConnect = { provider, apiKey -> viewModel.connectDebrid(provider, apiKey) },
             onDisconnect = { viewModel.disconnectDebrid() },
-            onDismiss = { showDebridDialog = false }
+            onDismiss = { showDebridDialog = false },
+            deviceFormFactor = deviceFormFactor
         )
     }
 }
@@ -376,13 +384,15 @@ private fun ConnectStremioDialog(
     facebookLoginState: FacebookLoginState = FacebookLoginState.Idle,
     onDismiss: () -> Unit,
     onLogin: (email: String, password: String) -> Unit,
-    onLoginWithFacebook: () -> Unit = {}
+    onLoginWithFacebook: () -> Unit = {},
+    deviceFormFactor: DeviceFormFactor
 ) {
     if (facebookLoginState is FacebookLoginState.WaitingForUser || facebookLoginState is FacebookLoginState.Error) {
         FacebookLoginDialog(
             state = facebookLoginState,
             onDismiss = onDismiss,
-            onRetry = onLoginWithFacebook
+            onRetry = onLoginWithFacebook,
+            deviceFormFactor = deviceFormFactor
         )
         return
     }
@@ -395,19 +405,19 @@ private fun ConnectStremioDialog(
     val emailFocusRequester = remember { FocusRequester() }
     val serverManager = remember { com.hereliesaz.illumera.remote_input.IntegrationServerManager() }
 
-    // Start server for QR code login
-    LaunchedEffect(Unit) {
+    // TVs get a local QR handoff so credentials can be entered on a phone.
+    // Touch/keyboard devices keep the login entirely on-device.
+    LaunchedEffect(deviceFormFactor) {
         delay(100)
-        emailFocusRequester.requestFocus()
-        
-        val info = serverManager.startServer { receivedEmail, receivedPassword ->
-            // Login with credentials received from phone
-            onLogin(receivedEmail, receivedPassword)
-        }
-        
-        if (info != null) {
-            serverInfo = info
-            qrBitmap = generateQrCodeBitmap(info.url)
+        runCatching { emailFocusRequester.requestFocus() }
+        if (deviceFormFactor == DeviceFormFactor.TV) {
+            val info = serverManager.startServer { receivedEmail, receivedPassword ->
+                onLogin(receivedEmail, receivedPassword)
+            }
+            if (info != null) {
+                serverInfo = info
+                qrBitmap = generateQrCodeBitmap(info.url)
+            }
         }
     }
 
@@ -447,7 +457,7 @@ private fun ConnectStremioDialog(
                     // Row (wide screens) and a Column (narrow screens) below via a plain
                     // (no-receiver) lambda, where weight() wouldn't resolve.
                     Column(
-                        modifier = if (isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.65f)
+                        modifier = if (deviceFormFactor != DeviceFormFactor.TV || isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.65f)
                     ) {
                         // Header
                         Text(
@@ -521,29 +531,19 @@ private fun ConnectStremioDialog(
                         }
                     }
 
-                    // Divider — vertical between the two side-by-side panels, or a
-                    // full-width horizontal rule when stacked on a narrow screen.
-                    Box(
-                        modifier = if (isCompact) {
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp)
-                                .height(1.dp)
-                                .background(Color.White.copy(0.1f))
-                        } else {
-                            Modifier
-                                .width(1.dp)
-                                .height(160.dp)
-                                .background(Color.White.copy(0.1f))
-                        }
-                    )
-
-                    // RIGHT: QR Code (compact)
-                    Column(
-                        modifier = if (isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.35f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
+                    if (deviceFormFactor == DeviceFormFactor.TV) {
+                        Box(
+                            modifier = if (isCompact) {
+                                Modifier.fillMaxWidth().padding(vertical = 16.dp).height(1.dp).background(Color.White.copy(0.1f))
+                            } else {
+                                Modifier.width(1.dp).height(160.dp).background(Color.White.copy(0.1f))
+                            }
+                        )
+                        Column(
+                            modifier = if (isCompact) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.35f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
                         Text(
                             "Or Scan with Phone",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
@@ -590,9 +590,10 @@ private fun ConnectStremioDialog(
                             )
                         }
                     }
+                    }
                 }
 
-                if (isCompact) {
+                if (deviceFormFactor != DeviceFormFactor.TV || isCompact) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -633,11 +634,17 @@ private fun ConnectStremioDialog(
 private fun FacebookLoginDialog(
     state: FacebookLoginState,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    deviceFormFactor: DeviceFormFactor
 ) {
+    val context = LocalContext.current
     val url = (state as? FacebookLoginState.WaitingForUser)?.url
-    val qrBitmap by produceState<Bitmap?>(initialValue = null, url) {
-        value = url?.let { generateQrCodeBitmap(it) }
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) url?.let { generateQrCodeBitmap(it) } else null
+    }
+
+    LaunchedEffect(url, deviceFormFactor) {
+        if (deviceFormFactor != DeviceFormFactor.TV && !url.isNullOrBlank()) openExternalUrl(context, url)
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -659,34 +666,38 @@ private fun FacebookLoginDialog(
 
                 when (state) {
                     is FacebookLoginState.WaitingForUser -> {
-                        Text(
-                            "Scan this code with your phone, sign in with Facebook, then come back — this closes automatically.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        if (qrBitmap != null) {
-                            Box(
-                                modifier = Modifier
-                                    .size(180.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.White)
-                                    .padding(8.dp)
-                            ) {
-                                Image(
-                                    bitmap = qrBitmap!!.asImageBitmap(),
-                                    contentDescription = "Facebook login QR code",
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                        if (deviceFormFactor == DeviceFormFactor.TV) {
+                            Text(
+                                "Scan this code with your phone, sign in with Facebook, then come back — this closes automatically.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            if (qrBitmap != null) {
+                                Box(
+                                    modifier = Modifier.size(180.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                                ) {
+                                    Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "Facebook login QR code", modifier = Modifier.fillMaxSize())
+                                }
                             }
+                        } else {
+                            Text(
+                                "Finish signing in with Facebook in your browser, then return here. Illumera will detect the completed login automatically.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            IntegrationButton(
+                                text = "Open Browser",
+                                onClick = { url?.let { openExternalUrl(context, it) } },
+                                isPrimary = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                         Spacer(Modifier.height(16.dp))
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                         Spacer(Modifier.height(8.dp))
                         Text("Waiting for Facebook login…", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     }
@@ -1354,17 +1365,37 @@ private fun DebridDialog(
     isConnecting: Boolean,
     onConnect: (DebridProvider, String) -> Unit,
     onDisconnect: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    deviceFormFactor: DeviceFormFactor
 ) {
     var selectedProvider by remember { mutableStateOf(connectedProvider ?: DebridProvider.REAL_DEBRID) }
     var apiKey by remember { mutableStateOf("") }
+    var pairingServerInfo by remember { mutableStateOf<ServerInfo?>(null) }
+    var pairingQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
+    val context = LocalContext.current
+    val pairingServerManager = remember { DebridPairingServerManager() }
 
     LaunchedEffect(Unit) {
         delay(150)
         runCatching { focusRequester.requestFocus() }
     }
+
+    LaunchedEffect(deviceFormFactor, connectedProvider, selectedProvider) {
+        pairingServerManager.stopServer()
+        pairingServerInfo = null
+        pairingQrBitmap = null
+        if (deviceFormFactor == DeviceFormFactor.TV && connectedProvider == null) {
+            val info = pairingServerManager.startServer(selectedProvider) { receivedApiKey -> onConnect(selectedProvider, receivedApiKey) }
+            if (info != null) {
+                pairingServerInfo = info
+                pairingQrBitmap = generateQrCodeBitmap(info.url)
+            }
+        }
+    }
+
+    DisposableEffect(Unit) { onDispose { pairingServerManager.stopServer() } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1450,43 +1481,51 @@ private fun DebridDialog(
 
                         Spacer(Modifier.height(16.dp))
 
-                        Text(
-                            "API Key",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color.White.copy(0.8f)
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        IntegrationTextField(
-                            value = apiKey,
-                            onValueChange = { apiKey = it },
-                            placeholder = "Paste your ${selectedProvider.displayName} API key",
-                            isPassword = true,
-                            focusRequester = focusRequester,
-                            modifier = Modifier.fillMaxWidth(),
-                            onDone = {
-                                if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey)
+                        if (deviceFormFactor == DeviceFormFactor.TV) {
+                            Text("Scan with your phone", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text(
+                                "The phone page opens ${selectedProvider.displayName}, lets you copy the API key, and sends it directly back to this TV.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                            )
+                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                if (pairingQrBitmap != null && pairingServerInfo != null) {
+                                    Box(modifier = Modifier.size(180.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)) {
+                                        Image(bitmap = pairingQrBitmap!!.asImageBitmap(), contentDescription = "${selectedProvider.displayName} pairing QR code", modifier = Modifier.fillMaxSize())
+                                    }
+                                } else {
+                                    CircularProgressIndicator(modifier = Modifier.size(40.dp), color = accentColor, strokeWidth = 3.dp)
+                                }
                             }
-                        )
-
-                        Spacer(Modifier.height(24.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
-                        ) {
-                            IntegrationButton(
-                                text = if (isConnecting) "Connecting..." else "Connect",
-                                onClick = { onConnect(selectedProvider, apiKey) },
-                                enabled = apiKey.isNotBlank() && !isConnecting,
-                                isPrimary = true,
-                                modifier = Modifier.width(130.dp)
+                            pairingServerInfo?.let { info ->
+                                Text(info.url, style = MaterialTheme.typography.bodySmall, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                            }
+                            Spacer(Modifier.height(20.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Close", onClick = onDismiss, enabled = !isConnecting, modifier = Modifier.width(120.dp), focusRequester = focusRequester)
+                            }
+                        } else {
+                            Text("API Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Spacer(Modifier.height(8.dp))
+                            IntegrationTextField(
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                placeholder = "Paste your ${selectedProvider.displayName} API key",
+                                isPassword = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth(),
+                                onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
                             )
-                            IntegrationButton(
-                                text = "Close",
-                                onClick = onDismiss,
-                                modifier = Modifier.width(100.dp)
-                            )
+                            Spacer(Modifier.height(16.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                IntegrationButton(text = "Get API Key", onClick = { openExternalUrl(context, selectedProvider.apiKeyUrl) }, enabled = !isConnecting, modifier = Modifier.weight(1f))
+                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, isPrimary = true, modifier = Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
+                            }
                         }
                     }
                 }
@@ -1754,3 +1793,10 @@ private fun TraktAuthDialog(
     }
 }
 
+
+
+private fun openExternalUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}
