@@ -64,7 +64,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
-import com.hereliesaz.illumera.remote_input.DebridPairingServerManager
 import com.hereliesaz.illumera.remote_input.ServerInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1370,32 +1369,15 @@ private fun DebridDialog(
 ) {
     var selectedProvider by remember { mutableStateOf(connectedProvider ?: DebridProvider.REAL_DEBRID) }
     var apiKey by remember { mutableStateOf("") }
-    var pairingServerInfo by remember { mutableStateOf<ServerInfo?>(null) }
-    var pairingQrBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
-    val pairingServerManager = remember { DebridPairingServerManager() }
 
     LaunchedEffect(Unit) {
         delay(150)
         runCatching { focusRequester.requestFocus() }
     }
 
-    LaunchedEffect(deviceFormFactor, connectedProvider, selectedProvider) {
-        pairingServerManager.stopServer()
-        pairingServerInfo = null
-        pairingQrBitmap = null
-        if (deviceFormFactor == DeviceFormFactor.TV && connectedProvider == null) {
-            val info = pairingServerManager.startServer(selectedProvider) { receivedApiKey -> onConnect(selectedProvider, receivedApiKey) }
-            if (info != null) {
-                pairingServerInfo = info
-                pairingQrBitmap = generateQrCodeBitmap(info.url)
-            }
-        }
-    }
-
-    DisposableEffect(Unit) { onDispose { pairingServerManager.stopServer() } }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1482,28 +1464,41 @@ private fun DebridDialog(
                         Spacer(Modifier.height(16.dp))
 
                         if (deviceFormFactor == DeviceFormFactor.TV) {
-                            Text("Scan with your phone", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text("Get your API key on your phone", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
                             Text(
-                                "The phone page opens ${selectedProvider.displayName}, lets you copy the API key, and sends it directly back to this TV.",
+                                "Scan the QR code to open ${selectedProvider.displayName}'s HTTPS API-key page. For security, Illumera never sends the raw key over the local network; enter the key on the TV after retrieving it.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray,
                                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
                             )
+                            val providerQr by produceState<Bitmap?>(initialValue = null, selectedProvider) {
+                                value = generateQrCodeBitmap(selectedProvider.apiKeyUrl, 260)
+                            }
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                if (pairingQrBitmap != null && pairingServerInfo != null) {
+                                if (providerQr != null) {
                                     Box(modifier = Modifier.size(180.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)) {
-                                        Image(bitmap = pairingQrBitmap!!.asImageBitmap(), contentDescription = "${selectedProvider.displayName} pairing QR code", modifier = Modifier.fillMaxSize())
+                                        Image(bitmap = providerQr!!.asImageBitmap(), contentDescription = "${selectedProvider.displayName} API key QR code", modifier = Modifier.fillMaxSize())
                                     }
                                 } else {
                                     CircularProgressIndicator(modifier = Modifier.size(40.dp), color = accentColor, strokeWidth = 3.dp)
                                 }
                             }
-                            pairingServerInfo?.let { info ->
-                                Text(info.url, style = MaterialTheme.typography.bodySmall, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-                            }
-                            Spacer(Modifier.height(20.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Close", onClick = onDismiss, enabled = !isConnecting, modifier = Modifier.width(120.dp), focusRequester = focusRequester)
+                            Spacer(Modifier.height(16.dp))
+                            Text("API Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Spacer(Modifier.height(8.dp))
+                            IntegrationTextField(
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                placeholder = "Enter your ${selectedProvider.displayName} API key",
+                                isPassword = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth(),
+                                onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, isPrimary = true, modifier = Modifier.width(130.dp))
+                                IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
                             }
                         } else {
                             Text("API Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
