@@ -27,7 +27,8 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
         SeriesNextUpEntity::class,
         RecentSearchEntity::class
     ],
-    version = 47
+    version = 47,
+    exportSchema = false
 )
 abstract class LumeraDatabase : RoomDatabase() {
     abstract fun addonDao(): AddonDao

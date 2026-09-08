@@ -360,7 +360,7 @@ fun SidebarItem(
             onClick = { onNavigate(screen) },
             modifier = Modifier
                 .fillMaxSize()
-                .touchClick { onNavigate(screen) }
+                .touchClick(onClick = { onNavigate(screen) })
                 .onFocusChanged { isFocused = it.isFocused },
             shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.0f),
