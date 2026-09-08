@@ -2376,7 +2376,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onEpisodeSwitchDismissed = { playerState.pendingEpisodeSwitch = null; playerState.isEpisodeSwitchLoading = false },
-                                onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady ->
+                                onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady, onError ->
                                     torrentProgress = TorrentProgress("Connecting to peers...")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null
@@ -2385,6 +2385,7 @@ class MainActivity : ComponentActivity() {
                                     TorrentService.onStreamError = { error ->
                                         torrentProgress = null
                                         if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Source switch error: $error")
+                                        onError(error)
                                     }
                                     TorrentService.onStreamProgress = { progress ->
                                         torrentProgress = progress

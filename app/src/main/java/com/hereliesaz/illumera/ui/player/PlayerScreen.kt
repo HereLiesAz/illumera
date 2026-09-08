@@ -70,7 +70,7 @@ fun PlayerScreen(
     episodeSwitchTitle: String? = null,
     onEpisodeSwitchSourceSelected: ((sourceUrl: String) -> Unit)? = null,
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
-    onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit) -> Unit)? = null,
+    onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
     autoFallbackEnabled: Boolean = false,
     onSuspectSource: ((PlaybackDurationStatus) -> Unit)? = null,

@@ -43,39 +43,38 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
             JsonParser.parseString(responseBody).asJsonObject
         }
 
-    /** Apply bounded streaming-oriented settings to the local TorrServer instance. */
+    /**
+     * Apply bounded streaming-oriented settings without resetting unrelated TorrServer values.
+     * TorrServer expects a complete BTSets object for the set action, so read the current object
+     * first and overlay only the values Illumera owns.
+     */
     suspend fun applyStreamingSettings(cacheSizeMb: Int, connectionsLimit: Int): Boolean =
         withContext(Dispatchers.IO) {
             val boundedCacheMb = cacheSizeMb.coerceIn(64, 512)
-            val boundedConnections = connectionsLimit.coerceIn(40, 200)
+            val boundedConnections = connectionsLimit.coerceIn(
+                TorrentDeviceTuner.MIN_CONNECTION_LIMIT,
+                TorrentDeviceTuner.MAX_CONNECTION_LIMIT
+            )
             val cacheBytes = boundedCacheMb.toLong() * 1024L * 1024L
             val preloadPercent = ((15 * 100) / boundedCacheMb).coerceIn(3, 15)
 
-            val body = JsonObject().apply {
-                addProperty("action", "set")
-                add("sets", JsonObject().apply {
-                    addProperty("CacheSize", cacheBytes)
-                    addProperty("ReaderReadAHead", 95)
-                    addProperty("PreloadCache", preloadPercent)
-                    addProperty("ForceAllPeers", false)
-                    addProperty("ConnectionsLimit", boundedConnections)
-                    addProperty("DhtConnectionLimit", boundedConnections)
-                    addProperty("PeersListenPort", 0)
-                    addProperty("EnableIPv6", false)
-                    addProperty("DisableUPNP", false)
-                    addProperty("DisableUTP", false)
-                    addProperty("LimitSpeed", 0)
-                    addProperty("TorrentDisconnectTimeout", 3600)
-                    addProperty("RetrackersMode", 1)
-                })
-            }
-
-            val request = Request.Builder()
-                .url("$baseUrl/settings")
-                .post(body.toString().toRequestBody(jsonType))
-                .build()
-
             try {
+                val currentSettings = getCurrentSettings() ?: return@withContext false
+                currentSettings.addProperty("CacheSize", cacheBytes)
+                currentSettings.addProperty("ReaderReadAHead", 95)
+                currentSettings.addProperty("PreloadCache", preloadPercent)
+                currentSettings.addProperty("ConnectionsLimit", boundedConnections)
+                currentSettings.addProperty("DhtConnectionLimit", boundedConnections)
+
+                val body = JsonObject().apply {
+                    addProperty("action", "set")
+                    add("sets", currentSettings)
+                }
+                val request = Request.Builder()
+                    .url("$baseUrl/settings")
+                    .post(body.toString().toRequestBody(jsonType))
+                    .build()
+
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful && BuildConfig.DEBUG) {
                         Log.w("LumeraTorrent", "TorrServer settings HTTP ${response.code}")
@@ -87,6 +86,26 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 false
             }
         }
+
+    private fun getCurrentSettings(): JsonObject? {
+        val body = JsonObject().apply { addProperty("action", "get") }
+        val request = Request.Builder()
+            .url("$baseUrl/settings")
+            .post(body.toString().toRequestBody(jsonType))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "TorrServer settings get HTTP ${response.code}")
+                return null
+            }
+            val raw = response.body?.string().orEmpty()
+            if (raw.isBlank()) return null
+            val parsed = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return null
+            val nested = parsed.getAsJsonObject("sets")
+            return (nested ?: parsed).deepCopy()
+        }
+    }
 
     suspend fun getTorrentStats(magnetLink: String): TorrentStats =
         withContext(Dispatchers.IO) {
@@ -130,7 +149,6 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
 
     suspend fun getFileList(magnetLink: String): List<TorrServerFile> =
         withContext(Dispatchers.IO) {
-            // Use info hash for lookup — TorrServer matches by hash, not full magnet
             val hash = extractHash(magnetLink)
             val body = JsonObject().apply {
                 addProperty("action", "get")
@@ -188,7 +206,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
 }
 
 data class TorrentStats(
-    val stat: Int = 0,          // 0=Added, 1=GettingInfo, 2=Preload, 3=Working, 4=Closed
+    val stat: Int = 0,
     val activePeers: Int = 0,
     val totalPeers: Int = 0,
     val connectedSeeders: Int = 0,
