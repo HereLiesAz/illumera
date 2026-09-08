@@ -4,14 +4,18 @@ package com.hereliesaz.illumera.data.model.debrid
  * Every debrid service illumera knows how to talk to. Each has its own REST API
  * and auth scheme — see the matching class under data/debrid/providers/.
  */
-enum class DebridProvider(val id: String, val displayName: String) {
-    REAL_DEBRID("real_debrid", "Real-Debrid"),
-    ALL_DEBRID("all_debrid", "AllDebrid"),
-    PREMIUMIZE("premiumize", "Premiumize"),
-    TORBOX("torbox", "TorBox"),
-    DEBRID_LINK("debrid_link", "Debrid-Link"),
-    OFFCLOUD("offcloud", "Offcloud"),
-    EASY_DEBRID("easy_debrid", "EasyDebrid");
+enum class DebridProvider(
+    val id: String,
+    val displayName: String,
+    val apiKeyUrl: String
+) {
+    REAL_DEBRID("real_debrid", "Real-Debrid", "https://real-debrid.com/apitoken"),
+    ALL_DEBRID("all_debrid", "AllDebrid", "https://alldebrid.com/apikeys/"),
+    PREMIUMIZE("premiumize", "Premiumize", "https://www.premiumize.me/account"),
+    TORBOX("torbox", "TorBox", "https://torbox.app/settings"),
+    DEBRID_LINK("debrid_link", "Debrid-Link", "https://debrid-link.com/webapp/apikey"),
+    OFFCLOUD("offcloud", "Offcloud", "https://offcloud.com/#/account"),
+    EASY_DEBRID("easy_debrid", "EasyDebrid", "https://easydebrid.com/");
 
     companion object {
         fun fromId(id: String?): DebridProvider? = entries.firstOrNull { it.id == id }
