@@ -268,21 +268,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
     fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuMoviesEnabled = enabled)) }
-        }
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuMoviesEnabled(profileId, enabled) }
     }
 
     fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuSeriesEnabled = enabled)) }
-        }
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuSeriesEnabled(profileId, enabled) }
     }
 
     fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(menuWatchlistEnabled = enabled)) }
-        }
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuWatchlistEnabled(profileId, enabled) }
     }
 
 }

@@ -74,6 +74,15 @@ interface AddonDao {
     @Update
     suspend fun updateProfile(profile: ProfileEntity)
 
+    @Query("UPDATE profiles SET menuMoviesEnabled = :enabled WHERE id = :profileId")
+    suspend fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean)
+
+    @Query("UPDATE profiles SET menuSeriesEnabled = :enabled WHERE id = :profileId")
+    suspend fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean)
+
+    @Query("UPDATE profiles SET menuWatchlistEnabled = :enabled WHERE id = :profileId")
+    suspend fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean)
+
     @Query("DELETE FROM profiles WHERE id = :id")
     suspend fun deleteProfile(id: Int)
 

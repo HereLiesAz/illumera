@@ -78,6 +78,7 @@ class DetailsViewModel @Inject constructor(
         val isLoading: Boolean = true,
         val isLoadingStreams: Boolean = false,
         val resumePlaybackId: String? = null,
+        val isResumeStateReady: Boolean = false,
         val isMovieWatched: Boolean = false,
         val autoPlayStream: Stream? = null,
         val addonSubtitles: List<AddonSubtitle> = emptyList(),
@@ -217,6 +218,7 @@ class DetailsViewModel @Inject constructor(
                 // Preserve interactions and enrichment that arrived during the lookups.
                 _state.value = _state.value.copy(
                     resumePlaybackId = resumePlaybackId,
+                    isResumeStateReady = true,
                     isMovieWatched = isMovieWatched,
                     episodeProgressMap = episodeProgressMap
                 )
@@ -270,6 +272,7 @@ class DetailsViewModel @Inject constructor(
             return
         }
 
+        _state.value = _state.value.copy(isResumeStateReady = false)
         viewModelScope.launch {
             val resumePlaybackId = if (meta.type == "series") {
                 val latest = dao.getLatestSeriesEpisodeHistory("${meta.id}:%")
@@ -297,6 +300,7 @@ class DetailsViewModel @Inject constructor(
                 } else emptyMap()
                 _state.value = _state.value.copy(
                     resumePlaybackId = resumePlaybackId,
+                    isResumeStateReady = true,
                     isMovieWatched = isMovieWatched,
                     autoPlayStream = null,
                     episodeProgressMap = episodeProgressMap

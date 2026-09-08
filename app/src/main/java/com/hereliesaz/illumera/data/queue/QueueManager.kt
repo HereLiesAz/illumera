@@ -31,12 +31,13 @@ data class QueueItem(
     val stableKey: String
         get() = listOf(type, id, season ?: "", episode ?: "", wholeShow).joinToString(":")
 
-    fun toMetaItem(): MetaItem = MetaItem(
-        id = seriesId ?: id,
-        type = if (type == "episode") "series" else type,
-        name = title,
-        poster = poster
-    )
+    fun toMetaItem(): MetaItem {
+        val canonicalId = seriesId ?: if (type == "episode" || type == "series") {
+            val parts = id.split(':')
+            if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) parts.dropLast(2).joinToString(":") else id
+        } else id
+        return MetaItem(id = canonicalId, type = if (type == "episode" || type == "series") "series" else type, name = title, poster = poster)
+    }
 }
 
 enum class QueueOrigin { MANUAL, SUGGESTED }
@@ -324,7 +325,6 @@ class QueueManager @Inject constructor(
                 .take(SUGGESTION_COUNT)
 
             commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
-            resolveMissingArtwork()
         } catch (_: Exception) {
             _state.value = _state.value.copy(isRefreshingSuggestions = false)
         }

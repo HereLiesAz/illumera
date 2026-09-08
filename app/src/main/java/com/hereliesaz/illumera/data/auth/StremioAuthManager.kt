@@ -303,14 +303,12 @@ class StremioAuthManager @Inject constructor(
             ?: return@withContext Result.failure(StremioAuthError.InvalidCredentials("Not logged in"))
 
         try {
-            val descriptors = transportUrls.mapNotNull { url ->
-                runCatching {
-                    StremioAddonDescriptor(
+            val descriptors = transportUrls.map { url ->
+                StremioAddonDescriptor(
                         manifest = stremioAuthService.fetchRawManifest(url),
                         transportUrl = if (url.endsWith("manifest.json")) url else "${url.trimEnd('/')}/manifest.json",
                         flags = StremioAddonFlags()
                     )
-                }.getOrNull()
             }
             stremioAuthService.setAddonCollection(authKey, descriptors)
             Result.success(Unit)

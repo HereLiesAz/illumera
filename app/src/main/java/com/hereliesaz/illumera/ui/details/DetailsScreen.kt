@@ -548,7 +548,9 @@ fun DetailsScreen(
                 val isInWatchlist by viewModel.isInWatchlist.collectAsState()
 
                 if (type == "series") {
-                    val playLabel = if (resumePlaybackId != null) {
+                    val playLabel = if (!state.isResumeStateReady) {
+                        "Loading…"
+                    } else if (resumePlaybackId != null) {
                         val resumeSeason = resumeEpisode?.season?.takeIf { it > 0 } ?: parsedResumeSeasonEpisode?.first
                         val resumeNumber = resumeEpisode?.episode?.takeIf { it > 0 } ?: parsedResumeSeasonEpisode?.second
                         if (resumeSeason != null && resumeNumber != null) {
@@ -583,6 +585,7 @@ fun DetailsScreen(
                             icon = Icons.Default.PlayArrow,
                             modifier = Modifier.focusRequester(firstButtonFocusRequester),
                             onClick = {
+                                if (!state.isResumeStateReady) return@ExpandableIconButton
                                 val ep = resumeEpisode ?: firstEpisode ?: return@ExpandableIconButton
                                 val trackId = resumePlaybackId ?: episodePlaybackId(streamId, ep)
                                 val epStreamId = episodeStreamId(streamId, ep)
@@ -703,11 +706,12 @@ fun DetailsScreen(
                             }
                     ) {
                         ExpandableIconButton(
-                            label = if (resumePlaybackId != null) "Resume" else "Play Movie",
+                            label = if (!state.isResumeStateReady) "Loading…" else if (resumePlaybackId != null) "Resume" else "Play Movie",
                             icon = Icons.Default.PlayArrow,
                             modifier = Modifier.focusRequester(firstButtonFocusRequester),
                             onClick = {
-                                pendingPlaybackId = streamId
+                                if (!state.isResumeStateReady) return@ExpandableIconButton
+                            pendingPlaybackId = streamId
                                 pendingPlaybackType = type
                                 pendingPlaybackTitle = currentMovie.name
                                 viewModel.loadStreams(type, streamId, currentMovie.name, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
