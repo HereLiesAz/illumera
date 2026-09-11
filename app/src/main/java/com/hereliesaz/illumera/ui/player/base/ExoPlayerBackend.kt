@@ -1415,8 +1415,8 @@ class ExoPlayerBackend(
         val sources = _sourceOptions.value
         if (sources.size <= 1) return false
         val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
-        val nextSource = if (currentIdx >= 0) sources.drop(currentIdx + 1).firstOrNull() else null
-            ?: return false
+        if (currentIdx < 0) return false
+        val nextSource = sources.drop(currentIdx + 1).firstOrNull() ?: return false
         selectSource(nextSource.id)
         return true
     }
