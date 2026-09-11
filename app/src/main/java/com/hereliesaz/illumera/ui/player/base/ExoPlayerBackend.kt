@@ -304,6 +304,10 @@ class ExoPlayerBackend(
                 _uiState.update { it.copy(isEnded = true, isBuffering = false) }
                 return
             }
+            // Container-level parsing errors mid-stream usually mean this source is corrupt
+            // or incompatible. If other sources are loaded, silently switch to the next one
+            // rather than showing an error overlay.
+            if (tryNextSourceOnParsingError(error)) return
             _uiState.update {
                 it.copy(
                     errorMessage = error.errorCodeName.ifBlank { error.message ?: "Playback error" },
@@ -1403,6 +1407,18 @@ class ExoPlayerBackend(
         if (duration <= 0) return false
         val ratio = position.toDouble() / duration.toDouble()
         return ratio >= 0.80
+    }
+
+    private fun tryNextSourceOnParsingError(error: PlaybackException): Boolean {
+        val codeName = error.errorCodeName.uppercase(Locale.US)
+        if (!codeName.contains("PARSING")) return false
+        val sources = _sourceOptions.value
+        if (sources.size <= 1) return false
+        val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
+        val nextSource = if (currentIdx >= 0) sources.drop(currentIdx + 1).firstOrNull() else null
+            ?: return false
+        selectSource(nextSource.id)
+        return true
     }
 
     private fun isAudioTrackError(error: PlaybackException): Boolean {

@@ -1509,46 +1509,84 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             val gridVm = hiltViewModel<HomeViewModel>()
-                            GridViewScreen(
-                                title = gridViewTitle,
-                                items = gridViewItems,
-                                lastFocusedIndex = gridRestoreState.focusedIndex,
-                                onFocusChange = { gridRestoreState.focusedIndex = it },
-                                onMovieClick = { movie ->
-                                    selectedMovieId = movie.id
-                                    selectedMovieType = movie.type
-                                    selectedMovieTitle = movie.name
-                                    selectedMoviePoster = movie.poster ?: ""
-                                    selectedMovieBackground = movie.background ?: ""
-                                    selectedMovieLogo = movie.logo ?: ""
-                                    selectedAddonBaseUrl = movie.addonBaseUrl
-                                    detailsResumePlaybackHint = null
-                                    selectedPlaybackId = movie.id
-                                    selectedPlaybackType = movie.type
-                                    selectedPlaybackTitle = movie.name
-                                    selectedPlaybackPoster = movie.poster ?: ""
-                                    previousView = "grid"
-                                    activeView = "details"
-                                },
-                                onBack = { 
-                                    gridRestoreState.focusedIndex = null  // Reset for next time
-                                    gridRestoreState.scrollIndex = 0  // Reset scroll position
-                                    gridRestoreState.scrollOffset = 0
+                            val gridNavPosition = currentProfile?.navPosition ?: "left"
+                            val handleGridNavigate: (NavDestination) -> Unit = { destination ->
+                                if (destination == NavDestination.Exit) {
+                                    finishAffinity()
+                                } else {
+                                    currentNav = destination
                                     activeView = "menu"
-                                },
-                                onLoadMore = {
-                                    if (gridViewConfigId.isNotEmpty()) {
-                                        gridVm.loadMoreItems(gridViewConfigId)
-                                    }
-                                },
-                                initialScrollIndex = gridRestoreState.scrollIndex,
-                                initialScrollOffset = gridRestoreState.scrollOffset,
-                                onScrollPositionChange = { index, offset ->
-                                    gridRestoreState.scrollIndex = index
-                                    gridRestoreState.scrollOffset = offset
-                                },
-                                watchedIds = gridVm.state.collectAsState().value.watchedIds
-                            )
+                                }
+                            }
+                            val gridContent: @Composable () -> Unit = {
+                                GridViewScreen(
+                                    title = gridViewTitle,
+                                    items = gridViewItems,
+                                    lastFocusedIndex = gridRestoreState.focusedIndex,
+                                    onFocusChange = { gridRestoreState.focusedIndex = it },
+                                    onMovieClick = { movie ->
+                                        selectedMovieId = movie.id
+                                        selectedMovieType = movie.type
+                                        selectedMovieTitle = movie.name
+                                        selectedMoviePoster = movie.poster ?: ""
+                                        selectedMovieBackground = movie.background ?: ""
+                                        selectedMovieLogo = movie.logo ?: ""
+                                        selectedAddonBaseUrl = movie.addonBaseUrl
+                                        detailsResumePlaybackHint = null
+                                        selectedPlaybackId = movie.id
+                                        selectedPlaybackType = movie.type
+                                        selectedPlaybackTitle = movie.name
+                                        selectedPlaybackPoster = movie.poster ?: ""
+                                        previousView = "grid"
+                                        activeView = "details"
+                                    },
+                                    onBack = {
+                                        gridRestoreState.focusedIndex = null
+                                        gridRestoreState.scrollIndex = 0
+                                        gridRestoreState.scrollOffset = 0
+                                        activeView = "menu"
+                                    },
+                                    onLoadMore = {
+                                        if (gridViewConfigId.isNotEmpty()) {
+                                            gridVm.loadMoreItems(gridViewConfigId)
+                                        }
+                                    },
+                                    initialScrollIndex = gridRestoreState.scrollIndex,
+                                    initialScrollOffset = gridRestoreState.scrollOffset,
+                                    onScrollPositionChange = { index, offset ->
+                                        gridRestoreState.scrollIndex = index
+                                        gridRestoreState.scrollOffset = offset
+                                    },
+                                    watchedIds = gridVm.state.collectAsState().value.watchedIds
+                                )
+                            }
+                            if (gridNavPosition == "top") {
+                                TopNavigationBar(
+                                    currentDestination = currentNav,
+                                    currentProfile = currentProfile,
+                                    topNavRequesters = drawerRequesters,
+                                    onNavigate = handleGridNavigate,
+                                    onEnterContent = {},
+                                    onLogout = {
+                                        sessionProfileId = null
+                                        sessionRestoreAttemptedProfileId = null
+                                        activeView = "menu"
+                                        themeManager.resetTheme()
+                                        mainViewModel.logout()
+                                    },
+                                    onExit = { finishAffinity() },
+                                    content = gridContent
+                                )
+                            } else {
+                                NavDrawer(
+                                    currentDestination = currentNav,
+                                    currentProfile = currentProfile,
+                                    drawerRequesters = drawerRequesters,
+                                    onNavigate = handleGridNavigate,
+                                    onClose = {},
+                                    content = gridContent
+                                )
+                            }
                             // Sync gridViewItems when ViewModel state updates (after loadMoreItems)
                             val vmState by gridVm.state.collectAsState()
                             LaunchedEffect(vmState.rows) {
@@ -1863,7 +1901,10 @@ class MainActivity : ComponentActivity() {
                                     candidate === current || resolvePlayableSourceUrl(candidate) == selectedVideoUrl ||
                                         (current != null && candidate.infoHash != null && candidate.infoHash == current.infoHash && candidate.addonTransportUrl == current.addonTransportUrl)
                                 }
-                                val nextStream = candidates.drop((currentIndex + 1).coerceAtLeast(0))
+                                // If currentIndex is -1 (stream not found), drop(0) would wrap back
+                                // to the first candidate and loop forever. Guard: no stream found = no fallback.
+                                val nextStream = if (currentIndex < 0) null
+                                else candidates.drop(currentIndex + 1)
                                     .firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() }
                                 if (nextStream == null) {
                                     playerState.pendingSourceSelection = null
