@@ -902,6 +902,7 @@ fun BasePlayerScaffold(
                 playbackController.selectSource(sourceId)
                 // A real attempt to play the new source, not a dismissal — don't exit to Details.
                 sourcesPanelOpenedFromError = false
+                sourcesPanelOpenedAsBackStop = false
                 closePanel()
                 showSubtitleOffsetBar = false
                 showSubtitleSizeBar = false
