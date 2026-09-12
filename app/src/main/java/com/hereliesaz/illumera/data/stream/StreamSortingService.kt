@@ -32,6 +32,7 @@ class StreamSortingService @Inject constructor() {
         val skipSeedless = profile?.sourceSkipSeedless ?: true
 
         return streams
+            .filter { stream -> !stream.url.isNullOrBlank() || !stream.infoHash.isNullOrBlank() }
             .map { stream -> stream to StreamParser.parse(stream) }
             .filter { (_, info) -> info.quality in enabledQualities }
             .filter { (stream, _) ->
