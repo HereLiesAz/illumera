@@ -25,11 +25,12 @@ jobs:
         run: |
           python3 .ci/prepatch-round2.py
           python3 .ci/patch-round2.py
+          python3 .ci/postpatch-round2.py
       - name: Compile app
         run: ./gradlew :app:compileDebugKotlin --no-daemon
       - name: Commit app changes
         run: |
-          rm -f .ci/prepatch-round2.py .ci/patch-round2.py .github/workflows/patch-round2.yml
+          rm -f .ci/prepatch-round2.py .ci/postpatch-round2.py .ci/patch-round2.py .github/workflows/patch-round2.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
