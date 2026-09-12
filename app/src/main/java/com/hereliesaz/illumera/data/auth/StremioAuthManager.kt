@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.remote.StremioAddonFlags
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,6 +138,23 @@ class StremioAuthManager @Inject constructor(
         return encryptedPrefs.getString(KEY_AVATAR, null)
     }
 
+    suspend fun getDataExportUrl(): Result<String> = withContext(Dispatchers.IO) {
+        val authKey = getStoredAuthKey()
+            ?: return@withContext Result.failure(StremioAuthError.UnknownError("Not connected to Stremio"))
+        runCatching { stremioAuthService.requestDataExport(authKey) }
+    }
+
+    suspend fun getCalendarUrl(): Result<String> = withContext(Dispatchers.IO) {
+        val authKey = getStoredAuthKey()
+            ?: return@withContext Result.failure(StremioAuthError.UnknownError("Not connected to Stremio"))
+        runCatching {
+            val user = stremioAuthService.getUser(authKey)
+            val userId = user.id?.takeIf { it.isNotBlank() }
+                ?: throw StremioAuthError.UnknownError("Stremio account id is unavailable")
+            "https://www.strem.io/calendar/${android.net.Uri.encode(userId)}.ics"
+        }
+    }
+
     private fun profileScopedAuthKey(profileId: Int): String = "${KEY_AUTH_KEY}_profile_$profileId"
     private fun profileScopedEmail(profileId: Int): String = "${KEY_EMAIL}_profile_$profileId"
     private fun profileScopedAvatar(profileId: Int): String = "${KEY_AVATAR}_profile_$profileId"
@@ -238,6 +256,32 @@ class StremioAuthManager @Inject constructor(
     }
 
     /**
+     * Creates a Stremio account and stores its auth key exactly like a normal login.
+     */
+    suspend fun register(
+        email: String,
+        password: String,
+        marketing: Boolean = false
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val loginResult = stremioAuthService.register(email, password, marketing)
+
+            encryptedPrefs.edit().apply {
+                putString(KEY_AUTH_KEY, loginResult.authKey)
+                putString(KEY_EMAIL, email)
+                if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
+            }.apply()
+
+            _connectionState.value = StremioConnectionState.Connected(email)
+            Result.success(loginResult.authKey)
+        } catch (e: StremioAuthError) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(StremioAuthError.UnknownError(e.message ?: "Unknown error"))
+        }
+    }
+
+    /**
      * Fetches the user's addon collection using the stored auth key.
      */
     suspend fun fetchAddons(): Result<List<StremioAddonEntry>> = withContext(Dispatchers.IO) {
@@ -285,6 +329,38 @@ class StremioAuthManager @Inject constructor(
 
             _connectionState.value = StremioConnectionState.Connected(email)
             Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: StremioAuthError) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(StremioAuthError.UnknownError(e.message ?: "Unknown error"))
+        }
+    }
+
+    /** Starts Stremio's browser-based Sign in with Apple flow. */
+    fun startAppleLogin(): Pair<String, String> = stremioAuthService.startAppleLogin()
+
+    /** Completes Apple OAuth and stores the resulting Stremio credentials. */
+    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val credentials = stremioAuthService.pollAppleLogin(state)
+                ?: return@withContext Result.failure(
+                    StremioAuthError.NetworkError("Apple login timed out or was not completed")
+                )
+            val loginResult = stremioAuthService.loginWithApple(credentials)
+            val accountLabel = credentials.email.ifBlank { "Apple account" }
+
+            encryptedPrefs.edit().apply {
+                putString(KEY_AUTH_KEY, loginResult.authKey)
+                putString(KEY_EMAIL, accountLabel)
+                if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
+            }.apply()
+
+            _connectionState.value = StremioConnectionState.Connected(accountLabel)
+            Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: StremioAuthError) {
             Result.failure(e)
         } catch (e: Exception) {

@@ -26,6 +26,10 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,6 +72,8 @@ import com.hereliesaz.illumera.remote_input.ServerInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+data class ExternalLinkOperation(val title: String, val url: String)
+
 @Composable
 fun IntegrationsScreen(
     onBack: () -> Unit,
@@ -80,6 +86,7 @@ fun IntegrationsScreen(
     var showConnectDialog by remember { mutableStateOf(false) }
     var showManagementDialog by remember { mutableStateOf(false) }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
 
     // Handle events
     LaunchedEffect(Unit) {
@@ -103,6 +110,9 @@ fun IntegrationsScreen(
                 }
                 is IntegrationsEvent.DebridError -> {
                     Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
+                is IntegrationsEvent.ExternalUrlReady -> {
+                    externalLink = ExternalLinkOperation(event.title, event.url)
                 }
             }
         }
@@ -210,14 +220,20 @@ fun IntegrationsScreen(
         ConnectStremioDialog(
             isLoading = state.isLoading,
             facebookLoginState = state.facebookLoginState,
+            appleLoginState = state.appleLoginState,
             onDismiss = {
                 showConnectDialog = false
                 viewModel.resetFacebookLoginState()
+                viewModel.resetAppleLoginState()
             },
             onLogin = { email, password ->
                 viewModel.login(email, password)
             },
+            onRegister = { email, password, marketing ->
+                viewModel.register(email, password, marketing)
+            },
             onLoginWithFacebook = { viewModel.startFacebookLogin() },
+            onLoginWithApple = { viewModel.startAppleLogin() },
             deviceFormFactor = deviceFormFactor
         )
     }
@@ -239,10 +255,41 @@ fun IntegrationsScreen(
                 showManagementDialog = false
                 viewModel.pushAddonsToStremio()
             },
+            onExportData = {
+                showManagementDialog = false
+                viewModel.exportStremioData()
+            },
+            onSubscribeCalendar = {
+                showManagementDialog = false
+                viewModel.openStremioCalendar()
+            },
+            onChangePassword = {
+                showManagementDialog = false
+                externalLink = ExternalLinkOperation(
+                    "Change Stremio Password",
+                    "https://www.strem.io/reset-password/${android.net.Uri.encode(stremioEmail.orEmpty())}"
+                )
+            },
+            onDeleteAccount = {
+                showManagementDialog = false
+                externalLink = ExternalLinkOperation(
+                    "Delete Stremio Account",
+                    "https://stremio.zendesk.com/hc/en-us/articles/360021428911-How-to-delete-my-account"
+                )
+            },
             onDisconnect = {
                 showManagementDialog = false
                 showDisconnectConfirm = true
             }
+        )
+    }
+
+    externalLink?.let { link ->
+        StremioExternalLinkDialog(
+            title = link.title,
+            url = link.url,
+            deviceFormFactor = deviceFormFactor,
+            onDismiss = { externalLink = null }
         )
     }
 
@@ -381,9 +428,12 @@ private fun IntegrationItem(
 private fun ConnectStremioDialog(
     isLoading: Boolean,
     facebookLoginState: FacebookLoginState = FacebookLoginState.Idle,
+    appleLoginState: AppleLoginState = AppleLoginState.Idle,
     onDismiss: () -> Unit,
     onLogin: (email: String, password: String) -> Unit,
+    onRegister: (email: String, password: String, marketing: Boolean) -> Unit,
     onLoginWithFacebook: () -> Unit = {},
+    onLoginWithApple: () -> Unit = {},
     deviceFormFactor: DeviceFormFactor
 ) {
     if (facebookLoginState is FacebookLoginState.WaitingForUser || facebookLoginState is FacebookLoginState.Error) {
@@ -395,9 +445,38 @@ private fun ConnectStremioDialog(
         )
         return
     }
+    if (appleLoginState is AppleLoginState.WaitingForUser || appleLoginState is AppleLoginState.Error) {
+        AppleLoginDialog(
+            state = appleLoginState,
+            onDismiss = onDismiss,
+            onRetry = onLoginWithApple,
+            deviceFormFactor = deviceFormFactor
+        )
+        return
+    }
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showSignup by remember { mutableStateOf(false) }
+    var showPasswordReset by remember { mutableStateOf(false) }
+
+    if (showSignup) {
+        StremioSignupDialog(
+            isLoading = isLoading,
+            onDismiss = { showSignup = false },
+            onRegister = onRegister
+        )
+        return
+    }
+    if (showPasswordReset) {
+        StremioPasswordResetDialog(
+            initialEmail = email,
+            deviceFormFactor = deviceFormFactor,
+            onDismiss = { showPasswordReset = false }
+        )
+        return
+    }
+
     var serverInfo by remember { mutableStateOf<ServerInfo?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
@@ -527,6 +606,30 @@ private fun ConnectStremioDialog(
                                 isPrimary = false,
                                 modifier = Modifier.width(180.dp)
                             )
+                            IntegrationButton(
+                                text = "Sign in with Apple",
+                                onClick = onLoginWithApple,
+                                enabled = !isLoading,
+                                isPrimary = false,
+                                modifier = Modifier.width(170.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IntegrationButton(
+                                text = "Create account",
+                                onClick = { showSignup = true },
+                                enabled = !isLoading,
+                                modifier = Modifier.width(160.dp)
+                            )
+                            IntegrationButton(
+                                text = "Forgot password",
+                                onClick = { showPasswordReset = true },
+                                enabled = !isLoading,
+                                modifier = Modifier.width(170.dp)
+                            )
                         }
                     }
 
@@ -619,6 +722,358 @@ private fun ConnectStremioDialog(
                     ) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     }
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// STREMIO ACCOUNT SIGNUP / PASSWORD RESET
+// =============================================================================
+
+@Composable
+private fun StremioSignupDialog(
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onRegister: (email: String, password: String, marketing: Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var termsAccepted by remember { mutableStateOf(false) }
+    var privacyAccepted by remember { mutableStateOf(false) }
+    var marketingAccepted by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val emailFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        delay(100)
+        runCatching { emailFocusRequester.requestFocus() }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(rememberDialogWidth(520))
+                .heightIn(max = 680.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(28.dp)
+        ) {
+            Text(
+                "Create Stremio account",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Text(
+                "Create the same account you can use in Stremio, then connect it to Illumera automatically.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
+            )
+
+            IntegrationTextField(
+                value = email,
+                onValueChange = { email = it; error = null },
+                placeholder = "Email",
+                keyboardType = KeyboardType.Email,
+                focusRequester = emailFocusRequester,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            IntegrationTextField(
+                value = password,
+                onValueChange = { password = it; error = null },
+                placeholder = "Password",
+                isPassword = true,
+                keyboardType = KeyboardType.Password,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            IntegrationTextField(
+                value = confirmPassword,
+                onValueChange = { confirmPassword = it; error = null },
+                placeholder = "Confirm password",
+                isPassword = true,
+                keyboardType = KeyboardType.Password,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(18.dp))
+            StremioConsentRow(
+                checked = termsAccepted,
+                onCheckedChange = { termsAccepted = it; error = null },
+                label = "I agree to the Stremio Terms of Service",
+                linkLabel = "View terms",
+                onOpenLink = { openExternalUrl(context, "https://www.stremio.com/tos") }
+            )
+            StremioConsentRow(
+                checked = privacyAccepted,
+                onCheckedChange = { privacyAccepted = it; error = null },
+                label = "I agree to the Stremio Privacy Policy",
+                linkLabel = "View privacy policy",
+                onOpenLink = { openExternalUrl(context, "https://www.stremio.com/privacy") }
+            )
+            StremioConsentRow(
+                checked = marketingAccepted,
+                onCheckedChange = { marketingAccepted = it },
+                label = "Receive Stremio updates by email (optional)"
+            )
+
+            if (error != null) {
+                Text(
+                    error!!,
+                    color = Color(0xFFEF4444),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IntegrationButton(
+                    text = "Cancel",
+                    onClick = onDismiss,
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f)
+                )
+                IntegrationButton(
+                    text = if (isLoading) "Creating..." else "Create account",
+                    onClick = {
+                        val cleanEmail = email.trim()
+                        error = when {
+                            !android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches() -> "Enter a valid email address"
+                            password.isBlank() -> "Enter a password"
+                            password != confirmPassword -> "Passwords do not match"
+                            !termsAccepted -> "Accept the Terms of Service to continue"
+                            !privacyAccepted -> "Accept the Privacy Policy to continue"
+                            else -> null
+                        }
+                        if (error == null) onRegister(cleanEmail, password, marketingAccepted)
+                    },
+                    enabled = !isLoading,
+                    isPrimary = true,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StremioConsentRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    label: String,
+    linkLabel: String? = null,
+    onOpenLink: (() -> Unit)? = null
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = Color.White.copy(0.82f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        }
+        if (linkLabel != null && onOpenLink != null) {
+            Text(
+                linkLabel,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(start = 48.dp, top = 2.dp).clickable(onClick = onOpenLink)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StremioPasswordResetDialog(
+    initialEmail: String,
+    deviceFormFactor: DeviceFormFactor,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var email by remember(initialEmail) { mutableStateOf(initialEmail) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var resetUrl by remember { mutableStateOf<String?>(null) }
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, resetUrl, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) resetUrl?.let { generateQrCodeBitmap(it) } else null
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(rememberDialogWidth(460))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Reset Stremio password",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Spacer(Modifier.height(8.dp))
+
+            if (resetUrl == null) {
+                Text(
+                    "Enter the email for your Stremio account. Stremio will handle the reset in its browser flow.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                IntegrationTextField(
+                    value = email,
+                    onValueChange = { email = it; error = null },
+                    placeholder = "Email",
+                    keyboardType = KeyboardType.Email,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error != null) {
+                    Text(error!!, color = Color(0xFFEF4444), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                }
+                Spacer(Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    IntegrationButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.weight(1f))
+                    IntegrationButton(
+                        text = "Continue",
+                        onClick = {
+                            val cleanEmail = email.trim()
+                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
+                                error = "Enter a valid email address"
+                            } else {
+                                val url = "https://www.strem.io/reset-password/${android.net.Uri.encode(cleanEmail)}"
+                                if (deviceFormFactor == DeviceFormFactor.TV) {
+                                    resetUrl = url
+                                } else {
+                                    openExternalUrl(context, url)
+                                    onDismiss()
+                                }
+                            }
+                        },
+                        isPrimary = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            } else {
+                Text(
+                    "Scan with your phone to open Stremio's password reset page.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                if (qrBitmap != null) {
+                    Box(
+                        modifier = Modifier.size(190.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                    ) {
+                        Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "Stremio password reset QR code", modifier = Modifier.fillMaxSize())
+                    }
+                } else {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(18.dp))
+                IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(140.dp))
+            }
+        }
+    }
+}
+
+// =============================================================================
+// APPLE LOGIN DIALOG (QR/browser handoff to Stremio's hosted Apple OAuth page)
+// =============================================================================
+
+@Composable
+private fun AppleLoginDialog(
+    state: AppleLoginState,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    deviceFormFactor: DeviceFormFactor
+) {
+    val context = LocalContext.current
+    val url = (state as? AppleLoginState.WaitingForUser)?.url
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) url?.let { generateQrCodeBitmap(it) } else null
+    }
+
+    LaunchedEffect(url, deviceFormFactor) {
+        if (deviceFormFactor != DeviceFormFactor.TV && !url.isNullOrBlank()) openExternalUrl(context, url)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .width(rememberDialogWidth(420))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(32.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "Sign in with Apple",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Spacer(Modifier.height(8.dp))
+
+                when (state) {
+                    is AppleLoginState.WaitingForUser -> {
+                        if (deviceFormFactor == DeviceFormFactor.TV) {
+                            Text(
+                                "Scan this code with your phone and finish Sign in with Apple. Illumera connects automatically when Stremio completes the handoff.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            if (qrBitmap != null) {
+                                Box(
+                                    modifier = Modifier.size(180.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                                ) {
+                                    Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "Apple login QR code", modifier = Modifier.fillMaxSize())
+                                }
+                            }
+                        } else {
+                            Text(
+                                "Finish Sign in with Apple in your browser, then return here. Illumera will detect the completed login automatically.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            IntegrationButton(
+                                text = "Open Browser",
+                                onClick = { url?.let { openExternalUrl(context, it) } },
+                                isPrimary = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Waiting for Apple login…", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                    is AppleLoginState.Error -> {
+                        Text(
+                            state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFEF4444),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IntegrationButton(text = "Retry", onClick = onRetry, isPrimary = true, modifier = Modifier.width(120.dp))
+                            IntegrationButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.width(120.dp))
+                        }
+                    }
+                    else -> Unit
                 }
             }
         }
@@ -731,6 +1186,10 @@ private fun StremioManagementDialog(
     onSyncAddons: () -> Unit,
     onSyncLibrary: () -> Unit,
     onPushAddons: () -> Unit,
+    onExportData: () -> Unit,
+    onSubscribeCalendar: () -> Unit,
+    onChangePassword: () -> Unit,
+    onDeleteAccount: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     val syncFocusRequester = remember { FocusRequester() }
@@ -749,7 +1208,11 @@ private fun StremioManagementDialog(
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     "Stremio Account",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
@@ -792,6 +1255,43 @@ private fun StremioManagementDialog(
                     title = "Push Addons to Stremio",
                     subtitle = "Replace your account's addon collection with this device's",
                     onClick = onPushAddons
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.Download,
+                    title = "Export Stremio Data",
+                    subtitle = "Request and download your Stremio account export",
+                    onClick = onExportData
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.CalendarMonth,
+                    title = "Subscribe to Calendar",
+                    subtitle = "Open your Stremio release calendar subscription",
+                    onClick = onSubscribeCalendar
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.Key,
+                    title = "Change Password",
+                    subtitle = "Open Stremio's password reset flow",
+                    onClick = onChangePassword
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.DeleteForever,
+                    title = "Delete Stremio Account",
+                    subtitle = "Open Stremio's official account deletion instructions",
+                    onClick = onDeleteAccount,
+                    isDestructive = true
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -870,6 +1370,80 @@ private fun ManagementMenuItem(
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray
             )
+        }
+    }
+}
+
+// =============================================================================
+// EXTERNAL STREMIO ACCOUNT LINK
+// =============================================================================
+
+@Composable
+private fun StremioExternalLinkDialog(
+    title: String,
+    url: String,
+    deviceFormFactor: DeviceFormFactor,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) generateQrCodeBitmap(url) else null
+    }
+
+    LaunchedEffect(url, deviceFormFactor) {
+        if (deviceFormFactor != DeviceFormFactor.TV) openExternalUrl(context, url)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(rememberDialogWidth(440))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+            Spacer(Modifier.height(10.dp))
+
+            if (deviceFormFactor == DeviceFormFactor.TV) {
+                Text(
+                    "Scan with your phone to continue on Stremio's website.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                if (qrBitmap != null) {
+                    Box(
+                        modifier = Modifier.size(190.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                    ) {
+                        Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "$title QR code", modifier = Modifier.fillMaxSize())
+                    }
+                } else {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(url, color = Color.Gray, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            } else {
+                Text(
+                    "Opened in your browser.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                IntegrationButton(
+                    text = "Open Browser",
+                    onClick = { openExternalUrl(context, url) },
+                    isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(130.dp))
         }
     }
 }

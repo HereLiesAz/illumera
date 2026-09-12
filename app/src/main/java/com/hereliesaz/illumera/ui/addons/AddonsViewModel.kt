@@ -1,12 +1,17 @@
 package com.hereliesaz.illumera.ui.addons
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.debrid.DebridAddonUrlHelper
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
+import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
+import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
+import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.repository.AddonCatalogRepository
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -33,6 +38,7 @@ data class AddonInstallConfig(
 @HiltViewModel
 class AddonsViewModel @Inject constructor(
     private val repository: AddonRepository,
+    private val catalogRepository: AddonCatalogRepository,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val debridManager: DebridManager
 ) : ViewModel() {
@@ -51,10 +57,18 @@ class AddonsViewModel @Inject constructor(
         val addons: List<AddonEntity> = emptyList(),
         val isLoading: Boolean = false,
         val error: String? = null,
-        val pendingInstall: AddonInstallConfig? = null
+        val pendingInstall: AddonInstallConfig? = null,
+        val catalogSource: AddonCatalogSource = AddonCatalogSource.OFFICIAL,
+        val activeCollection: SavedAddonCollection? = null,
+        val savedCollections: List<SavedAddonCollection> = emptyList(),
+        val catalogItems: List<AddonCatalogItem> = emptyList(),
+        val isCatalogLoading: Boolean = false,
+        val catalogError: String? = null
     )
 
-    private val _uiState = MutableStateFlow(UiState())
+    private val _uiState = MutableStateFlow(
+        UiState(savedCollections = catalogRepository.getSavedCollections())
+    )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _events = Channel<AddonEvent>(Channel.BUFFERED)
@@ -70,17 +84,133 @@ class AddonsViewModel @Inject constructor(
         }
     }
 
+    fun loadCatalog(
+        source: AddonCatalogSource = _uiState.value.catalogSource,
+        force: Boolean = false
+    ) {
+        val current = _uiState.value
+        if (current.isCatalogLoading) return
+        if (source == AddonCatalogSource.COLLECTION && current.activeCollection == null) return
+        if (!force && current.catalogSource == source && current.catalogItems.isNotEmpty()) return
+
+        _uiState.value = current.copy(
+            catalogSource = source,
+            activeCollection = if (source == AddonCatalogSource.COLLECTION) current.activeCollection else null,
+            catalogItems = if (current.catalogSource == source) current.catalogItems else emptyList(),
+            isCatalogLoading = true,
+            catalogError = null
+        )
+
+        viewModelScope.launch {
+            try {
+                val snapshot = _uiState.value
+                val collection = if (source == AddonCatalogSource.COLLECTION) snapshot.activeCollection else null
+                val items = catalogRepository.fetch(source, collection)
+                if (_uiState.value.catalogSource == source &&
+                    (source != AddonCatalogSource.COLLECTION || _uiState.value.activeCollection == collection)
+                ) {
+                    _uiState.value = _uiState.value.copy(
+                        catalogItems = items,
+                        isCatalogLoading = false,
+                        catalogError = null
+                    )
+                }
+            } catch (e: Exception) {
+                if (_uiState.value.catalogSource == source) {
+                    _uiState.value = _uiState.value.copy(
+                        isCatalogLoading = false,
+                        catalogError = e.message ?: "Could not load the addon catalog"
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectCatalogSource(source: AddonCatalogSource) {
+        if (source == AddonCatalogSource.COLLECTION) return
+        val current = _uiState.value
+        if (current.catalogSource == source && current.catalogItems.isNotEmpty()) return
+        _uiState.value = current.copy(activeCollection = null)
+        loadCatalog(source, force = true)
+    }
+
+    fun addCollection(url: String) {
+        if (url.isBlank() || _uiState.value.isCatalogLoading) return
+        _uiState.value = _uiState.value.copy(
+            isCatalogLoading = true,
+            catalogError = null,
+            catalogItems = emptyList()
+        )
+        viewModelScope.launch {
+            try {
+                val result = catalogRepository.addCollection(url)
+                _uiState.value = _uiState.value.copy(
+                    catalogSource = AddonCatalogSource.COLLECTION,
+                    activeCollection = result.collection,
+                    savedCollections = catalogRepository.getSavedCollections(),
+                    catalogItems = result.addons,
+                    isCatalogLoading = false,
+                    catalogError = null
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isCatalogLoading = false,
+                    catalogError = e.message ?: "Could not add the addon collection"
+                )
+            }
+        }
+    }
+
+    fun selectCollection(collection: SavedAddonCollection) {
+        val current = _uiState.value
+        if (current.catalogSource == AddonCatalogSource.COLLECTION &&
+            current.activeCollection == collection && current.catalogItems.isNotEmpty()
+        ) return
+        _uiState.value = current.copy(
+            catalogSource = AddonCatalogSource.COLLECTION,
+            activeCollection = collection,
+            catalogItems = emptyList(),
+            catalogError = null
+        )
+        loadCatalog(AddonCatalogSource.COLLECTION, force = true)
+    }
+
+    fun removeCollection(collection: SavedAddonCollection) {
+        catalogRepository.removeCollection(collection.url)
+        val current = _uiState.value
+        val updated = catalogRepository.getSavedCollections()
+        if (current.activeCollection?.url == collection.url) {
+            _uiState.value = current.copy(
+                catalogSource = AddonCatalogSource.OFFICIAL,
+                activeCollection = null,
+                savedCollections = updated,
+                catalogItems = emptyList(),
+                catalogError = null
+            )
+            loadCatalog(AddonCatalogSource.OFFICIAL, force = true)
+        } else {
+            _uiState.value = current.copy(savedCollections = updated)
+        }
+    }
+
+    fun retryCatalog() {
+        loadCatalog(_uiState.value.catalogSource, force = true)
+    }
+
     fun prepareInstall(url: String) {
         if (url.isBlank()) return
-        val scheme = android.net.Uri.parse(url).scheme?.lowercase()
-        if (scheme != "http" && scheme != "https") {
-            _uiState.value = _uiState.value.copy(error = "Only HTTP/HTTPS addon URLs are supported")
+        val normalizedInput = normalizeInstallUrl(url)
+        if (normalizedInput == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "Use an HTTP/HTTPS manifest URL or a Stremio addon install link"
+            )
             return
         }
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val trimmedUrl = url.trimEnd('/')
+                val trimmedUrl = normalizedInput.trimEnd('/')
                 val plainUrl = if (trimmedUrl.endsWith("manifest.json")) trimmedUrl else "$trimmedUrl/manifest.json"
                 val validUrl = DebridAddonUrlHelper.withDebridKeyIfKnown(
                     plainUrl,
@@ -105,6 +235,19 @@ class AddonsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
                 _events.send(AddonEvent.InstallationFailure(e.message ?: "Error"))
             }
+        }
+    }
+
+    private fun normalizeInstallUrl(rawUrl: String): String? {
+        val trimmed = rawUrl.trim()
+        val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null
+        return when (uri.scheme?.lowercase()) {
+            "http", "https" -> trimmed
+            "stremio" -> {
+                if (uri.host.isNullOrBlank()) null
+                else uri.buildUpon().scheme("https").build().toString()
+            }
+            else -> null
         }
     }
 
