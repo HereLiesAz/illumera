@@ -274,28 +274,43 @@ class DetailsViewModel @Inject constructor(
 
         _state.value = _state.value.copy(isResumeStateReady = false)
         viewModelScope.launch {
-            val resumePlaybackId = if (meta.type == "series") {
-                resolveSeriesResumePlaybackId(meta.id, meta.videos)
-            } else {
-                val movieHistory = dao.getHistoryItem(meta.id)
-                if (movieHistory?.watched == true) null else movieHistory?.id
-            }
-            val isMovieWatched = if (meta.type != "series") {
-                dao.getHistoryItem(meta.id)?.watched == true
-            } else false
-            if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
-                val episodeProgressMap = if (meta.type == "series") {
-                    buildEpisodeProgressMap(meta.id)
-                } else emptyMap()
-                _state.value = _state.value.copy(
-                    resumePlaybackId = resumePlaybackId,
-                    isResumeStateReady = true,
-                    isMovieWatched = isMovieWatched,
-                    autoPlayStream = null,
-                    episodeProgressMap = episodeProgressMap
-                )
-                if (meta.type == "series") {
-                    computeAndStoreNextUp(meta.id, meta.name, meta.poster, meta.videos)
+            try {
+                val resumePlaybackId = if (meta.type == "series") {
+                    resolveSeriesResumePlaybackId(meta.id, meta.videos)
+                } else {
+                    val movieHistory = dao.getHistoryItem(meta.id)
+                    if (movieHistory?.watched == true) null else movieHistory?.id
+                }
+                val isMovieWatched = if (meta.type != "series") {
+                    dao.getHistoryItem(meta.id)?.watched == true
+                } else false
+                if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
+                    val episodeProgressMap = if (meta.type == "series") {
+                        buildEpisodeProgressMap(meta.id)
+                    } else emptyMap()
+                    _state.value = _state.value.copy(
+                        resumePlaybackId = resumePlaybackId,
+                        isResumeStateReady = true,
+                        isMovieWatched = isMovieWatched,
+                        autoPlayStream = null,
+                        episodeProgressMap = episodeProgressMap
+                    )
+                    if (meta.type == "series") {
+                        computeAndStoreNextUp(meta.id, meta.name, meta.poster, meta.videos)
+                    }
+                }
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
+                    Log.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
+                    _state.value = _state.value.copy(
+                        resumePlaybackId = null,
+                        isResumeStateReady = true,
+                        isMovieWatched = false,
+                        autoPlayStream = null,
+                        episodeProgressMap = emptyMap()
+                    )
                 }
             }
         }

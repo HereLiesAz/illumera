@@ -92,6 +92,7 @@ fun WatchlistScreen(
     val upKeyDebouncer = remember { UpKeyDebouncer() }
     val dpadRepeatGate = remember { DpadRepeatGate() }
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
+    var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
 
     LaunchedEffect(movies, series) {
         val key = lastFocusedKey ?: return@LaunchedEffect
@@ -165,6 +166,8 @@ fun WatchlistScreen(
                         onFocused = { _: MetaItem?, key: String ->
                             lastFocusedKey = key
                             viewModel.lastFocusedKey = key
+                            lastQueueFocusedKey = null
+                            viewModel.lastQueueFocusedKey = null
                         },
                         entryRequester = entryRequester,
                         drawerRequester = drawerRequester,
@@ -192,6 +195,8 @@ fun WatchlistScreen(
                         onFocused = { _: MetaItem?, key: String ->
                             lastFocusedKey = key
                             viewModel.lastFocusedKey = key
+                            lastQueueFocusedKey = null
+                            viewModel.lastQueueFocusedKey = null
                         },
                         entryRequester = entryRequester,
                         drawerRequester = drawerRequester,
@@ -210,9 +215,17 @@ fun WatchlistScreen(
                 QueueSection(
                     entryRequester = entryRequester,
                     startPadding = startPadding,
-                    requestEntryFocus = !hasWatchlistMedia && viewModel.lastQueueFocusedKey == null,
-                    focusedQueueKey = viewModel.lastQueueFocusedKey,
-                    onQueueFocused = { key -> viewModel.lastQueueFocusedKey = key },
+                    requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
+                    focusedQueueKey = lastQueueFocusedKey,
+                    restoreEntryFocusWhenFocusedKeyMissing = !hasWatchlistMedia,
+                    onQueueFocused = { key ->
+                        lastQueueFocusedKey = key
+                        viewModel.lastQueueFocusedKey = key
+                        if (key != null) {
+                            lastFocusedKey = null
+                            viewModel.lastFocusedKey = null
+                        }
+                    },
                     onOpenItem = { queueItem: QueueItem ->
                         onMovieClick(queueItem.toMetaItem())
                     }

@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.remote.StremioAddonFlags
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -285,6 +286,8 @@ class StremioAuthManager @Inject constructor(
 
             _connectionState.value = StremioConnectionState.Connected(email)
             Result.success(loginResult.authKey)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: StremioAuthError) {
             Result.failure(e)
         } catch (e: Exception) {

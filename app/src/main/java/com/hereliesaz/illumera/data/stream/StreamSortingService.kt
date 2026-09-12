@@ -69,7 +69,20 @@ class StreamSortingService @Inject constructor() {
             secondary = profile?.preferredAudioLanguageSecondary.orEmpty()
         )
         if (languages.isEmpty()) return true
-        return languages.any { language -> containsAudioLanguage(StreamParser.combinedText(stream), language) }
+
+        val authoritativeFields = listOfNotNull(
+            stream.name?.takeIf { it.isNotBlank() },
+            stream.behaviorHints?.filename?.takeIf { it.isNotBlank() }
+        )
+        val descriptiveText = listOfNotNull(
+            stream.title?.takeIf { it.isNotBlank() },
+            stream.description?.takeIf { it.isNotBlank() }
+        ).joinToString(" ")
+
+        return languages.any { language ->
+            authoritativeFields.any { field -> containsAuthoritativeAudioLanguage(field, language) } ||
+                containsAudioLanguage(descriptiveText, language)
+        }
     }
 
     private fun matchesSubtitleLanguageRequirement(stream: Stream, profile: ProfileEntity?): Boolean {
@@ -113,11 +126,33 @@ class StreamSortingService @Inject constructor() {
         .orEmpty()
 
     private fun languageCodesMatch(advertised: String?, required: String): Boolean {
-        val actual = normalizeLanguageTag(advertised)
+        val actual = canonicalLanguageTag(advertised)
         if (actual.isEmpty()) return false
-        val wanted = normalizeLanguageTag(required)
+        val wanted = canonicalLanguageTag(required)
         if (wanted.isEmpty()) return false
         return actual == wanted || actual.substringBefore('-') == wanted.substringBefore('-')
+    }
+
+    private fun canonicalLanguageTag(raw: String?): String {
+        val normalized = normalizeLanguageTag(raw)
+        if (normalized.isEmpty()) return ""
+        LANGUAGE_CODE_ALIASES[normalized]?.let { return it }
+
+        val base = normalized.substringBefore('-')
+        val canonicalBase = LANGUAGE_ALIASES.entries
+            .firstOrNull { (_, aliases) -> base in aliases }
+            ?.key
+            ?: LANGUAGE_CODE_ALIASES[base]
+            ?: base
+        val suffix = normalized.substringAfter('-', "")
+        return if (suffix.isNotEmpty()) "$canonicalBase-$suffix" else canonicalBase
+    }
+
+    private fun containsAuthoritativeAudioLanguage(text: String, language: String): Boolean {
+        return languageAliases(language)
+            .asSequence()
+            .filter { alias -> alias.length > 2 }
+            .any { alias -> languageMatches(text, alias).any() }
     }
 
     private fun containsAudioLanguage(text: String, language: String): Boolean {
@@ -237,7 +272,14 @@ class StreamSortingService @Inject constructor() {
 
     companion object {
         private val AUDIO_CUE_REGEX = Regex("(?i)\\b(audio|dub(?:bed)?|dual)\\b")
-        private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|cc|captions?)\\b")
+        private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|subbed|cc|captions?)\\b")
+
+        private val LANGUAGE_CODE_ALIASES = mapOf(
+            "pob" to "pt-br",
+            "iw" to "he",
+            "in" to "id",
+            "fil" to "tl"
+        )
 
         private val LANGUAGE_ALIASES = mapOf(
             "en" to setOf("english", "eng"),

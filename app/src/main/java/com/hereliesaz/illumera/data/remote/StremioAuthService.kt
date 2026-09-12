@@ -247,7 +247,7 @@ class StremioAuthService @Inject constructor() {
      * is reached. Returns the account email + one-time login token to pass to
      * [login] with `facebook = true`, or null if the user never completed it.
      */
-    suspend fun pollFacebookLogin(state: String, maxAttempts: Int = 25): Pair<String, String>? = withContext(Dispatchers.IO) {
+    suspend fun pollFacebookLogin(state: String, maxAttempts: Int = 300): Pair<String, String>? = withContext(Dispatchers.IO) {
         repeat(maxAttempts) {
             delay(1000)
             try {

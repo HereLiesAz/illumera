@@ -1372,6 +1372,8 @@ private fun DebridDialog(
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
+    val debridScrollState = rememberScrollState()
+    val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
 
     LaunchedEffect(Unit) {
         delay(150)
@@ -1387,13 +1389,14 @@ private fun DebridDialog(
             Box(
                 modifier = Modifier
                     .width(rememberDialogWidth(460))
+                    .heightIn(max = maxDialogHeight)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
                     .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
                     .imePadding()
                     .padding(24.dp)
             ) {
-                Column {
+                Column(modifier = Modifier.verticalScroll(debridScrollState)) {
                     Text(
                         "Debrid Service",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),

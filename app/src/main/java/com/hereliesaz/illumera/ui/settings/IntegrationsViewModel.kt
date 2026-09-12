@@ -21,6 +21,7 @@ import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,7 @@ class IntegrationsViewModel @Inject constructor(
 
     private val _events = Channel<IntegrationsEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+    private var facebookLoginJob: Job? = null
 
     init {
         // Observe connection state
@@ -198,7 +200,8 @@ class IntegrationsViewModel @Inject constructor(
         val (state, url) = stremioAuthManager.startFacebookLogin()
         _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url))
 
-        viewModelScope.launch {
+        facebookLoginJob?.cancel()
+        facebookLoginJob = viewModelScope.launch {
             val result = stremioAuthManager.completeFacebookLogin(state)
             result.fold(
                 onSuccess = {
@@ -217,6 +220,8 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     fun resetFacebookLoginState() {
+        facebookLoginJob?.cancel()
+        facebookLoginJob = null
         _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Idle)
     }
 
