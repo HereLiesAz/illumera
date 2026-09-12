@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +39,7 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
+import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
 import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 
 @Composable
@@ -46,11 +48,16 @@ fun AddonCatalogDialog(
     onDismissRequest: () -> Unit,
     onLoad: () -> Unit,
     onSourceSelected: (AddonCatalogSource) -> Unit,
+    onAddCollection: (String) -> Unit,
+    onCollectionSelected: (SavedAddonCollection) -> Unit,
+    onCollectionRemoved: (SavedAddonCollection) -> Unit,
     onRetry: () -> Unit,
     onInstall: (AddonCatalogItem) -> Unit,
     onConfigure: (AddonCatalogItem) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    var addingCollection by remember { mutableStateOf(false) }
+    var collectionUrl by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         onLoad()
@@ -88,7 +95,7 @@ fun AddonCatalogDialog(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Install directly from the addon catalogs Stremio exposes.",
+                "Official, Community, and addon collections — installed through Illumera.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.58f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -97,13 +104,89 @@ fun AddonCatalogDialog(
             Spacer(Modifier.height(18.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AddonCatalogSource.entries.forEach { source ->
+                listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY).forEach { source ->
                     VoidButton(
                         text = source.displayName,
                         onClick = { onSourceSelected(source) },
                         isPrimary = state.catalogSource == source,
                         modifier = Modifier.width(150.dp)
                     )
+                }
+                VoidButton(
+                    text = "+ Collection",
+                    onClick = { addingCollection = !addingCollection },
+                    isPrimary = addingCollection,
+                    modifier = Modifier.width(170.dp)
+                )
+            }
+
+            if (addingCollection) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    VoidInput(
+                        value = collectionUrl,
+                        onValueChange = { collectionUrl = it },
+                        placeholder = "Addon collection URL",
+                        modifier = Modifier.weight(1f)
+                    )
+                    VoidButton(
+                        text = "Add",
+                        onClick = {
+                            if (collectionUrl.isNotBlank()) {
+                                onAddCollection(collectionUrl.trim())
+                                collectionUrl = ""
+                                addingCollection = false
+                            }
+                        },
+                        enabled = collectionUrl.isNotBlank() && !state.isCatalogLoading,
+                        isPrimary = collectionUrl.isNotBlank(),
+                        modifier = Modifier.width(110.dp)
+                    )
+                }
+                Text(
+                    "Supports Stremio addon-catalog manifests, modern collection JSON, and compatible legacy repositories.",
+                    color = Color.White.copy(alpha = 0.48f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+
+            if (state.savedCollections.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Collections",
+                    color = Color.White.copy(alpha = 0.62f),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(6.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.savedCollections, key = { it.url }) { collection ->
+                        VoidButton(
+                            text = collection.name.take(22),
+                            onClick = { onCollectionSelected(collection) },
+                            isPrimary = state.catalogSource == AddonCatalogSource.COLLECTION &&
+                                state.activeCollection?.url == collection.url,
+                            modifier = Modifier.width(190.dp)
+                        )
+                    }
+                }
+
+                if (state.catalogSource == AddonCatalogSource.COLLECTION && state.activeCollection != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        VoidButton(
+                            text = "Forget collection",
+                            onClick = { onCollectionRemoved(state.activeCollection) },
+                            modifier = Modifier.width(180.dp)
+                        )
+                    }
                 }
             }
 
@@ -129,7 +212,7 @@ fun AddonCatalogDialog(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(12.dp))
-                            Text("Loading ${state.catalogSource.displayName.lowercase()} addons…", color = Color.Gray)
+                            Text("Loading ${catalogSourceName(state).lowercase()} addons…", color = Color.Gray)
                         }
                     }
                 }
@@ -150,6 +233,7 @@ fun AddonCatalogDialog(
                         VoidButton(
                             text = "Retry",
                             onClick = onRetry,
+                            enabled = state.catalogSource != AddonCatalogSource.COLLECTION || state.activeCollection != null,
                             modifier = Modifier.width(150.dp)
                         )
                     }
@@ -215,7 +299,9 @@ private fun AddonCatalogRow(
     onConfigure: () -> Unit
 ) {
     val manifest = item.manifest
-    val remoteInstallable = isRemoteInstallable(item.transportUrl)
+    val localTransport = isLocalTransport(item.transportUrl)
+    val modernTransport = item.isModernManifestTransport
+    val installable = modernTransport && !localTransport
     val configurationRequired = manifest.behaviorHints?.configurationRequired == true
     val configurable = item.configureUrl != null
 
@@ -281,14 +367,15 @@ private fun AddonCatalogRow(
                 if (manifest.behaviorHints?.p2p == true) AddonBadge("P2P")
                 if (manifest.behaviorHints?.adult == true) AddonBadge("Adult")
                 if (configurable) AddonBadge("Configurable")
-                if (!remoteInstallable) AddonBadge("Local service")
+                if (localTransport) AddonBadge("Local service")
+                else if (!modernTransport) AddonBadge("Legacy transport")
             }
         }
 
         Spacer(Modifier.width(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (configurable && remoteInstallable) {
+            if (configurable && installable) {
                 VoidButton(
                     text = "Configure",
                     onClick = onConfigure,
@@ -296,15 +383,15 @@ private fun AddonCatalogRow(
                 )
             }
 
-            if (!configurationRequired) {
+            if (!configurationRequired && installable) {
                 VoidButton(
                     text = if (installed) "Installed" else "Install",
                     onClick = onInstall,
-                    enabled = !installed && remoteInstallable,
-                    isPrimary = !installed && remoteInstallable,
+                    enabled = !installed,
+                    isPrimary = !installed,
                     modifier = Modifier.width(120.dp)
                 )
-            } else if (!remoteInstallable) {
+            } else if (!installable) {
                 VoidButton(
                     text = "Unavailable",
                     onClick = {},
@@ -329,13 +416,19 @@ private fun AddonBadge(label: String) {
     )
 }
 
+private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (state.catalogSource) {
+    AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
+    AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
+    AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName
+}
+
 private fun normalizeTransportUrl(url: String): String =
     url.removeSuffix("/manifest.json").trimEnd('/').lowercase()
 
-private fun isRemoteInstallable(url: String): Boolean {
-    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+private fun isLocalTransport(url: String): Boolean {
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true
     val scheme = uri.scheme?.lowercase()
-    if (scheme != "http" && scheme != "https" && scheme != "stremio") return false
+    if (scheme != "http" && scheme != "https" && scheme != "stremio") return true
     val host = uri.host?.lowercase().orEmpty()
-    return host.isNotBlank() && host != "127.0.0.1" && host != "localhost" && host != "0.0.0.0"
+    return host.isBlank() || host == "127.0.0.1" || host == "localhost" || host == "0.0.0.0"
 }
