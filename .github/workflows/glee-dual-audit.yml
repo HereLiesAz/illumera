@@ -79,7 +79,11 @@ jobs:
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
             SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
-            SOURCE=$(jq -r '.name // empty' <<<"${SOURCE_JSON:-{}}")
+            if [ -n "$SOURCE_JSON" ]; then
+              SOURCE=$(jq -r '.name // empty' <<<"$SOURCE_JSON")
+            else
+              SOURCE=''
+            fi
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
@@ -136,8 +140,6 @@ jobs:
             echo "Jules session creation returned HTTP $HTTP_CODE" >&2
             jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
 
-            # Jules can occasionally return FAILED_PRECONDITION after accepting a
-            # session. Reconcile by looking for this run's unique title before failing.
             if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
               for attempt in 1 2 3 4 5; do
                 sleep 2
@@ -219,7 +221,11 @@ jobs:
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
             SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
-            SOURCE=$(jq -r '.name // empty' <<<"${SOURCE_JSON:-{}}")
+            if [ -n "$SOURCE_JSON" ]; then
+              SOURCE=$(jq -r '.name // empty' <<<"$SOURCE_JSON")
+            else
+              SOURCE=''
+            fi
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
