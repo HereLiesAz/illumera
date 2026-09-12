@@ -113,6 +113,10 @@ data class StremioUser(
     val avatar: String? = null
 )
 
+data class StremioDataExportResult(
+    @SerializedName("exportId") val exportId: String
+)
+
 /** Result of a successful [StremioAuthService.login] call. */
 data class StremioLoginResult(
     val authKey: String,
@@ -164,6 +168,8 @@ class StremioAuthService @Inject constructor() {
         private const val LOGIN_ENDPOINT = "$STREMIO_API_BASE/login"
         private const val REGISTER_ENDPOINT = "$STREMIO_API_BASE/register"
         private const val APPLE_AUTH_ENDPOINT = "$STREMIO_API_BASE/authWithApple"
+        private const val GET_USER_ENDPOINT = "$STREMIO_API_BASE/getUser"
+        private const val DATA_EXPORT_ENDPOINT = "$STREMIO_API_BASE/dataExport"
         private const val LOGOUT_ENDPOINT = "$STREMIO_API_BASE/logout"
         private const val ADDON_COLLECTION_ENDPOINT = "$STREMIO_API_BASE/addonCollectionGet"
         private const val ADDON_COLLECTION_SET_ENDPOINT = "$STREMIO_API_BASE/addonCollectionSet"
@@ -282,6 +288,59 @@ class StremioAuthService @Inject constructor() {
                     avatarUrl = result.user?.avatar?.takeIf { it.isNotBlank() }
                 )
             }
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
+    /** Fetches the connected Stremio account record. */
+    suspend fun getUser(authKey: String): StremioUser = withContext(Dispatchers.IO) {
+        try {
+            val json = postJson(
+                GET_USER_ENDPOINT,
+                gson.toJson(mapOf("type" to "GetUser", "authKey" to authKey))
+            )
+            json.getAsJsonObject("error")?.let { apiError ->
+                throw StremioAuthError.UnknownError(
+                    apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not load Stremio account"
+                )
+            }
+            val result = json.getAsJsonObject("result")
+                ?: throw StremioAuthError.UnknownError("Could not load Stremio account")
+            gson.fromJson(result, StremioUser::class.java)
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
+    /**
+     * Requests the same user-data export Stremio Web exposes and returns its
+     * download URL. The generated export id is encoded as a single path segment.
+     */
+    suspend fun requestDataExport(authKey: String): String = withContext(Dispatchers.IO) {
+        try {
+            val json = postJson(
+                DATA_EXPORT_ENDPOINT,
+                gson.toJson(mapOf("type" to "DataExport", "authKey" to authKey))
+            )
+            json.getAsJsonObject("error")?.let { apiError ->
+                throw StremioAuthError.UnknownError(
+                    apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not export Stremio data"
+                )
+            }
+            val result = json.getAsJsonObject("result")
+                ?: throw StremioAuthError.UnknownError("Could not export Stremio data")
+            val export = gson.fromJson(result, StremioDataExportResult::class.java)
+            if (export.exportId.isBlank()) {
+                throw StremioAuthError.UnknownError("Stremio returned an empty export id")
+            }
+            "https://api.strem.io/data-export/${android.net.Uri.encode(export.exportId)}/export.json"
         } catch (e: StremioAuthError) {
             throw e
         } catch (e: Exception) {

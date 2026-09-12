@@ -26,6 +26,10 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,6 +72,8 @@ import com.hereliesaz.illumera.remote_input.ServerInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+data class ExternalLinkOperation(val title: String, val url: String)
+
 @Composable
 fun IntegrationsScreen(
     onBack: () -> Unit,
@@ -80,6 +86,7 @@ fun IntegrationsScreen(
     var showConnectDialog by remember { mutableStateOf(false) }
     var showManagementDialog by remember { mutableStateOf(false) }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
 
     // Handle events
     LaunchedEffect(Unit) {
@@ -103,6 +110,9 @@ fun IntegrationsScreen(
                 }
                 is IntegrationsEvent.DebridError -> {
                     Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
+                is IntegrationsEvent.ExternalUrlReady -> {
+                    externalLink = ExternalLinkOperation(event.title, event.url)
                 }
             }
         }
@@ -245,10 +255,41 @@ fun IntegrationsScreen(
                 showManagementDialog = false
                 viewModel.pushAddonsToStremio()
             },
+            onExportData = {
+                showManagementDialog = false
+                viewModel.exportStremioData()
+            },
+            onSubscribeCalendar = {
+                showManagementDialog = false
+                viewModel.openStremioCalendar()
+            },
+            onChangePassword = {
+                showManagementDialog = false
+                externalLink = ExternalLinkOperation(
+                    "Change Stremio Password",
+                    "https://www.strem.io/reset-password/${android.net.Uri.encode(stremioEmail.orEmpty())}"
+                )
+            },
+            onDeleteAccount = {
+                showManagementDialog = false
+                externalLink = ExternalLinkOperation(
+                    "Delete Stremio Account",
+                    "https://stremio.zendesk.com/hc/en-us/articles/360021428911-How-to-delete-my-account"
+                )
+            },
             onDisconnect = {
                 showManagementDialog = false
                 showDisconnectConfirm = true
             }
+        )
+    }
+
+    externalLink?.let { link ->
+        StremioExternalLinkDialog(
+            title = link.title,
+            url = link.url,
+            deviceFormFactor = deviceFormFactor,
+            onDismiss = { externalLink = null }
         )
     }
 
@@ -1145,6 +1186,10 @@ private fun StremioManagementDialog(
     onSyncAddons: () -> Unit,
     onSyncLibrary: () -> Unit,
     onPushAddons: () -> Unit,
+    onExportData: () -> Unit,
+    onSubscribeCalendar: () -> Unit,
+    onChangePassword: () -> Unit,
+    onDeleteAccount: () -> Unit,
     onDisconnect: () -> Unit
 ) {
     val syncFocusRequester = remember { FocusRequester() }
@@ -1163,7 +1208,11 @@ private fun StremioManagementDialog(
                 .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     "Stremio Account",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
@@ -1206,6 +1255,43 @@ private fun StremioManagementDialog(
                     title = "Push Addons to Stremio",
                     subtitle = "Replace your account's addon collection with this device's",
                     onClick = onPushAddons
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.Download,
+                    title = "Export Stremio Data",
+                    subtitle = "Request and download your Stremio account export",
+                    onClick = onExportData
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.CalendarMonth,
+                    title = "Subscribe to Calendar",
+                    subtitle = "Open your Stremio release calendar subscription",
+                    onClick = onSubscribeCalendar
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.Key,
+                    title = "Change Password",
+                    subtitle = "Open Stremio's password reset flow",
+                    onClick = onChangePassword
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.DeleteForever,
+                    title = "Delete Stremio Account",
+                    subtitle = "Open Stremio's official account deletion instructions",
+                    onClick = onDeleteAccount,
+                    isDestructive = true
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -1284,6 +1370,80 @@ private fun ManagementMenuItem(
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray
             )
+        }
+    }
+}
+
+// =============================================================================
+// EXTERNAL STREMIO ACCOUNT LINK
+// =============================================================================
+
+@Composable
+private fun StremioExternalLinkDialog(
+    title: String,
+    url: String,
+    deviceFormFactor: DeviceFormFactor,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) generateQrCodeBitmap(url) else null
+    }
+
+    LaunchedEffect(url, deviceFormFactor) {
+        if (deviceFormFactor != DeviceFormFactor.TV) openExternalUrl(context, url)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(rememberDialogWidth(440))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+            Spacer(Modifier.height(10.dp))
+
+            if (deviceFormFactor == DeviceFormFactor.TV) {
+                Text(
+                    "Scan with your phone to continue on Stremio's website.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                if (qrBitmap != null) {
+                    Box(
+                        modifier = Modifier.size(190.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                    ) {
+                        Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "$title QR code", modifier = Modifier.fillMaxSize())
+                    }
+                } else {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(url, color = Color.Gray, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            } else {
+                Text(
+                    "Opened in your browser.",
+                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                IntegrationButton(
+                    text = "Open Browser",
+                    onClick = { openExternalUrl(context, url) },
+                    isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+            IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(130.dp))
         }
     }
 }

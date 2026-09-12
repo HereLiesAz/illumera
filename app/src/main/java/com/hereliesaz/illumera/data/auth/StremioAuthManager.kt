@@ -138,6 +138,23 @@ class StremioAuthManager @Inject constructor(
         return encryptedPrefs.getString(KEY_AVATAR, null)
     }
 
+    suspend fun getDataExportUrl(): Result<String> = withContext(Dispatchers.IO) {
+        val authKey = getStoredAuthKey()
+            ?: return@withContext Result.failure(StremioAuthError.UnknownError("Not connected to Stremio"))
+        runCatching { stremioAuthService.requestDataExport(authKey) }
+    }
+
+    suspend fun getCalendarUrl(): Result<String> = withContext(Dispatchers.IO) {
+        val authKey = getStoredAuthKey()
+            ?: return@withContext Result.failure(StremioAuthError.UnknownError("Not connected to Stremio"))
+        runCatching {
+            val user = stremioAuthService.getUser(authKey)
+            val userId = user.id?.takeIf { it.isNotBlank() }
+                ?: throw StremioAuthError.UnknownError("Stremio account id is unavailable")
+            "https://www.strem.io/calendar/${android.net.Uri.encode(userId)}.ics"
+        }
+    }
+
     private fun profileScopedAuthKey(profileId: Int): String = "${KEY_AUTH_KEY}_profile_$profileId"
     private fun profileScopedEmail(profileId: Int): String = "${KEY_EMAIL}_profile_$profileId"
     private fun profileScopedAvatar(profileId: Int): String = "${KEY_AVATAR}_profile_$profileId"

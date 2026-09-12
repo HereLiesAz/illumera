@@ -39,6 +39,7 @@ sealed class IntegrationsEvent {
     object Disconnected : IntegrationsEvent()
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
     data class DebridError(val message: String) : IntegrationsEvent()
+    data class ExternalUrlReady(val title: String, val url: String) : IntegrationsEvent()
 }
 
 /** State machine for the "Login with Facebook" flow — mirrors Trakt's DeviceAuthState. */
@@ -288,6 +289,38 @@ class IntegrationsViewModel @Inject constructor(
         appleLoginJob?.cancel()
         appleLoginJob = null
         _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Idle)
+    }
+
+    fun exportStremioData() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            stremioAuthManager.getDataExportUrl().fold(
+                onSuccess = { url ->
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _events.send(IntegrationsEvent.ExternalUrlReady("Stremio Data Export", url))
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not export Stremio data"))
+                }
+            )
+        }
+    }
+
+    fun openStremioCalendar() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            stremioAuthManager.getCalendarUrl().fold(
+                onSuccess = { url ->
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _events.send(IntegrationsEvent.ExternalUrlReady("Stremio Calendar", url))
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not open Stremio calendar"))
+                }
+            )
+        }
     }
 
     /**
