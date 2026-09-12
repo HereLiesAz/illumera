@@ -5,11 +5,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
- * Adds pointer-tap activation without changing keyboard/D-pad behavior.
- *
- * Compose for TV interactive surfaces intentionally handle D-pad activation
- * themselves and do not install a pointer-click handler. Use this modifier on
- * TV Material click targets that must also work on phones and tablets.
+ * Adds touch tap/long-press handling without changing keyboard/D-pad behavior.
+ * Long-press actions are dispatched on release so context menus remain open.
  */
 fun Modifier.touchClick(
     enabled: Boolean = true,
@@ -18,9 +15,17 @@ fun Modifier.touchClick(
 ): Modifier {
     if (!enabled) return this
     return pointerInput(onClick, onLongClick) {
+        var longPressArmed = false
         detectTapGestures(
-            onTap = { onClick() },
-            onLongPress = onLongClick?.let { longClick -> { longClick() } }
+            onPress = {
+                longPressArmed = false
+                val released = tryAwaitRelease()
+                if (released && longPressArmed) onLongClick?.invoke()
+            },
+            onTap = {
+                if (!longPressArmed) onClick()
+            },
+            onLongPress = onLongClick?.let { { longPressArmed = true } }
         )
     }
 }
