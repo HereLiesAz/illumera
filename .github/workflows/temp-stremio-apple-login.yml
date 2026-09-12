@@ -1,0 +1,38 @@
+name: Temporary Stremio Apple login patch
+
+on:
+  push:
+    branches:
+      - feature/stremio-addon-catalog
+    paths:
+      - ".github/workflows/temp-stremio-apple-login.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout illumera
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply Apple login parity patch
+        run: python .ci/patch-stremio-apple-login.py
+
+      - name: Commit Apple login changes
+        run: |
+          rm .ci/patch-stremio-apple-login.py
+          rmdir .ci 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/hereliesaz/illumera/data/remote/StremioAuthService.kt \
+                  app/src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsViewModel.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt \
+                  .ci
+          git diff --cached --check
+          git commit -m "Add Stremio Apple login parity"
+          git push origin HEAD:feature/stremio-addon-catalog
