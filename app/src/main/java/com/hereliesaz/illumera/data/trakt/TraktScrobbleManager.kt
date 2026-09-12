@@ -125,10 +125,7 @@ class TraktScrobbleManager @Inject constructor(
 
     private suspend fun markAsScrobbled(playbackId: String) {
         scrobbledIds[playbackId] = true
-        val item = dao.getHistoryItem(playbackId)
-        if (item != null && !item.scrobbled) {
-            dao.upsertHistory(item.copy(scrobbled = true))
-        }
+        dao.markHistoryScrobbled(playbackId)
         // If item doesn't exist yet, saveProgress will pick up the flag via isScrobbled()
     }
 

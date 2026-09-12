@@ -92,6 +92,9 @@ interface AddonDao {
     @Query("DELETE FROM series_next_up WHERE profileId = :profileId")
     suspend fun deleteSeriesNextUpForProfile(profileId: Int)
 
+    @Query("DELETE FROM recent_searches WHERE profileId = :profileId")
+    suspend fun deleteRecentSearchesForProfile(profileId: Int)
+
     // A plain sequence of suspend calls has no atomicity of its own — a process death or a
     // later call failing partway through would leave a profile gone but its watchlist/next-up
     // rows orphaned, with no UI path left to retry cleanup. @Transaction runs all three deletes
@@ -101,6 +104,7 @@ interface AddonDao {
         deleteProfile(id)
         deleteWatchlistForProfile(id)
         deleteSeriesNextUpForProfile(id)
+        deleteRecentSearchesForProfile(id)
     }
 
     @Query("SELECT * FROM watch_history ORDER BY lastWatched DESC")
@@ -114,6 +118,9 @@ interface AddonDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertHistoryItems(items: List<WatchHistoryEntity>)
+
+    @Query("UPDATE watch_history SET scrobbled = 1 WHERE id = :id")
+    suspend fun markHistoryScrobbled(id: String)
 
     @Query("DELETE FROM watch_history")
     suspend fun clearWatchHistory()

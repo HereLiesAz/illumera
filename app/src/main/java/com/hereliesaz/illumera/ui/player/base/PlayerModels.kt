@@ -44,7 +44,8 @@ data class PlayerLoadRequest(
     val subtitles: List<PlayerSubtitleSource> = emptyList(),
     val preferredAudioTrackId: String? = null,
     val preferredSubtitleTrackId: String? = null,
-    val separateAudioUrl: String? = null
+    val separateAudioUrl: String? = null,
+    val sourceAutoFallbackEnabled: Boolean = true
 )
 
 @Immutable

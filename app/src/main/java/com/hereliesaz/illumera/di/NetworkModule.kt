@@ -10,6 +10,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -86,9 +87,15 @@ object NetworkModule {
     @Singleton
     @TraktRetrofit
     fun provideTraktRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        // Token/device-auth calls must use a dispatcher independent from authenticated
+        // Trakt traffic. Otherwise several authenticated requests blocked in the auth
+        // interceptor can exhaust the shared per-host dispatcher and deadlock the refresh.
+        val authClient = okHttpClient.newBuilder()
+            .dispatcher(Dispatcher())
+            .build()
         return Retrofit.Builder()
             .baseUrl("https://api.trakt.tv/")
-            .client(okHttpClient)
+            .client(authClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
