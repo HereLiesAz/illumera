@@ -36,6 +36,27 @@ class SourceSelectionStore @Inject constructor(
             .apply()
     }
 
+    fun rememberSourceListDisabled(playbackId: String, disabled: Boolean) {
+        val scopedId = canonicalSourceScopeId(playbackId)
+        prefs.edit().putBoolean(sourceListDisabledKey(scopedId), disabled).apply()
+    }
+
+    fun isSourceListDisabled(playbackId: String): Boolean {
+        val scopedId = canonicalSourceScopeId(playbackId)
+        return prefs.getBoolean(sourceListDisabledKey(scopedId), false)
+    }
+
+    fun rememberExcludedSources(playbackId: String, excludedIds: Set<String>) {
+        val scopedId = canonicalSourceScopeId(playbackId)
+        prefs.edit().putString(excludedSourcesKey(scopedId), excludedIds.joinToString(",")).apply()
+    }
+
+    fun getExcludedSources(playbackId: String): Set<String> {
+        val scopedId = canonicalSourceScopeId(playbackId)
+        val raw = prefs.getString(excludedSourcesKey(scopedId), null) ?: return emptySet()
+        return raw.split(",").filter { it.isNotBlank() }.toSet()
+    }
+
     fun clearSelectionsForPrefix(prefix: String) {
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
@@ -78,8 +99,9 @@ class SourceSelectionStore @Inject constructor(
     }
 
     private fun streamKey(scopedId: String): String = "${KEY_STREAM_PREFIX}$scopedId"
-
     private fun addonPrefKey(scopedId: String): String = "${KEY_ADDON_PREFIX}$scopedId"
+    private fun sourceListDisabledKey(scopedId: String): String = "${KEY_SOURCE_LIST_DISABLED_PREFIX}$scopedId"
+    private fun excludedSourcesKey(scopedId: String): String = "${KEY_EXCLUDED_SOURCES_PREFIX}$scopedId"
 
     private fun streamFingerprint(stream: Stream): String? {
         val normalizedInfoHash = normalize(stream.infoHash)
@@ -132,5 +154,7 @@ class SourceSelectionStore @Inject constructor(
         private const val PREFS_FILE = "source_selection_prefs"
         private const val KEY_STREAM_PREFIX = "stream_"
         private const val KEY_ADDON_PREFIX = "addon_"
+        private const val KEY_SOURCE_LIST_DISABLED_PREFIX = "src_list_disabled_"
+        private const val KEY_EXCLUDED_SOURCES_PREFIX = "excluded_sources_"
     }
 }

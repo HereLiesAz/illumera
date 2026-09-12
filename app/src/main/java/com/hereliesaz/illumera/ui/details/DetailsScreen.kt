@@ -169,6 +169,8 @@ fun DetailsScreen(
     val autoPlayStream = state.autoPlayStream
     val addonSubtitles = state.addonSubtitles
     val availableStreams = state.availableStreams
+    val sourceListDisabled = state.sourceListDisabled
+    val excludedSourceIds = state.excludedSourceIds
 
     LaunchedEffect(autoPlayStream) {
         val stream = autoPlayStream ?: return@LaunchedEffect
@@ -942,6 +944,8 @@ fun DetailsScreen(
             episodeProgressMap = state.episodeProgressMap,
             episodeEnrichmentMap = state.episodeEnrichmentMap,
             mediaActionTarget = movie?.let { com.hereliesaz.illumera.ui.components.MediaActionTarget.fromMeta(it) },
+            sourceListDisabled = sourceListDisabled,
+            excludedSourceIds = excludedSourceIds,
             onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
             onQueueEpisode = { episode ->
                 onAddToQueue(
@@ -958,6 +962,8 @@ fun DetailsScreen(
             },
             onDismiss = { viewModel.closeSidebar() },
             onBack = { viewModel.goBackInSidebar() },
+            onToggleSourceListDisabled = { viewModel.toggleSourceListDisabled() },
+            onToggleSourceExcluded = { stream -> viewModel.toggleSourceExcluded(stream) },
             onEpisodeSelected = { episode ->
                 viewModel.rememberEpisodeBrowsePosition(streamId, episode)
                 val trackId = episodePlaybackId(streamId, episode)

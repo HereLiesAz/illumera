@@ -4,6 +4,7 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.isVideoFilename
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -77,7 +78,11 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
     }
 
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
-        val url = item.directLinks.firstOrNull()
+        // URLs include the filename; prefer the first video file by extension.
+        val url = item.directLinks.firstOrNull { link ->
+            val filename = link.substringAfterLast('/').substringBefore('?')
+            isVideoFilename(filename)
+        } ?: item.directLinks.firstOrNull()
         return if (url != null) DebridResult.Success(url) else DebridResult.Failure("No link available for this item")
     }
 

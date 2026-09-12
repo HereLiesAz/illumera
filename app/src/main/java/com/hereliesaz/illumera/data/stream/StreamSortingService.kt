@@ -29,7 +29,7 @@ class StreamSortingService @Inject constructor() {
 
         val maxSizeBytes = if (maxSizeGb > 0) maxSizeGb.toLong() * 1_073_741_824L else Long.MAX_VALUE
         val preferredSizeBytes = if (preferredSizeMb > 0) preferredSizeMb.toLong() * 1_048_576L else 0L
-        val skipSeedless = profile?.sourceSkipSeedless ?: false
+        val skipSeedless = profile?.sourceSkipSeedless ?: true
 
         return streams
             .map { stream -> stream to StreamParser.parse(stream) }

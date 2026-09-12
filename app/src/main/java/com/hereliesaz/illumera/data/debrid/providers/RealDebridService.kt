@@ -4,6 +4,7 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.isVideoFilename
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -78,26 +79,28 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
     }
 
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
-        val restricted = item.directLinks.firstOrNull()
-            ?: return DebridResult.Failure("No link available for this item")
+        if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
 
-        if (item.status == "downloaded" && restricted.contains("/d/")) {
-            return DebridResult.Success(restricted)
+        // Pre-unrestricted download links (from the downloads endpoint) need no resolution.
+        if (item.status == "downloaded" && item.directLinks.any { it.contains("/d/") }) {
+            return DebridResult.Success(item.directLinks.first())
         }
 
-        return when (
-            val result = http.post(
-                "$base/unrestrict/link",
-                auth(apiKey),
-                form = mapOf("link" to restricted)
-            )
-        ) {
-            is DebridResult.Success -> {
-                val url = result.value.asObjectOrNull()?.get("download")?.asString
-                if (url != null) DebridResult.Success(url) else DebridResult.Failure("No direct link returned")
+        // Iterate hoster links — prefer the first one whose unrestricted filename is a video.
+        var firstUrl: String? = null
+        for (link in item.directLinks) {
+            val result = http.post("$base/unrestrict/link", auth(apiKey), form = mapOf("link" to link))
+            if (result is DebridResult.Success) {
+                val obj = result.value.asObjectOrNull() ?: continue
+                val url = obj.get("download")?.asString ?: continue
+                val filename = obj.get("filename")?.asString ?: ""
+                val type = obj.get("type")?.asString ?: ""
+                if (firstUrl == null) firstUrl = url
+                if (type == "video" || isVideoFilename(filename)) return DebridResult.Success(url)
             }
-            is DebridResult.Failure -> result
         }
+        return if (firstUrl != null) DebridResult.Success(firstUrl)
+        else DebridResult.Failure("No direct link returned")
     }
 
     override suspend fun deleteItem(apiKey: String, item: DebridItem): DebridResult<Unit> {
