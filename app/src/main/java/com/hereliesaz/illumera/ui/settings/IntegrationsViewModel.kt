@@ -188,6 +188,32 @@ class IntegrationsViewModel @Inject constructor(
         }
     }
 
+    /** Creates and immediately connects a new Stremio account. */
+    fun register(email: String, password: String, marketing: Boolean) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
+            val result = stremioAuthManager.register(email, password, marketing)
+            result.fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    applyStremioAvatarToProfile()
+                    _events.send(IntegrationsEvent.LoginSuccess)
+                    syncAddons()
+                    syncLibrary()
+                },
+                onFailure = { error ->
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    val message = when (error) {
+                        is StremioAuthError.NetworkError -> "Network error: ${error.message}"
+                        else -> error.message ?: "Could not create Stremio account"
+                    }
+                    _events.send(IntegrationsEvent.LoginError(message))
+                }
+            )
+        }
+    }
+
     /**
      * Starts a "Login with Facebook" flow: shows a URL (as a QR code) the
      * user opens in a browser to complete Facebook OAuth on Stremio's own

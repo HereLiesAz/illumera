@@ -21,6 +21,20 @@ data class StremioLoginRequest(
     val facebook: Boolean = false
 )
 
+data class StremioGdprConsent(
+    val tos: Boolean = true,
+    val privacy: Boolean = true,
+    val marketing: Boolean = false,
+    val from: String = "illumera"
+)
+
+data class StremioRegisterRequest(
+    val type: String = "Register",
+    val email: String,
+    val password: String,
+    @SerializedName("gdpr_consent") val gdprConsent: StremioGdprConsent
+)
+
 /**
  * One entry in a Stremio "libraryItem" datastore collection — a Continue
  * Watching / library entry. For series, `id`/`name`/`poster` describe the
@@ -131,6 +145,7 @@ class StremioAuthService @Inject constructor() {
     companion object {
         private const val STREMIO_API_BASE = "https://api.strem.io/api"
         private const val LOGIN_ENDPOINT = "$STREMIO_API_BASE/login"
+        private const val REGISTER_ENDPOINT = "$STREMIO_API_BASE/register"
         private const val LOGOUT_ENDPOINT = "$STREMIO_API_BASE/logout"
         private const val ADDON_COLLECTION_ENDPOINT = "$STREMIO_API_BASE/addonCollectionGet"
         private const val ADDON_COLLECTION_SET_ENDPOINT = "$STREMIO_API_BASE/addonCollectionSet"
@@ -199,6 +214,61 @@ class StremioAuthService @Inject constructor() {
         }
     }
     
+    /**
+     * Creates a Stremio account using the same Register request and GDPR-consent
+     * payload as stremio-core/stremio-web, returning the newly issued auth key.
+     */
+    suspend fun register(
+        email: String,
+        password: String,
+        marketing: Boolean = false
+    ): StremioLoginResult = withContext(Dispatchers.IO) {
+        val requestBody = gson.toJson(
+            StremioRegisterRequest(
+                email = email,
+                password = password,
+                gdprConsent = StremioGdprConsent(marketing = marketing)
+            )
+        )
+        val request = Request.Builder()
+            .url(REGISTER_ENDPOINT)
+            .post(requestBody.toRequestBody(jsonMediaType))
+            .header("Content-Type", "application/json")
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string()
+                if (responseBody == null) {
+                    throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                }
+
+                val json = runCatching { JsonParser.parseString(responseBody).asJsonObject }.getOrNull()
+                val apiError = json?.getAsJsonObject("error")
+                if (apiError != null) {
+                    val message = apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not create Stremio account"
+                    throw StremioAuthError.UnknownError(message)
+                }
+                if (!response.isSuccessful) {
+                    throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                }
+
+                val registerResponse = gson.fromJson(responseBody, StremioLoginResponse::class.java)
+                val result = registerResponse.result
+                    ?: throw StremioAuthError.UnknownError("Could not create Stremio account")
+                StremioLoginResult(
+                    authKey = result.authKey,
+                    avatarUrl = result.user?.avatar?.takeIf { it.isNotBlank() }
+                )
+            }
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
     /**
      * Fetches the user's addon collection using their authKey.
      */

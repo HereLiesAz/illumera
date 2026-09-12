@@ -238,6 +238,32 @@ class StremioAuthManager @Inject constructor(
     }
 
     /**
+     * Creates a Stremio account and stores its auth key exactly like a normal login.
+     */
+    suspend fun register(
+        email: String,
+        password: String,
+        marketing: Boolean = false
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val loginResult = stremioAuthService.register(email, password, marketing)
+
+            encryptedPrefs.edit().apply {
+                putString(KEY_AUTH_KEY, loginResult.authKey)
+                putString(KEY_EMAIL, email)
+                if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
+            }.apply()
+
+            _connectionState.value = StremioConnectionState.Connected(email)
+            Result.success(loginResult.authKey)
+        } catch (e: StremioAuthError) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(StremioAuthError.UnknownError(e.message ?: "Unknown error"))
+        }
+    }
+
+    /**
      * Fetches the user's addon collection using the stored auth key.
      */
     suspend fun fetchAddons(): Result<List<StremioAddonEntry>> = withContext(Dispatchers.IO) {
