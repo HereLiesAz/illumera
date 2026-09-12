@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.queue
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -368,6 +369,7 @@ private fun QueueCardRow(
     actions: @Composable (QueueItem, Int) -> Unit
 ) {
     var movingKey by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = movingKey != null) { movingKey = null }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -415,7 +417,7 @@ private fun QueueCardRow(
                                         if (index < items.lastIndex) onMoveSuggestion(item, index + 1)
                                         true
                                     }
-                                    Key.Back -> {
+                                    Key.Back, Key.Escape -> {
                                         movingKey = null
                                         true
                                     }

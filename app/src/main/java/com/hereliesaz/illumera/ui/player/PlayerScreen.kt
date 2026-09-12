@@ -209,7 +209,7 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(movieId, videoUrl, backendType) {
+    LaunchedEffect(movieId, videoUrl, backendType, autoFallbackEnabled) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
         val resumePosition = viewModel.getResumePosition(movieId)
         playbackController.load(
@@ -222,7 +222,8 @@ fun PlayerScreen(
                 subtitles = subtitles,
                 preferredAudioTrackId = preferredAudioTrackId,
                 preferredSubtitleTrackId = preferredSubtitleTrackId,
-                separateAudioUrl = trailerAudioUrl
+                separateAudioUrl = trailerAudioUrl,
+                sourceAutoFallbackEnabled = autoFallbackEnabled
             )
         )
         playbackController.setSubtitleVerticalOffset(playbackSettings.subtitleOffset)

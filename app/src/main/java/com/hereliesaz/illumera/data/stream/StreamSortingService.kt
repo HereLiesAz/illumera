@@ -131,7 +131,7 @@ class StreamSortingService @Inject constructor() {
                 when {
                     audioDistance != null && (subtitleDistance == null || audioDistance <= subtitleDistance) -> true
                     subtitleDistance != null -> false
-                    else -> true
+                    else -> false
                 }
             }
         }

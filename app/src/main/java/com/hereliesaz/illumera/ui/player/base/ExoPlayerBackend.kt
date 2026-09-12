@@ -1427,7 +1427,11 @@ class ExoPlayerBackend(
 
     private fun tryNextSourceOnParsingError(error: PlaybackException): Boolean {
         val codeName = error.errorCodeName.uppercase(Locale.US)
-        if (!codeName.contains("PARSING") || _sourceListDisabled.value) return false
+        if (
+            !codeName.contains("PARSING") ||
+            _sourceListDisabled.value ||
+            loadRequest?.sourceAutoFallbackEnabled != true
+        ) return false
         val sources = _sourceOptions.value
         if (sources.size <= 1) return false
         val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
