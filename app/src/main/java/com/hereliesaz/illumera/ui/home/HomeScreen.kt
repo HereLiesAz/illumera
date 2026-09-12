@@ -96,20 +96,14 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
-    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.history, state.seriesNextUp) {
+    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.watchedIds) {
         if (tab != DashboardTab.HOME) {
             state
         } else {
-            val hiddenIds = buildSet {
-                state.history
-                    .asSequence()
-                    .filter { it.watched && it.type == "movie" }
-                    .mapTo(this) { it.id }
-                state.seriesNextUp
-                    .asSequence()
-                    .filter { it.isComplete }
-                    .mapTo(this) { it.seriesId }
-            }
+            // Home-only rule: once a movie or any episode of a series is watched,
+            // remove that title from Home catalog/hero lists immediately. The
+            // Continue Watching data remains untouched and manages itself from history.
+            val hiddenIds = state.watchedIds
             if (hiddenIds.isEmpty()) {
                 state
             } else {
