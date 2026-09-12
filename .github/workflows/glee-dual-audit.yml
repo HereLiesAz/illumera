@@ -90,10 +90,6 @@ jobs:
           done
           test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
-          # startingBranch must be one of the branches Jules advertises for this source.
-          # PR heads can briefly lag that source index, so prefer the PR base branch and
-          # provide the exact checked-out PR diff in the prompt. This gives Jules the
-          # complete change set while retaining indexed surrounding repository context.
           STARTING_BRANCH=$(jq -r --arg base "$BASE_BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $base)][0] // empty' <<<"$SOURCE_JSON")
           if [ -z "$STARTING_BRANCH" ]; then
             STARTING_BRANCH=$(jq -r '.githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
@@ -120,7 +116,7 @@ jobs:
 
           SESSION_TITLE="Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}"
           PAYLOAD=$(jq -n \
-            --arg prompt "$(cat /tmp/prompt.txt)" \
+            --rawfile prompt /tmp/prompt.txt \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$STARTING_BRANCH" \
@@ -139,7 +135,6 @@ jobs:
           else
             echo "Jules session creation returned HTTP $HTTP_CODE" >&2
             jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
-
             if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
               for attempt in 1 2 3 4 5; do
                 sleep 2
@@ -261,7 +256,7 @@ jobs:
 
           SESSION_TITLE="Glee repository audit — $BRANCH — $GITHUB_RUN_ID"
           PAYLOAD=$(jq -n \
-            --arg prompt "$(cat /tmp/prompt.txt)" \
+            --rawfile prompt /tmp/prompt.txt \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$STARTING_BRANCH" \
