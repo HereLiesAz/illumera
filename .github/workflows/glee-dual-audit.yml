@@ -32,11 +32,20 @@ jobs:
 
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
-          SOURCE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
-            'https://jules.googleapis.com/v1alpha/sources?pageSize=100' \
-            | jq -r --arg owner "$OWNER" --arg repo "$NAME" '.sources[] | select(.githubRepo.owner==$owner and .githubRepo.repo==$repo) | .name' \
-            | head -n1)
-          test -n "$SOURCE" || { echo "Jules source not found for $REPO"; exit 1; }
+          SOURCE=''
+          PAGE_TOKEN=''
+          while :; do
+            URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
+            if [ -n "$PAGE_TOKEN" ]; then
+              URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
+            fi
+            PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
+            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            [ -n "$SOURCE" ] && break
+            PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
+            [ -z "$PAGE_TOKEN" ] && break
+          done
+          test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
           cat > /tmp/prompt.txt <<'PROMPT'
           You are Glee, an adversarial software auditor. Audit EVERY substantive application change on this branch versus main, plus all unchanged surrounding code needed to verify behavior. Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
@@ -108,11 +117,20 @@ jobs:
 
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
-          SOURCE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
-            'https://jules.googleapis.com/v1alpha/sources?pageSize=100' \
-            | jq -r --arg owner "$OWNER" --arg repo "$NAME" '.sources[] | select(.githubRepo.owner==$owner and .githubRepo.repo==$repo) | .name' \
-            | head -n1)
-          test -n "$SOURCE" || { echo "Jules source not found for $REPO"; exit 1; }
+          SOURCE=''
+          PAGE_TOKEN=''
+          while :; do
+            URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
+            if [ -n "$PAGE_TOKEN" ]; then
+              URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
+            fi
+            PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
+            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            [ -n "$SOURCE" ] && break
+            PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
+            [ -z "$PAGE_TOKEN" ] && break
+          done
+          test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
           cat > /tmp/prompt.txt <<'PROMPT'
           You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository on this branch, not merely the current pull-request diff. Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
