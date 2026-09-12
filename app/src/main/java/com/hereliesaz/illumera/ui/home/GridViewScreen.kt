@@ -102,7 +102,8 @@ fun GridViewScreen(
     initialScrollIndex: Int = 0,
     initialScrollOffset: Int = 0,
     onScrollPositionChange: (Int, Int) -> Unit = { _, _ -> },
-    watchedIds: Set<String> = emptySet()
+    watchedIds: Set<String> = emptySet(),
+    externalEntryRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -172,8 +173,9 @@ fun GridViewScreen(
         }
     }
     
-    // Entry focus requester
-    val entryRequester = remember { FocusRequester() }
+    // Entry focus requester — external one allows the parent (e.g. NavDrawer onClose) to re-focus
+    val internalEntryRequester = remember { FocusRequester() }
+    val entryRequester = externalEntryRequester ?: internalEntryRequester
     val backIconRequester = remember { FocusRequester() }
     val cardRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     var pendingDirectionalTargetIndex by remember { mutableStateOf<Int?>(null) }
