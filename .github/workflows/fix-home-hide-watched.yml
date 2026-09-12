@@ -1,0 +1,68 @@
+name: Fix Home watched-title filtering
+
+on:
+  push:
+    branches:
+      - fix/source-language-seedless-watchlist-nav
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/source-language-seedless-watchlist-nav
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Patch Home filtering
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/hereliesaz/illumera/ui/home/HomeScreen.kt')
+          text = path.read_text()
+          old = '''    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.history, state.seriesNextUp) {
+        if (tab != DashboardTab.HOME) {
+            state
+        } else {
+            val hiddenIds = buildSet {
+                state.history
+                    .asSequence()
+                    .filter { it.watched && it.type == "movie" }
+                    .mapTo(this) { it.id }
+                state.seriesNextUp
+                    .asSequence()
+                    .filter { it.isComplete }
+                    .mapTo(this) { it.seriesId }
+            }
+'''
+          new = '''    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.watchedIds) {
+        if (tab != DashboardTab.HOME) {
+            state
+        } else {
+            // Home-only rule: once a movie or any episode of a series is watched,
+            // remove that title from Home catalog/hero lists immediately. The
+            // Continue Watching data remains untouched and manages itself from history.
+            val hiddenIds = state.watchedIds
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one Home filtering block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Compile app
+        run: ./gradlew :app:compileDebugKotlin --no-daemon
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm -f .github/workflows/fix-home-hide-watched.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Home watched-title filtering"
+          git push origin HEAD:fix/source-language-seedless-watchlist-nav
