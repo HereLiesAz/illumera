@@ -268,18 +268,18 @@ class QueueManager @Inject constructor(
                     .getOrNull()
                     ?.takeIf { it.isSuccessful }
                     ?.body().orEmpty()
-                    .mapNotNullTo(excludedIds) { watched ->
-                        watched.movie.ids.imdb?.let(::normalizeId)
-                            ?: watched.movie.ids.tmdb?.let { normalizeId("tmdb:$it") }
+                    .forEach { watched ->
+                        watched.movie.ids.imdb?.let { excludedIds += normalizeId(it) }
+                        watched.movie.ids.tmdb?.let { excludedIds += normalizeId("tmdb:$it") }
                     }
 
                 runCatching { traktApi.getWatchedShows() }
                     .getOrNull()
                     ?.takeIf { it.isSuccessful }
                     ?.body().orEmpty()
-                    .mapNotNullTo(excludedIds) { watched ->
-                        watched.show.ids.imdb?.let(::normalizeId)
-                            ?: watched.show.ids.tmdb?.let { normalizeId("tmdb:$it") }
+                    .forEach { watched ->
+                        watched.show.ids.imdb?.let { excludedIds += normalizeId(it) }
+                        watched.show.ids.tmdb?.let { excludedIds += normalizeId("tmdb:$it") }
                     }
             }
 
@@ -298,7 +298,7 @@ class QueueManager @Inject constructor(
             // Enabling "only unseen" used to throw away the suggestions already on screen.
             // Re-seed from any still-valid existing suggestions so a refresh cannot collapse
             // to an empty row just because a remote source is temporarily unavailable.
-            if (current.preferences.onlyUnseenSuggestions) {
+            if (current.preferences.onlyUnseenSuggestions && current.preferences.suggestionSources.isNotEmpty()) {
                 current.suggestions.asSequence()
                     .filter { it.stableKey !in dismissedKeys }
                     .filter(::isEligible)
@@ -306,6 +306,8 @@ class QueueManager @Inject constructor(
             }
 
             if (useTrakt) {
+                val countBeforeRecommendations = candidates.size
+
                 if (current.preferences.includeMovies) {
                     runCatching { traktApi.getMovieRecommendations(50) }
                         .getOrNull()
@@ -341,42 +343,58 @@ class QueueManager @Inject constructor(
                         }
                 }
 
-                // The user's Trakt watchlist is a second personalized pool. It is especially
-                // useful for unseen-only mode because watched history is filtered separately.
-                runCatching { traktApi.getWatchlist(limit = 100) }
-                    .getOrNull()
-                    ?.takeIf { it.isSuccessful }
-                    ?.body().orEmpty()
-                    .forEach { watchlistItem ->
-                        when (watchlistItem.type) {
-                            "movie" -> {
-                                if (!current.preferences.includeMovies) return@forEach
-                                val movie = watchlistItem.movie ?: return@forEach
-                                val id = movie.ids.imdb ?: movie.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
-                                val item = QueueItem(
-                                    id = id,
-                                    type = "movie",
-                                    title = movie.title ?: "Movie",
-                                    origin = QueueOrigin.SUGGESTED
-                                )
-                                if (isEligible(item)) candidates += item
-                            }
+                // Watchlist is a fallback pool — only used when recommendations alone
+                // yield fewer than 10 candidates, to avoid overwhelming personalized results.
+                if (candidates.size - countBeforeRecommendations < 10) {
+                    runCatching { traktApi.getWatchlist(limit = 100) }
+                        .getOrNull()
+                        ?.takeIf { it.isSuccessful }
+                        ?.body().orEmpty()
+                        .forEach { watchlistItem ->
+                            when (watchlistItem.type) {
+                                "movie" -> {
+                                    if (!current.preferences.includeMovies) return@forEach
+                                    val movie = watchlistItem.movie ?: return@forEach
+                                    val id = movie.ids.imdb ?: movie.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
+                                    val item = QueueItem(
+                                        id = id,
+                                        type = "movie",
+                                        title = movie.title ?: "Movie",
+                                        origin = QueueOrigin.SUGGESTED
+                                    )
+                                    if (isEligible(item)) candidates += item
+                                }
 
-                            "show" -> {
-                                if (!current.preferences.includeEpisodes && !current.preferences.includeWholeShows) return@forEach
-                                val show = watchlistItem.show ?: return@forEach
-                                val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
-                                val item = QueueItem(
-                                    id = id,
-                                    type = "series",
-                                    title = show.title ?: "Series",
-                                    wholeShow = current.preferences.includeWholeShows,
-                                    origin = QueueOrigin.SUGGESTED
-                                )
-                                if (isEligible(item)) candidates += item
+                                "show" -> {
+                                    if (!current.preferences.includeEpisodes && !current.preferences.includeWholeShows) return@forEach
+                                    val show = watchlistItem.show ?: return@forEach
+                                    val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
+                                    val item = QueueItem(
+                                        id = id,
+                                        type = "series",
+                                        title = show.title ?: "Series",
+                                        wholeShow = current.preferences.includeWholeShows,
+                                        origin = QueueOrigin.SUGGESTED
+                                    )
+                                    if (isEligible(item)) candidates += item
+                                }
+
+                                "season", "episode" -> {
+                                    if (!current.preferences.includeEpisodes && !current.preferences.includeWholeShows) return@forEach
+                                    val show = watchlistItem.show ?: return@forEach
+                                    val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
+                                    val item = QueueItem(
+                                        id = id,
+                                        type = "series",
+                                        title = show.title ?: "Series",
+                                        wholeShow = current.preferences.includeWholeShows,
+                                        origin = QueueOrigin.SUGGESTED
+                                    )
+                                    if (isEligible(item)) candidates += item
+                                }
                             }
                         }
-                    }
+                }
             }
 
             if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources &&

@@ -69,7 +69,12 @@ class StreamSortingService @Inject constructor() {
             secondary = profile?.preferredAudioLanguageSecondary.orEmpty()
         )
         if (languages.isEmpty()) return true
-        return languages.any { language -> containsAudioLanguage(StreamParser.combinedText(stream), language) }
+        // filename and name are authoritative language sources — no audio cue required
+        val authoritativeText = listOfNotNull(stream.behaviorHints?.filename, stream.name).joinToString(" ")
+        if (authoritativeText.isNotBlank() && languages.any { containsLanguageAlias(authoritativeText, it) }) return true
+        // title/description require a nearby audio cue to avoid false positives from content titles
+        val contextualText = listOfNotNull(stream.title, stream.description).joinToString(" ")
+        return contextualText.isNotBlank() && languages.any { containsAudioLanguage(contextualText, it) }
     }
 
     private fun matchesSubtitleLanguageRequirement(stream: Stream, profile: ProfileEntity?): Boolean {
