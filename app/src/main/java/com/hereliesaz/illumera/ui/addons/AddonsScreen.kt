@@ -150,7 +150,7 @@ fun AddonsScreen(
                 modifier = Modifier.width(240.dp).then(goBackModifier).then(upBlockModifier)
             )
             Text(
-                "Official and Community addon catalogs",
+                "Official, Community, and saved addon collections",
                 color = Color.White.copy(0.5f),
                 style = MaterialTheme.typography.bodySmall
             )
@@ -322,6 +322,9 @@ fun AddonsScreen(
             onDismissRequest = { showCatalogBrowser = false },
             onLoad = { viewModel.loadCatalog() },
             onSourceSelected = viewModel::selectCatalogSource,
+            onAddCollection = viewModel::addCollection,
+            onCollectionSelected = viewModel::selectCollection,
+            onCollectionRemoved = viewModel::removeCollection,
             onRetry = viewModel::retryCatalog,
             onInstall = { item ->
                 showCatalogBrowser = false
