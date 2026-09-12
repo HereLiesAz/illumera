@@ -256,6 +256,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun updateSourceSkipSeedless(profileId: Int, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceSkipSeedless = enabled)) }
+        }
+    }
+
+    fun updateSourceAudioLanguageRequirement(profileId: Int, mode: String) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceAudioLanguageRequirement = mode)) }
+        }
+    }
+
+    fun updateSourceSubtitleLanguageRequirement(profileId: Int, mode: String) {
+        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceSubtitleLanguageRequirement = mode)) }
+        }
+    }
+
     fun updateSourceAutoFallback(profileId: Int, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceAutoFallback = enabled)) }

@@ -6,6 +6,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -99,11 +101,6 @@ fun NavDrawer(
         animationSpec = tween(300)
     )
 
-    // Standard BackHandler for when the drawer container is focused
-    BackHandler(enabled = isMenuFocused) {
-        onClose()
-    }
-
     val showStaticMask = currentDestination in listOf(
         NavDestination.Home,
         NavDestination.Movies,
@@ -116,6 +113,12 @@ fun NavDrawer(
         // LAYER 1: Content
         Box(modifier = Modifier.fillMaxSize()) {
             content()
+        }
+
+        // BackHandlers are dispatched last-composed first. Register this after screen content
+        // so an open drawer wins over Watchlist (and any other screen-level BackHandler).
+        BackHandler(enabled = isMenuFocused) {
+            onClose()
         }
 
         // LAYER 2: Static Hero Mask
@@ -186,11 +189,36 @@ fun NavDrawer(
         com.hereliesaz.illumera.ui.components.NoiseOverlay(modifier = Modifier.zIndex(1.6f))
 
         // LAYER 4: Interactive Drawer
+        val closeSwipeThresholdPx = with(density) { 48.dp.toPx() }
         Box(
             modifier = Modifier
                 .width(width)
                 .fillMaxHeight()
                 .zIndex(2f)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.DirectionRight || event.key == Key.Back)
+                    ) {
+                        onClose()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .pointerInput(onClose, closeSwipeThresholdPx) {
+                    var horizontalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { horizontalDrag = 0f },
+                        onDragCancel = { horizontalDrag = 0f },
+                        onDragEnd = {
+                            if (horizontalDrag >= closeSwipeThresholdPx) onClose()
+                            horizontalDrag = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            horizontalDrag += dragAmount
+                        }
+                    )
+                }
                 .onFocusChanged { isMenuFocused = it.hasFocus }
                 .padding(top = 30.dp, bottom = 30.dp)
         ) {

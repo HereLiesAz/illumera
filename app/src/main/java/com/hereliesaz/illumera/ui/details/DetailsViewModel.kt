@@ -681,7 +681,7 @@ class DetailsViewModel @Inject constructor(
             streamSortingService.sortAndFilter(
                 rawStreams, enabledQualities, excludePhrases, addonSortOrders,
                 profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0,
-                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5
+                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5, profile
             )
         } else rawStreams
     }
