@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -70,6 +70,7 @@ jobs:
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
           SOURCE=''
+          SOURCE_JSON=''
           PAGE_TOKEN=''
           while :; do
             URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
@@ -77,36 +78,79 @@ jobs:
               URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
-            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
+            if [ -n "$SOURCE_JSON" ]; then
+              SOURCE=$(jq -r '.name // empty' <<<"$SOURCE_JSON")
+            else
+              SOURCE=''
+            fi
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
           done
           test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
+          STARTING_BRANCH=$(jq -r --arg base "$BASE_BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $base)][0] // empty' <<<"$SOURCE_JSON")
+          if [ -z "$STARTING_BRANCH" ]; then
+            STARTING_BRANCH=$(jq -r '.githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
+          fi
+          test -n "$STARTING_BRANCH" || { echo 'Jules source does not advertise an indexed starting branch'; exit 1; }
+          echo "Jules source branch: $STARTING_BRANCH (PR head: $BRANCH, base: $BASE_BRANCH)"
+
+          git diff --no-ext-diff --unified=30 "origin/$BASE_BRANCH...origin/$BRANCH" > /tmp/pr.diff
+          test -s /tmp/pr.diff || { echo 'PR diff is empty'; exit 1; }
+
           cat > /tmp/prompt.txt <<PROMPT
-          You are Glee, an adversarial software auditor. Audit EVERY substantive application change on branch "$BRANCH" versus "$BASE_BRANCH", plus all unchanged surrounding code needed to verify behavior. Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
+          You are Glee, an adversarial software auditor. Audit EVERY substantive application change in pull request #$PR_NUMBER from "$BRANCH" into "$BASE_BRANCH", plus all unchanged surrounding code needed to verify behavior. Your Jules source starts on indexed branch "$STARTING_BRANCH". The exact unified PR diff is appended below; treat that diff as the authoritative feature-branch changes. Inspect the repository source for callers, invariants, schemas, and surrounding behavior before reporting anything.
+
+          Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
 
           Prioritize concrete production-impacting defects: incorrect behavior, crashes, stale/inconsistent state, Android lifecycle/coroutine/Flow/Compose errors, data loss, Room migration mistakes, profile-scoping mistakes, source filtering/ranking/autofallback failures, series progress/resume/next-up bugs, Trakt sync/history/collection errors, queue/watchlist inconsistency, focus/input/navigation regressions, security/privacy defects, resource/performance leaks, and materially important missing tests. Trace callers and data flow before reporting anything.
 
           Return ONLY a concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
+
+          --- BEGIN AUTHORITATIVE PR DIFF ---
           PROMPT
+          cat /tmp/pr.diff >> /tmp/prompt.txt
+          echo '--- END AUTHORITATIVE PR DIFF ---' >> /tmp/prompt.txt
 
-          PAYLOAD=$(jq -n \
-            --arg prompt "$(cat /tmp/prompt.txt)" \
-            --arg title "Glee PR audit — #$PR_NUMBER" \
+          SESSION_TITLE="Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}"
+          jq -n \
+            --rawfile prompt /tmp/prompt.txt \
+            --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
-            --arg branch "$BRANCH" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+            --arg branch "$STARTING_BRANCH" \
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
+            > /tmp/jules-payload.json
 
-          SESSION_JSON=$(curl -fsS -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "$PAYLOAD" \
+            --data-binary @/tmp/jules-payload.json \
             'https://jules.googleapis.com/v1alpha/sessions')
-          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_JSON=$(cat /tmp/jules-session.json)
+          SESSION_NAME=''
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          else
+            echo "Jules session creation returned HTTP $HTTP_CODE" >&2
+            jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
+            if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                SESSIONS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+                  'https://jules.googleapis.com/v1alpha/sessions?pageSize=100')
+                SESSION_NAME=$(jq -r --arg title "$SESSION_TITLE" \
+                  '[.sessions[]? | select(.title == $title) | .name][0] // empty' <<<"$SESSIONS")
+                [ -n "$SESSION_NAME" ] && break
+              done
+            fi
+          fi
+
+          test -n "$SESSION_NAME" || { echo 'Jules session could not be created or reconciled'; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
-          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+          echo "Jules session: $SESSION_NAME"
 
           STATE=''
           for i in $(seq 1 120); do
@@ -143,7 +187,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -164,6 +208,7 @@ jobs:
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
           SOURCE=''
+          SOURCE_JSON=''
           PAGE_TOKEN=''
           while :; do
             URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
@@ -171,36 +216,82 @@ jobs:
               URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
-            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
+            if [ -n "$SOURCE_JSON" ]; then
+              SOURCE=$(jq -r '.name // empty' <<<"$SOURCE_JSON")
+            else
+              SOURCE=''
+            fi
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
           done
           test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
+          STARTING_BRANCH=$(jq -r --arg branch "$BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $branch)][0] // empty' <<<"$SOURCE_JSON")
+          if [ -z "$STARTING_BRANCH" ]; then
+            STARTING_BRANCH=$(jq -r '.githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
+          fi
+          test -n "$STARTING_BRANCH" || { echo 'Jules source does not advertise an indexed starting branch'; exit 1; }
+
           cat > /tmp/prompt.txt <<PROMPT
-          You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository on branch "$BRANCH", not merely a current pull-request diff. Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
+          You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository. The requested ref is "$BRANCH" and the Jules source starts from indexed branch "$STARTING_BRANCH". Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
 
           Prioritize concrete production-impacting defects: correctness and crash paths; Android lifecycle, coroutine, Flow, Compose state/focus/input problems; profile isolation; Room schema/migration/data-loss issues; playback and ExoPlayer state; source parsing/filtering/ranking/fallback; series progress/resume/next-up; Trakt authentication/sync/history/collection behavior; queue/watchlist consistency; network/error handling; security/privacy; resource/performance leaks; and critical missing tests.
 
           Return ONLY a prioritized concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
           PROMPT
 
-          PAYLOAD=$(jq -n \
-            --arg prompt "$(cat /tmp/prompt.txt)" \
-            --arg title "Glee repository audit — $BRANCH" \
-            --arg source "$SOURCE" \
-            --arg branch "$BRANCH" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+          if [ "$STARTING_BRANCH" != "$BRANCH" ] && git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            git diff --no-ext-diff --unified=30 "origin/$STARTING_BRANCH...origin/$BRANCH" > /tmp/repo-ref.diff || true
+            if [ -s /tmp/repo-ref.diff ]; then
+              {
+                echo
+                echo 'The requested ref is not yet indexed by Jules. Treat this exact unified diff as authoritative changes on top of the indexed source:'
+                echo '--- BEGIN AUTHORITATIVE REF DIFF ---'
+                cat /tmp/repo-ref.diff
+                echo '--- END AUTHORITATIVE REF DIFF ---'
+              } >> /tmp/prompt.txt
+            fi
+          fi
 
-          SESSION_JSON=$(curl -fsS -X POST \
+          SESSION_TITLE="Glee repository audit — $BRANCH — $GITHUB_RUN_ID"
+          jq -n \
+            --rawfile prompt /tmp/prompt.txt \
+            --arg title "$SESSION_TITLE" \
+            --arg source "$SOURCE" \
+            --arg branch "$STARTING_BRANCH" \
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
+            > /tmp/jules-payload.json
+
+          HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "$PAYLOAD" \
+            --data-binary @/tmp/jules-payload.json \
             'https://jules.googleapis.com/v1alpha/sessions')
-          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_JSON=$(cat /tmp/jules-session.json)
+          SESSION_NAME=''
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          else
+            echo "Jules session creation returned HTTP $HTTP_CODE" >&2
+            jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
+            if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                SESSIONS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+                  'https://jules.googleapis.com/v1alpha/sessions?pageSize=100')
+                SESSION_NAME=$(jq -r --arg title "$SESSION_TITLE" \
+                  '[.sessions[]? | select(.title == $title) | .name][0] // empty' <<<"$SESSIONS")
+                [ -n "$SESSION_NAME" ] && break
+              done
+            fi
+          fi
+
+          test -n "$SESSION_NAME" || { echo 'Jules session could not be created or reconciled'; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
-          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+          echo "Jules session: $SESSION_NAME"
 
           STATE=''
           for i in $(seq 1 120); do
