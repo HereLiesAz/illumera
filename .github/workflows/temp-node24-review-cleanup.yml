@@ -70,7 +70,7 @@ jobs:
             cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
           done
 
-      - name: Apply recovered fixes
+      - name: Apply recovered app fixes
         working-directory: illumera
         run: |
           set -euo pipefail
@@ -78,10 +78,15 @@ jobs:
           from pathlib import Path
           p = Path('.ci/apply-recent-review-fixes.py')
           s = p.read_text()
-          broad = '    text = text.replace("# v4\\n", "# v7.0.1\\n") if "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4" in text else text\n'
-          if broad not in s:
-              raise SystemExit('Expected broad action-comment line was not found')
-          s = s.replace(broad, '')
+
+          actions_start = s.index('# ---------------------------------------------------------------------------\n# GitHub Actions:')
+          details_start = s.index('# ---------------------------------------------------------------------------\n# Details:', actions_start)
+          s = s[:actions_start] + s[details_start:]
+
+          guard_start = s.index('# Final guard:')
+          print_start = s.index('print("Recent review and Node 24 patches applied successfully")', guard_start)
+          s = s[:guard_start] + s[print_start:]
+
           old = "'''                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
           new = "'''            Box(\n                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
           count = s.count(old)
@@ -98,16 +103,14 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:compileDebugKotlin --no-daemon
 
-      - name: Commit compiled code fixes only
+      - name: Commit compiled app fixes only
         working-directory: illumera
         env:
           BRANCH: fix/node24-review-cleanup
         run: |
           set -euo pipefail
-          # Workflow files are updated separately through GitHub so the
-          # Actions token never needs workflows permission.
-          git fetch origin "$BRANCH"
-          git checkout "origin/$BRANCH" -- .github/workflows
+          # Never include workflow changes in the Actions-authored commit.
+          git restore --source=HEAD --staged --worktree .github/workflows
           rm -f .ci/apply-recent-review-fixes.py
           rmdir .ci 2>/dev/null || true
           git config user.name "github-actions[bot]"
@@ -115,5 +118,6 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Resolve recent application review findings"
+          git fetch origin "$BRANCH"
           git rebase "origin/$BRANCH"
           git push origin "HEAD:$BRANCH"
