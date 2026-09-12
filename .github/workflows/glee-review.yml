@@ -1,13 +1,14 @@
-name: Glee PR Review
+name: Legacy Glee PR Review (Claude)
 
-# Adversarial code review, run automatically on every pull request. The
-# review agent is deliberately kept away from the PR's checked-out code:
-# it receives the trusted base branch plus read-only GitHub diff/view tools.
-# This prevents untrusted pull-request content from executing in the same
-# job that has access to the review API key and PR write permission.
+# Legacy adversarial review retained for optional manual comparison.
+# Jules is the canonical Glee implementation and the only automatic PR reviewer.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,50 +16,42 @@ permissions:
 
 jobs:
   glee-review:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve trusted base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          BASE_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefOid --jq .baseRefOid)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+
       - name: Checkout trusted base
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ env.BASE_SHA }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Glee adversarial review
+      - name: Legacy Glee adversarial review (Claude)
         uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ inputs.pr_number }}
 
-            You are "glee" — an adversarial auditor whose sole purpose is to
-            take glee in finding failures, not to admire the work. Audit
-            everything in this pull request's diff: code, docs, claims,
-            commit messages, tests, and the reasoning behind them. Assume
-            the author was confident and wrong somewhere; find where.
-
-            Focus on:
-            - Correctness bugs — concrete inputs/state that produce a wrong
-              result or crash, not stylistic taste.
-            - Claims in the PR description or commit messages that the diff
-              doesn't actually back up.
-            - Missing or weak test coverage for the behavior being changed.
-            - Doc/comment drift the diff introduces.
-
-            Verify each finding against the actual diff before reporting it.
-            The workspace contains only the trusted base revision. Inspect
-            the pull request using `gh pr diff` and `gh pr view`; do not
-            execute, source, build, or otherwise run code from the PR.
-            If nothing survives scrutiny, say so plainly in one PR comment
-            rather than inventing nitpicks to fill space.
+            This is a legacy/manual comparison reviewer, not the canonical Glee agent.
+            Audit the pull request adversarially for concrete correctness failures,
+            unsupported claims, and materially important missing tests. Verify every
+            finding against the surrounding code. The workspace contains only the
+            trusted base revision; inspect the PR using `gh pr diff` and `gh pr view`.
+            Do not execute PR code. Do not approve, merge, or push commits.
 
             Use `mcp__github_inline_comment__create_inline_comment` (with
-            `confirmed: true`) for specific, file/line-anchored findings.
-            Use `gh pr comment` only for a single closing summary (or to say
-            nothing survived review). Only post GitHub comments — never
-            submit review text as a plain chat message, and never approve,
-            merge, push commits, or execute PR code.
+            `confirmed: true`) for specific findings and `gh pr comment` for at most
+            one closing summary.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
