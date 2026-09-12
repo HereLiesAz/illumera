@@ -1,0 +1,78 @@
+name: Glee dual audit
+
+on:
+  push:
+    branches:
+      - fix/source-language-seedless-watchlist-nav
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  audit-pr-changes:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch base branch
+        run: git fetch origin main:refs/remotes/origin/main
+      - name: Glee audit — all changes
+        id: glee
+        uses: rsamborski/run-agy-sdk@4ea5c37792310d5f5f4ac96e77e35c510ddd23ce
+        with:
+          api-key: ${{ secrets.ANTIGRAVITY_API_KEY }}
+          github-token: ${{ github.token }}
+          mode: one-shot
+          trust-workspace: "true"
+          sandbox-profile: "true"
+          prompt: |
+            You are Glee, an adversarial software auditor. Audit every substantive application change on this branch versus origin/main using git diff origin/main...HEAD and the surrounding repository code. Ignore only the temporary audit harness .github/workflows/glee-dual-audit.yml. Do not edit files, commit, push, or post to GitHub. Assume the implementation is confidently wrong somewhere and try to prove it.
+
+            Prioritize concrete production-impacting defects: incorrect behavior, crashes, stale or inconsistent state, concurrency/lifecycle errors, data loss, bad Room migrations, profile-scoping mistakes, source-selection/autofallback mistakes, Trakt sync errors, input/focus/navigation regressions, and performance leaks. Check the requested behaviors against the actual implementation, including edge cases and interactions between changed files. Inspect relevant unchanged callers and models before declaring a finding. Also identify missing tests where their absence makes a regression materially likely.
+
+            Return only a concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. Do not pad the report with style opinions. If no finding survives scrutiny, say that plainly.
+      - name: Post PR-change audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_RESPONSE: ${{ steps.glee.outputs.response }}
+        run: |
+          printf '%s\n\n%s\n' '## Glee audit — all PR changes' "$AUDIT_RESPONSE" > /tmp/glee-pr.md
+          gh pr comment 78 --body-file /tmp/glee-pr.md
+
+  audit-entire-repository:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Glee audit — entire repository
+        id: glee
+        uses: rsamborski/run-agy-sdk@4ea5c37792310d5f5f4ac96e77e35c510ddd23ce
+        with:
+          api-key: ${{ secrets.ANTIGRAVITY_API_KEY }}
+          github-token: ${{ github.token }}
+          mode: one-shot
+          trust-workspace: "true"
+          sandbox-profile: "true"
+          prompt: |
+            You are Glee, an adversarial software auditor. Audit the ENTIRE checked-out Illumera repository, not merely the current pull-request diff. Do not edit files, commit, push, or post to GitHub. Assume there are real bugs hiding behind apparently reasonable code and hunt for them.
+
+            Prioritize concrete production-impacting defects: correctness and crash paths; Android lifecycle, coroutine, Flow, Compose state and focus/input errors; profile isolation; Room schema/migration/data-loss issues; playback and ExoPlayer state; source parsing/filtering/ranking/fallback; series progress and next-up logic; Trakt authentication/sync/history/collection behavior; queue/watchlist consistency; network/error handling; security/privacy; resource or performance leaks; and critical missing tests. Follow data and control flow across files and inspect callers before reporting a claim.
+
+            Return a prioritized, concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. Avoid style-only filler. If no finding survives scrutiny, say that plainly.
+      - name: Post repository audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_RESPONSE: ${{ steps.glee.outputs.response }}
+        run: |
+          printf '%s\n\n%s\n' '## Glee audit — entire repository' "$AUDIT_RESPONSE" > /tmp/glee-repo.md
+          gh pr comment 78 --body-file /tmp/glee-repo.md
