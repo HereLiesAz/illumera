@@ -31,8 +31,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
@@ -44,22 +42,10 @@ import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Scale
+import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
 
-/**
- * ============================================================================
- * LUMERA CARD - Netflix-Grade Optimized Media Card
- * ============================================================================
- *
- * Optimizations applied:
- * 1. AsyncImage instead of SubcomposeAsyncImage (reduces recomposition)
- * 2. Simple zIndex switch instead of per-card animation (reduces CPU overhead)
- * 3. Hardware layer only when focused (GPU acceleration where needed)
- * 4. Fixed poster size for consistent cache hits
- * 5. Minimal crossfade for smooth transitions without jank
- * ============================================================================
- */
 @OptIn(ExperimentalTvMaterial3Api::class)
 val LocalWatchedIds = compositionLocalOf { emptySet<String>() }
 
@@ -73,14 +59,19 @@ fun LumeraCard(
     isWatched: Boolean = false,
     hasNewEpisode: Boolean = false,
     onFocused: (() -> Unit)? = null,
-    onLongClick: (() -> Unit)? = null
+    onLongClick: (() -> Unit)? = null,
+    mediaItem: MetaItem? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var contextMenuExpanded by remember(mediaItem?.id) { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
     val roundCorners = LocalRoundCorners.current
 
-    // Shape based on user preference
+    val effectiveLongClick: (() -> Unit)? = onLongClick ?: mediaItem?.let {
+        { contextMenuExpanded = true }
+    }
+
     val cardShape = if (roundCorners) RoundedCornerShape(12.dp) else RectangleShape
     val focusedCardShape = if (roundCorners) RoundedCornerShape(16.dp) else RectangleShape
 
@@ -88,16 +79,16 @@ fun LumeraCard(
         modifier = modifier
             .width(140.dp)
             .aspectRatio(2f / 3f)
-            .zIndex(if (isFocused) 10f else 0f)
+            .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
             .graphicsLayer { clip = false }
     ) {
         Surface(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxSize()
-                .touchClick(onClick = onClick, onLongClick = onLongClick)
+                .touchClick(onClick = onClick, onLongClick = effectiveLongClick)
                 .onPreviewKeyEvent { event ->
-                    if (onLongClick == null) return@onPreviewKeyEvent false
+                    if (effectiveLongClick == null) return@onPreviewKeyEvent false
                     val native = event.nativeKeyEvent
                     val isActivationKey = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
                         native.keyCode == KeyEvent.KEYCODE_ENTER ||
@@ -107,17 +98,13 @@ fun LumeraCard(
 
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                onLongClick()
-                                true
-                            } else {
-                                dpadLongPressTriggered
-                            }
+                            if (native.repeatCount > 0) dpadLongPressTriggered = true
+                            dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
                             if (dpadLongPressTriggered) {
                                 dpadLongPressTriggered = false
+                                effectiveLongClick()
                                 true
                             } else {
                                 false
@@ -149,22 +136,19 @@ fun LumeraCard(
             )
         ) {
             val context = LocalContext.current
-
-            // Remembered ImageRequest to prevent recreation during recomposition
             val imageRequest = remember(posterUrl) {
                 ImageRequest.Builder(context)
                     .data(posterUrl)
-                    .crossfade(false) // No crossfade - eliminates animation overhead during scroll
+                    .crossfade(false)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .scale(Scale.FILL)
-                    .size(280, 420) // Fixed size for consistent cache hits
-                    .allowHardware(true) // GPU-accelerated bitmaps
+                    .size(280, 420)
+                    .allowHardware(true)
                     .build()
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
-                // AsyncImage is lighter than SubcomposeAsyncImage - no subcomposition overhead
                 AsyncImage(
                     model = imageRequest,
                     contentDescription = title,
@@ -175,7 +159,6 @@ fun LumeraCard(
                         .background(MaterialTheme.colorScheme.surface)
                 )
 
-                // Watched badge — corner triangle with checkmark
                 if (isWatched) {
                     val badgeColor = MaterialTheme.colorScheme.primary
                     Canvas(
@@ -201,7 +184,6 @@ fun LumeraCard(
                     )
                 }
 
-                // New episode badge for next-up items
                 if (hasNewEpisode) {
                     Box(
                         modifier = Modifier
@@ -219,7 +201,6 @@ fun LumeraCard(
                     }
                 }
 
-                // Progress bar overlay for Continue Watching items
                 if (progress > 0f) {
                     Box(
                         modifier = Modifier
@@ -240,6 +221,14 @@ fun LumeraCard(
                     }
                 }
             }
+        }
+
+        if (mediaItem != null && onLongClick == null) {
+            MediaCardActionMenu(
+                target = MediaActionTarget.fromMeta(mediaItem),
+                expanded = contextMenuExpanded,
+                onDismissRequest = { contextMenuExpanded = false }
+            )
         }
     }
 }

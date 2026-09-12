@@ -425,6 +425,7 @@ private fun LinearContent(
                         logoUrl = enriched?.logo,
                         posterUrl = item.poster,
                         onClick = { onMovieClick(item) },
+                        mediaItem = item,
                         progress = item.progress,
                         hasNewEpisode = item.hasNewEpisode,
                         onFocused = {
@@ -443,6 +444,7 @@ private fun LinearContent(
                         title = item.name,
                         posterUrl = item.poster,
                         onClick = { onMovieClick(item) },
+                        mediaItem = item,
                         progress = item.progress,
                         isWatched = rowIndex != -1 && item.id in watchedIds,
                         hasNewEpisode = item.hasNewEpisode,
@@ -665,6 +667,7 @@ private fun InfiniteGridContent(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -873,6 +876,7 @@ private fun FiniteGridContent(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {

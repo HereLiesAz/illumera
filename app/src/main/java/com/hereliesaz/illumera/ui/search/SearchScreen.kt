@@ -263,6 +263,7 @@ fun SearchScreen(
                                             title = movie.name,
                                             posterUrl = movie.poster,
                                             onClick = { onMovieClick(movie) },
+                                            mediaItem = movie,
                                             isWatched = movie.id in watchedIds,
                                             modifier = Modifier
                                                 .width(posterWidth)
@@ -313,6 +314,7 @@ fun SearchScreen(
                                             title = series.name,
                                             posterUrl = series.poster,
                                             onClick = { onMovieClick(series) },
+                                            mediaItem = series,
                                             modifier = Modifier
                                                 .width(posterWidth)
                                                 .height(posterHeight)
@@ -588,6 +590,7 @@ private fun TouchResultsGrid(
                 title = item.name,
                 posterUrl = item.poster,
                 onClick = { onItemClick(item) },
+                mediaItem = item,
                 isWatched = item.id in watchedIds,
                 modifier = Modifier.aspectRatio(2f / 3f)
             )

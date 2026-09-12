@@ -96,6 +96,27 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
+    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.watchedIds) {
+        if (tab != DashboardTab.HOME) {
+            state
+        } else {
+            // Home-only rule: once a movie or any episode of a series is watched,
+            // remove that title from Home catalog/hero lists immediately. The
+            // Continue Watching data remains untouched and manages itself from history.
+            val hiddenIds = state.watchedIds
+            if (hiddenIds.isEmpty()) {
+                state
+            } else {
+                state.copy(
+                    rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) },
+                    mixedRows = state.mixedRows.map { row ->
+                        if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in hiddenIds }) else row
+                    },
+                    heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
+                )
+            }
+        }
+    }
     val layoutMode = currentProfile?.layoutFor(tab) ?: "simple"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
@@ -172,7 +193,7 @@ fun HomeScreen(
                     infoTopPadding = infoTopPadding,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
-                    state = state,
+                    state = displayState,
                     onMovieClick = onMovieClick,
                     onViewMore = onViewMore,
                     onHubClick = { hubItem ->
@@ -195,14 +216,14 @@ fun HomeScreen(
                 )
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
-                val heroItems = remember(state.heroRow, heroConfig.posterCount) {
-                    state.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
+                val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
+                    displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
                 }
 
                 SimpleLayout(
                     startPadding = startPadding,
                     isTopNav = isTopNav,
-                    state = state,
+                    state = displayState,
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     onMovieClick = onMovieClick,

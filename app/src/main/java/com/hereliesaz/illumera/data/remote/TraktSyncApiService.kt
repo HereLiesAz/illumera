@@ -42,6 +42,18 @@ interface TraktSyncApiService {
         @Body body: TraktSyncRequest
     ): Response<TraktSyncResponse>
 
+    // ── Collection / Trakt Library ──
+
+    @POST("sync/collection")
+    suspend fun addToCollection(
+        @Body body: TraktSyncRequest
+    ): Response<TraktSyncResponse>
+
+    @POST("sync/collection/remove")
+    suspend fun removeFromCollection(
+        @Body body: TraktSyncRequest
+    ): Response<TraktSyncResponse>
+
     // ── Playback Progress (Continue Watching) ──
 
     @GET("sync/playback")
