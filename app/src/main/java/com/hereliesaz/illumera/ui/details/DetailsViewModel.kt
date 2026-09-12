@@ -86,6 +86,10 @@ class DetailsViewModel @Inject constructor(
         val sidebarState: SidebarState = SidebarState.Closed,
         val episodeProgressMap: Map<String, EpisodeProgress> = emptyMap(), // "S1:E3" → progress
         val episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(), // "S1:E3" → TMDB data
+        // Per-video source picker state — scoped to the video currently shown in the sidebar.
+        val activeSourceSelectionId: String? = null,
+        val sourceListDisabled: Boolean = false,
+        val excludedSourceIds: Set<String> = emptySet(),
         // TMDB enrichment
         val tmdbEnabled: Boolean = false,
         val tmdbLoading: Boolean = false,
@@ -711,6 +715,8 @@ class DetailsViewModel @Inject constructor(
         addonSubtitles: List<AddonSubtitle>
     ) {
         val streams = sortStreams(rawStreams, mediaType)
+        val sourceListDisabled = sourceSelectionStore.isSourceListDisabled(sourceSelectionId)
+        val excludedSourceIds = sourceSelectionStore.getExcludedSources(sourceSelectionId)
 
         val preferredStream = if (forceSourcePicker || !rememberSourceSelection) {
             null
@@ -724,7 +730,10 @@ class DetailsViewModel @Inject constructor(
                 sidebarState = SidebarState.Closed,
                 autoPlayStream = preferredStream,
                 addonSubtitles = addonSubtitles,
-                availableStreams = streams
+                availableStreams = streams,
+                activeSourceSelectionId = sourceSelectionId,
+                sourceListDisabled = sourceListDisabled,
+                excludedSourceIds = excludedSourceIds
             )
             return
         }
@@ -740,7 +749,10 @@ class DetailsViewModel @Inject constructor(
                     sidebarState = SidebarState.Closed,
                     autoPlayStream = firstPlayable,
                     addonSubtitles = addonSubtitles,
-                    availableStreams = streams
+                    availableStreams = streams,
+                    activeSourceSelectionId = sourceSelectionId,
+                    sourceListDisabled = sourceListDisabled,
+                    excludedSourceIds = excludedSourceIds
                 )
                 return
             }
@@ -760,6 +772,9 @@ class DetailsViewModel @Inject constructor(
             autoPlayStream = null,
             addonSubtitles = addonSubtitles,
             availableStreams = streams,
+            activeSourceSelectionId = sourceSelectionId,
+            sourceListDisabled = sourceListDisabled,
+            excludedSourceIds = excludedSourceIds,
             sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = highlightedStreamId)
         )
     }
@@ -967,6 +982,22 @@ class DetailsViewModel @Inject constructor(
             availableStreams = emptyList(),
             sidebarState = SidebarState.Closed
         )
+    }
+
+    fun toggleSourceListDisabled() {
+        val id = _state.value.activeSourceSelectionId ?: return
+        val newDisabled = !_state.value.sourceListDisabled
+        sourceSelectionStore.rememberSourceListDisabled(id, newDisabled)
+        _state.value = _state.value.copy(sourceListDisabled = newDisabled)
+    }
+
+    fun toggleSourceExcluded(stream: Stream) {
+        val id = _state.value.activeSourceSelectionId ?: return
+        val streamId = stream.addonTransportUrl ?: stream.url ?: return
+        val current = _state.value.excludedSourceIds
+        val updated = if (streamId in current) current - streamId else current + streamId
+        sourceSelectionStore.rememberExcludedSources(id, updated)
+        _state.value = _state.value.copy(excludedSourceIds = updated)
     }
 
     // 4. Back Button Logic (Drill Up)

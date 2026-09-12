@@ -239,12 +239,17 @@ private val MIGRATION_47_48 = object : Migration(47, 48) {
     }
 }
 
-// Corrects the sourceSkipSeedless default: the 47→48 migration set DEFAULT 1 (enabled),
-// which silently filtered out many torrent streams (any that report 0 seeds/peers at the
-// moment of browsing). The correct default is disabled — users can opt in via Settings.
 private val MIGRATION_48_49 = object : Migration(48, 49) {
     override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("UPDATE profiles SET sourceSkipSeedless = 0")
+        // No-op: sourceSkipSeedless DEFAULT 1 from 47→48 is the correct default.
+    }
+}
+
+// Corrects devices that ran the erroneous 48→49 migration which set sourceSkipSeedless = 0
+// for all profiles. The intended default is 1 (skip 0-seed streams).
+private val MIGRATION_49_50 = object : Migration(49, 50) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("UPDATE profiles SET sourceSkipSeedless = 1")
     }
 }
 
@@ -267,7 +272,7 @@ object DatabaseModule {
                     db.execSQL("PRAGMA synchronous = 2")
                 }
             })
-            .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49)
+            .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50)
             // No explicit migrations exist below version 26 (an early, narrowly
             // distributed schema). Without this, any device still on one of those
             // versions hits Room's "no migration found" IllegalStateException and

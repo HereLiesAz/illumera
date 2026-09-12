@@ -109,7 +109,7 @@ fun QueueSection(
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(state.preferences.enabled) {
+    LaunchedEffect(state.preferences.enabled, state.preferences.suggestionSources) {
         if (state.preferences.enabled) {
             if (state.preferences.onlyUnseenSuggestions) {
                 queueManager.refreshSuggestions()
@@ -188,6 +188,7 @@ fun QueueSection(
                 checked = QueueSuggestionSource.PLAY_HISTORY in state.preferences.suggestionSources,
                 onCheckedChange = { enabled ->
                     queueManager.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, enabled)
+                    scope.launch { queueManager.refreshSuggestions() }
                 }
             )
             QueueOption(
@@ -195,6 +196,7 @@ fun QueueSection(
                 checked = QueueSuggestionSource.TRAKT in state.preferences.suggestionSources,
                 onCheckedChange = { enabled ->
                     queueManager.setSuggestionSource(QueueSuggestionSource.TRAKT, enabled)
+                    scope.launch { queueManager.refreshSuggestions() }
                 }
             )
             QueueOption(

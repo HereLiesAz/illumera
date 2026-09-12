@@ -4,6 +4,7 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.isVideoFilename
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -78,7 +79,13 @@ class PremiumizeService @Inject constructor(private val http: DebridHttp) : Debr
                     return DebridResult.Failure(obj?.get("message")?.asString ?: "Failed to resolve link")
                 }
                 val content = obj.get("content")?.asArrayOrNull()
-                val url = content?.firstOrNull()?.asObjectOrNull()?.get("link")?.asString
+                    ?.mapNotNull { it.asObjectOrNull() }
+                // Prefer the largest video file; fall back to first content item, then location.
+                val videoFile = content
+                    ?.filter { isVideoFilename(it.get("path")?.asString ?: "") }
+                    ?.maxByOrNull { it.get("size")?.asLong ?: 0L }
+                val url = videoFile?.get("link")?.asString
+                    ?: content?.firstOrNull()?.get("link")?.asString
                     ?: obj.get("location")?.asString
                 if (url != null) DebridResult.Success(url) else DebridResult.Failure("No direct link returned")
             }

@@ -4,6 +4,7 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.isVideoFilename
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -79,22 +80,26 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
     }
 
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
-        val link = item.directLinks.firstOrNull() ?: return DebridResult.Failure("No link available for this item")
-        return when (
-            val result = http.get(
-                "$base/link/unlock",
-                query = key(apiKey) + ("link" to link)
-            )
-        ) {
-            is DebridResult.Success -> when (val data = result.value.unwrap()) {
-                is DebridResult.Success -> {
-                    val url = data.value.get("link")?.asString
-                    if (url != null) DebridResult.Success(url) else DebridResult.Failure("No direct link returned")
+        if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
+
+        // Iterate links — prefer the first whose unlocked filename is a video file.
+        var firstUrl: String? = null
+        for (link in item.directLinks) {
+            val result = http.get("$base/link/unlock", query = key(apiKey) + ("link" to link))
+            if (result is DebridResult.Success) {
+                when (val data = result.value.unwrap()) {
+                    is DebridResult.Success -> {
+                        val url = data.value.get("link")?.asString ?: continue
+                        val filename = data.value.get("filename")?.asString ?: ""
+                        if (firstUrl == null) firstUrl = url
+                        if (isVideoFilename(filename)) return DebridResult.Success(url)
+                    }
+                    is DebridResult.Failure -> continue
                 }
-                is DebridResult.Failure -> data
             }
-            is DebridResult.Failure -> result
         }
+        return if (firstUrl != null) DebridResult.Success(firstUrl)
+        else DebridResult.Failure("No direct link returned")
     }
 
     override suspend fun deleteItem(apiKey: String, item: DebridItem): DebridResult<Unit> {

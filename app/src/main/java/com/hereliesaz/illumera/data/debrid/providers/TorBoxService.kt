@@ -4,6 +4,7 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.isVideoFilename
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -53,9 +54,15 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                     DebridResult.Success(
                         list.mapNotNull { el ->
                             val o = el.asObjectOrNull() ?: return@mapNotNull null
-                            val fileIds = o.get("files")?.asArrayOrNull()
-                                ?.mapNotNull { it.asObjectOrNull()?.get("id")?.asString }
+                            val files = o.get("files")?.asArrayOrNull()
+                                ?.mapNotNull { it.asObjectOrNull() }
                                 ?: emptyList()
+                            // Prefer video file IDs; fall back to all IDs so nothing disappears from the library UI.
+                            val videoFileIds = files.filter {
+                                isVideoFilename(it.get("name")?.asString ?: "")
+                            }.mapNotNull { it.get("id")?.asString }
+                            val allFileIds = files.mapNotNull { it.get("id")?.asString }
+                            val fileIds = videoFileIds.ifEmpty { allFileIds }
                             DebridItem(
                                 id = o.get("id")?.asString ?: return@mapNotNull null,
                                 name = o.get("name")?.asString ?: "Unknown",
@@ -64,8 +71,7 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                                 status = o.get("download_state")?.asString,
                                 progress = o.get("progress")?.asDouble?.let { (it * 100).toInt() },
                                 addedAt = o.get("created_at")?.asString,
-                                // Encode the first file id alongside the torrent id so getStreamUrl can request it.
-                                directLinks = fileIds.firstOrNull()?.let { listOf(it) } ?: emptyList()
+                                directLinks = fileIds
                             )
                         }
                     )
@@ -77,22 +83,26 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
     }
 
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
-        val fileId = item.directLinks.firstOrNull() ?: return DebridResult.Failure("No file available for this item")
-        return when (
+        if (item.directLinks.isEmpty()) return DebridResult.Failure("No file available for this item")
+        // directLinks contains video-preferred file IDs; return the first that resolves successfully.
+        var lastFailure: DebridResult<String> = DebridResult.Failure("No direct link returned")
+        for (fileId in item.directLinks) {
             val result = http.get(
                 "$base/torrents/requestdl",
                 query = mapOf("token" to apiKey, "torrent_id" to item.id, "file_id" to fileId)
             )
-        ) {
-            is DebridResult.Success -> when (val data = result.value.unwrap()) {
-                is DebridResult.Success -> {
-                    val url = data.value.asString
-                    if (url != null) DebridResult.Success(url) else DebridResult.Failure("No direct link returned")
+            when (result) {
+                is DebridResult.Success -> when (val data = result.value.unwrap()) {
+                    is DebridResult.Success -> {
+                        val url = data.value.asString
+                        if (url != null) return DebridResult.Success(url)
+                    }
+                    is DebridResult.Failure -> lastFailure = data
                 }
-                is DebridResult.Failure -> data
+                is DebridResult.Failure -> lastFailure = result
             }
-            is DebridResult.Failure -> result
         }
+        return lastFailure
     }
 
     override suspend fun deleteItem(apiKey: String, item: DebridItem): DebridResult<Unit> {
