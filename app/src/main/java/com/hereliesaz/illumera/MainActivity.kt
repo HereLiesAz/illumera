@@ -1118,15 +1118,19 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
-                                // Shared enter content handler
+                                // Shared enter content handler — runCatching guards against
+                                // requestFocus() throwing when the target isn't composed yet
+                                // (e.g. focus strays to the drawer mid-transition)
                                 val handleEnterContent: () -> Unit = {
-                                    when(currentNav) {
-                                        NavDestination.Home, NavDestination.Movies, NavDestination.Series -> homeEntryRequester.requestFocus()
-                                        NavDestination.Search -> searchEntryRequester.requestFocus()
-                                        NavDestination.Settings -> settingsEntryRequester.requestFocus()
-                                        NavDestination.Watchlist -> watchlistEntryRequester.requestFocus()
-                                        NavDestination.Queue -> queueEntryRequester.requestFocus()
-                                        else -> {}
+                                    runCatching {
+                                        when(currentNav) {
+                                            NavDestination.Home, NavDestination.Movies, NavDestination.Series -> homeEntryRequester.requestFocus()
+                                            NavDestination.Search -> searchEntryRequester.requestFocus()
+                                            NavDestination.Settings -> settingsEntryRequester.requestFocus()
+                                            NavDestination.Watchlist -> watchlistEntryRequester.requestFocus()
+                                            NavDestination.Queue -> queueEntryRequester.requestFocus()
+                                            else -> {}
+                                        }
                                     }
                                 }
 
@@ -1510,6 +1514,7 @@ class MainActivity : ComponentActivity() {
                             }
                             val gridVm = hiltViewModel<HomeViewModel>()
                             val gridNavPosition = currentProfile?.navPosition ?: "left"
+                            val gridEntryRequester = remember { FocusRequester() }
                             val handleGridNavigate: (NavDestination) -> Unit = { destination ->
                                 if (destination == NavDestination.Exit) {
                                     finishAffinity()
@@ -1557,7 +1562,8 @@ class MainActivity : ComponentActivity() {
                                         gridRestoreState.scrollIndex = index
                                         gridRestoreState.scrollOffset = offset
                                     },
-                                    watchedIds = gridVm.state.collectAsState().value.watchedIds
+                                    watchedIds = gridVm.state.collectAsState().value.watchedIds,
+                                    externalEntryRequester = gridEntryRequester
                                 )
                             }
                             if (gridNavPosition == "top") {
@@ -1566,7 +1572,7 @@ class MainActivity : ComponentActivity() {
                                     currentProfile = currentProfile,
                                     topNavRequesters = drawerRequesters,
                                     onNavigate = handleGridNavigate,
-                                    onEnterContent = {},
+                                    onEnterContent = { runCatching { gridEntryRequester.requestFocus() } },
                                     onLogout = {
                                         sessionProfileId = null
                                         sessionRestoreAttemptedProfileId = null
@@ -1583,7 +1589,7 @@ class MainActivity : ComponentActivity() {
                                     currentProfile = currentProfile,
                                     drawerRequesters = drawerRequesters,
                                     onNavigate = handleGridNavigate,
-                                    onClose = {},
+                                    onClose = { runCatching { gridEntryRequester.requestFocus() } },
                                     content = gridContent
                                 )
                             }
