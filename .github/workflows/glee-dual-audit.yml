@@ -92,9 +92,10 @@ jobs:
           Return ONLY a concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
           PROMPT
 
+          SESSION_TITLE="Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}"
           PAYLOAD=$(jq -n \
             --arg prompt "$(cat /tmp/prompt.txt)" \
-            --arg title "Glee PR audit — #$PR_NUMBER" \
+            --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
@@ -105,15 +106,31 @@ jobs:
             -d "$PAYLOAD" \
             'https://jules.googleapis.com/v1alpha/sessions')
           SESSION_JSON=$(cat /tmp/jules-session.json)
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Jules session creation failed with HTTP $HTTP_CODE" >&2
+          SESSION_NAME=''
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          else
+            echo "Jules session creation returned HTTP $HTTP_CODE" >&2
             jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
-            exit 1
+
+            # Jules can return FAILED_PRECONDITION during burst submissions even when
+            # the session was created. Reconcile by looking for this run's unique title.
+            if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                SESSIONS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+                  'https://jules.googleapis.com/v1alpha/sessions?pageSize=100')
+                SESSION_NAME=$(jq -r --arg title "$SESSION_TITLE" \
+                  '[.sessions[]? | select(.title == $title) | .name][0] // empty' <<<"$SESSIONS")
+                [ -n "$SESSION_NAME" ] && break
+              done
+            fi
           fi
-          SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
-          test -n "$SESSION_NAME" || { echo 'Jules session response did not include a session name'; echo "$SESSION_JSON"; exit 1; }
+
+          test -n "$SESSION_NAME" || { echo 'Jules session could not be created or reconciled'; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
-          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+          echo "Jules session: $SESSION_NAME"
 
           STATE=''
           for i in $(seq 1 120); do
@@ -193,9 +210,10 @@ jobs:
           Return ONLY a prioritized concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
           PROMPT
 
+          SESSION_TITLE="Glee repository audit — $BRANCH — $GITHUB_RUN_ID"
           PAYLOAD=$(jq -n \
             --arg prompt "$(cat /tmp/prompt.txt)" \
-            --arg title "Glee repository audit — $BRANCH" \
+            --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
@@ -206,15 +224,28 @@ jobs:
             -d "$PAYLOAD" \
             'https://jules.googleapis.com/v1alpha/sessions')
           SESSION_JSON=$(cat /tmp/jules-session.json)
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Jules session creation failed with HTTP $HTTP_CODE" >&2
+          SESSION_NAME=''
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          else
+            echo "Jules session creation returned HTTP $HTTP_CODE" >&2
             jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
-            exit 1
+            if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
+              for attempt in 1 2 3 4 5; do
+                sleep 2
+                SESSIONS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+                  'https://jules.googleapis.com/v1alpha/sessions?pageSize=100')
+                SESSION_NAME=$(jq -r --arg title "$SESSION_TITLE" \
+                  '[.sessions[]? | select(.title == $title) | .name][0] // empty' <<<"$SESSIONS")
+                [ -n "$SESSION_NAME" ] && break
+              done
+            fi
           fi
-          SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
-          test -n "$SESSION_NAME" || { echo 'Jules session response did not include a session name'; echo "$SESSION_JSON"; exit 1; }
+
+          test -n "$SESSION_NAME" || { echo 'Jules session could not be created or reconciled'; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
-          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+          echo "Jules session: $SESSION_NAME"
 
           STATE=''
           for i in $(seq 1 120); do
