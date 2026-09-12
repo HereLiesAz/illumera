@@ -9,6 +9,7 @@ import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
+import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonCatalogRepository
 import com.hereliesaz.illumera.data.repository.AddonRepository
@@ -58,12 +59,16 @@ class AddonsViewModel @Inject constructor(
         val error: String? = null,
         val pendingInstall: AddonInstallConfig? = null,
         val catalogSource: AddonCatalogSource = AddonCatalogSource.OFFICIAL,
+        val activeCollection: SavedAddonCollection? = null,
+        val savedCollections: List<SavedAddonCollection> = emptyList(),
         val catalogItems: List<AddonCatalogItem> = emptyList(),
         val isCatalogLoading: Boolean = false,
         val catalogError: String? = null
     )
 
-    private val _uiState = MutableStateFlow(UiState())
+    private val _uiState = MutableStateFlow(
+        UiState(savedCollections = catalogRepository.getSavedCollections())
+    )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _events = Channel<AddonEvent>(Channel.BUFFERED)
@@ -85,10 +90,12 @@ class AddonsViewModel @Inject constructor(
     ) {
         val current = _uiState.value
         if (current.isCatalogLoading) return
+        if (source == AddonCatalogSource.COLLECTION && current.activeCollection == null) return
         if (!force && current.catalogSource == source && current.catalogItems.isNotEmpty()) return
 
         _uiState.value = current.copy(
             catalogSource = source,
+            activeCollection = if (source == AddonCatalogSource.COLLECTION) current.activeCollection else null,
             catalogItems = if (current.catalogSource == source) current.catalogItems else emptyList(),
             isCatalogLoading = true,
             catalogError = null
@@ -96,8 +103,12 @@ class AddonsViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val items = catalogRepository.fetch(source)
-                if (_uiState.value.catalogSource == source) {
+                val snapshot = _uiState.value
+                val collection = if (source == AddonCatalogSource.COLLECTION) snapshot.activeCollection else null
+                val items = catalogRepository.fetch(source, collection)
+                if (_uiState.value.catalogSource == source &&
+                    (source != AddonCatalogSource.COLLECTION || _uiState.value.activeCollection == collection)
+                ) {
                     _uiState.value = _uiState.value.copy(
                         catalogItems = items,
                         isCatalogLoading = false,
@@ -116,8 +127,70 @@ class AddonsViewModel @Inject constructor(
     }
 
     fun selectCatalogSource(source: AddonCatalogSource) {
-        if (_uiState.value.catalogSource == source && _uiState.value.catalogItems.isNotEmpty()) return
+        if (source == AddonCatalogSource.COLLECTION) return
+        val current = _uiState.value
+        if (current.catalogSource == source && current.catalogItems.isNotEmpty()) return
+        _uiState.value = current.copy(activeCollection = null)
         loadCatalog(source, force = true)
+    }
+
+    fun addCollection(url: String) {
+        if (url.isBlank() || _uiState.value.isCatalogLoading) return
+        _uiState.value = _uiState.value.copy(
+            isCatalogLoading = true,
+            catalogError = null,
+            catalogItems = emptyList()
+        )
+        viewModelScope.launch {
+            try {
+                val result = catalogRepository.addCollection(url)
+                _uiState.value = _uiState.value.copy(
+                    catalogSource = AddonCatalogSource.COLLECTION,
+                    activeCollection = result.collection,
+                    savedCollections = catalogRepository.getSavedCollections(),
+                    catalogItems = result.addons,
+                    isCatalogLoading = false,
+                    catalogError = null
+                )
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isCatalogLoading = false,
+                    catalogError = e.message ?: "Could not add the addon collection"
+                )
+            }
+        }
+    }
+
+    fun selectCollection(collection: SavedAddonCollection) {
+        val current = _uiState.value
+        if (current.catalogSource == AddonCatalogSource.COLLECTION &&
+            current.activeCollection == collection && current.catalogItems.isNotEmpty()
+        ) return
+        _uiState.value = current.copy(
+            catalogSource = AddonCatalogSource.COLLECTION,
+            activeCollection = collection,
+            catalogItems = emptyList(),
+            catalogError = null
+        )
+        loadCatalog(AddonCatalogSource.COLLECTION, force = true)
+    }
+
+    fun removeCollection(collection: SavedAddonCollection) {
+        catalogRepository.removeCollection(collection.url)
+        val current = _uiState.value
+        val updated = catalogRepository.getSavedCollections()
+        if (current.activeCollection?.url == collection.url) {
+            _uiState.value = current.copy(
+                catalogSource = AddonCatalogSource.OFFICIAL,
+                activeCollection = null,
+                savedCollections = updated,
+                catalogItems = emptyList(),
+                catalogError = null
+            )
+            loadCatalog(AddonCatalogSource.OFFICIAL, force = true)
+        } else {
+            _uiState.value = current.copy(savedCollections = updated)
+        }
     }
 
     fun retryCatalog() {
