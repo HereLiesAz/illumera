@@ -8,61 +8,156 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 jobs:
   audit-pr-changes:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch base branch
-        run: git fetch origin main:refs/remotes/origin/main
-      - name: Glee audit — all changes
-        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
-          prompt: |
-            You are "glee" — an adversarial software auditor whose purpose is to take glee in finding failures, not to admire the work.
+      - name: Run Jules Glee audit — all PR changes
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${JULES_API_KEY:-}" || { echo 'JULES_API_KEY secret is not configured'; exit 1; }
 
-            Audit EVERY substantive application change on the checked-out branch versus origin/main. Use git diff origin/main...HEAD, then inspect unchanged surrounding code as needed. Ignore only the temporary audit harness .github/workflows/glee-dual-audit.yml. Do not edit files, commit, push, approve, or merge anything.
+          OWNER="${REPO%%/*}"
+          NAME="${REPO##*/}"
+          SOURCE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+            'https://jules.googleapis.com/v1alpha/sources?pageSize=100' \
+            | jq -r --arg owner "$OWNER" --arg repo "$NAME" '.sources[] | select(.githubRepo.owner==$owner and .githubRepo.repo==$repo) | .name' \
+            | head -n1)
+          test -n "$SOURCE" || { echo "Jules source not found for $REPO"; exit 1; }
 
-            Prioritize concrete production-impacting defects: wrong behavior, crashes, stale/inconsistent state, Android lifecycle or coroutine errors, data loss, Room migration mistakes, profile-scoping mistakes, source filtering/ranking/autofallback errors, series progress/resume bugs, Trakt sync errors, queue/watchlist inconsistency, input/focus/navigation regressions, resource/performance leaks, and materially important missing tests. Verify each claim against actual code and callers.
+          cat > /tmp/prompt.txt <<'PROMPT'
+          You are Glee, an adversarial software auditor. Audit EVERY substantive application change on this branch versus main, plus all unchanged surrounding code needed to verify behavior. Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
 
-            For every surviving finding give severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. No style filler. If nothing survives scrutiny, say so plainly.
+          Prioritize concrete production-impacting defects: incorrect behavior, crashes, stale/inconsistent state, Android lifecycle/coroutine/Flow/Compose errors, data loss, Room migration mistakes, profile-scoping mistakes, source filtering/ranking/autofallback failures, series progress/resume/next-up bugs, Trakt sync/history/collection errors, queue/watchlist inconsistency, focus/input/navigation regressions, security/privacy defects, resource/performance leaks, and materially important missing tests. Trace callers and data flow before reporting anything.
 
-            When finished, post exactly ONE PR comment on PR #78. Begin it with `## Glee audit — all PR changes`, then put the complete audit underneath. Use `gh pr comment 78 --body-file ...` or an equivalent gh command. Do not post anything else.
-          claude_args: |
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*),Bash(gh pr comment:*)"
+          Return ONLY a concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
+          PROMPT
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$(cat /tmp/prompt.txt)" \
+            --arg title 'Glee audit — all PR changes' \
+            --arg source "$SOURCE" \
+            --arg branch "$BRANCH" \
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+
+          SESSION_JSON=$(curl -fsS -X POST \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" \
+            'https://jules.googleapis.com/v1alpha/sessions')
+          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_ID=${SESSION_NAME#sessions/}
+          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+
+          for i in $(seq 1 120); do
+            STATUS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+              "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID")
+            STATE=$(jq -r '.state' <<<"$STATUS")
+            case "$STATE" in
+              COMPLETED) break ;;
+              FAILED) echo "$STATUS"; exit 1 ;;
+              AWAITING_USER_FEEDBACK) echo 'Jules requested user feedback unexpectedly'; echo "$STATUS"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          test "${STATE:-}" = COMPLETED || { echo "Jules audit timed out in state ${STATE:-unknown}"; exit 1; }
+
+          ACTIVITIES=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100")
+          REPORT=$(jq -r '[.activities[] | .agentMessaged.agentMessage? // empty] | map(select(length>0)) | last // empty' <<<"$ACTIVITIES")
+          test -n "$REPORT" || { echo 'Jules completed without an agent report'; echo "$ACTIVITIES"; exit 1; }
+          {
+            echo '## Glee audit — all PR changes'
+            echo
+            echo "$REPORT"
+          } > /tmp/glee-pr.md
+          gh pr comment 78 --body-file /tmp/glee-pr.md
 
   audit-entire-repository:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Glee audit — entire repository
-        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ github.token }}
-          prompt: |
-            You are "glee" — an adversarial software auditor whose purpose is to take glee in finding failures, not to admire the work.
+      - name: Run Jules Glee audit — entire repository
+        env:
+          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${JULES_API_KEY:-}" || { echo 'JULES_API_KEY secret is not configured'; exit 1; }
 
-            Audit the ENTIRE checked-out Illumera repository, not merely this pull request diff. Do not edit files, commit, push, approve, or merge anything. Follow data and control flow across files; inspect callers before reporting a claim.
+          OWNER="${REPO%%/*}"
+          NAME="${REPO##*/}"
+          SOURCE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+            'https://jules.googleapis.com/v1alpha/sources?pageSize=100' \
+            | jq -r --arg owner "$OWNER" --arg repo "$NAME" '.sources[] | select(.githubRepo.owner==$owner and .githubRepo.repo==$repo) | .name' \
+            | head -n1)
+          test -n "$SOURCE" || { echo "Jules source not found for $REPO"; exit 1; }
 
-            Prioritize concrete production-impacting defects: correctness and crash paths; Android lifecycle, coroutine, Flow, Compose state, focus and input errors; profile isolation; Room schema/migration/data-loss issues; playback and ExoPlayer state; source parsing/filtering/ranking/fallback; series progress/resume/next-up; Trakt authentication/sync/history/collection behavior; queue/watchlist consistency; network/error handling; security/privacy; resource/performance leaks; and critical missing tests.
+          cat > /tmp/prompt.txt <<'PROMPT'
+          You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository on this branch, not merely the current pull-request diff. Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
 
-            Return only findings that survive verification. For each give severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. Avoid style-only filler. If nothing survives scrutiny, say so plainly.
+          Prioritize concrete production-impacting defects: correctness and crash paths; Android lifecycle, coroutine, Flow, Compose state/focus/input problems; profile isolation; Room schema/migration/data-loss issues; playback and ExoPlayer state; source parsing/filtering/ranking/fallback; series progress/resume/next-up; Trakt authentication/sync/history/collection behavior; queue/watchlist consistency; network/error handling; security/privacy; resource/performance leaks; and critical missing tests.
 
-            When finished, post exactly ONE PR comment on PR #78. Begin it with `## Glee audit — entire repository`, then put the complete audit underneath. Use `gh pr comment 78 --body-file ...` or an equivalent gh command. Do not post anything else.
-          claude_args: |
-            --allowedTools "Read,Grep,Glob,Bash(git log:*),Bash(git show:*),Bash(git grep:*),Bash(git ls-files:*),Bash(gh pr comment:*)"
+          Return ONLY a prioritized concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
+          PROMPT
+
+          PAYLOAD=$(jq -n \
+            --arg prompt "$(cat /tmp/prompt.txt)" \
+            --arg title 'Glee audit — entire repository' \
+            --arg source "$SOURCE" \
+            --arg branch "$BRANCH" \
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+
+          SESSION_JSON=$(curl -fsS -X POST \
+            -H "x-goog-api-key: $JULES_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "$PAYLOAD" \
+            'https://jules.googleapis.com/v1alpha/sessions')
+          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_ID=${SESSION_NAME#sessions/}
+          echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
+
+          for i in $(seq 1 120); do
+            STATUS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+              "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID")
+            STATE=$(jq -r '.state' <<<"$STATUS")
+            case "$STATE" in
+              COMPLETED) break ;;
+              FAILED) echo "$STATUS"; exit 1 ;;
+              AWAITING_USER_FEEDBACK) echo 'Jules requested user feedback unexpectedly'; echo "$STATUS"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          test "${STATE:-}" = COMPLETED || { echo "Jules audit timed out in state ${STATE:-unknown}"; exit 1; }
+
+          ACTIVITIES=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" \
+            "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100")
+          REPORT=$(jq -r '[.activities[] | .agentMessaged.agentMessage? // empty] | map(select(length>0)) | last // empty' <<<"$ACTIVITIES")
+          test -n "$REPORT" || { echo 'Jules completed without an agent report'; echo "$ACTIVITIES"; exit 1; }
+          {
+            echo '## Glee audit — entire repository'
+            echo
+            echo "$REPORT"
+          } > /tmp/glee-repo.md
+          gh pr comment 78 --body-file /tmp/glee-repo.md
