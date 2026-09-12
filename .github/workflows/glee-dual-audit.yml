@@ -70,6 +70,7 @@ jobs:
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
           SOURCE=''
+          SOURCE_JSON=''
           PAGE_TOKEN=''
           while :; do
             URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
@@ -77,27 +78,48 @@ jobs:
               URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
-            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
+            SOURCE=$(jq -r '.name // empty' <<<"${SOURCE_JSON:-{}}")
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
           done
           test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
+          # startingBranch must be one of the branches Jules advertises for this source.
+          # PR heads can briefly lag that source index, so prefer the PR base branch and
+          # provide the exact checked-out PR diff in the prompt. This gives Jules the
+          # complete change set while retaining indexed surrounding repository context.
+          STARTING_BRANCH=$(jq -r --arg base "$BASE_BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $base)][0] // empty' <<<"$SOURCE_JSON")
+          if [ -z "$STARTING_BRANCH" ]; then
+            STARTING_BRANCH=$(jq -r '.githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
+          fi
+          test -n "$STARTING_BRANCH" || { echo 'Jules source does not advertise an indexed starting branch'; exit 1; }
+          echo "Jules source branch: $STARTING_BRANCH (PR head: $BRANCH, base: $BASE_BRANCH)"
+
+          git diff --no-ext-diff --unified=30 "origin/$BASE_BRANCH...origin/$BRANCH" > /tmp/pr.diff
+          test -s /tmp/pr.diff || { echo 'PR diff is empty'; exit 1; }
+
           cat > /tmp/prompt.txt <<PROMPT
-          You are Glee, an adversarial software auditor. Audit EVERY substantive application change on branch "$BRANCH" versus "$BASE_BRANCH", plus all unchanged surrounding code needed to verify behavior. Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
+          You are Glee, an adversarial software auditor. Audit EVERY substantive application change in pull request #$PR_NUMBER from "$BRANCH" into "$BASE_BRANCH", plus all unchanged surrounding code needed to verify behavior. Your Jules source starts on indexed branch "$STARTING_BRANCH". The exact unified PR diff is appended below; treat that diff as the authoritative feature-branch changes. Inspect the repository source for callers, invariants, schemas, and surrounding behavior before reporting anything.
+
+          Do not modify files, do not create commits or pull requests, and do not propose cosmetic/style-only changes. Assume the implementation is confidently wrong somewhere and try to prove it.
 
           Prioritize concrete production-impacting defects: incorrect behavior, crashes, stale/inconsistent state, Android lifecycle/coroutine/Flow/Compose errors, data loss, Room migration mistakes, profile-scoping mistakes, source filtering/ranking/autofallback failures, series progress/resume/next-up bugs, Trakt sync/history/collection errors, queue/watchlist inconsistency, focus/input/navigation regressions, security/privacy defects, resource/performance leaks, and materially important missing tests. Trace callers and data flow before reporting anything.
 
           Return ONLY a concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
+
+          --- BEGIN AUTHORITATIVE PR DIFF ---
           PROMPT
+          cat /tmp/pr.diff >> /tmp/prompt.txt
+          echo '--- END AUTHORITATIVE PR DIFF ---' >> /tmp/prompt.txt
 
           SESSION_TITLE="Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}"
           PAYLOAD=$(jq -n \
             --arg prompt "$(cat /tmp/prompt.txt)" \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
-            --arg branch "$BRANCH" \
+            --arg branch "$STARTING_BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
 
           HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
@@ -114,8 +136,8 @@ jobs:
             echo "Jules session creation returned HTTP $HTTP_CODE" >&2
             jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
 
-            # Jules can return FAILED_PRECONDITION during burst submissions even when
-            # the session was created. Reconcile by looking for this run's unique title.
+            # Jules can occasionally return FAILED_PRECONDITION after accepting a
+            # session. Reconcile by looking for this run's unique title before failing.
             if [ "$HTTP_CODE" = '400' ] && [ "$(jq -r '.error.status // empty' <<<"$SESSION_JSON")" = 'FAILED_PRECONDITION' ]; then
               for attempt in 1 2 3 4 5; do
                 sleep 2
@@ -188,6 +210,7 @@ jobs:
           OWNER="${REPO%%/*}"
           NAME="${REPO##*/}"
           SOURCE=''
+          SOURCE_JSON=''
           PAGE_TOKEN=''
           while :; do
             URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
@@ -195,27 +218,47 @@ jobs:
               URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
             fi
             PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
-            SOURCE=$(jq -r --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase)) | .name][0] // empty' <<<"$PAGE")
+            SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
+            SOURCE=$(jq -r '.name // empty' <<<"${SOURCE_JSON:-{}}")
             [ -n "$SOURCE" ] && break
             PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
             [ -z "$PAGE_TOKEN" ] && break
           done
           test -n "$SOURCE" || { echo "Jules source not found for $REPO after scanning all connected sources"; exit 1; }
 
+          STARTING_BRANCH=$(jq -r --arg branch "$BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $branch)][0] // empty' <<<"$SOURCE_JSON")
+          if [ -z "$STARTING_BRANCH" ]; then
+            STARTING_BRANCH=$(jq -r '.githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
+          fi
+          test -n "$STARTING_BRANCH" || { echo 'Jules source does not advertise an indexed starting branch'; exit 1; }
+
           cat > /tmp/prompt.txt <<PROMPT
-          You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository on branch "$BRANCH", not merely a current pull-request diff. Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
+          You are Glee, an adversarial software auditor. Audit the ENTIRE Illumera repository. The requested ref is "$BRANCH" and the Jules source starts from indexed branch "$STARTING_BRANCH". Do not modify files, do not create commits or pull requests, and do not report cosmetic/style-only issues. Follow data and control flow across the repository and inspect callers before reporting a claim.
 
           Prioritize concrete production-impacting defects: correctness and crash paths; Android lifecycle, coroutine, Flow, Compose state/focus/input problems; profile isolation; Room schema/migration/data-loss issues; playback and ExoPlayer state; source parsing/filtering/ranking/fallback; series progress/resume/next-up; Trakt authentication/sync/history/collection behavior; queue/watchlist consistency; network/error handling; security/privacy; resource/performance leaks; and critical missing tests.
 
           Return ONLY a prioritized concise audit report. For every finding provide severity (Critical/High/Medium/Low), file and line or symbol, a concrete failure scenario, why it happens, and the smallest sensible fix direction. If no finding survives scrutiny, say that plainly. This is an audit only: make no code changes.
           PROMPT
 
+          if [ "$STARTING_BRANCH" != "$BRANCH" ] && git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            git diff --no-ext-diff --unified=30 "origin/$STARTING_BRANCH...origin/$BRANCH" > /tmp/repo-ref.diff || true
+            if [ -s /tmp/repo-ref.diff ]; then
+              {
+                echo
+                echo 'The requested ref is not yet indexed by Jules. Treat this exact unified diff as authoritative changes on top of the indexed source:'
+                echo '--- BEGIN AUTHORITATIVE REF DIFF ---'
+                cat /tmp/repo-ref.diff
+                echo '--- END AUTHORITATIVE REF DIFF ---'
+              } >> /tmp/prompt.txt
+            fi
+          fi
+
           SESSION_TITLE="Glee repository audit — $BRANCH — $GITHUB_RUN_ID"
           PAYLOAD=$(jq -n \
             --arg prompt "$(cat /tmp/prompt.txt)" \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
-            --arg branch "$BRANCH" \
+            --arg branch "$STARTING_BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
 
           HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
