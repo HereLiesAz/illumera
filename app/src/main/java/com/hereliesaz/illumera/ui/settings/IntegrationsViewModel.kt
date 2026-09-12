@@ -21,6 +21,7 @@ import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,11 +49,19 @@ sealed class FacebookLoginState {
     data class Error(val message: String) : FacebookLoginState()
 }
 
+sealed class AppleLoginState {
+    object Idle : AppleLoginState()
+    data class WaitingForUser(val url: String) : AppleLoginState()
+    object Success : AppleLoginState()
+    data class Error(val message: String) : AppleLoginState()
+}
+
 data class IntegrationsUiState(
     val connectionState: StremioConnectionState = StremioConnectionState.Disconnected,
     val isLoading: Boolean = false,
     val pendingAddons: List<StremioAddonItem>? = null,
     val facebookLoginState: FacebookLoginState = FacebookLoginState.Idle,
+    val appleLoginState: AppleLoginState = AppleLoginState.Idle,
     val tmdbEnabled: Boolean = false,
     val tmdbLanguage: String = "",
     val traktConnected: Boolean = false,
@@ -79,6 +88,9 @@ class IntegrationsViewModel @Inject constructor(
 
     private val _events = Channel<IntegrationsEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+
+    private var facebookLoginJob: Job? = null
+    private var appleLoginJob: Job? = null
 
     init {
         // Observe connection state
@@ -221,10 +233,11 @@ class IntegrationsViewModel @Inject constructor(
      * one-time token.
      */
     fun startFacebookLogin() {
+        facebookLoginJob?.cancel()
         val (state, url) = stremioAuthManager.startFacebookLogin()
         _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url))
 
-        viewModelScope.launch {
+        facebookLoginJob = viewModelScope.launch {
             val result = stremioAuthManager.completeFacebookLogin(state)
             result.fold(
                 onSuccess = {
@@ -243,7 +256,38 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     fun resetFacebookLoginState() {
+        facebookLoginJob?.cancel()
+        facebookLoginJob = null
         _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Idle)
+    }
+
+    fun startAppleLogin() {
+        appleLoginJob?.cancel()
+        val (state, url) = stremioAuthManager.startAppleLogin()
+        _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.WaitingForUser(url))
+
+        appleLoginJob = viewModelScope.launch {
+            val result = stremioAuthManager.completeAppleLogin(state)
+            result.fold(
+                onSuccess = {
+                    _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Success)
+                    applyStremioAvatarToProfile()
+                    _events.send(IntegrationsEvent.LoginSuccess)
+                    syncAddons()
+                    syncLibrary()
+                },
+                onFailure = { error ->
+                    val message = error.message ?: "Apple login failed"
+                    _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Error(message))
+                }
+            )
+        }
+    }
+
+    fun resetAppleLoginState() {
+        appleLoginJob?.cancel()
+        appleLoginJob = null
+        _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Idle)
     }
 
     /**

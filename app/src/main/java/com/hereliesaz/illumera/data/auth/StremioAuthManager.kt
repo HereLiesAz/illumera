@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.remote.StremioAddonFlags
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -311,6 +312,38 @@ class StremioAuthManager @Inject constructor(
 
             _connectionState.value = StremioConnectionState.Connected(email)
             Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: StremioAuthError) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(StremioAuthError.UnknownError(e.message ?: "Unknown error"))
+        }
+    }
+
+    /** Starts Stremio's browser-based Sign in with Apple flow. */
+    fun startAppleLogin(): Pair<String, String> = stremioAuthService.startAppleLogin()
+
+    /** Completes Apple OAuth and stores the resulting Stremio credentials. */
+    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val credentials = stremioAuthService.pollAppleLogin(state)
+                ?: return@withContext Result.failure(
+                    StremioAuthError.NetworkError("Apple login timed out or was not completed")
+                )
+            val loginResult = stremioAuthService.loginWithApple(credentials)
+            val accountLabel = credentials.email.ifBlank { "Apple account" }
+
+            encryptedPrefs.edit().apply {
+                putString(KEY_AUTH_KEY, loginResult.authKey)
+                putString(KEY_EMAIL, accountLabel)
+                if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
+            }.apply()
+
+            _connectionState.value = StremioConnectionState.Connected(accountLabel)
+            Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: StremioAuthError) {
             Result.failure(e)
         } catch (e: Exception) {

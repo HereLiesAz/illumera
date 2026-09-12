@@ -210,9 +210,11 @@ fun IntegrationsScreen(
         ConnectStremioDialog(
             isLoading = state.isLoading,
             facebookLoginState = state.facebookLoginState,
+            appleLoginState = state.appleLoginState,
             onDismiss = {
                 showConnectDialog = false
                 viewModel.resetFacebookLoginState()
+                viewModel.resetAppleLoginState()
             },
             onLogin = { email, password ->
                 viewModel.login(email, password)
@@ -221,6 +223,7 @@ fun IntegrationsScreen(
                 viewModel.register(email, password, marketing)
             },
             onLoginWithFacebook = { viewModel.startFacebookLogin() },
+            onLoginWithApple = { viewModel.startAppleLogin() },
             deviceFormFactor = deviceFormFactor
         )
     }
@@ -384,10 +387,12 @@ private fun IntegrationItem(
 private fun ConnectStremioDialog(
     isLoading: Boolean,
     facebookLoginState: FacebookLoginState = FacebookLoginState.Idle,
+    appleLoginState: AppleLoginState = AppleLoginState.Idle,
     onDismiss: () -> Unit,
     onLogin: (email: String, password: String) -> Unit,
     onRegister: (email: String, password: String, marketing: Boolean) -> Unit,
     onLoginWithFacebook: () -> Unit = {},
+    onLoginWithApple: () -> Unit = {},
     deviceFormFactor: DeviceFormFactor
 ) {
     if (facebookLoginState is FacebookLoginState.WaitingForUser || facebookLoginState is FacebookLoginState.Error) {
@@ -395,6 +400,15 @@ private fun ConnectStremioDialog(
             state = facebookLoginState,
             onDismiss = onDismiss,
             onRetry = onLoginWithFacebook,
+            deviceFormFactor = deviceFormFactor
+        )
+        return
+    }
+    if (appleLoginState is AppleLoginState.WaitingForUser || appleLoginState is AppleLoginState.Error) {
+        AppleLoginDialog(
+            state = appleLoginState,
+            onDismiss = onDismiss,
+            onRetry = onLoginWithApple,
             deviceFormFactor = deviceFormFactor
         )
         return
@@ -550,6 +564,13 @@ private fun ConnectStremioDialog(
                                 enabled = !isLoading,
                                 isPrimary = false,
                                 modifier = Modifier.width(180.dp)
+                            )
+                            IntegrationButton(
+                                text = "Sign in with Apple",
+                                onClick = onLoginWithApple,
+                                enabled = !isLoading,
+                                isPrimary = false,
+                                modifier = Modifier.width(170.dp)
                             )
                         }
 
@@ -886,7 +907,7 @@ private fun StremioPasswordResetDialog(
                             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
                                 error = "Enter a valid email address"
                             } else {
-                                val url = "https://www.strem.io/reset-password/$cleanEmail"
+                                val url = "https://www.strem.io/reset-password/${android.net.Uri.encode(cleanEmail)}"
                                 if (deviceFormFactor == DeviceFormFactor.TV) {
                                     resetUrl = url
                                 } else {
@@ -918,6 +939,101 @@ private fun StremioPasswordResetDialog(
                 }
                 Spacer(Modifier.height(18.dp))
                 IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(140.dp))
+            }
+        }
+    }
+}
+
+// =============================================================================
+// APPLE LOGIN DIALOG (QR/browser handoff to Stremio's hosted Apple OAuth page)
+// =============================================================================
+
+@Composable
+private fun AppleLoginDialog(
+    state: AppleLoginState,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    deviceFormFactor: DeviceFormFactor
+) {
+    val context = LocalContext.current
+    val url = (state as? AppleLoginState.WaitingForUser)?.url
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, deviceFormFactor) {
+        value = if (deviceFormFactor == DeviceFormFactor.TV) url?.let { generateQrCodeBitmap(it) } else null
+    }
+
+    LaunchedEffect(url, deviceFormFactor) {
+        if (deviceFormFactor != DeviceFormFactor.TV && !url.isNullOrBlank()) openExternalUrl(context, url)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .width(rememberDialogWidth(420))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(32.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "Sign in with Apple",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White
+                )
+                Spacer(Modifier.height(8.dp))
+
+                when (state) {
+                    is AppleLoginState.WaitingForUser -> {
+                        if (deviceFormFactor == DeviceFormFactor.TV) {
+                            Text(
+                                "Scan this code with your phone and finish Sign in with Apple. Illumera connects automatically when Stremio completes the handoff.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            if (qrBitmap != null) {
+                                Box(
+                                    modifier = Modifier.size(180.dp).clip(RoundedCornerShape(4.dp)).background(Color.White).padding(8.dp)
+                                ) {
+                                    Image(bitmap = qrBitmap!!.asImageBitmap(), contentDescription = "Apple login QR code", modifier = Modifier.fillMaxSize())
+                                }
+                            }
+                        } else {
+                            Text(
+                                "Finish Sign in with Apple in your browser, then return here. Illumera will detect the completed login automatically.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            IntegrationButton(
+                                text = "Open Browser",
+                                onClick = { url?.let { openExternalUrl(context, it) } },
+                                isPrimary = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Waiting for Apple login…", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                    is AppleLoginState.Error -> {
+                        Text(
+                            state.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFEF4444),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IntegrationButton(text = "Retry", onClick = onRetry, isPrimary = true, modifier = Modifier.width(120.dp))
+                            IntegrationButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.width(120.dp))
+                        }
+                    }
+                    else -> Unit
+                }
             }
         }
     }
