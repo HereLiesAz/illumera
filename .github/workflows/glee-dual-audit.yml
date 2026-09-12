@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -99,12 +99,19 @@ jobs:
             --arg branch "$BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
 
-          SESSION_JSON=$(curl -fsS -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
             -d "$PAYLOAD" \
             'https://jules.googleapis.com/v1alpha/sessions')
-          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_JSON=$(cat /tmp/jules-session.json)
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Jules session creation failed with HTTP $HTTP_CODE" >&2
+            jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
+            exit 1
+          fi
+          SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          test -n "$SESSION_NAME" || { echo 'Jules session response did not include a session name'; echo "$SESSION_JSON"; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
           echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
 
@@ -143,7 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -193,12 +200,19 @@ jobs:
             --arg branch "$BRANCH" \
             '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
 
-          SESSION_JSON=$(curl -fsS -X POST \
+          HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
             -d "$PAYLOAD" \
             'https://jules.googleapis.com/v1alpha/sessions')
-          SESSION_NAME=$(jq -r '.name' <<<"$SESSION_JSON")
+          SESSION_JSON=$(cat /tmp/jules-session.json)
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Jules session creation failed with HTTP $HTTP_CODE" >&2
+            jq . /tmp/jules-session.json 2>/dev/null || cat /tmp/jules-session.json
+            exit 1
+          fi
+          SESSION_NAME=$(jq -r '.name // empty' <<<"$SESSION_JSON")
+          test -n "$SESSION_NAME" || { echo 'Jules session response did not include a session name'; echo "$SESSION_JSON"; exit 1; }
           SESSION_ID=${SESSION_NAME#sessions/}
           echo "Jules session: $(jq -r '.url // empty' <<<"$SESSION_JSON")"
 
