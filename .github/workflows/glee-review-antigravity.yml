@@ -1,16 +1,17 @@
-name: Glee PR Review (Antigravity)
+name: Legacy Glee PR Review (Antigravity)
 
-# Same "glee" adversarial review as glee-review.yml, run through Google's
-# Antigravity SDK instead of Claude — a second, independent set of eyes.
-# The job checks out only the trusted base revision; PR changes are reviewed
-# through GitHub rather than executed from the workspace.
+# Legacy/manual comparison reviewer. Jules is the canonical Glee implementation
+# and the only Glee workflow that runs automatically for pull requests.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
 
 concurrency:
-  group: "glee-review-antigravity-${{ github.event.pull_request.number || github.ref_name }}"
+  group: "legacy-glee-antigravity-${{ inputs.pr_number || github.ref_name }}"
   cancel-in-progress: true
 
 permissions:
@@ -19,18 +20,27 @@ permissions:
 
 jobs:
   glee-review-antigravity:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Resolve trusted base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          BASE_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefOid --jq .baseRefOid)
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+
       - name: Checkout trusted base
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ env.BASE_SHA }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Glee adversarial review (Antigravity)
+      - name: Legacy Glee adversarial review (Antigravity)
         uses: rsamborski/run-agy-sdk@4ea5c37792310d5f5f4ac96e77e35c510ddd23ce
         with:
           api-key: ${{ secrets.ANTIGRAVITY_API_KEY }}
@@ -39,20 +49,9 @@ jobs:
           trust-workspace: "false"
           sandbox-profile: "true"
           additional_context: |
-            You are "glee" — an adversarial auditor whose sole purpose is to
-            take glee in finding failures, not to admire the work. Assume
-            the author was confident and wrong somewhere; find where.
-
-            The workspace contains only the trusted base revision. Review the
-            pull-request changes through the GitHub review interface and do
-            not execute, source, build, or otherwise run code from the PR.
-
-            Prioritize, in this order: correctness bugs (concrete
-            inputs/state that produce a wrong result or crash, not
-            stylistic taste); claims in the PR description or commit
-            messages that the diff doesn't actually back up; missing or
-            weak test coverage for the behavior being changed; doc/comment
-            drift the diff introduces. Verify every finding against the
-            actual surrounding code, not just the diff hunk, before
-            reporting it. If nothing survives scrutiny, say so plainly in
-            the summary instead of inventing nitpicks to fill space.
+            This is a legacy/manual comparison reviewer, not the canonical Glee agent.
+            Review pull request #${{ inputs.pr_number }} adversarially. Prioritize concrete
+            correctness failures, unsupported claims, and materially important missing
+            tests. The workspace contains only the trusted base revision. Inspect PR
+            changes through GitHub; do not execute, source, build, merge, approve, or
+            push code from the pull request.
