@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.data.remote
 
+import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
+import com.hereliesaz.illumera.data.model.stremio.AddonCatalogResponse
 import com.hereliesaz.illumera.data.model.stremio.CatalogResponse
 import com.hereliesaz.illumera.data.model.stremio.Manifest
 import com.hereliesaz.illumera.data.model.stremio.MetaResponse
@@ -15,6 +17,12 @@ interface StremioApiService {
 
     @GET
     suspend fun getCatalog(@Url url: String): CatalogResponse
+
+    @GET
+    suspend fun getAddonCatalog(@Url url: String): AddonCatalogResponse
+
+    @GET
+    suspend fun getAddonCollection(@Url url: String): List<AddonCatalogItem>
 
     @GET
     suspend fun getMeta(@Url url: String): MetaResponse
