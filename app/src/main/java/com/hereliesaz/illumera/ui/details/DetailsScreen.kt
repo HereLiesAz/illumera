@@ -941,6 +941,7 @@ fun DetailsScreen(
             state = sidebarState,
             episodeProgressMap = state.episodeProgressMap,
             episodeEnrichmentMap = state.episodeEnrichmentMap,
+            mediaActionTarget = movie?.let { com.hereliesaz.illumera.ui.components.MediaActionTarget.fromMeta(it) },
             onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
             onQueueEpisode = { episode ->
                 onAddToQueue(

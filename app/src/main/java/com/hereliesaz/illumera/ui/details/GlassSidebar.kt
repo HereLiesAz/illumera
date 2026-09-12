@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.details
 
+import android.view.KeyEvent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -35,6 +36,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
+import com.hereliesaz.illumera.ui.components.MediaActionTarget
+import com.hereliesaz.illumera.ui.components.MediaCardActionMenu
+import com.hereliesaz.illumera.ui.util.touchClick
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.tmdb.TmdbEpisodeEnrichment
@@ -123,6 +127,11 @@ fun GlassSidebar(
     currentEpisodeId: String? = null,
     episodeProgressMap: Map<String, DetailsViewModel.EpisodeProgress> = emptyMap(),
     episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(),
+    mediaActionTarget: MediaActionTarget? = null,
+    excludedSourceIds: Set<String> = emptySet(),
+    sourceListDisabled: Boolean = false,
+    onToggleSourceExcluded: ((Stream) -> Unit)? = null,
+    onToggleSourceListDisabled: (() -> Unit)? = null,
     onToggleWatched: (MetaVideo) -> Unit = {},
     onQueueEpisode: (MetaVideo) -> Unit = {},
     onEpisodeSelected: (MetaVideo) -> Unit,
@@ -197,6 +206,7 @@ fun GlassSidebar(
                     currentEpisodeId = currentEpisodeId,
                     episodeProgressMap = episodeProgressMap,
                     episodeEnrichmentMap = episodeEnrichmentMap,
+                    mediaActionTarget = mediaActionTarget,
                     onToggleWatched = onToggleWatched,
                     onQueueEpisode = onQueueEpisode,
                     focusRequester = focusRequester,
@@ -209,6 +219,10 @@ fun GlassSidebar(
                     streams = current.streams,
                     selectedStreamId = current.selectedStreamId,
                     focusRequester = focusRequester,
+                    excludedSourceIds = excludedSourceIds,
+                    sourceListDisabled = sourceListDisabled,
+                    onToggleSourceExcluded = onToggleSourceExcluded,
+                    onToggleSourceListDisabled = onToggleSourceListDisabled,
                     onSourceClick = onSourceSelected,
                     onBack = onBack
                 )
@@ -230,6 +244,7 @@ fun EpisodesContent(
     currentEpisodeId: String? = null,
     episodeProgressMap: Map<String, DetailsViewModel.EpisodeProgress> = emptyMap(),
     episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(),
+    mediaActionTarget: MediaActionTarget? = null,
     onToggleWatched: (MetaVideo) -> Unit = {},
     onQueueEpisode: (MetaVideo) -> Unit = {},
     focusRequester: FocusRequester,
@@ -321,6 +336,7 @@ fun EpisodesContent(
                         progress = epProgress?.progress,
                         isWatched = epProgress?.watched ?: false,
                         enrichment = epEnrichment,
+                        mediaActionTarget = mediaActionTarget?.forEpisode(ep),
                         onToggleWatched = { onToggleWatched(ep) },
                         onQueue = { onQueueEpisode(ep) },
                         thumbnailModifier = mod,
@@ -342,6 +358,10 @@ fun SourcesContent(
     streams: List<Stream>?,
     selectedStreamId: String? = null,
     focusRequester: FocusRequester,
+    excludedSourceIds: Set<String> = emptySet(),
+    sourceListDisabled: Boolean = false,
+    onToggleSourceExcluded: ((Stream) -> Unit)? = null,
+    onToggleSourceListDisabled: (() -> Unit)? = null,
     onSourceClick: (Stream) -> Unit,
     onBack: () -> Unit
 ) {
@@ -438,6 +458,10 @@ fun SourcesContent(
                             RawSourceItem(
                                 stream = s,
                                 isPlaying = index == selectedIndex && selectedStreamId != null,
+                                isExcluded = (s.addonTransportUrl ?: s.url) in excludedSourceIds,
+                                sourceListDisabled = sourceListDisabled,
+                                onToggleExcluded = onToggleSourceExcluded?.let { callback -> { callback(s) } },
+                                onToggleSourceListDisabled = onToggleSourceListDisabled,
                                 modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier
                             ) { onSourceClick(s) }
                         }
@@ -609,6 +633,7 @@ fun EpisodeItem(
     progress: Float? = null,
     isWatched: Boolean = false,
     enrichment: TmdbEpisodeEnrichment? = null,
+    mediaActionTarget: MediaActionTarget? = null,
     onToggleWatched: () -> Unit = {},
     onQueue: () -> Unit = {},
     thumbnailModifier: Modifier = Modifier,
@@ -617,6 +642,8 @@ fun EpisodeItem(
 ) {
     var thumbnailFocused by remember { mutableStateOf(false) }
     var buttonFocused by remember { mutableStateOf(false) }
+    var contextMenuExpanded by remember(mediaActionTarget?.key) { mutableStateOf(false) }
+    var dpadLongPressTriggered by remember { mutableStateOf(false) }
     val isFocused = thumbnailFocused || buttonFocused
     val primary = MaterialTheme.colorScheme.primary
     val thumbnailRequester = remember { FocusRequester() }
@@ -664,8 +691,40 @@ fun EpisodeItem(
                 )
                 .focusRequester(thumbnailRequester)
                 .focusProperties { left = FocusRequester.Cancel; right = queueRequester }
-                .onFocusChanged { thumbnailFocused = it.isFocused }
-                .clickable(onClick = onClick)
+                .onFocusChanged {
+                    thumbnailFocused = it.isFocused
+                    if (!it.isFocused) dpadLongPressTriggered = false
+                }
+                .touchClick(
+                    onClick = onClick,
+                    onLongClick = mediaActionTarget?.let { { contextMenuExpanded = true } }
+                )
+                .onPreviewKeyEvent { event ->
+                    if (mediaActionTarget == null) return@onPreviewKeyEvent false
+                    val native = event.nativeKeyEvent
+                    val activation = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_BUTTON_A
+                    if (!activation) return@onPreviewKeyEvent false
+                    when (native.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            if (native.repeatCount > 0) dpadLongPressTriggered = true
+                            dpadLongPressTriggered
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            if (dpadLongPressTriggered) {
+                                dpadLongPressTriggered = false
+                                contextMenuExpanded = true
+                                true
+                            } else {
+                                onClick()
+                                true
+                            }
+                        }
+                        else -> false
+                    }
+                }
                 .focusable()
         ) {
             if (thumbnail != null) {
@@ -699,6 +758,14 @@ fun EpisodeItem(
             }
 
             // Progress bar floating near bottom of thumbnail
+            if (mediaActionTarget != null) {
+                MediaCardActionMenu(
+                    target = mediaActionTarget,
+                    expanded = contextMenuExpanded,
+                    onDismissRequest = { contextMenuExpanded = false }
+                )
+            }
+
             if (progress != null && progress > 0f && !isWatched) {
                 Box(
                     Modifier
@@ -885,32 +952,134 @@ private fun WatchedToggleButton(
 }
 
 @Composable
-fun RawSourceItem(stream: Stream, isPlaying: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun RawSourceItem(
+    stream: Stream,
+    isPlaying: Boolean = false,
+    isExcluded: Boolean = false,
+    sourceListDisabled: Boolean = false,
+    onToggleExcluded: (() -> Unit)? = null,
+    onToggleSourceListDisabled: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     var isFocused by remember { mutableStateOf(false) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var dpadLongPressTriggered by remember { mutableStateOf(false) }
     val primary = MaterialTheme.colorScheme.primary
     val mainText = stream.description ?: stream.title ?: stream.name ?: "Unknown"
     val subText = stream.name ?: ""
+    val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = if (isFocused) Color.White.copy(0.1f) else Color.White.copy(0.05f)),
-        modifier = modifier.fillMaxWidth().onFocusChanged { isFocused = it.isFocused }
-            .border(if (isFocused) 3.dp else 0.dp, if (isFocused) primary else Color.Transparent, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(mainText, style = MaterialTheme.typography.bodyLarge, color = if (isFocused) Color.White else Color.LightGray, modifier = Modifier.weight(1f))
-                if (isPlaying) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    isExcluded -> Color.White.copy(0.025f)
+                    isFocused -> Color.White.copy(0.1f)
+                    else -> Color.White.copy(0.05f)
+                }
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged {
+                    isFocused = it.isFocused
+                    if (!it.isFocused) dpadLongPressTriggered = false
+                }
+                .border(
+                    if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
+                    if (isFocused) primary else if (isExcluded) Color.White.copy(0.25f) else Color.Transparent,
+                    RoundedCornerShape(8.dp)
+                )
+                .touchClick(
+                    onClick = onClick,
+                    onLongClick = if (hasContextActions) ({ menuExpanded = true }) else null
+                )
+                .onPreviewKeyEvent { event ->
+                    val native = event.nativeKeyEvent
+                    val activation = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_BUTTON_A
+                    if (!activation) return@onPreviewKeyEvent false
+                    when (native.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            if (hasContextActions && native.repeatCount > 0) dpadLongPressTriggered = true
+                            dpadLongPressTriggered
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            if (dpadLongPressTriggered) {
+                                dpadLongPressTriggered = false
+                                menuExpanded = true
+                                true
+                            } else {
+                                onClick()
+                                true
+                            }
+                        }
+                        else -> false
+                    }
+                }
+                .focusable()
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Playing",
+                        mainText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = when {
+                            isExcluded -> Color.White.copy(0.35f)
+                            isFocused -> Color.White
+                            else -> Color.LightGray
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    when {
+                        isPlaying -> Text(
+                            "Playing",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = primary,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                        isExcluded -> Text(
+                            "Excluded",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(0.45f),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+                if (subText.isNotEmpty() && subText != mainText) {
+                    Text(
+                        subText,
                         style = MaterialTheme.typography.labelSmall,
-                        color = primary,
-                        modifier = Modifier.padding(start = 8.dp)
+                        color = if (isFocused) primary else Color.Gray,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
-            if (subText.isNotEmpty() && subText != mainText) {
-                Text(subText, style = MaterialTheme.typography.labelSmall, color = if (isFocused) primary else Color.Gray, modifier = Modifier.padding(top = 4.dp))
+        }
+
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false }
+        ) {
+            if (onToggleExcluded != null) {
+                DropdownMenuItem(
+                    text = { Text(if (isExcluded) "Include in source queue" else "Exclude from source queue") },
+                    onClick = {
+                        menuExpanded = false
+                        onToggleExcluded()
+                    }
+                )
+            }
+            if (onToggleSourceListDisabled != null) {
+                DropdownMenuItem(
+                    text = { Text(if (sourceListDisabled) "Enable source list for this video" else "Disable source list for this video") },
+                    onClick = {
+                        menuExpanded = false
+                        onToggleSourceListDisabled()
+                    }
+                )
             }
         }
     }

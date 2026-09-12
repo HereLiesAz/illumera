@@ -270,6 +270,7 @@ fun GridViewScreen(
                         title = item.name,
                         posterUrl = item.poster,
                         onClick = { onMovieClick(item) },
+                        mediaItem = item,
                         isWatched = item.id in watchedIds,
                         modifier = Modifier
                             .aspectRatio(2f / 3f)

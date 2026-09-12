@@ -8,6 +8,8 @@ interface PlayerPlaybackController {
     val backendType: PlayerBackendType
     val uiState: StateFlow<PlayerUiState>
     val sourceOptions: StateFlow<List<PlayerSourceOption>>
+    val excludedSourceIds: StateFlow<Set<String>>
+    val sourceListDisabled: StateFlow<Boolean>
     val audioTracks: StateFlow<List<PlayerTrackOption>>
     val subtitleTracks: StateFlow<List<PlayerTrackOption>>
 
@@ -25,6 +27,8 @@ interface PlayerPlaybackController {
     fun setPlaybackSpeed(speed: Float)
 
     fun selectSource(sourceId: String)
+    fun setSourceExcluded(sourceId: String, excluded: Boolean)
+    fun setSourceListDisabled(disabled: Boolean)
     fun selectAudioTrack(trackId: String?)
     fun selectSubtitleTrack(trackId: String?)
 

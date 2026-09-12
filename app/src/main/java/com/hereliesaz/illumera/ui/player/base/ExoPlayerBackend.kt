@@ -111,6 +111,10 @@ class ExoPlayerBackend(
 
     private val _sourceOptions = MutableStateFlow<List<PlayerSourceOption>>(emptyList())
     override val sourceOptions: StateFlow<List<PlayerSourceOption>> = _sourceOptions
+    private val _excludedSourceIds = MutableStateFlow<Set<String>>(emptySet())
+    override val excludedSourceIds: StateFlow<Set<String>> = _excludedSourceIds
+    private val _sourceListDisabled = MutableStateFlow(false)
+    override val sourceListDisabled: StateFlow<Boolean> = _sourceListDisabled
 
     private val _audioTracks = MutableStateFlow<List<PlayerTrackOption>>(emptyList())
     override val audioTracks: StateFlow<List<PlayerTrackOption>> = _audioTracks
@@ -430,6 +434,8 @@ class ExoPlayerBackend(
     override fun load(request: PlayerLoadRequest) {
         if (released) return
         loadToken++
+        _excludedSourceIds.value = emptySet()
+        _sourceListDisabled.value = false
 
         // Emit loading state immediately so Compose can render the spinner
         _uiState.update {
@@ -577,6 +583,16 @@ class ExoPlayerBackend(
         val safeSpeed = speed.coerceIn(0.25f, 2.0f)
         exoPlayer?.setPlaybackSpeed(safeSpeed)
         _uiState.update { it.copy(playbackSpeed = safeSpeed) }
+    }
+
+    override fun setSourceExcluded(sourceId: String, excluded: Boolean) {
+        _excludedSourceIds.update { current ->
+            if (excluded) current + sourceId else current - sourceId
+        }
+    }
+
+    override fun setSourceListDisabled(disabled: Boolean) {
+        _sourceListDisabled.value = disabled
     }
 
     override fun selectSource(sourceId: String) {
@@ -1411,12 +1427,13 @@ class ExoPlayerBackend(
 
     private fun tryNextSourceOnParsingError(error: PlaybackException): Boolean {
         val codeName = error.errorCodeName.uppercase(Locale.US)
-        if (!codeName.contains("PARSING")) return false
+        if (!codeName.contains("PARSING") || _sourceListDisabled.value) return false
         val sources = _sourceOptions.value
         if (sources.size <= 1) return false
         val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
         if (currentIdx < 0) return false
-        val nextSource = sources.drop(currentIdx + 1).firstOrNull() ?: return false
+        val excluded = _excludedSourceIds.value
+        val nextSource = sources.drop(currentIdx + 1).firstOrNull { it.id !in excluded } ?: return false
         selectSource(nextSource.id)
         return true
     }

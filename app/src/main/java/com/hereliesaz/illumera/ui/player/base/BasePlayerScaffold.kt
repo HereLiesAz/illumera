@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
@@ -191,6 +192,8 @@ fun BasePlayerScaffold(
 ) {
     val uiState by playbackController.uiState.collectAsState()
     val sources by playbackController.sourceOptions.collectAsState()
+    val excludedSourceIds by playbackController.excludedSourceIds.collectAsState()
+    val sourceListDisabled by playbackController.sourceListDisabled.collectAsState()
     val audioTracks by playbackController.audioTracks.collectAsState()
     val subtitleTracks by playbackController.subtitleTracks.collectAsState()
 
@@ -435,7 +438,7 @@ fun BasePlayerScaffold(
     // (closePanel(), via sourcesPanelOpenedAsBackStop above) then actually exits. Skipped
     // when there's only one source, since there's nothing meaningful to show a list of.
     fun exitPlaybackOrShowSourcesList() {
-        if (sources.size > 1) {
+        if (!sourceListDisabled && sources.size > 1) {
             markInteraction()
             sourcesPanelOpenedAsBackStop = true
             activePanel = PlayerPanel.SOURCES
@@ -456,7 +459,7 @@ fun BasePlayerScaffold(
             !uiState.errorMessage.isNullOrBlank() && !panelOpen -> {
                 // A dead/unavailable source: go straight to the source list instead of
                 // exiting the player. A second back (closePanel, above) exits to Details.
-                if (sources.size > 1) {
+                if (!sourceListDisabled && sources.size > 1) {
                     markInteraction()
                     sourcesPanelOpenedFromError = true
                     activePanel = PlayerPanel.SOURCES
@@ -801,7 +804,9 @@ fun BasePlayerScaffold(
                 currentPositionMs = displayPositionMs,
                 durationMs = uiState.durationMs,
                 isPlaying = isPlaybackIntended,
-                showSourceControl = !isTrailer && sources.size > 1,
+                showSourceControl = !isTrailer && !sourceListDisabled && sources.size > 1,
+                showNextSourceControl = !isTrailer && !sourceListDisabled && sources.count { it.id !in excludedSourceIds } > 1,
+                showNextEpisodeControl = !isTrailer && nextEpisodeInfo != null && onAutoplayNextEpisode != null,
                 showAudioControl = !isTrailer && audioTracks.isNotEmpty(),
                 showSubtitleControl = !isTrailer && subtitleTracks.isNotEmpty(),
                 playPauseFocusRequester = playPauseFocusRequester,
@@ -816,6 +821,22 @@ fun BasePlayerScaffold(
                     pendingPreviewSeekPosition = null
                     playbackController.seekBy(deltaMs)
                     scheduleHideControls()
+                },
+                onNextSource = {
+                    markInteraction()
+                    val currentIndex = sources.indexOfFirst { it.id == uiState.currentSourceId }
+                    val ordered = if (currentIndex >= 0) {
+                        sources.drop(currentIndex + 1) + sources.take(currentIndex + 1)
+                    } else {
+                        sources
+                    }
+                    ordered.firstOrNull { it.id != uiState.currentSourceId && it.id !in excludedSourceIds }
+                        ?.let { playbackController.selectSource(it.id) }
+                    showControlsTemporarily()
+                },
+                onNextEpisode = {
+                    markInteraction()
+                    onAutoplayNextEpisode?.invoke(currentSourceUrl)
                 },
                 onShowSourcesPanel = {
                     markInteraction()
@@ -898,6 +919,14 @@ fun BasePlayerScaffold(
             onClose = { closePanel() },
             sources = sources,
             currentSourceId = uiState.currentSourceId,
+            excludedSourceIds = excludedSourceIds,
+            sourceListDisabled = sourceListDisabled,
+            onToggleSourceExcluded = { sourceId ->
+                playbackController.setSourceExcluded(sourceId, sourceId !in excludedSourceIds)
+            },
+            onToggleSourceListDisabled = {
+                playbackController.setSourceListDisabled(!sourceListDisabled)
+            },
             onSelectSource = { sourceId ->
                 playbackController.selectSource(sourceId)
                 // A real attempt to play the new source, not a dismissal — don't exit to Details.
@@ -1311,12 +1340,16 @@ private fun PlayerControlsOverlay(
     durationMs: Long,
     isPlaying: Boolean,
     showSourceControl: Boolean,
+    showNextSourceControl: Boolean,
+    showNextEpisodeControl: Boolean,
     showAudioControl: Boolean,
     showSubtitleControl: Boolean,
     playPauseFocusRequester: FocusRequester,
     seekBarFocusRequester: FocusRequester,
     onPlayPause: () -> Unit,
     onSeekBy: (Long) -> Unit,
+    onNextSource: () -> Unit,
+    onNextEpisode: () -> Unit,
     onShowSourcesPanel: () -> Unit,
     onShowAudioPanel: () -> Unit,
     onShowSubtitlePanel: () -> Unit,
@@ -1383,6 +1416,28 @@ private fun PlayerControlsOverlay(
                         buttonSize = 54.dp,
                         iconSize = 29.dp
                     )
+
+                    if (showNextSourceControl) {
+                        ControlButton(
+                            icon = Icons.Default.ArrowForward,
+                            contentDescription = "Next source",
+                            onClick = onNextSource,
+                            onFocused = onResetHideTimer,
+                            buttonSize = 44.dp,
+                            iconSize = 20.dp
+                        )
+                    }
+
+                    if (showNextEpisodeControl) {
+                        ControlButton(
+                            icon = Icons.Default.SkipNext,
+                            contentDescription = "Next episode",
+                            onClick = onNextEpisode,
+                            onFocused = onResetHideTimer,
+                            buttonSize = 44.dp,
+                            iconSize = 20.dp
+                        )
+                    }
 
                     if (showSubtitleControl) {
                         ControlButton(
@@ -3085,6 +3140,10 @@ private fun BoxScope.PlayerSourceSidebar(
     title: String,
     sources: List<PlayerSourceOption>,
     currentSourceId: String?,
+    excludedSourceIds: Set<String>,
+    sourceListDisabled: Boolean,
+    onToggleSourceExcluded: (String) -> Unit,
+    onToggleSourceListDisabled: () -> Unit,
     onClose: () -> Unit,
     onSelectSource: (String) -> Unit
 ) {
@@ -3112,6 +3171,13 @@ private fun BoxScope.PlayerSourceSidebar(
 
     GlassSidebar(
         state = sidebarState,
+        excludedSourceIds = excludedSourceIds,
+        sourceListDisabled = sourceListDisabled,
+        onToggleSourceExcluded = { stream ->
+            val sourceId = stream.addonTransportUrl ?: stream.url
+            if (sourceId != null) onToggleSourceExcluded(sourceId)
+        },
+        onToggleSourceListDisabled = onToggleSourceListDisabled,
         onEpisodeSelected = {},
         onSourceSelected = { stream ->
             val sourceId = stream.addonTransportUrl ?: stream.url ?: return@GlassSidebar
