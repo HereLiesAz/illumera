@@ -6,7 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
-import com.hereliesaz.illumera.data.remote.TraktApiService
+import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,9 +34,20 @@ data class QueueItem(
     fun toMetaItem(): MetaItem {
         val canonicalId = seriesId ?: if (type == "episode" || type == "series") {
             val parts = id.split(':')
-            if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) parts.dropLast(2).joinToString(":") else id
-        } else id
-        return MetaItem(id = canonicalId, type = if (type == "episode" || type == "series") "series" else type, name = title, poster = poster)
+            if (parts.size >= 3 && parts.takeLast(2).all { it.toIntOrNull() != null }) {
+                parts.dropLast(2).joinToString(":")
+            } else {
+                id
+            }
+        } else {
+            id
+        }
+        return MetaItem(
+            id = canonicalId,
+            type = if (type == "episode" || type == "series") "series" else type,
+            name = title,
+            poster = poster
+        )
     }
 }
 
@@ -71,7 +82,7 @@ data class QueueState(
 class QueueManager @Inject constructor(
     @ApplicationContext context: Context,
     private val addonDao: AddonDao,
-    private val traktApi: TraktApiService,
+    private val traktApi: TraktSyncApiService,
     private val repository: AddonRepository
 ) {
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
@@ -236,64 +247,154 @@ class QueueManager @Inject constructor(
         }
         val dismissedKeys = if (resetDismissed) emptySet() else dismissedSuggestionKeys()
         _state.value = current.copy(isRefreshingSuggestions = true)
+
         try {
-            val watched = addonDao.getAllWatchHistoryOnce()
-            val seenIds = watched.map { normalizeId(it.id) }.toSet()
-            val excludedIds = buildSet {
-                if (current.preferences.onlyUnseenSuggestions) {
-                    addAll(seenIds)
-                } else {
-                    addAll(watched.filter { it.watched }.map { normalizeId(it.id) })
-                }
-                addAll(current.manualItems.map { normalizeId(it.seriesId ?: it.id) })
+            val history = addonDao.getAllWatchHistoryOnce()
+            val excludedIds = mutableSetOf<String>()
+
+            if (current.preferences.onlyUnseenSuggestions) {
+                excludedIds += history.map { normalizeId(it.id) }
+            } else {
+                excludedIds += history.filter { it.watched }.map { normalizeId(it.id) }
             }
+            excludedIds += current.manualItems.map { normalizeId(it.seriesId ?: it.id) }
+
+            val useTrakt = QueueSuggestionSource.TRAKT in current.preferences.suggestionSources
+
+            // Keep the unseen filter honest even when the local Trakt sync has not run yet.
+            // The authenticated Trakt history is authoritative for items watched elsewhere.
+            if (useTrakt && current.preferences.onlyUnseenSuggestions) {
+                runCatching { traktApi.getWatchedMovies() }
+                    .getOrNull()
+                    ?.takeIf { it.isSuccessful }
+                    ?.body().orEmpty()
+                    .mapNotNullTo(excludedIds) { watched ->
+                        watched.movie.ids.imdb?.let(::normalizeId)
+                            ?: watched.movie.ids.tmdb?.let { normalizeId("tmdb:$it") }
+                    }
+
+                runCatching { traktApi.getWatchedShows() }
+                    .getOrNull()
+                    ?.takeIf { it.isSuccessful }
+                    ?.body().orEmpty()
+                    .mapNotNullTo(excludedIds) { watched ->
+                        watched.show.ids.imdb?.let(::normalizeId)
+                            ?: watched.show.ids.tmdb?.let { normalizeId("tmdb:$it") }
+                    }
+            }
+
+            fun isEligible(item: QueueItem): Boolean {
+                val allowedType = when (item.type) {
+                    "movie" -> current.preferences.includeMovies
+                    "episode", "series" -> current.preferences.includeEpisodes || current.preferences.includeWholeShows
+                    else -> false
+                }
+                if (!allowedType) return false
+                return normalizeId(item.seriesId ?: item.id) !in excludedIds
+            }
+
             val candidates = mutableListOf<QueueItem>()
 
-            if (QueueSuggestionSource.TRAKT in current.preferences.suggestionSources) {
+            // Enabling "only unseen" used to throw away the suggestions already on screen.
+            // Re-seed from any still-valid existing suggestions so a refresh cannot collapse
+            // to an empty row just because a remote source is temporarily unavailable.
+            if (current.preferences.onlyUnseenSuggestions) {
+                current.suggestions.asSequence()
+                    .filter { it.stableKey !in dismissedKeys }
+                    .filter(::isEligible)
+                    .forEach(candidates::add)
+            }
+
+            if (useTrakt) {
                 if (current.preferences.includeMovies) {
-                    runCatching { traktApi.getMovieRecommendations(50) }.getOrNull()
-                        ?.takeIf { it.isSuccessful }?.body().orEmpty()
+                    runCatching { traktApi.getMovieRecommendations(50) }
+                        .getOrNull()
+                        ?.takeIf { it.isSuccessful }
+                        ?.body().orEmpty()
                         .forEach { movie ->
                             val id = movie.ids.imdb ?: movie.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
-                            if (normalizeId(id) !in excludedIds) {
-                                candidates += QueueItem(id, "movie", movie.title ?: "Movie", origin = QueueOrigin.SUGGESTED)
-                            }
+                            val item = QueueItem(
+                                id = id,
+                                type = "movie",
+                                title = movie.title ?: "Movie",
+                                origin = QueueOrigin.SUGGESTED
+                            )
+                            if (isEligible(item)) candidates += item
                         }
                 }
+
                 if (current.preferences.includeEpisodes || current.preferences.includeWholeShows) {
-                    runCatching { traktApi.getShowRecommendations(50) }.getOrNull()
-                        ?.takeIf { it.isSuccessful }?.body().orEmpty()
+                    runCatching { traktApi.getShowRecommendations(50) }
+                        .getOrNull()
+                        ?.takeIf { it.isSuccessful }
+                        ?.body().orEmpty()
                         .forEach { show ->
                             val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
-                            if (normalizeId(id) !in excludedIds) {
-                                candidates += QueueItem(
+                            val item = QueueItem(
+                                id = id,
+                                type = "series",
+                                title = show.title ?: "Series",
+                                wholeShow = current.preferences.includeWholeShows,
+                                origin = QueueOrigin.SUGGESTED
+                            )
+                            if (isEligible(item)) candidates += item
+                        }
+                }
+
+                // The user's Trakt watchlist is a second personalized pool. It is especially
+                // useful for unseen-only mode because watched history is filtered separately.
+                runCatching { traktApi.getWatchlist(limit = 100) }
+                    .getOrNull()
+                    ?.takeIf { it.isSuccessful }
+                    ?.body().orEmpty()
+                    .forEach { watchlistItem ->
+                        when (watchlistItem.type) {
+                            "movie" -> {
+                                if (!current.preferences.includeMovies) return@forEach
+                                val movie = watchlistItem.movie ?: return@forEach
+                                val id = movie.ids.imdb ?: movie.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
+                                val item = QueueItem(
+                                    id = id,
+                                    type = "movie",
+                                    title = movie.title ?: "Movie",
+                                    origin = QueueOrigin.SUGGESTED
+                                )
+                                if (isEligible(item)) candidates += item
+                            }
+
+                            "show" -> {
+                                if (!current.preferences.includeEpisodes && !current.preferences.includeWholeShows) return@forEach
+                                val show = watchlistItem.show ?: return@forEach
+                                val id = show.ids.imdb ?: show.ids.tmdb?.let { "tmdb:$it" } ?: return@forEach
+                                val item = QueueItem(
                                     id = id,
                                     type = "series",
                                     title = show.title ?: "Series",
                                     wholeShow = current.preferences.includeWholeShows,
                                     origin = QueueOrigin.SUGGESTED
                                 )
+                                if (isEligible(item)) candidates += item
                             }
                         }
-                }
+                    }
             }
 
             if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources &&
                 !current.preferences.onlyUnseenSuggestions
             ) {
-                watched.asSequence()
+                history.asSequence()
                     .filter { !it.watched }
                     .filter {
                         (it.type == "movie" && current.preferences.includeMovies) ||
                             (it.type == "series" && current.preferences.includeEpisodes)
                     }
                     .sortedByDescending { it.lastWatched }
-                    .forEach { history ->
+                    .forEach { historyItem ->
                         candidates += QueueItem(
-                            id = history.id,
-                            type = history.type,
-                            title = history.title,
-                            poster = history.poster,
+                            id = historyItem.id,
+                            type = historyItem.type,
+                            title = historyItem.title,
+                            poster = historyItem.poster,
                             origin = QueueOrigin.SUGGESTED
                         )
                     }
@@ -301,6 +402,8 @@ class QueueManager @Inject constructor(
 
             val latestDismissedKeys = dismissedSuggestionKeys()
             val ranked = candidates
+                .asSequence()
+                .filter(::isEligible)
                 .distinctBy { it.stableKey }
                 .filter { it.stableKey !in latestDismissedKeys }
                 .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
@@ -310,10 +413,12 @@ class QueueManager @Inject constructor(
                 )
                 .take(SUGGESTION_COUNT * 4)
                 .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
+                .toList()
 
             val latestState = _state.value
             val existing = if (preserveExisting) {
                 latestState.suggestions
+                    .filter(::isEligible)
                     .filter { it.stableKey !in latestDismissedKeys }
                     .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
             } else {
@@ -351,8 +456,12 @@ class QueueManager @Inject constructor(
             gson.fromJson(prefs.getString(KEY_PREFERENCES, null), QueuePreferences::class.java)
         }.getOrNull() ?: QueuePreferences()
         val listType = object : TypeToken<List<QueueItem>>() {}.type
-        val manual: List<QueueItem> = runCatching { gson.fromJson<List<QueueItem>>(prefs.getString(KEY_MANUAL, "[]"), listType) }.getOrNull().orEmpty()
-        val suggestions: List<QueueItem> = runCatching { gson.fromJson<List<QueueItem>>(prefs.getString(KEY_SUGGESTIONS, "[]"), listType) }.getOrNull().orEmpty()
+        val manual: List<QueueItem> = runCatching {
+            gson.fromJson<List<QueueItem>>(prefs.getString(KEY_MANUAL, "[]"), listType)
+        }.getOrNull().orEmpty()
+        val suggestions: List<QueueItem> = runCatching {
+            gson.fromJson<List<QueueItem>>(prefs.getString(KEY_SUGGESTIONS, "[]"), listType)
+        }.getOrNull().orEmpty()
         return QueueState(preferences, manual, suggestions)
     }
 

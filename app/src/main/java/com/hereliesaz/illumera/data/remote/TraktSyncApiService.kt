@@ -1,7 +1,9 @@
 package com.hereliesaz.illumera.data.remote
 
 import com.hereliesaz.illumera.data.model.trakt.TraktLastActivities
+import com.hereliesaz.illumera.data.model.trakt.TraktMovie
 import com.hereliesaz.illumera.data.model.trakt.TraktPlaybackItem
+import com.hereliesaz.illumera.data.model.trakt.TraktShow
 import com.hereliesaz.illumera.data.model.trakt.TraktShowProgress
 import com.hereliesaz.illumera.data.model.trakt.TraktScrobbleRequest
 import com.hereliesaz.illumera.data.model.trakt.TraktSyncRequest
@@ -24,6 +26,18 @@ interface TraktSyncApiService {
     @GET("sync/last_activities")
     suspend fun getLastActivities(): Response<TraktLastActivities>
 
+    // ── Personalized recommendations ──
+
+    @GET("recommendations/movies")
+    suspend fun getMovieRecommendations(
+        @Query("limit") limit: Int = 30
+    ): Response<List<TraktMovie>>
+
+    @GET("recommendations/shows")
+    suspend fun getShowRecommendations(
+        @Query("limit") limit: Int = 30
+    ): Response<List<TraktShow>>
+
     // ── Watchlist ──
 
     @GET("sync/watchlist")
@@ -39,6 +53,18 @@ interface TraktSyncApiService {
 
     @POST("sync/watchlist/remove")
     suspend fun removeFromWatchlist(
+        @Body body: TraktSyncRequest
+    ): Response<TraktSyncResponse>
+
+    // ── Collection / Trakt Library ──
+
+    @POST("sync/collection")
+    suspend fun addToCollection(
+        @Body body: TraktSyncRequest
+    ): Response<TraktSyncResponse>
+
+    @POST("sync/collection/remove")
+    suspend fun removeFromCollection(
         @Body body: TraktSyncRequest
     ): Response<TraktSyncResponse>
 

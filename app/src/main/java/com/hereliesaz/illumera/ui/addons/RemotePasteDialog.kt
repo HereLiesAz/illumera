@@ -32,30 +32,39 @@ import kotlinx.coroutines.delay
 /**
  * Dialog that displays a QR code for remote URL pasting.
  * Starts a local web server and shows QR code pointing to it.
+ *
+ * When [configurationUrl] is supplied, the phone page also links to the addon's
+ * own configuration page and accepts the resulting Stremio install link back.
  */
 @Composable
 fun RemotePasteDialog(
     onDismissRequest: () -> Unit,
-    onUrlReceived: (String) -> Unit
+    onUrlReceived: (String) -> Unit,
+    configurationUrl: String? = null,
+    addonName: String? = null
 ) {
     var serverInfo by remember { mutableStateOf<ServerInfo?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    
+
     val serverManager = remember { ServerManager() }
     val focusRequester = remember { FocusRequester() }
+    val isConfigurationFlow = !configurationUrl.isNullOrBlank()
 
     // Start server when dialog opens
-    LaunchedEffect(Unit) {
+    LaunchedEffect(configurationUrl, addonName) {
         delay(100)
         focusRequester.requestFocus()
-        
-        val info = serverManager.startServer { receivedUrl ->
+
+        val info = serverManager.startServer(
+            helperUrl = configurationUrl,
+            helperLabel = addonName?.let { "Configure $it" } ?: "Open addon configuration"
+        ) { receivedUrl ->
             // URL received from phone
             onUrlReceived(receivedUrl)
             onDismissRequest()
         }
-        
+
         if (info != null) {
             serverInfo = info
             qrBitmap = generateQrCodeBitmap(info.url)
@@ -90,15 +99,20 @@ fun RemotePasteDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    "Remote Paste",
+                    if (isConfigurationFlow) "Configure Addon" else "Remote Paste",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
-                
+
                 Text(
-                    "Scan with your phone to paste a URL",
+                    if (isConfigurationFlow) {
+                        "Scan with your phone, configure the addon, then send its Install Addon link back to Illumera."
+                    } else {
+                        "Scan with your phone to paste an addon URL"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp)
                 )
 
@@ -127,9 +141,9 @@ fun RemotePasteDialog(
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
-                        
+
                         Spacer(Modifier.height(24.dp))
-                        
+
                         // Manual URL
                         Text(
                             "Or visit:",
@@ -143,6 +157,7 @@ fun RemotePasteDialog(
                                 letterSpacing = 0.5.sp
                             ),
                             color = Color.White,
+                            textAlign = TextAlign.Center,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }

@@ -13,6 +13,8 @@ import java.util.UUID
 class LinkServer(
     port: Int,
     private val pairingToken: String,
+    private val helperUrl: String? = null,
+    private val helperLabel: String? = null,
     private val onLinkReceived: (String) -> Unit
 ) : NanoHTTPD(port) {
 
@@ -39,6 +41,21 @@ class LinkServer(
     }
 
     private fun serveForm(): Response {
+        val safeHelperUrl = helperUrl?.takeIf { url ->
+            val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
+            scheme == "http" || scheme == "https"
+        }
+        val helperHtml = if (safeHelperUrl != null) {
+            val label = escapeHtml(helperLabel ?: "Open addon configuration")
+            val href = escapeHtml(safeHelperUrl)
+            """
+                <a class="helper" href="$href" target="_blank" rel="noopener noreferrer">$label</a>
+                <p class="helper-note">Configure the addon, then copy its Install Addon link and paste it below. Illumera accepts both https:// and stremio:// install links.</p>
+            """.trimIndent()
+        } else {
+            ""
+        }
+
         val html = """
             <!DOCTYPE html>
             <html lang="en">
@@ -98,7 +115,7 @@ class LinkServer(
                     input::placeholder {
                         color: rgba(255, 255, 255, 0.4);
                     }
-                    button {
+                    button, .helper {
                         width: 100%;
                         padding: 14px 24px;
                         font-size: 1rem;
@@ -110,7 +127,15 @@ class LinkServer(
                         cursor: pointer;
                         transition: transform 0.1s, opacity 0.2s;
                     }
-                    button:active {
+                    .helper {
+                        display: block;
+                        text-decoration: none;
+                        margin: 20px 0 12px;
+                    }
+                    .helper-note {
+                        margin-bottom: 20px;
+                    }
+                    button:active, .helper:active {
                         transform: scale(0.98);
                     }
                     button:disabled {
@@ -133,11 +158,12 @@ class LinkServer(
             <body>
                 <div class="container" id="form-container">
                     <h1>📋 Remote Paste</h1>
-                    <p>Paste your addon URL below and tap Send</p>
+                    <p>Paste an addon manifest or install link below and tap Send</p>
+                    $helperHtml
                     <form id="pasteForm">
                         <input type="hidden" name="csrf_token" value="$csrfToken">
-                        <input type="url" name="url" id="urlInput"
-                               placeholder="https://..."
+                        <input type="text" name="url" id="urlInput"
+                               placeholder="https://... or stremio://..."
                                autocomplete="off"
                                autocapitalize="off"
                                required>
@@ -156,7 +182,6 @@ class LinkServer(
                     document.getElementById('pasteForm').addEventListener('submit', async (e) => {
                         e.preventDefault();
                         const btn = document.getElementById('submitBtn');
-                        const url = document.getElementById('urlInput').value;
                         btn.disabled = true;
                         btn.textContent = 'Sending...';
                         try {
@@ -191,19 +216,32 @@ class LinkServer(
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            val url = session.parms["url"]
-
-            if (!url.isNullOrBlank()) {
-                if (url.length > MAX_URL_LENGTH) {
+            val rawUrl = session.parms["url"]?.trim()
+            if (!rawUrl.isNullOrBlank()) {
+                if (rawUrl.length > MAX_URL_LENGTH) {
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "URL too long")
                 }
-                // Validate URL scheme
-                val scheme = Uri.parse(url).scheme?.lowercase()
-                if (scheme != "http" && scheme != "https") {
-                    return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Only HTTP/HTTPS URLs are supported")
+
+                val uri = Uri.parse(rawUrl)
+                val normalizedUrl = when (uri.scheme?.lowercase()) {
+                    "http", "https" -> rawUrl
+                    "stremio" -> {
+                        if (uri.host.isNullOrBlank()) {
+                            return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Invalid Stremio addon link")
+                        }
+                        uri.buildUpon().scheme("https").build().toString()
+                    }
+                    else -> {
+                        return newFixedLengthResponse(
+                            Response.Status.BAD_REQUEST,
+                            MIME_PLAINTEXT,
+                            "Only HTTP/HTTPS URLs and Stremio addon links are supported"
+                        )
+                    }
                 }
+
                 mainHandler.post {
-                    onLinkReceived(url)
+                    onLinkReceived(normalizedUrl)
                 }
             }
 
@@ -211,6 +249,21 @@ class LinkServer(
         } catch (e: Exception) {
             if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("LinkServer", "Error handling submission", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error processing request")
+        }
+    }
+
+    private fun escapeHtml(value: String): String = buildString(value.length) {
+        value.forEach { char ->
+            append(
+                when (char) {
+                    '&' -> "&amp;"
+                    '<' -> "&lt;"
+                    '>' -> "&gt;"
+                    '"' -> "&quot;"
+                    '\'' -> "&#39;"
+                    else -> char
+                }
+            )
         }
     }
 }

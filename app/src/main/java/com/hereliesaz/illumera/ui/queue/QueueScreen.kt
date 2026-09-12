@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.queue
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,6 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -262,7 +268,13 @@ fun QueueSection(
                     }
                 },
                 actions = { item, _ ->
-                    IconButton(onClick = { queueManager.rateSuggestion(item.stableKey, -1) }) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            queueManager.rateSuggestion(item.stableKey, -1)
+                            queueManager.removeSuggestion(item.stableKey)
+                            queueManager.ensureSuggestions()
+                        }
+                    }) {
                         Icon(
                             Icons.Default.ThumbDown,
                             contentDescription = "Less like this",
@@ -356,6 +368,9 @@ private fun QueueCardRow(
     onRemoveSuggestion: ((QueueItem) -> Unit)? = null,
     actions: @Composable (QueueItem, Int) -> Unit
 ) {
+    var movingKey by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = movingKey != null) { movingKey = null }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = title,
@@ -370,22 +385,55 @@ private fun QueueCardRow(
         ) {
             itemsIndexed(items, key = { _, item -> item.stableKey }) { index, item ->
                 val cardFocusRequester = remember(item.stableKey) { FocusRequester() }
-                LaunchedEffect(focusedKey, item.stableKey) {
-                    if (focusedKey == item.stableKey) {
+                val isMoving = movingKey == item.stableKey
+                LaunchedEffect(focusedKey, movingKey, item.stableKey) {
+                    if (focusedKey == item.stableKey || isMoving) {
                         kotlinx.coroutines.delay(50)
                         runCatching { cardFocusRequester.requestFocus() }
                     }
                 }
+
                 Column(modifier = Modifier.width(140.dp)) {
                     var menuExpanded by remember(item.stableKey) { mutableStateOf(false) }
-                    androidx.compose.foundation.layout.Box {
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .then(
+                                if (isMoving) Modifier.border(
+                                    3.dp,
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(12.dp)
+                                ) else Modifier
+                            )
+                            .onPreviewKeyEvent { event ->
+                                if (!isMoving || event.type != KeyEventType.KeyDown || onMoveSuggestion == null) {
+                                    return@onPreviewKeyEvent false
+                                }
+                                when (event.key) {
+                                    Key.DirectionLeft -> {
+                                        if (index > 0) onMoveSuggestion(item, index - 1)
+                                        true
+                                    }
+                                    Key.DirectionRight -> {
+                                        if (index < items.lastIndex) onMoveSuggestion(item, index + 1)
+                                        true
+                                    }
+                                    Key.Back, Key.Escape -> {
+                                        movingKey = null
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            }
+                    ) {
                         LumeraCard(
                             title = item.title,
                             posterUrl = item.poster,
-                            onClick = { onOpenItem(item) },
+                            onClick = {
+                                if (isMoving) movingKey = null else onOpenItem(item)
+                            },
                             modifier = Modifier.focusRequester(cardFocusRequester),
                             onFocused = { onFocused(item.stableKey) },
-                            onLongClick = if (onMoveSuggestion != null && onRemoveSuggestion != null) {
+                            onLongClick = if (onMoveSuggestion != null || onRemoveSuggestion != null) {
                                 { menuExpanded = true }
                             } else null
                         )
@@ -396,26 +444,19 @@ private fun QueueCardRow(
                         ) {
                             if (onMoveSuggestion != null) {
                                 DropdownMenuItem(
-                                    text = { Text("Move to position", fontWeight = FontWeight.SemiBold) },
-                                    onClick = {},
-                                    enabled = false
+                                    text = { Text("Move") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        movingKey = item.stableKey
+                                    }
                                 )
-                                items.indices.forEach { targetIndex ->
-                                    DropdownMenuItem(
-                                        text = { Text("${targetIndex + 1}") },
-                                        onClick = {
-                                            menuExpanded = false
-                                            onMoveSuggestion(item, targetIndex)
-                                        },
-                                        enabled = targetIndex != index
-                                    )
-                                }
                             }
                             if (onRemoveSuggestion != null) {
                                 DropdownMenuItem(
                                     text = { Text("Remove from queue") },
                                     onClick = {
                                         menuExpanded = false
+                                        movingKey = null
                                         onRemoveSuggestion(item)
                                     },
                                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
@@ -426,9 +467,9 @@ private fun QueueCardRow(
 
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = queueSubtitle(item),
+                        text = if (isMoving) "Move with ← → • select to place" else queueSubtitle(item),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .58f),
+                        color = if (isMoving) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = .58f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

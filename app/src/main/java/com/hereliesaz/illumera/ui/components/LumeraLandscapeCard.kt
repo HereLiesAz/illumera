@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.components
 
+import android.view.KeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,23 +46,10 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Scale
+import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
 
-/**
- * ============================================================================
- * LUMERA LANDSCAPE CARD - Continue Watching Landscape Mode
- * ============================================================================
- *
- * Displays a 16:9 landscape card with:
- * - Hero/backdrop image (falls back to poster)
- * - Gradient scrim at bottom for readability
- * - Logo overlay in bottom-left (falls back to text title)
- * - Progress bar at bottom
- *
- * Matches horizontal hub card sizing (190dp wide, 16:9 aspect).
- * ============================================================================
- */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun LumeraLandscapeCard(
@@ -72,11 +61,15 @@ fun LumeraLandscapeCard(
     modifier: Modifier = Modifier,
     progress: Float = 0f,
     hasNewEpisode: Boolean = false,
-    onFocused: (() -> Unit)? = null
+    onFocused: (() -> Unit)? = null,
+    mediaItem: MetaItem? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var contextMenuExpanded by remember(mediaItem?.id) { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
     val roundCorners = LocalRoundCorners.current
+    val onLongClick: (() -> Unit)? = mediaItem?.let { { contextMenuExpanded = true } }
 
     val cardShape = if (roundCorners) RoundedCornerShape(12.dp) else RectangleShape
     val focusedCardShape = if (roundCorners) RoundedCornerShape(16.dp) else RectangleShape
@@ -85,16 +78,40 @@ fun LumeraLandscapeCard(
         modifier = modifier
             .width(190.dp)
             .aspectRatio(16f / 9f)
-            .zIndex(if (isFocused) 10f else 0f)
+            .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
             .graphicsLayer { clip = false }
     ) {
         Surface(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxSize()
-                .touchClick(onClick = onClick)
+                .touchClick(onClick = onClick, onLongClick = onLongClick)
+                .onPreviewKeyEvent { event ->
+                    if (onLongClick == null) return@onPreviewKeyEvent false
+                    val native = event.nativeKeyEvent
+                    val activation = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_BUTTON_A
+                    if (!activation) return@onPreviewKeyEvent false
+                    when (native.action) {
+                        KeyEvent.ACTION_DOWN -> {
+                            if (native.repeatCount > 0) dpadLongPressTriggered = true
+                            dpadLongPressTriggered
+                        }
+                        KeyEvent.ACTION_UP -> {
+                            if (dpadLongPressTriggered) {
+                                dpadLongPressTriggered = false
+                                onLongClick()
+                                true
+                            } else false
+                        }
+                        else -> false
+                    }
+                }
                 .onFocusChanged {
                     isFocused = it.isFocused
+                    if (!it.isFocused) dpadLongPressTriggered = false
                     if (it.isFocused) onFocused?.invoke()
                 },
             shape = ClickableSurfaceDefaults.shape(
@@ -116,7 +133,6 @@ fun LumeraLandscapeCard(
         ) {
             val context = LocalContext.current
             val imageUrl = backdropUrl ?: posterUrl
-
             val imageRequest = remember(imageUrl) {
                 ImageRequest.Builder(context)
                     .data(imageUrl)
@@ -124,13 +140,12 @@ fun LumeraLandscapeCard(
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .scale(Scale.FILL)
-                    .size(380, 214) // 2x card size for crisp rendering on high-DPI
+                    .size(380, 214)
                     .allowHardware(true)
                     .build()
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
-                // Backdrop/poster image
                 AsyncImage(
                     model = imageRequest,
                     contentDescription = title,
@@ -141,7 +156,6 @@ fun LumeraLandscapeCard(
                         .background(MaterialTheme.colorScheme.surface)
                 )
 
-                // Bottom gradient scrim for logo/text readability
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -163,14 +177,10 @@ fun LumeraLandscapeCard(
                         )
                 )
 
-                // Logo or text title in bottom-left
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(
-                            start = 10.dp,
-                            bottom = if (progress > 0f) 12.dp else 6.dp
-                        )
+                        .padding(start = 10.dp, bottom = if (progress > 0f) 12.dp else 6.dp)
                 ) {
                     if (!logoUrl.isNullOrEmpty()) {
                         SubcomposeAsyncImage(
@@ -178,16 +188,11 @@ fun LumeraLandscapeCard(
                             contentDescription = title,
                             contentScale = ContentScale.Fit,
                             alignment = Alignment.BottomStart,
-                            modifier = Modifier
-                                .widthIn(max = 130.dp)
-                                .heightIn(max = 35.dp),
+                            modifier = Modifier.widthIn(max = 130.dp).heightIn(max = 35.dp),
                             error = {
                                 Text(
                                     text = title,
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    ),
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
                                     color = Color.White,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
@@ -197,10 +202,7 @@ fun LumeraLandscapeCard(
                     } else {
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
                             color = Color.White,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -208,7 +210,6 @@ fun LumeraLandscapeCard(
                     }
                 }
 
-                // New episode badge
                 if (hasNewEpisode) {
                     Box(
                         modifier = Modifier
@@ -221,12 +222,11 @@ fun LumeraLandscapeCard(
                             "+1",
                             color = Color.White,
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // Progress bar overlay
                 if (progress > 0f) {
                     Box(
                         modifier = Modifier
@@ -247,6 +247,14 @@ fun LumeraLandscapeCard(
                     }
                 }
             }
+        }
+
+        if (mediaItem != null) {
+            MediaCardActionMenu(
+                target = MediaActionTarget.fromMeta(mediaItem),
+                expanded = contextMenuExpanded,
+                onDismissRequest = { contextMenuExpanded = false }
+            )
         }
     }
 }

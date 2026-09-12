@@ -1736,6 +1736,64 @@ fun SourcePreferencesSettings(
             Spacer(Modifier.height(8.dp))
 
             SettingToggleRow(
+                label = "Skip seedless sources",
+                subtitle = "Hide sources that explicitly report 0 seeds",
+                isChecked = currentProfile.sourceSkipSeedless,
+                onCheckedChange = { viewModel.updateSourceSkipSeedless(currentProfile.id, it) },
+                onBack = onGoBack
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Language requirements",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+                color = Color.White
+            )
+            Text(
+                "Uses the primary and secondary languages selected under Playback. Forced sources must advertise the required language.",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                color = Color.White.copy(0.6f),
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+            )
+
+            val languageForceOptions = listOf("Don't force", "Force primary", "Force primary or secondary")
+            fun forceModeLabel(mode: String): String = when (mode) {
+                "primary" -> "Force primary"
+                "primary_or_secondary" -> "Force primary or secondary"
+                else -> "Don't force"
+            }
+            fun forceModeValue(label: String): String = when (label) {
+                "Force primary" -> "primary"
+                "Force primary or secondary" -> "primary_or_secondary"
+                else -> "off"
+            }
+
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Audio language", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                FilterDropdown(
+                    currentValue = forceModeLabel(currentProfile.sourceAudioLanguageRequirement),
+                    options = languageForceOptions,
+                    modifier = Modifier.width(220.dp),
+                    onSelect = { label ->
+                        viewModel.updateSourceAudioLanguageRequirement(currentProfile.id, forceModeValue(label))
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("CC language", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                FilterDropdown(
+                    currentValue = forceModeLabel(currentProfile.sourceSubtitleLanguageRequirement),
+                    options = languageForceOptions,
+                    modifier = Modifier.width(220.dp),
+                    onSelect = { label ->
+                        viewModel.updateSourceSubtitleLanguageRequirement(currentProfile.id, forceModeValue(label))
+                    }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+
+            SettingToggleRow(
                 label = "Try Sources Automatically",
                 subtitle = "If an auto-selected source is bogus, pause it and try the next ranked source",
                 isChecked = currentProfile.sourceAutoFallback,

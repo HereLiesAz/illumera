@@ -1,0 +1,118 @@
+name: Temporary recent review cleanup
+
+on:
+  push:
+    branches:
+      - fix/recent-pr-review-comments
+    paths:
+      - ".github/workflows/temp-recent-review-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-compile-commit:
+    runs-on: ubuntu-latest
+    env:
+      STREMIO_MEDIA_REF: 95781597c8e3c30d6232e77bdadecc38ad35aa17
+      STREMIO_AAR_CACHE_VERSION: v2
+    steps:
+      - name: Checkout illumera
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: illumera
+          fetch-depth: 0
+
+      - name: Restore Stremio playback AAR cache
+        id: stremio-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: stremio-aars
+          key: stremio-media-${{ runner.os }}-${{ env.STREMIO_MEDIA_REF }}-${{ env.STREMIO_AAR_CACHE_VERSION }}
+
+      - name: Checkout Stremio Media3 fork
+        if: steps.stremio-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Stremio/media
+          ref: ${{ env.STREMIO_MEDIA_REF }}
+          path: stremio-media
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+
+      - name: Build Stremio playback modules
+        if: steps.stremio-cache.outputs.cache-hit != 'true'
+        working-directory: illumera
+        run: |
+          chmod +x ci/build-stremio-media.sh
+          ./ci/build-stremio-media.sh ../stremio-media ../stremio-aars
+
+      - name: Install Stremio playback modules
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          for aar in \
+            lib-exoplayer-release.aar \
+            lib-decoder-av1-release.aar \
+            lib-decoder-ffmpeg-release.aar \
+            lib-decoder-iamf-release.aar \
+            lib-decoder-mpegh-release.aar; do
+            test -s "../stremio-aars/$aar" || { echo "Missing Stremio playback artifact: $aar" >&2; exit 1; }
+            cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
+          done
+
+      - name: Apply reviewed fixes
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          # Tighten two guards in the one-shot patcher before executing it:
+          # keep action-version comments scoped to their action, and make the
+          # Debrid dialog anchor distinguishable from the Trakt dialog.
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.ci/apply-recent-review-fixes.py')
+          s = p.read_text()
+          broad = '    text = text.replace("# v4\\n", "# v7.0.1\\n") if "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4" in text else text\n'
+          if broad not in s:
+              raise SystemExit('Expected broad action-comment line was not found')
+          s = s.replace(broad, '')
+          old = "'''                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
+          new = "'''            Box(\n                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
+          count = s.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected two Debrid patcher anchor fragments, found {count}')
+          s = s.replace(old, new)
+          p.write_text(s)
+          PY
+          python .ci/apply-recent-review-fixes.py
+
+      - name: Compile app
+        working-directory: illumera
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon
+
+      - name: Commit validated changes
+        working-directory: illumera
+        env:
+          BRANCH: fix/recent-pr-review-comments
+        run: |
+          set -euo pipefail
+          rm -f .ci/apply-recent-review-fixes.py
+          rm -f .github/workflows/temp-recent-review-fixes.yml
+          rmdir .ci 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Upgrade actions to Node 24 and resolve review findings"
+          git push origin "HEAD:$BRANCH"

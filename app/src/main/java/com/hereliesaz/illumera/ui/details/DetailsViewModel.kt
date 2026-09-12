@@ -275,18 +275,7 @@ class DetailsViewModel @Inject constructor(
         _state.value = _state.value.copy(isResumeStateReady = false)
         viewModelScope.launch {
             val resumePlaybackId = if (meta.type == "series") {
-                val latest = dao.getLatestSeriesEpisodeHistory("${meta.id}:%")
-                if (latest != null && !latest.watched) {
-                    latest.id
-                } else {
-                    val nextUp = dao.getSeriesNextUp(profileId, meta.id)
-                    val today = java.time.LocalDate.now().toString()
-                    val hasAired = nextUp != null && !nextUp.isComplete &&
-                        (nextUp.nextReleased == null || nextUp.nextReleased <= today)
-                    if (hasAired) {
-                        "${meta.id}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
-                    } else null
-                }
+                resolveSeriesResumePlaybackId(meta.id, meta.videos)
             } else {
                 val movieHistory = dao.getHistoryItem(meta.id)
                 if (movieHistory?.watched == true) null else movieHistory?.id
@@ -305,12 +294,42 @@ class DetailsViewModel @Inject constructor(
                     autoPlayStream = null,
                     episodeProgressMap = episodeProgressMap
                 )
-                // Update next-up after returning from player
                 if (meta.type == "series") {
                     computeAndStoreNextUp(meta.id, meta.name, meta.poster, meta.videos)
                 }
             }
         }
+    }
+
+    private suspend fun resolveSeriesResumePlaybackId(
+        seriesId: String,
+        videos: List<MetaVideo>?
+    ): String? {
+        val latest = dao.getLatestSeriesEpisodeHistory("$seriesId:%")
+        if (latest != null && !latest.watched) {
+            val parsed = parseSeasonEpisode(seriesId, latest.id)
+            return parsed?.let { (season, episode) -> "$seriesId:$season:$episode" } ?: latest.id
+        }
+
+        val sortedEpisodes = videos.orEmpty()
+            .filter { it.season > 0 && it.episode > 0 }
+            .sortedWith(compareBy<MetaVideo> { it.season }.thenBy { it.episode })
+        if (sortedEpisodes.isEmpty()) return null
+
+        val next = if (latest == null) {
+            sortedEpisodes.firstOrNull()
+        } else {
+            val latestKey = parseSeasonEpisode(seriesId, latest.id) ?: return null
+            sortedEpisodes.firstOrNull { episode ->
+                episode.season > latestKey.first ||
+                    (episode.season == latestKey.first && episode.episode > latestKey.second)
+            }
+        } ?: return null
+
+        val today = java.time.LocalDate.now().toString()
+        val releaseDate = next.released?.take(10)
+        if (releaseDate != null && releaseDate > today) return null
+        return "$seriesId:${next.season}:${next.episode}"
     }
 
     fun refreshResumeState() {
@@ -368,41 +387,35 @@ class DetailsViewModel @Inject constructor(
     ) {
         if (videos.isNullOrEmpty()) return
 
-        // Get all watched episodes for this series
-        val progressMap = buildEpisodeProgressMap(seriesId)
-
-        // If no episodes have been watched, remove the next-up entry entirely
-        val hasAnyWatched = progressMap.values.any { it.watched }
-        if (!hasAnyWatched) {
+        val latest = dao.getLatestSeriesEpisodeHistory("$seriesId:%")
+        if (latest == null) {
             dao.deleteSeriesNextUp(profileId, seriesId)
             return
         }
 
-        // Sort episodes by season then episode number
         val sortedEpisodes = videos
             .filter { it.season > 0 && it.episode > 0 }
-            .sortedWith(compareBy({ it.season }, { it.episode }))
-
+            .sortedWith(compareBy<MetaVideo> { it.season }.thenBy { it.episode })
         if (sortedEpisodes.isEmpty()) return
 
-        // Find the first unwatched episode
-        val nextEpisode = sortedEpisodes.firstOrNull { ep ->
-            val key = "S${ep.season}:E${ep.episode}"
-            progressMap[key]?.watched != true
+        val latestKey = parseSeasonEpisode(seriesId, latest.id)
+        val nextEpisode = when {
+            !latest.watched && latestKey != null -> sortedEpisodes.firstOrNull {
+                it.season == latestKey.first && it.episode == latestKey.second
+            }
+            latestKey != null -> sortedEpisodes.firstOrNull { ep ->
+                ep.season > latestKey.first ||
+                    (ep.season == latestKey.first && ep.episode > latestKey.second)
+            }
+            else -> null
         }
 
         val existing = dao.getSeriesNextUp(profileId, seriesId)
-
         if (nextEpisode != null) {
-            val epTitle = nextEpisode.title.takeIf { it.isNotBlank() && it != "Episode" }
-            // Only update timestamp if the next episode actually changed
             val unchanged = existing != null &&
                 !existing.isComplete &&
                 existing.nextSeason == nextEpisode.season &&
                 existing.nextEpisode == nextEpisode.episode
-            // Badge: set when show was complete and now has a new episode
-            // Keep if unchanged (user hasn't watched the new ep yet)
-            // Clear once user watches the episode (next computeAndStoreNextUp will have a different next ep)
             val revived = existing?.isComplete == true
             val badgeState = when {
                 revived -> true
@@ -417,7 +430,7 @@ class DetailsViewModel @Inject constructor(
                     poster = poster ?: existing?.poster,
                     nextSeason = nextEpisode.season,
                     nextEpisode = nextEpisode.episode,
-                    nextEpisodeTitle = epTitle,
+                    nextEpisodeTitle = nextEpisode.title.takeIf { it.isNotBlank() && it != "Episode" },
                     nextReleased = nextEpisode.released?.take(10),
                     isComplete = false,
                     isNewEpisode = badgeState,
@@ -425,8 +438,6 @@ class DetailsViewModel @Inject constructor(
                 )
             )
         } else {
-            // All local episodes watched — mark as complete locally.
-            // If Trakt knows about a future episode, syncSeriesNextUp will correct this.
             val alreadyComplete = existing?.isComplete == true
             dao.upsertSeriesNextUp(
                 SeriesNextUpEntity(
@@ -439,6 +450,7 @@ class DetailsViewModel @Inject constructor(
                     nextEpisodeTitle = null,
                     nextReleased = null,
                     isComplete = true,
+                    isNewEpisode = false,
                     updatedAt = if (alreadyComplete) existing.updatedAt else System.currentTimeMillis()
                 )
             )
@@ -681,7 +693,7 @@ class DetailsViewModel @Inject constructor(
             streamSortingService.sortAndFilter(
                 rawStreams, enabledQualities, excludePhrases, addonSortOrders,
                 profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0,
-                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5
+                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5, profile
             )
         } else rawStreams
     }

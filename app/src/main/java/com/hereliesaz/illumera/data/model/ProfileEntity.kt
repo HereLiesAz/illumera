@@ -57,6 +57,9 @@ data class ProfileEntity(
     val sourceExcludePhrases: String = "",
     val sourceMaxSizeGb: Int = 0,                  // 0 = no hard limit
     val sourceExcludedFormats: String = "",       // comma-separated: "dv,hdr,dts,dolby,hevc,av1,3d"
+    val sourceSkipSeedless: Boolean = true,         // hide sources that explicitly report 0 seeds
+    val sourceAudioLanguageRequirement: String = "off",    // "off", "primary", "primary_or_secondary"
+    val sourceSubtitleLanguageRequirement: String = "off", // "off", "primary", "primary_or_secondary"
     // Soft auto-selection preferences. These rank sources; they do not hide them.
     val sourceEpisodeTargetSizeMb: Int = 750,      // preferred size for a ~30 minute episode
     val sourceMovieTargetSizeMb: Int = 3000,       // preferred size for a full-length movie

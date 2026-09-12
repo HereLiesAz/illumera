@@ -64,6 +64,9 @@ fun AddonsScreen(
     var addonToDelete by remember { mutableStateOf<AddonEntity?>(null) }
     var selectedAddon by remember { mutableStateOf<AddonEntity?>(null) }
     var showRemotePaste by remember { mutableStateOf(false) }
+    var showCatalogBrowser by remember { mutableStateOf(false) }
+    var remoteConfigurationUrl by remember { mutableStateOf<String?>(null) }
+    var remoteConfigurationName by remember { mutableStateOf<String?>(null) }
     var reorderingAddon by remember { mutableStateOf<AddonEntity?>(null) }
     val isReorderActive = reorderingAddon != null
     val installButtonFocus = remember { FocusRequester() }
@@ -133,12 +136,38 @@ fun AddonsScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            VoidButton(
+                text = "Browse Stremio Addons",
+                onClick = {
+                    showCatalogBrowser = true
+                    viewModel.loadCatalog()
+                },
+                modifier = Modifier.width(240.dp).then(goBackModifier).then(upBlockModifier)
+            )
+            Text(
+                "Official, Community, and saved addon collections",
+                color = Color.White.copy(0.5f),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // 1. INSTALLATION BAR
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             VoidIconButton(
                 icon = Icons.Default.QrCode2,
                 contentDescription = "Remote Paste",
-                onClick = { showRemotePaste = true },
+                onClick = {
+                    remoteConfigurationUrl = null
+                    remoteConfigurationName = null
+                    showRemotePaste = true
+                },
                 modifier = goBackModifier.then(upBlockModifier)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -287,18 +316,52 @@ fun AddonsScreen(
 
     // --- DIALOGS (Void Style) ---
 
-    // 0. REMOTE PASTE DIALOG
+    if (showCatalogBrowser) {
+        AddonCatalogDialog(
+            state = state,
+            onDismissRequest = { showCatalogBrowser = false },
+            onLoad = { viewModel.loadCatalog() },
+            onSourceSelected = viewModel::selectCatalogSource,
+            onAddCollection = viewModel::addCollection,
+            onCollectionSelected = viewModel::selectCollection,
+            onCollectionRemoved = viewModel::removeCollection,
+            onRetry = viewModel::retryCatalog,
+            onInstall = { item ->
+                showCatalogBrowser = false
+                viewModel.prepareInstall(item.transportUrl)
+            },
+            onConfigure = { item ->
+                val configureUrl = item.configureUrl
+                if (configureUrl != null) {
+                    showCatalogBrowser = false
+                    remoteConfigurationUrl = configureUrl
+                    remoteConfigurationName = item.manifest.name
+                    showRemotePaste = true
+                }
+            }
+        )
+    }
+
+    // 0. REMOTE PASTE / ADDON CONFIGURATION DIALOG
     if (showRemotePaste) {
         RemotePasteDialog(
-            onDismissRequest = { showRemotePaste = false },
+            onDismissRequest = {
+                showRemotePaste = false
+                remoteConfigurationUrl = null
+                remoteConfigurationName = null
+            },
             onUrlReceived = { url ->
                 urlInput = url
                 showRemotePaste = false
+                remoteConfigurationUrl = null
+                remoteConfigurationName = null
                 kotlinx.coroutines.MainScope().launch {
                     delay(150)
                     installButtonFocus.requestFocus()
                 }
-            }
+            },
+            configurationUrl = remoteConfigurationUrl,
+            addonName = remoteConfigurationName
         )
     }
 

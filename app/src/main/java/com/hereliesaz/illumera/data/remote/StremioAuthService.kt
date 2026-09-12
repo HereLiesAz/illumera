@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -19,6 +20,35 @@ data class StremioLoginRequest(
     val email: String,
     val password: String,
     val facebook: Boolean = false
+)
+
+data class StremioGdprConsent(
+    val tos: Boolean = true,
+    val privacy: Boolean = true,
+    val marketing: Boolean = false,
+    val from: String = "illumera"
+)
+
+data class StremioRegisterRequest(
+    val type: String = "Register",
+    val email: String,
+    val password: String,
+    @SerializedName("gdpr_consent") val gdprConsent: StremioGdprConsent
+)
+
+data class StremioAppleCredentials(
+    val token: String,
+    val sub: String,
+    val email: String,
+    val name: String = ""
+)
+
+data class StremioAppleAuthRequest(
+    val type: String = "Apple",
+    val token: String,
+    val sub: String,
+    val email: String,
+    val name: String
 )
 
 /**
@@ -79,7 +109,12 @@ data class StremioAuthResult(
  */
 data class StremioUser(
     @SerializedName("_id") val id: String? = null,
+    val email: String? = null,
     val avatar: String? = null
+)
+
+data class StremioDataExportResult(
+    @SerializedName("exportId") val exportId: String
 )
 
 /** Result of a successful [StremioAuthService.login] call. */
@@ -131,6 +166,10 @@ class StremioAuthService @Inject constructor() {
     companion object {
         private const val STREMIO_API_BASE = "https://api.strem.io/api"
         private const val LOGIN_ENDPOINT = "$STREMIO_API_BASE/login"
+        private const val REGISTER_ENDPOINT = "$STREMIO_API_BASE/register"
+        private const val APPLE_AUTH_ENDPOINT = "$STREMIO_API_BASE/authWithApple"
+        private const val GET_USER_ENDPOINT = "$STREMIO_API_BASE/getUser"
+        private const val DATA_EXPORT_ENDPOINT = "$STREMIO_API_BASE/dataExport"
         private const val LOGOUT_ENDPOINT = "$STREMIO_API_BASE/logout"
         private const val ADDON_COLLECTION_ENDPOINT = "$STREMIO_API_BASE/addonCollectionGet"
         private const val ADDON_COLLECTION_SET_ENDPOINT = "$STREMIO_API_BASE/addonCollectionSet"
@@ -144,6 +183,8 @@ class StremioAuthService @Inject constructor() {
         // does the OAuth dance and hands back an email + one-time login token.
         private const val FB_LOGIN_BASE = "https://www.strem.io/login-fb"
         private const val FB_LOGIN_POLL_BASE = "https://www.strem.io/login-fb-get-acc"
+        private const val APPLE_LOGIN_BASE = "https://www.strem.io/login-apple"
+        private const val APPLE_LOGIN_POLL_BASE = "https://www.strem.io/login-apple-get-acc"
     }
 
     private fun postJson(url: String, bodyJson: String): JsonObject {
@@ -199,6 +240,114 @@ class StremioAuthService @Inject constructor() {
         }
     }
     
+    /**
+     * Creates a Stremio account using the same Register request and GDPR-consent
+     * payload as stremio-core/stremio-web, returning the newly issued auth key.
+     */
+    suspend fun register(
+        email: String,
+        password: String,
+        marketing: Boolean = false
+    ): StremioLoginResult = withContext(Dispatchers.IO) {
+        val requestBody = gson.toJson(
+            StremioRegisterRequest(
+                email = email,
+                password = password,
+                gdprConsent = StremioGdprConsent(marketing = marketing)
+            )
+        )
+        val request = Request.Builder()
+            .url(REGISTER_ENDPOINT)
+            .post(requestBody.toRequestBody(jsonMediaType))
+            .header("Content-Type", "application/json")
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string()
+                if (responseBody == null) {
+                    throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                }
+
+                val json = runCatching { JsonParser.parseString(responseBody).asJsonObject }.getOrNull()
+                val apiError = json?.getAsJsonObject("error")
+                if (apiError != null) {
+                    val message = apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not create Stremio account"
+                    throw StremioAuthError.UnknownError(message)
+                }
+                if (!response.isSuccessful) {
+                    throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                }
+
+                val registerResponse = gson.fromJson(responseBody, StremioLoginResponse::class.java)
+                val result = registerResponse.result
+                    ?: throw StremioAuthError.UnknownError("Could not create Stremio account")
+                StremioLoginResult(
+                    authKey = result.authKey,
+                    avatarUrl = result.user?.avatar?.takeIf { it.isNotBlank() }
+                )
+            }
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
+    /** Fetches the connected Stremio account record. */
+    suspend fun getUser(authKey: String): StremioUser = withContext(Dispatchers.IO) {
+        try {
+            val json = postJson(
+                GET_USER_ENDPOINT,
+                gson.toJson(mapOf("type" to "GetUser", "authKey" to authKey))
+            )
+            json.getAsJsonObject("error")?.let { apiError ->
+                throw StremioAuthError.UnknownError(
+                    apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not load Stremio account"
+                )
+            }
+            val result = json.getAsJsonObject("result")
+                ?: throw StremioAuthError.UnknownError("Could not load Stremio account")
+            gson.fromJson(result, StremioUser::class.java)
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
+    /**
+     * Requests the same user-data export Stremio Web exposes and returns its
+     * download URL. The generated export id is encoded as a single path segment.
+     */
+    suspend fun requestDataExport(authKey: String): String = withContext(Dispatchers.IO) {
+        try {
+            val json = postJson(
+                DATA_EXPORT_ENDPOINT,
+                gson.toJson(mapOf("type" to "DataExport", "authKey" to authKey))
+            )
+            json.getAsJsonObject("error")?.let { apiError ->
+                throw StremioAuthError.UnknownError(
+                    apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                        ?: "Could not export Stremio data"
+                )
+            }
+            val result = json.getAsJsonObject("result")
+                ?: throw StremioAuthError.UnknownError("Could not export Stremio data")
+            val export = gson.fromJson(result, StremioDataExportResult::class.java)
+            if (export.exportId.isBlank()) {
+                throw StremioAuthError.UnknownError("Stremio returned an empty export id")
+            }
+            "https://api.strem.io/data-export/${android.net.Uri.encode(export.exportId)}/export.json"
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
+    }
+
     /**
      * Fetches the user's addon collection using their authKey.
      */
@@ -263,11 +412,102 @@ class StremioAuthService @Inject constructor() {
                         return@withContext email to token
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Not ready yet / transient — keep polling until maxAttempts.
             }
         }
         null
+    }
+
+    /** Starts Stremio's Apple browser handoff and returns state + login URL. */
+    fun startAppleLogin(): Pair<String, String> {
+        val state = java.util.UUID.randomUUID().toString().replace("-", "") +
+            java.util.UUID.randomUUID().toString().replace("-", "")
+        return state to "$APPLE_LOGIN_BASE/$state"
+    }
+
+    /**
+     * Polls Stremio's Apple handoff using the same 2-second/25-attempt cadence
+     * as the current Stremio Web client.
+     */
+    suspend fun pollAppleLogin(
+        state: String,
+        maxAttempts: Int = 25
+    ): StremioAppleCredentials? = withContext(Dispatchers.IO) {
+        repeat(maxAttempts) {
+            delay(2000)
+            try {
+                val request = Request.Builder().url("$APPLE_LOGIN_POLL_BASE/$state").get().build()
+                client.newCall(request).execute().use { response ->
+                    val body = response.body?.string()
+                    if (response.isSuccessful && body != null) {
+                        val user = JsonParser.parseString(body).asJsonObject.getAsJsonObject("user")
+                        val token = user?.get("token")?.takeIf { !it.isJsonNull }?.asString
+                        val sub = user?.get("sub")?.takeIf { !it.isJsonNull }?.asString
+                        val email = user?.get("email")?.takeIf { !it.isJsonNull }?.asString
+                        val name = user?.get("name")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                        if (!token.isNullOrBlank() && !sub.isNullOrBlank() && !email.isNullOrBlank()) {
+                            return@withContext StremioAppleCredentials(token, sub, email, name)
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // OAuth is not finished yet / transient response.
+            }
+        }
+        null
+    }
+
+    /** Exchanges Stremio's Apple handoff credentials for a normal auth key. */
+    suspend fun loginWithApple(credentials: StremioAppleCredentials): StremioLoginResult = withContext(Dispatchers.IO) {
+        val requestBody = gson.toJson(
+            StremioAppleAuthRequest(
+                token = credentials.token,
+                sub = credentials.sub,
+                email = credentials.email,
+                name = credentials.name
+            )
+        )
+        val request = Request.Builder()
+            .url(APPLE_AUTH_ENDPOINT)
+            .post(requestBody.toRequestBody(jsonMediaType))
+            .header("Content-Type", "application/json")
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string()
+                    ?: throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                val json = runCatching { JsonParser.parseString(responseBody).asJsonObject }.getOrNull()
+                val apiError = json?.getAsJsonObject("error")
+                if (apiError != null) {
+                    throw StremioAuthError.UnknownError(
+                        apiError.get("message")?.asString?.takeIf { it.isNotBlank() }
+                            ?: "Apple login failed"
+                    )
+                }
+                if (!response.isSuccessful) {
+                    throw StremioAuthError.NetworkError("Server returned ${response.code}")
+                }
+                val authResponse = gson.fromJson(responseBody, StremioLoginResponse::class.java)
+                val result = authResponse.result
+                    ?: throw StremioAuthError.UnknownError("Apple login failed")
+                StremioLoginResult(
+                    authKey = result.authKey,
+                    avatarUrl = result.user?.avatar?.takeIf { it.isNotBlank() }
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: StremioAuthError) {
+            throw e
+        } catch (e: Exception) {
+            throw StremioAuthError.NetworkError(e.message ?: "Network error")
+        }
     }
 
     /**

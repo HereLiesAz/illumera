@@ -226,6 +226,60 @@ class TraktSyncManager @Inject constructor(
         }
     }
 
+    /** Add a movie/show to the user's Trakt collection (Library). */
+    suspend fun pushAddToCollection(imdbId: String, type: String) {
+        if (traktAuthManager.getAccessToken() == null || !imdbId.startsWith("tt")) return
+        withContext(Dispatchers.IO) {
+            try {
+                val item = listOf(TraktSyncItem(ids = TraktIds(imdb = imdbId)))
+                val body = if (type == "movie") TraktSyncRequest(movies = item)
+                    else TraktSyncRequest(shows = item)
+                val response = traktSyncApi.addToCollection(body)
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Trakt collection add failed: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to add item to Trakt collection", e)
+            }
+        }
+    }
+
+    /** Push a whole set of show episodes in one Trakt history request. */
+    suspend fun pushSeriesEpisodesWatched(
+        showImdbId: String,
+        episodes: List<Pair<Int, Int>>,
+        watched: Boolean
+    ) {
+        if (traktAuthManager.getAccessToken() == null || !showImdbId.startsWith("tt") || episodes.isEmpty()) return
+        withContext(Dispatchers.IO) {
+            try {
+                val seasons = episodes
+                    .groupBy { it.first }
+                    .toSortedMap()
+                    .map { (season, entries) ->
+                        TraktSyncSeason(
+                            number = season,
+                            episodes = entries.map { TraktSyncEpisode(it.second) }.distinctBy { it.number }
+                        )
+                    }
+                val body = TraktSyncRequest(
+                    shows = listOf(
+                        TraktSyncItem(
+                            ids = TraktIds(imdb = showImdbId),
+                            seasons = seasons
+                        )
+                    )
+                )
+                val response = if (watched) traktSyncApi.addToHistory(body) else traktSyncApi.removeFromHistory(body)
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "Trakt bulk history update failed: ${response.code()}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to update series history on Trakt", e)
+            }
+        }
+    }
+
     // ── Watch History (mark as watched) ──
 
     /**
