@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.data.remote
 
+import com.google.gson.JsonElement
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogResponse
 import com.hereliesaz.illumera.data.model.stremio.CatalogResponse
@@ -23,6 +24,9 @@ interface StremioApiService {
 
     @GET
     suspend fun getAddonCollection(@Url url: String): List<AddonCatalogItem>
+
+    @GET
+    suspend fun getJson(@Url url: String): JsonElement
 
     @GET
     suspend fun getMeta(@Url url: String): MetaResponse
