@@ -36,7 +36,11 @@ class ServerManager {
      * Attempts to start the server on an available port.
      * Returns ServerInfo on success, null on failure.
      */
-    suspend fun startServer(onLinkReceived: (String) -> Unit): ServerInfo? = withContext(Dispatchers.IO) {
+    suspend fun startServer(
+        helperUrl: String? = null,
+        helperLabel: String? = null,
+        onLinkReceived: (String) -> Unit
+    ): ServerInfo? = withContext(Dispatchers.IO) {
         // First, get the local IP
         val ip = NetworkUtils.getLocalIpAddress()
         if (ip == null) {
@@ -48,7 +52,13 @@ class ServerManager {
         // Try ports in range
         for (port in PORT_START..PORT_END) {
             try {
-                val linkServer = LinkServer(port, pairingToken, onLinkReceived)
+                val linkServer = LinkServer(
+                    port = port,
+                    pairingToken = pairingToken,
+                    helperUrl = helperUrl,
+                    helperLabel = helperLabel,
+                    onLinkReceived = onLinkReceived
+                )
                 linkServer.start()
                 server = linkServer
                 return@withContext ServerInfo(ip, port, pairingToken)
