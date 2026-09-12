@@ -115,17 +115,18 @@ jobs:
           echo '--- END AUTHORITATIVE PR DIFF ---' >> /tmp/prompt.txt
 
           SESSION_TITLE="Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}"
-          PAYLOAD=$(jq -n \
+          jq -n \
             --rawfile prompt /tmp/prompt.txt \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$STARTING_BRANCH" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
+            > /tmp/jules-payload.json
 
           HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "$PAYLOAD" \
+            --data-binary @/tmp/jules-payload.json \
             'https://jules.googleapis.com/v1alpha/sessions')
           SESSION_JSON=$(cat /tmp/jules-session.json)
           SESSION_NAME=''
@@ -255,17 +256,18 @@ jobs:
           fi
 
           SESSION_TITLE="Glee repository audit — $BRANCH — $GITHUB_RUN_ID"
-          PAYLOAD=$(jq -n \
+          jq -n \
             --rawfile prompt /tmp/prompt.txt \
             --arg title "$SESSION_TITLE" \
             --arg source "$SOURCE" \
             --arg branch "$STARTING_BRANCH" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}')
+            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false}' \
+            > /tmp/jules-payload.json
 
           HTTP_CODE=$(curl -sS -o /tmp/jules-session.json -w '%{http_code}' -X POST \
             -H "x-goog-api-key: $JULES_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "$PAYLOAD" \
+            --data-binary @/tmp/jules-payload.json \
             'https://jules.googleapis.com/v1alpha/sessions')
           SESSION_JSON=$(cat /tmp/jules-session.json)
           SESSION_NAME=''
