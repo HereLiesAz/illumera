@@ -57,8 +57,8 @@ class DebridManager @Inject constructor(
         )
     }
 
-    private fun activeProfileId(): Int = profileConfigurationManager.getLastActiveProfileId() ?: 1
-    private fun profileKey(key: String, profileId: Int = activeProfileId()) = "${key}_$profileId"
+    private fun activeProfileId(): Int? = profileConfigurationManager.getLastActiveProfileId()
+    private fun profileKey(key: String, profileId: Int) = "${key}_$profileId"
 
     private val _connectedProvider = MutableStateFlow<DebridProvider?>(null)
     val connectedProvider: StateFlow<DebridProvider?> = _connectedProvider
@@ -69,8 +69,16 @@ class DebridManager @Inject constructor(
     init { refreshConnectionState() }
 
     fun refreshConnectionState() {
-        _connectedProvider.value = DebridProvider.fromId(prefs.getString(profileKey(KEY_PROVIDER), null))
-        _connectedUsername.value = prefs.getString(profileKey(KEY_USERNAME), null)
+        val profileId = activeProfileId()
+        if (profileId == null) {
+            _connectedProvider.value = null
+            _connectedUsername.value = null
+            return
+        }
+        _connectedProvider.value = DebridProvider.fromId(
+            prefs.getString(profileKey(KEY_PROVIDER, profileId), null)
+        )
+        _connectedUsername.value = prefs.getString(profileKey(KEY_USERNAME, profileId), null)
     }
 
     private fun serviceFor(provider: DebridProvider): DebridService = when (provider) {
@@ -83,22 +91,30 @@ class DebridManager @Inject constructor(
         DebridProvider.EASY_DEBRID -> easyDebrid
     }
 
-    fun getApiKey(): String? = prefs.getString(profileKey(KEY_API_KEY), null)
+    fun getApiKey(): String? {
+        val profileId = activeProfileId() ?: return null
+        return prefs.getString(profileKey(KEY_API_KEY, profileId), null)
+    }
 
     suspend fun connect(provider: DebridProvider, apiKey: String): DebridResult<DebridAccountInfo> {
+        val profileId = activeProfileId()
+            ?: return DebridResult.Failure("No active profile")
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) return DebridResult.Failure("API key cannot be empty")
 
         return when (val result = serviceFor(provider).validateApiKey(trimmedKey)) {
             is DebridResult.Success -> {
-                val pid = activeProfileId()
+                // Use the profile captured before network validation. If the user changes
+                // profiles while validation is in flight, credentials must not follow them.
                 prefs.edit()
-                    .putString(profileKey(KEY_PROVIDER, pid), provider.id)
-                    .putString(profileKey(KEY_API_KEY, pid), trimmedKey)
-                    .putString(profileKey(KEY_USERNAME, pid), result.value.username)
+                    .putString(profileKey(KEY_PROVIDER, profileId), provider.id)
+                    .putString(profileKey(KEY_API_KEY, profileId), trimmedKey)
+                    .putString(profileKey(KEY_USERNAME, profileId), result.value.username)
                     .apply()
-                _connectedProvider.value = provider
-                _connectedUsername.value = result.value.username
+                if (activeProfileId() == profileId) {
+                    _connectedProvider.value = provider
+                    _connectedUsername.value = result.value.username
+                }
                 result
             }
             is DebridResult.Failure -> {
@@ -109,12 +125,14 @@ class DebridManager @Inject constructor(
     }
 
     fun disconnect() {
-        val pid = activeProfileId()
-        prefs.edit()
-            .remove(profileKey(KEY_PROVIDER, pid))
-            .remove(profileKey(KEY_API_KEY, pid))
-            .remove(profileKey(KEY_USERNAME, pid))
-            .apply()
+        val profileId = activeProfileId()
+        if (profileId != null) {
+            prefs.edit()
+                .remove(profileKey(KEY_PROVIDER, profileId))
+                .remove(profileKey(KEY_API_KEY, profileId))
+                .remove(profileKey(KEY_USERNAME, profileId))
+                .apply()
+        }
         _connectedProvider.value = null
         _connectedUsername.value = null
     }
