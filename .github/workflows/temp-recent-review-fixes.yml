@@ -3,7 +3,7 @@ name: Temporary recent review cleanup
 on:
   push:
     branches:
-      - fix/recent-pr-review-comments
+      - production-hardening
     paths:
       - ".github/workflows/temp-recent-review-fixes.yml"
 
@@ -40,11 +40,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
@@ -104,7 +104,7 @@ jobs:
       - name: Commit validated changes
         working-directory: illumera
         env:
-          BRANCH: fix/recent-pr-review-comments
+          BRANCH: production-hardening
         run: |
           set -euo pipefail
           rm -f .ci/apply-recent-review-fixes.py
