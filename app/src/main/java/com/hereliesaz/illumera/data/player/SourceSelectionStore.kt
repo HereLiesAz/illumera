@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.data.player
 
 import android.content.Context
 import com.hereliesaz.illumera.data.model.stremio.Stream
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Locale
 import javax.inject.Inject
@@ -9,7 +10,8 @@ import javax.inject.Singleton
 
 @Singleton
 class SourceSelectionStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val profileConfigurationManager: ProfileConfigurationManager
 ) {
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
@@ -58,10 +60,11 @@ class SourceSelectionStore @Inject constructor(
     }
 
     fun clearSelectionsForPrefix(prefix: String) {
+        val scopedPrefix = canonicalSourceScopeId(prefix)
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
-            if (key.startsWith("${KEY_STREAM_PREFIX}$prefix") ||
-                key.startsWith("${KEY_ADDON_PREFIX}$prefix")
+            if (key.startsWith("${KEY_STREAM_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }
@@ -136,7 +139,8 @@ class SourceSelectionStore @Inject constructor(
     }
 
     private fun canonicalSourceScopeId(playbackId: String): String {
-        return playbackId.trim()
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: DEFAULT_PROFILE_ID
+        return "p$profileId:${playbackId.trim()}"
     }
 
     private fun normalize(value: String?): String? {
@@ -152,6 +156,7 @@ class SourceSelectionStore @Inject constructor(
 
     companion object {
         private const val PREFS_FILE = "source_selection_prefs"
+        private const val DEFAULT_PROFILE_ID = 1
         private const val KEY_STREAM_PREFIX = "stream_"
         private const val KEY_ADDON_PREFIX = "addon_"
         private const val KEY_SOURCE_LIST_DISABLED_PREFIX = "src_list_disabled_"
