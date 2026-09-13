@@ -1,8 +1,8 @@
 name: CI
 
-# Builds a debug APK on every pull request targeting main — the release
+# Builds and tests the debug app on every pull request targeting main — the release
 # workflow (release.yml) only runs after a push lands on main, so without
-# this, a compile break went unnoticed until it broke the next release.
+# this, a compile or regression break can survive until the next release.
 # No secrets are required: TRAKT_CLIENT_ID/ACRA_URL/etc. all default to an
 # empty string via app/build.gradle.kts when unset (see ci/README.md), and
 # the debug build type uses Android's standard debug signing.
@@ -89,6 +89,6 @@ jobs:
         working-directory: illumera
         run: chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Run unit tests and build debug APK
         working-directory: illumera
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon

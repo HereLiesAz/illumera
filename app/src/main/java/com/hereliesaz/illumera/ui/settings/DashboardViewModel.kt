@@ -5,15 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.model.HubRowEntity
 import com.hereliesaz.illumera.data.model.HubRowItemEntity
 import com.hereliesaz.illumera.data.model.HubRowWithItems
-import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubShape
-import com.hereliesaz.illumera.domain.heroFor
-import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.domain.withHero
 import com.hereliesaz.illumera.domain.withLayout
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -61,7 +59,8 @@ sealed interface DialogState {
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val profileMutationCoordinator: ProfileMutationCoordinator
 ) : ViewModel() {
 
     private suspend fun persistProfileState() {
@@ -164,7 +163,6 @@ class DashboardViewModel @Inject constructor(
         if (newIndex in 0 until currentList.size) {
             Collections.swap(currentList, index, newIndex)
 
-            // Split and Update (Normalize Orders)
             val updatedConfigs = ArrayList<CatalogConfigEntity>()
             val updatedHubs = ArrayList<HubRowEntity>()
 
@@ -229,17 +227,13 @@ class DashboardViewModel @Inject constructor(
                 id = hubRowId,
                 title = name,
                 shape = shape.name,
-
                 showInHome = tab == "home",
                 homeOrder = if (tab == "home") maxOrder + 1 else 999,
-
                 showInMovies = tab == "movies",
                 moviesOrder = if (tab == "movies") maxOrder + 1 else 999,
-
                 showInSeries = tab == "series",
                 seriesOrder = if (tab == "series") maxOrder + 1 else 999
             )
-            // Relink items to the new hub ID
             val hubItems = items.mapIndexed { index, item ->
                 item.copy(
                     hubRowId = hubRowId,
@@ -323,16 +317,14 @@ class DashboardViewModel @Inject constructor(
 
     fun updateTabLayout(profileId: Int, tab: DashboardTab, layout: String) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId) ?: return@launch
-            dao.insertProfile(profile.withLayout(tab, layout))
+            profileMutationCoordinator.update(profileId) { it.withLayout(tab, layout) }
             persistProfileState()
         }
     }
 
     fun updateTabHero(profileId: Int, tab: DashboardTab, config: HeroConfig) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId) ?: return@launch
-            dao.insertProfile(profile.withHero(tab, config))
+            profileMutationCoordinator.update(profileId) { it.withHero(tab, config) }
             persistProfileState()
         }
     }
@@ -347,7 +339,7 @@ class DashboardViewModel @Inject constructor(
                     else -> false
                 }
             }
-            .map { 
+            .map {
                 val order = when(selectedTab) {
                     "home" -> it.homeOrder
                     "movies" -> it.moviesOrder
@@ -366,14 +358,14 @@ class DashboardViewModel @Inject constructor(
                     else -> false
                 }
             }
-            .map { 
+            .map {
                 val order = when(selectedTab) {
                     "home" -> it.hub.homeOrder
                     "movies" -> it.hub.moviesOrder
                     "series" -> it.hub.seriesOrder
                     else -> 0
                 }
-                EditorListItem.HubRowItem(it.hub, it.items.sortedBy { i -> i.itemOrder }, order) 
+                EditorListItem.HubRowItem(it.hub, it.items.sortedBy { i -> i.itemOrder }, order)
             }
 
         return (hubItems + categoryItems).sortedBy { it.order }

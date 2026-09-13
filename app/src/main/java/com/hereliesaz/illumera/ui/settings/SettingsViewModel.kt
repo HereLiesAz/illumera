@@ -2,7 +2,7 @@ package com.hereliesaz.illumera.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -11,290 +11,187 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val dao: AddonDao
+    private val profileMutationCoordinator: ProfileMutationCoordinator
 ) : ViewModel() {
 
-    fun updateNavPosition(profileId: Int, position: String) {
+    private fun updateProfile(
+        profileId: Int,
+        transform: (com.hereliesaz.illumera.data.model.ProfileEntity) -> com.hereliesaz.illumera.data.model.ProfileEntity
+    ) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(navPosition = position))
+            profileMutationCoordinator.update(profileId, transform)
         }
+    }
+
+    fun updateNavPosition(profileId: Int, position: String) {
+        updateProfile(profileId) { it.copy(navPosition = position) }
     }
 
     fun updateRoundCorners(profileId: Int, roundCorners: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(roundCorners = roundCorners))
-        }
+        updateProfile(profileId) { it.copy(roundCorners = roundCorners) }
     }
 
     fun updateHubRoundCorners(profileId: Int, hubRoundCorners: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(hubRoundCorners = hubRoundCorners))
-        }
+        updateProfile(profileId) { it.copy(hubRoundCorners = hubRoundCorners) }
     }
 
     fun updateSplashEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(splashEnabled = enabled))
-        }
+        updateProfile(profileId) { it.copy(splashEnabled = enabled) }
     }
 
     fun updateContinueWatchingShape(profileId: Int, shape: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(continueWatchingShape = shape))
-        }
+        updateProfile(profileId) { it.copy(continueWatchingShape = shape) }
     }
 
     fun updateTunnelingEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(tunnelingEnabled = enabled))
-        }
+        updateProfile(profileId) { it.copy(tunnelingEnabled = enabled) }
     }
 
     fun updateMapDV7ToHevc(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(mapDV7ToHevc = enabled))
-        }
+        updateProfile(profileId) { it.copy(mapDV7ToHevc = enabled) }
     }
 
     fun updateDecoderPriority(profileId: Int, priority: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(decoderPriority = priority))
-        }
+        updateProfile(profileId) { it.copy(decoderPriority = priority) }
     }
 
     fun updateFrameRateMatching(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(frameRateMatching = enabled))
-        }
+        updateProfile(profileId) { it.copy(frameRateMatching = enabled) }
     }
 
     fun updatePlayerPreference(profileId: Int, preference: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(playerPreference = preference))
-        }
+        updateProfile(profileId) { it.copy(playerPreference = preference) }
     }
 
     fun updateAutoplayNextEpisode(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(autoplayNextEpisode = enabled))
-        }
+        updateProfile(profileId) { it.copy(autoplayNextEpisode = enabled) }
     }
 
     fun updateAutoSelectSource(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(autoSelectSource = enabled))
-        }
+        updateProfile(profileId) { it.copy(autoSelectSource = enabled) }
     }
 
     fun updateRememberSourceSelection(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(rememberSourceSelection = enabled))
-        }
+        updateProfile(profileId) { it.copy(rememberSourceSelection = enabled) }
     }
 
     fun updateSkipIntro(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(skipIntro = enabled))
-        }
+        updateProfile(profileId) { it.copy(skipIntro = enabled) }
     }
 
     fun updateAutoplayThresholdMode(profileId: Int, mode: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(autoplayThresholdMode = mode))
-        }
+        updateProfile(profileId) { it.copy(autoplayThresholdMode = mode) }
     }
 
     fun updateAutoplayThresholdPercent(profileId: Int, percent: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(autoplayThresholdPercent = percent))
-        }
+        updateProfile(profileId) { it.copy(autoplayThresholdPercent = percent) }
     }
 
     fun updateAutoplayThresholdSeconds(profileId: Int, seconds: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(autoplayThresholdSeconds = seconds))
-        }
+        updateProfile(profileId) { it.copy(autoplayThresholdSeconds = seconds) }
     }
 
     fun updatePreferredAudioLanguage(profileId: Int, language: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(preferredAudioLanguage = language))
-        }
+        updateProfile(profileId) { it.copy(preferredAudioLanguage = language) }
     }
 
     fun updatePreferredAudioLanguageSecondary(profileId: Int, language: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(preferredAudioLanguageSecondary = language))
-        }
+        updateProfile(profileId) { it.copy(preferredAudioLanguageSecondary = language) }
     }
 
     fun updatePreferredSubtitleLanguage(profileId: Int, language: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(preferredSubtitleLanguage = language))
-        }
+        updateProfile(profileId) { it.copy(preferredSubtitleLanguage = language) }
     }
 
     fun updatePreferredSubtitleLanguageSecondary(profileId: Int, language: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(preferredSubtitleLanguageSecondary = language))
-        }
+        updateProfile(profileId) { it.copy(preferredSubtitleLanguageSecondary = language) }
     }
 
     fun updateSubtitleSize(profileId: Int, size: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(subtitleSize = size))
-        }
+        updateProfile(profileId) { it.copy(subtitleSize = size) }
     }
 
     fun updateSubtitleOffset(profileId: Int, offset: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(subtitleOffset = offset))
-        }
+        updateProfile(profileId) { it.copy(subtitleOffset = offset) }
     }
 
     fun updateSubtitleTextColor(profileId: Int, color: Long) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(subtitleTextColor = color))
-        }
+        updateProfile(profileId) { it.copy(subtitleTextColor = color) }
     }
 
     fun updateSubtitleBackgroundColor(profileId: Int, color: Long) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(subtitleBackgroundColor = color))
-        }
+        updateProfile(profileId) { it.copy(subtitleBackgroundColor = color) }
     }
 
     fun updateAssRendererEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(assRendererEnabled = enabled))
-        }
+        updateProfile(profileId) { it.copy(assRendererEnabled = enabled) }
     }
 
     fun updateSourceSortingEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceSortingEnabled = enabled))
-        }
+        updateProfile(profileId) { it.copy(sourceSortingEnabled = enabled) }
     }
 
     fun updateSourceEnabledQualities(profileId: Int, qualities: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceEnabledQualities = qualities))
-        }
+        updateProfile(profileId) { it.copy(sourceEnabledQualities = qualities) }
     }
 
     fun updateSourceExcludePhrases(profileId: Int, phrases: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceExcludePhrases = phrases))
-        }
+        updateProfile(profileId) { it.copy(sourceExcludePhrases = phrases) }
     }
 
     fun updateSourceSortPrimary(profileId: Int, sort: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceSortPrimary = sort))
-        }
+        updateProfile(profileId) { it.copy(sourceSortPrimary = sort) }
     }
 
     fun updateSourceMaxSizeGb(profileId: Int, sizeGb: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceMaxSizeGb = sizeGb))
-        }
+        updateProfile(profileId) { it.copy(sourceMaxSizeGb = sizeGb) }
     }
 
     fun updateSourceExcludedFormats(profileId: Int, formats: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(sourceExcludedFormats = formats))
-        }
+        updateProfile(profileId) { it.copy(sourceExcludedFormats = formats) }
     }
 
     fun updateSourceEpisodeTargetSizeMb(profileId: Int, sizeMb: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceEpisodeTargetSizeMb = sizeMb)) }
-        }
+        updateProfile(profileId) { it.copy(sourceEpisodeTargetSizeMb = sizeMb) }
     }
 
     fun updateSourceMovieTargetSizeMb(profileId: Int, sizeMb: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceMovieTargetSizeMb = sizeMb)) }
-        }
+        updateProfile(profileId) { it.copy(sourceMovieTargetSizeMb = sizeMb) }
     }
 
     fun updateSourceMinimumSeeds(profileId: Int, seeds: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceMinimumSeeds = seeds)) }
-        }
+        updateProfile(profileId) { it.copy(sourceMinimumSeeds = seeds) }
     }
 
     fun updateSourceSkipSeedless(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceSkipSeedless = enabled)) }
-        }
+        updateProfile(profileId) { it.copy(sourceSkipSeedless = enabled) }
     }
 
     fun updateSourceAudioLanguageRequirement(profileId: Int, mode: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceAudioLanguageRequirement = mode)) }
-        }
+        updateProfile(profileId) { it.copy(sourceAudioLanguageRequirement = mode) }
     }
 
     fun updateSourceSubtitleLanguageRequirement(profileId: Int, mode: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceSubtitleLanguageRequirement = mode)) }
-        }
+        updateProfile(profileId) { it.copy(sourceSubtitleLanguageRequirement = mode) }
     }
 
     fun updateSourceAutoFallback(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceAutoFallback = enabled)) }
-        }
+        updateProfile(profileId) { it.copy(sourceAutoFallback = enabled) }
     }
 
     fun updateSourceDebridMaxWaitSeconds(profileId: Int, seconds: Int) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.getProfileById(profileId)?.let { dao.insertProfile(it.copy(sourceDebridMaxWaitSeconds = seconds)) }
-        }
+        updateProfile(profileId) { it.copy(sourceDebridMaxWaitSeconds = seconds) }
     }
+
     fun updateMenuMoviesEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuMoviesEnabled(profileId, enabled) }
+        updateProfile(profileId) { it.copy(menuMoviesEnabled = enabled) }
     }
 
     fun updateMenuSeriesEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuSeriesEnabled(profileId, enabled) }
+        updateProfile(profileId) { it.copy(menuSeriesEnabled = enabled) }
     }
 
     fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) { dao.updateMenuWatchlistEnabled(profileId, enabled) }
+        updateProfile(profileId) { it.copy(menuWatchlistEnabled = enabled) }
     }
-
 }
