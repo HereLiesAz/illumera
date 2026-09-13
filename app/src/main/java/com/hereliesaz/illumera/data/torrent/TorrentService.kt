@@ -27,6 +27,7 @@ class TorrentService : Service() {
     private var downloadJob: Job? = null
     private var failureStopJob: Job? = null
     private var currentMagnet: String? = null
+    @Volatile private var currentAttemptId: Long = 0L
 
     companion object {
         private const val TAG = "LumeraTorrent"
@@ -87,6 +88,7 @@ class TorrentService : Service() {
         scope.launch { TorrentTrackerCache.updateIfNeeded(this@TorrentService) }
         val preparedMagnet = TorrentMagnetSanitizer.prepare(this, magnet)
         val attemptId = System.nanoTime()
+        currentAttemptId = attemptId
 
         // Drop previous torrent to free TorrServer's RAM cache
         val previousMagnet = currentMagnet
@@ -165,13 +167,21 @@ class TorrentService : Service() {
                 throw e
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) Log.e(TAG, "Error in download: ${e.message}", e)
+                // Install the cleanup guard before callbacks can synchronously enqueue
+                // a replacement attempt. startDownload() then cancels this job, and the
+                // attempt ID prevents an old same-magnet failure from stopping a newer run.
+                failureStopJob?.cancel()
+                failureStopJob = scope.launch {
+                    delay(FAILURE_STOP_GRACE_MS)
+                    if (currentAttemptId == attemptId) {
+                        withContext(Dispatchers.Main) { stopSelf() }
+                    }
+                }
                 withContext(Dispatchers.Main) {
                     val message = "Torrent error: ${e.message}"
-                    // Preserve existing callback behavior first. Some callers translate this
-                    // into a player error; initial playback currently clears torrentProgress.
                     onStreamError?.invoke(message)
-                    // Re-publish the failure as progress state after that callback so the
-                    // player remains composed long enough to invoke ranked-source fallback.
+                    // This is the single ranked-fallback signal. Callbacks may surface the
+                    // backend error, but they must not independently advance the candidate list.
                     onStreamProgress?.invoke(
                         TorrentProgress(
                             status = "Source failed",
@@ -179,16 +189,6 @@ class TorrentService : Service() {
                             attemptId = attemptId
                         )
                     )
-                }
-                // Keep the service alive briefly so a fallback startService() call can reuse
-                // this instance instead of racing onDestroy() and losing companion callbacks.
-                // If no fallback arrives, clean up the failed foreground service ourselves.
-                failureStopJob?.cancel()
-                failureStopJob = scope.launch {
-                    delay(FAILURE_STOP_GRACE_MS)
-                    if (currentMagnet == preparedMagnet) {
-                        withContext(Dispatchers.Main) { stopSelf() }
-                    }
                 }
             }
         }

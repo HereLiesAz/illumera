@@ -16,6 +16,7 @@ import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import javax.inject.Singleton
 class DebridManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val profileConfigurationManager: ProfileConfigurationManager,
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
     private val realDebrid: RealDebridService,
     private val allDebrid: AllDebridService,
     private val premiumize: PremiumizeService,
@@ -104,13 +106,18 @@ class DebridManager @Inject constructor(
 
         return when (val result = serviceFor(provider).validateApiKey(trimmedKey)) {
             is DebridResult.Success -> {
-                // Use the profile captured before network validation. If the user changes
-                // profiles while validation is in flight, credentials must not follow them.
-                prefs.edit()
-                    .putString(profileKey(KEY_PROVIDER, profileId), provider.id)
-                    .putString(profileKey(KEY_API_KEY, profileId), trimmedKey)
-                    .putString(profileKey(KEY_USERNAME, profileId), result.value.username)
-                    .apply()
+                // Credential persistence and profile deletion share one process-wide
+                // coordinator. If deletion won the race, do not recreate keys for an ID
+                // that SQLite may later reuse for a different profile.
+                val saved = profileMutationCoordinator.withExistingProfile(profileId) {
+                    prefs.edit()
+                        .putString(profileKey(KEY_PROVIDER, profileId), provider.id)
+                        .putString(profileKey(KEY_API_KEY, profileId), trimmedKey)
+                        .putString(profileKey(KEY_USERNAME, profileId), result.value.username)
+                        .apply()
+                    true
+                } == true
+                if (!saved) return DebridResult.Failure("Profile no longer exists")
                 if (activeProfileId() == profileId) {
                     _connectedProvider.value = provider
                     _connectedUsername.value = result.value.username

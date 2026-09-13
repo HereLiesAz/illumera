@@ -294,12 +294,12 @@ fun AddonsScreen(
                     onMoveUp = {
                         viewModel.moveAddon(addon, -1)
                         val target = index - 1
-                        scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                        scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                     },
                     onMoveDown = {
                         viewModel.moveAddon(addon, 1)
                         val target = index + 1
-                        scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                        scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                     },
                     modifier = goBackModifier.then(
                         if (isReordering) Modifier.onPreviewKeyEvent {

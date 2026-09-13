@@ -512,9 +512,10 @@ class ExoPlayerBackend(
                 if (firstSource != null) {
                     currentSourceId = firstSource.id
                     val resolvedSource = firstSource.copy(url = normalizedRequest.mediaUrl)
-                    if (firstSource.url.startsWith("magnet:", ignoreCase = true)) {
-                        resolvedTorrentUrls[firstSource.id] = normalizedRequest.mediaUrl
-                    }
+                    // Keep the logical source option intact, but remember the URL actually
+                    // prepared. This applies to torrents and to debrid placeholders that were
+                    // upgraded to a ready URL before PlayerScreen loaded.
+                    resolvedTorrentUrls[firstSource.id] = normalizedRequest.mediaUrl
                     prepareSource(
                         source = resolvedSource,
                         startPositionMs = request.startPositionMs,
@@ -605,22 +606,29 @@ class ExoPlayerBackend(
         if (source.url.startsWith("magnet:")) {
             val handler = onMagnetSourceSelected
             if (handler != null) {
-                _uiState.update { it.copy(isBuffering = true) }
+                // The requested magnet becomes the logical selection immediately, before
+                // resolution succeeds, so errors/retry are attributed to the source the
+                // user actually chose. Advancing the token also invalidates older callbacks.
+                loadToken++
+                val selectionToken = loadToken
+                currentSourceId = sourceId
+                _uiState.update { it.copy(errorMessage = null, isBuffering = true, currentSourceId = sourceId) }
                 handler(
                     source.url,
                     source.fileIdx,
                     source.fileName,
                     { localUrl ->
-                        if (released) return@handler
+                        if (released || loadToken != selectionToken || currentSourceId != sourceId) return@handler
                         resolvedTorrentUrls[sourceId] = localUrl
                         switchToSource(sourceId, source.copy(url = localUrl))
                     },
                     { message ->
-                        if (released) return@handler
+                        if (released || loadToken != selectionToken || currentSourceId != sourceId) return@handler
                         _uiState.update {
                             it.copy(
                                 errorMessage = message.ifBlank { "Unable to open torrent source" },
-                                isBuffering = false
+                                isBuffering = false,
+                                currentSourceId = sourceId
                             )
                         }
                     }
@@ -1363,6 +1371,7 @@ class ExoPlayerBackend(
         val logicalSource = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
 
         loadToken++
+        val retryToken = loadToken
         ioAutoRetryCountForCurrentSource = 0
         hasRetriedCurrentSourceAfter416 = false
 
@@ -1382,7 +1391,7 @@ class ExoPlayerBackend(
                     logicalSource.fileIdx,
                     logicalSource.fileName,
                     { localUrl ->
-                        if (released) return@handler
+                        if (released || loadToken != retryToken || currentSourceId != sourceId) return@handler
                         resolvedTorrentUrls[sourceId] = localUrl
                         prepareSource(
                             source = logicalSource.copy(url = localUrl),
@@ -1392,7 +1401,7 @@ class ExoPlayerBackend(
                         )
                     },
                     { message ->
-                        if (released) return@handler
+                        if (released || loadToken != retryToken || currentSourceId != sourceId) return@handler
                         _uiState.update {
                             it.copy(
                                 errorMessage = message.ifBlank { "Unable to reopen torrent source" },
@@ -1471,7 +1480,9 @@ class ExoPlayerBackend(
 
         hasRetriedCurrentSourceAfter416 = true
         val player = exoPlayer ?: return false
-        val source = _sourceOptions.value.firstOrNull { it.id == currentSourceId } ?: return false
+        val sourceId = currentSourceId ?: return false
+        val logicalSource = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return false
+        val source = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
 
         _uiState.update { it.copy(errorMessage = null, isBuffering = true) }
 

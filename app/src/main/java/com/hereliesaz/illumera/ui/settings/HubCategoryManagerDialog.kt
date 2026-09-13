@@ -75,7 +75,7 @@ fun HubCategoryManagerDialog(
                                     mutable.add(index - 1, moved)
                                     currentItems = mutable
                                     val target = index - 1
-                                    scope.launch { delay(50); categoryListState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                    scope.launch { androidx.compose.runtime.withFrameNanos { }; categoryListState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                 }
                             },
                             onMoveDown = {
@@ -85,7 +85,7 @@ fun HubCategoryManagerDialog(
                                     mutable.add(index + 1, moved)
                                     currentItems = mutable
                                     val target = index + 1
-                                    scope.launch { delay(50); categoryListState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                    scope.launch { androidx.compose.runtime.withFrameNanos { }; categoryListState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                 }
                             },
                             onClick = {

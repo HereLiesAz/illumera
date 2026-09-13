@@ -199,11 +199,13 @@ class ProfileViewModel @Inject constructor(
     fun deleteProfile(id: Int) {
         val avatarRef = _profiles.value.find { it.id == id }?.avatarRef
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.deleteProfileCascading(id)
-            profileConfigurationManager.deleteProfileState(id)
-            debridManager.clearForProfile(id)
-            traktAuthManager.clearTokensForProfile(id)
-            queueManager.clearForProfile(id)
+            profileMutationCoordinator.serialized {
+                dao.deleteProfileCascading(id)
+                profileConfigurationManager.deleteProfileState(id)
+                debridManager.clearForProfile(id)
+                traktAuthManager.clearTokensForProfile(id)
+                queueManager.clearForProfile(id)
+            }
             deleteCustomAvatarFile(avatarRef)
         }
     }

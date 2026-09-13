@@ -30,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -58,9 +60,11 @@ fun AddonCatalogDialog(
     var query by remember { mutableStateOf("") }
     var addingCollection by remember { mutableStateOf(false) }
     var collectionUrl by remember { mutableStateOf("") }
+    val initialFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         onLoad()
+        runCatching { initialFocusRequester.requestFocus() }
     }
 
     val filteredItems = remember(state.catalogItems, query) {
@@ -109,7 +113,9 @@ fun AddonCatalogDialog(
                         text = source.displayName,
                         onClick = { onSourceSelected(source) },
                         isPrimary = state.catalogSource == source,
-                        modifier = Modifier.width(150.dp)
+                        modifier = Modifier
+                            .width(150.dp)
+                            .then(if (source == AddonCatalogSource.OFFICIAL) Modifier.focusRequester(initialFocusRequester) else Modifier)
                     )
                 }
                 VoidButton(

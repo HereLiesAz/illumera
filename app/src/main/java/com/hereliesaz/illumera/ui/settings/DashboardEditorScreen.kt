@@ -439,14 +439,14 @@ fun DashboardEditorScreen(
                                         if (index > 0) {
                                             viewModel.moveEditorItem(item, -1, selectedTab)
                                             val target = index - 1
-                                            scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                         }
                                     },
                                     onMoveDown = {
                                         if (index < editorItems.size - 1) {
                                             viewModel.moveEditorItem(item, 1, selectedTab)
                                             val target = index + 1
-                                            scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                         }
                                     }
                                 )
@@ -489,14 +489,14 @@ fun DashboardEditorScreen(
                                         if (index > 0) {
                                             viewModel.moveEditorItem(item, -1, selectedTab)
                                             val target = index - 1
-                                            scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                         }
                                     },
                                     onMoveDown = {
                                         if (index < editorItems.size - 1) {
                                             viewModel.moveEditorItem(item, 1, selectedTab)
                                             val target = index + 1
-                                            scope.launch { delay(50); listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
                                         }
                                     }
                                 )
