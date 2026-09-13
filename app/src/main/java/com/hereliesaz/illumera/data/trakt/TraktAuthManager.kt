@@ -73,61 +73,83 @@ class TraktAuthManager @Inject constructor(
     private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var deviceAuthJob: Job? = null
 
-    private fun activeProfileId(): Int = profileConfigurationManager.getLastActiveProfileId() ?: 1
+    private fun activeProfileId(): Int? = profileConfigurationManager.getLastActiveProfileId()
 
-    private fun profileKey(key: String, profileId: Int = activeProfileId()) = "${key}_$profileId"
+    private fun profileKey(key: String, profileId: Int) = "${key}_$profileId"
 
     init {
         migrateGlobalTokensToProfile()
         _isConnected.value = getAccessToken() != null
     }
 
-    /** One-time migration: move tokens saved without a profile suffix to the active profile. */
+    /**
+     * One-time migration: move tokens saved without a profile suffix to the active profile.
+     * If no profile is active yet, leave the legacy keys untouched and retry on login.
+     */
     private fun migrateGlobalTokensToProfile() {
+        val profileId = activeProfileId() ?: return
         val globalToken = prefs.getString(KEY_ACCESS_TOKEN, null) ?: return
         val globalRefresh = prefs.getString(KEY_REFRESH_TOKEN, null)
         val globalExpiry = prefs.getLong(KEY_EXPIRES_AT, 0L)
-        val pid = activeProfileId()
 
         prefs.edit()
-            .putString(profileKey(KEY_ACCESS_TOKEN, pid), globalToken)
+            .putString(profileKey(KEY_ACCESS_TOKEN, profileId), globalToken)
             .apply {
-                if (globalRefresh != null) putString(profileKey(KEY_REFRESH_TOKEN, pid), globalRefresh)
-                putLong(profileKey(KEY_EXPIRES_AT, pid), globalExpiry)
+                if (globalRefresh != null) {
+                    putString(profileKey(KEY_REFRESH_TOKEN, profileId), globalRefresh)
+                }
+                putLong(profileKey(KEY_EXPIRES_AT, profileId), globalExpiry)
             }
-            // Remove old global keys
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_EXPIRES_AT)
             .apply()
 
-        Log.i(TAG, "Migrated Trakt tokens to profile $pid")
+        Log.i(TAG, "Migrated Trakt tokens to profile $profileId")
     }
 
     /** Refresh connection state for the current profile (call after profile switch). */
     fun refreshConnectionState() {
+        migrateGlobalTokensToProfile()
+        needsRefresh = false
         _isConnected.value = getAccessToken() != null
     }
 
     // ── Token Storage (per-profile) ──
 
-    private fun saveTokens(response: TraktTokenResponse) {
-        val pid = activeProfileId()
+    private fun saveTokens(response: TraktTokenResponse, profileId: Int) {
         prefs.edit()
-            .putString(profileKey(KEY_ACCESS_TOKEN, pid), response.accessToken)
-            .putString(profileKey(KEY_REFRESH_TOKEN, pid), response.refreshToken)
-            .putLong(profileKey(KEY_EXPIRES_AT, pid), response.createdAt + response.expiresIn)
+            .putString(profileKey(KEY_ACCESS_TOKEN, profileId), response.accessToken)
+            .putString(profileKey(KEY_REFRESH_TOKEN, profileId), response.refreshToken)
+            .putLong(profileKey(KEY_EXPIRES_AT, profileId), response.createdAt + response.expiresIn)
             .apply()
-        _isConnected.value = true
+        if (activeProfileId() == profileId) {
+            _isConnected.value = true
+        }
     }
 
     fun getAccessToken(): String? {
-        val token = prefs.getString(profileKey(KEY_ACCESS_TOKEN), null) ?: return null
+        val profileId = activeProfileId()
+        if (profileId == null) {
+            needsRefresh = false
+            return null
+        }
+        return getAccessToken(profileId)
+    }
+
+    private fun getAccessToken(profileId: Int): String? {
+        val token = prefs.getString(profileKey(KEY_ACCESS_TOKEN, profileId), null)
+        if (token == null) {
+            if (activeProfileId() == profileId) needsRefresh = false
+            return null
+        }
         // Proactive expiry check: flag as needing refresh if within 60 seconds of expiry
-        val expiresAt = prefs.getLong(profileKey(KEY_EXPIRES_AT), 0L)
-        needsRefresh = expiresAt > 0 && System.currentTimeMillis() / 1000 >= expiresAt - 60
-        if (needsRefresh) {
-            Log.d(TAG, "Token expired or expiring soon, needs refresh")
+        val expiresAt = prefs.getLong(profileKey(KEY_EXPIRES_AT, profileId), 0L)
+        if (activeProfileId() == profileId) {
+            needsRefresh = expiresAt > 0 && System.currentTimeMillis() / 1000 >= expiresAt - 60
+            if (needsRefresh) {
+                Log.d(TAG, "Token expired or expiring soon, needs refresh")
+            }
         }
         return token
     }
@@ -136,16 +158,21 @@ class TraktAuthManager @Inject constructor(
     @Volatile var needsRefresh = false
         private set
 
-    private fun getRefreshToken(): String? = prefs.getString(profileKey(KEY_REFRESH_TOKEN), null)
+    private fun getRefreshToken(profileId: Int): String? =
+        prefs.getString(profileKey(KEY_REFRESH_TOKEN, profileId), null)
 
-    private fun clearTokens() {
-        val pid = activeProfileId()
-        prefs.edit()
-            .remove(profileKey(KEY_ACCESS_TOKEN, pid))
-            .remove(profileKey(KEY_REFRESH_TOKEN, pid))
-            .remove(profileKey(KEY_EXPIRES_AT, pid))
-            .apply()
-        _isConnected.value = false
+    private fun clearTokens(profileId: Int?) {
+        if (profileId != null) {
+            prefs.edit()
+                .remove(profileKey(KEY_ACCESS_TOKEN, profileId))
+                .remove(profileKey(KEY_REFRESH_TOKEN, profileId))
+                .remove(profileKey(KEY_EXPIRES_AT, profileId))
+                .apply()
+        }
+        if (profileId == null || activeProfileId() == profileId) {
+            _isConnected.value = false
+            needsRefresh = false
+        }
     }
 
     /** Clear tokens for a specific profile (e.g., when deleting the profile). */
@@ -155,11 +182,23 @@ class TraktAuthManager @Inject constructor(
             .remove(profileKey(KEY_REFRESH_TOKEN, profileId))
             .remove(profileKey(KEY_EXPIRES_AT, profileId))
             .apply()
+        if (activeProfileId() == profileId) {
+            _isConnected.value = false
+            needsRefresh = false
+        }
     }
 
     // ── Device Code Auth Flow ──
 
     fun startDeviceAuth() {
+        // Capture the profile before any network work begins. A device-code attempt must
+        // never finish into whichever profile happens to be active minutes later.
+        val profileId = activeProfileId()
+        if (profileId == null) {
+            _authState.value = DeviceAuthState.Error("No active profile")
+            return
+        }
+
         // Cancel any still-running poll from a previous attempt (e.g. the user
         // dismissed the dialog and tapped Connect again) so it can't complete
         // later and silently overwrite this attempt's result.
@@ -187,7 +226,7 @@ class TraktAuthManager @Inject constructor(
                     verificationUrl = body.verificationUrl
                 )
 
-                pollForToken(body)
+                pollForToken(body, profileId)
             } catch (e: Exception) {
                 Log.e(TAG, "Device auth failed", e)
                 _authState.value = DeviceAuthState.Error(e.message ?: "Unknown error")
@@ -195,11 +234,15 @@ class TraktAuthManager @Inject constructor(
         }
     }
 
-    private suspend fun pollForToken(deviceCode: TraktDeviceCodeResponse) {
+    private suspend fun pollForToken(deviceCode: TraktDeviceCodeResponse, profileId: Int) {
         val deadline = System.currentTimeMillis() + (deviceCode.expiresIn * 1000L)
         var interval = deviceCode.interval * 1000L
 
         while (System.currentTimeMillis() < deadline) {
+            if (activeProfileId() != profileId) {
+                _authState.value = DeviceAuthState.Idle
+                return
+            }
             delay(interval)
 
             try {
@@ -215,7 +258,11 @@ class TraktAuthManager @Inject constructor(
                     200 -> {
                         val tokenBody = response.body()
                         if (tokenBody != null) {
-                            saveTokens(tokenBody)
+                            if (activeProfileId() != profileId) {
+                                _authState.value = DeviceAuthState.Idle
+                                return
+                            }
+                            saveTokens(tokenBody, profileId)
                             _authState.value = DeviceAuthState.Success
                             return
                         }
@@ -243,7 +290,8 @@ class TraktAuthManager @Inject constructor(
      * Called by TraktAuthInterceptor on 401 responses.
      */
     suspend fun refreshAccessToken(): String? {
-        val refreshToken = getRefreshToken() ?: return null
+        val profileId = activeProfileId() ?: return null
+        val refreshToken = getRefreshToken(profileId) ?: return null
         return try {
             val response = traktApi.refreshToken(
                 mapOf(
@@ -256,7 +304,8 @@ class TraktAuthManager @Inject constructor(
             )
             val body = response.body()
             if (response.isSuccessful && body != null) {
-                saveTokens(body)
+                if (activeProfileId() != profileId) return null
+                saveTokens(body, profileId)
                 needsRefresh = false
                 Log.i(TAG, "Token refreshed successfully")
                 body.accessToken
@@ -264,7 +313,7 @@ class TraktAuthManager @Inject constructor(
                 Log.w(TAG, "Token refresh failed: ${response.code()}")
                 if (response.code() == 401 || response.code() == 403) {
                     // Refresh token is also invalid — user needs to re-authenticate
-                    clearTokens()
+                    clearTokens(profileId)
                 }
                 null
             }
@@ -277,7 +326,8 @@ class TraktAuthManager @Inject constructor(
     // ── Disconnect ──
 
     suspend fun disconnect() {
-        val token = getAccessToken()
+        val profileId = activeProfileId()
+        val token = profileId?.let(::getAccessToken)
         if (token != null) {
             try {
                 traktApi.revokeToken(
@@ -291,7 +341,7 @@ class TraktAuthManager @Inject constructor(
                 Log.w(TAG, "Token revocation failed: ${e.message}")
             }
         }
-        clearTokens()
+        clearTokens(profileId)
         deviceAuthJob?.cancel()
         _authState.value = DeviceAuthState.Idle
     }

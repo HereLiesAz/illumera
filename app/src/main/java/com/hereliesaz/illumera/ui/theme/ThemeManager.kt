@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ThemeEntity
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -19,7 +20,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ThemeManager @Inject constructor(
-    private val dao: AddonDao
+    private val dao: AddonDao,
+    private val profileMutationCoordinator: ProfileMutationCoordinator
 ) : ViewModel() {
 
     // Current profile ID for theme resolution
@@ -75,10 +77,7 @@ class ThemeManager @Inject constructor(
      */
     fun selectTheme(profileId: Int, themeId: String) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) {
-                dao.insertProfile(profile.copy(themeId = themeId))
-            }
+            profileMutationCoordinator.update(profileId) { it.copy(themeId = themeId) }
             // Update current theme if this is the active profile
             if (_currentProfileId.value == profileId) {
                 val theme = dao.getThemeById(themeId) ?: DefaultThemes.getById(themeId)
@@ -116,9 +115,7 @@ class ThemeManager @Inject constructor(
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.insertTheme(theme)
             if (selectForProfileId != null) {
-                dao.insertProfile(
-                    (dao.getProfileById(selectForProfileId) ?: return@launch).copy(themeId = id)
-                )
+                profileMutationCoordinator.update(selectForProfileId) { it.copy(themeId = id) }
                 if (_currentProfileId.value == selectForProfileId) {
                     _currentTheme.value = theme
                 }

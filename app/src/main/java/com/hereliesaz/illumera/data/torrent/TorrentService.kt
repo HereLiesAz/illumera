@@ -25,15 +25,17 @@ class TorrentService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + job)
     private val api = TorrServerApi()
     private var downloadJob: Job? = null
+    private var failureStopJob: Job? = null
     private var currentMagnet: String? = null
 
     companion object {
         private const val TAG = "LumeraTorrent"
+        private const val FAILURE_STOP_GRACE_MS = 5_000L
         // ~5MB: approximate buffer needed before ExoPlayer renders first frame
         private const val PRELOAD_TARGET_BYTES = 5_242_880f
         var onStreamReady: ((String) -> Unit)? = null
         var onStreamError: ((String) -> Unit)? = null
-        var onStreamProgress: ((TorrentProgress) -> Unit)? = null
+        var onStreamProgress: ((TorrentProgress?) -> Unit)? = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -76,12 +78,15 @@ class TorrentService : Service() {
     }
 
     private fun startDownload(magnet: String, fileIdx: Int, fileName: String = "") {
+        failureStopJob?.cancel()
+        failureStopJob = null
         downloadJob?.cancel()
 
         // Refresh the small validated tracker cache opportunistically; current playback
         // can immediately use the previous cache (or the built-in fallback list).
         scope.launch { TorrentTrackerCache.updateIfNeeded(this@TorrentService) }
         val preparedMagnet = TorrentMagnetSanitizer.prepare(this, magnet)
+        val attemptId = System.nanoTime()
 
         // Drop previous torrent to free TorrServer's RAM cache
         val previousMagnet = currentMagnet
@@ -161,9 +166,30 @@ class TorrentService : Service() {
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) Log.e(TAG, "Error in download: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    onStreamError?.invoke("Torrent error: ${e.message}")
+                    val message = "Torrent error: ${e.message}"
+                    // Preserve existing callback behavior first. Some callers translate this
+                    // into a player error; initial playback currently clears torrentProgress.
+                    onStreamError?.invoke(message)
+                    // Re-publish the failure as progress state after that callback so the
+                    // player remains composed long enough to invoke ranked-source fallback.
+                    onStreamProgress?.invoke(
+                        TorrentProgress(
+                            status = "Source failed",
+                            sourceError = true,
+                            attemptId = attemptId
+                        )
+                    )
                 }
-                stopSelf()
+                // Keep the service alive briefly so a fallback startService() call can reuse
+                // this instance instead of racing onDestroy() and losing companion callbacks.
+                // If no fallback arrives, clean up the failed foreground service ourselves.
+                failureStopJob?.cancel()
+                failureStopJob = scope.launch {
+                    delay(FAILURE_STOP_GRACE_MS)
+                    if (currentMagnet == preparedMagnet) {
+                        withContext(Dispatchers.Main) { stopSelf() }
+                    }
+                }
             }
         }
     }
@@ -240,9 +266,14 @@ class TorrentService : Service() {
     }
 
     override fun onDestroy() {
+        failureStopJob?.cancel()
+        failureStopJob = null
         downloadJob?.cancel()
         val magnetToClean = currentMagnet
         currentMagnet = null
+        // Clear any connection/error overlay before discarding the callback. This also
+        // handles direct-URL fallback, which stops the torrent service entirely.
+        onStreamProgress?.invoke(null)
         // onDestroy() runs on the main thread; blocking it on dropTorrent's HTTP call
         // and engine.stop() risks an ANR if TorrServer is slow to respond. Run the
         // cleanup on a background thread instead — nothing here needs to complete

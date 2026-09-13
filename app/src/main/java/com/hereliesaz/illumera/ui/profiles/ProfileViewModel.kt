@@ -7,6 +7,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.queue.QueueManager
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,6 +22,7 @@ import javax.inject.Inject
 class ProfileViewModel @Inject constructor(
     private val dao: AddonDao,
     private val profileConfigurationManager: ProfileConfigurationManager,
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
     private val debridManager: DebridManager,
     private val traktAuthManager: TraktAuthManager,
     private val queueManager: QueueManager
@@ -98,16 +100,19 @@ class ProfileViewModel @Inject constructor(
 
     private fun finishWizard() {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            if (editingProfileId != null) {
-                val previous = _profiles.value.find { it.id == editingProfileId }
-                val updatedProfile = previous?.copy(
-                    name = tempName,
-                    avatarRef = tempAvatarRef,
-                    themeId = tempThemeId
-                )
-                if (updatedProfile != null) dao.updateProfile(updatedProfile)
-                if (previous != null && previous.avatarRef != tempAvatarRef) {
-                    deleteCustomAvatarFile(previous.avatarRef)
+            val profileIdBeingEdited = editingProfileId
+            if (profileIdBeingEdited != null) {
+                var previousAvatarRef: String? = null
+                profileMutationCoordinator.update(profileIdBeingEdited) { current ->
+                    previousAvatarRef = current.avatarRef
+                    current.copy(
+                        name = tempName,
+                        avatarRef = tempAvatarRef,
+                        themeId = tempThemeId
+                    )
+                }
+                if (previousAvatarRef != null && previousAvatarRef != tempAvatarRef) {
+                    deleteCustomAvatarFile(previousAvatarRef)
                 }
             } else {
                 val profileId = dao.insertProfile(

@@ -1,13 +1,15 @@
 package com.hereliesaz.illumera.data.player
 
 import android.content.Context
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class PlaybackTrackSelectionStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val profileConfigurationManager: ProfileConfigurationManager
 ) {
     data class Selection(
         val audioTrackId: String?,
@@ -88,11 +90,12 @@ class PlaybackTrackSelectionStore @Inject constructor(
     }
 
     fun clearSelectionsForPrefix(prefix: String) {
+        val scopedPrefix = canonicalPlaybackId(prefix) ?: return
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
-            if (key.startsWith("${KEY_AUDIO_PREFIX}$prefix") ||
-                key.startsWith("${KEY_SUBTITLE_PREFIX}$prefix") ||
-                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$prefix")
+            if (key.startsWith("${KEY_AUDIO_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_SUBTITLE_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }
@@ -101,7 +104,9 @@ class PlaybackTrackSelectionStore @Inject constructor(
     }
 
     private fun canonicalPlaybackId(playbackId: String): String? {
-        return playbackId.trim().takeIf { it.isNotEmpty() }
+        val normalizedPlaybackId = playbackId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: DEFAULT_PROFILE_ID
+        return "p$profileId:$normalizedPlaybackId"
     }
 
     private fun audioKey(scopedId: String): String = "${KEY_AUDIO_PREFIX}$scopedId"
@@ -112,6 +117,7 @@ class PlaybackTrackSelectionStore @Inject constructor(
 
     companion object {
         private const val PREFS_FILE = "playback_track_selection_prefs"
+        private const val DEFAULT_PROFILE_ID = 1
         private const val KEY_AUDIO_PREFIX = "audio_"
         private const val KEY_SUBTITLE_PREFIX = "subtitle_"
         private const val KEY_SUBTITLE_DELAY_PREFIX = "subtitleDelay_"
