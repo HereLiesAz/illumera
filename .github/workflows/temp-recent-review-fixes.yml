@@ -13,13 +13,15 @@ permissions:
 jobs:
   patch-compile-commit:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       STREMIO_MEDIA_REF: 95781597c8e3c30d6232e77bdadecc38ad35aa17
       STREMIO_AAR_CACHE_VERSION: v2
     steps:
-      - name: Checkout illumera
+      - name: Checkout current hardening branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: production-hardening
           path: illumera
           fetch-depth: 0
 
@@ -70,12 +72,13 @@ jobs:
             cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
           done
 
-      - name: Apply reviewed fixes that still match current main
+      - name: Apply still-relevant PR review fixes
         working-directory: illumera
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+
           p = Path('.ci/apply-recent-review-fixes.py')
           s = p.read_text()
 
@@ -122,8 +125,7 @@ jobs:
           s = s.replace(old_exact, new_exact, 1)
 
           broad = '    text = text.replace("# v4\\n", "# v7.0.1\\n") if "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4" in text else text\n'
-          if broad in s:
-              s = s.replace(broad, '')
+          s = s.replace(broad, '')
           old = "'''                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
           new = "'''            Box(\n                modifier = Modifier\n                    .width(rememberDialogWidth(460))"
           s = s.replace(old, new)
@@ -131,13 +133,157 @@ jobs:
           PY
           python .ci/apply-recent-review-fixes.py
 
-      - name: Compile app
+      - name: Harden credential storage
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt')
+          s = path.read_text()
+
+          old = '''    private val encryptedPrefs: SharedPreferences by lazy {
+              try {
+                  createEncryptedPrefs()
+              } catch (e: Exception) {
+                  // AEADBadTagException / KeyStore corruption — nuke and rebuild
+                  Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
+                  clearCorruptedPrefs()
+                  try {
+                      createEncryptedPrefs()
+                  } catch (e2: Exception) {
+                      // KeyStore is permanently broken on this device — fall back to plain prefs
+                      Log.e("StremioAuthManager", "KeyStore permanently broken, using plain prefs", e2)
+                      context.getSharedPreferences(PREFS_FILE + "_fallback", Context.MODE_PRIVATE)
+                  }
+              }
+          }
+          '''
+          new = '''    @Volatile
+              private var secureStorageAvailable = true
+
+              private val encryptedPrefs: SharedPreferences by lazy {
+                  try {
+                      createEncryptedPrefs()
+                  } catch (e: Exception) {
+                      // Recover once from a corrupt encrypted preference/key pair.
+                      Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
+                      clearCorruptedPrefs()
+                      try {
+                          createEncryptedPrefs()
+                      } catch (e2: Exception) {
+                          // Never persist account credentials unencrypted. The empty fallback
+                          // only keeps read/clear paths non-crashing while login is disabled.
+                          Log.e("StremioAuthManager", "Secure credential storage unavailable", e2)
+                          secureStorageAvailable = false
+                          context.getSharedPreferences(PREFS_FILE + "_fallback", Context.MODE_PRIVATE)
+                              .also { it.edit().clear().apply() }
+                      }
+                  }
+              }
+          '''
+          if old not in s:
+              raise SystemExit('Encrypted preference fallback block changed unexpectedly')
+          s = s.replace(old, new, 1)
+
+          old = '''        return EncryptedSharedPreferences.create(
+              context,
+              PREFS_FILE,
+              masterKey,
+              EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+              EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+          )
+          '''
+          new = '''        val prefs = EncryptedSharedPreferences.create(
+              context,
+              PREFS_FILE,
+              masterKey,
+              EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+              EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+          )
+          // Purge any plaintext credentials left by older fail-open builds.
+          context.getSharedPreferences(PREFS_FILE + "_fallback", Context.MODE_PRIVATE)
+              .edit()
+              .clear()
+              .apply()
+          return prefs
+          '''
+          if old not in s:
+              raise SystemExit('EncryptedSharedPreferences creation block changed unexpectedly')
+          s = s.replace(old, new, 1)
+
+          anchor = '''    private val _connectionState = MutableStateFlow<StremioConnectionState>(StremioConnectionState.Disconnected)
+          '''
+          helper = '''    private fun secureStorageReady(): Boolean {
+              encryptedPrefs // force lazy initialization before checking the flag
+              return secureStorageAvailable
+          }
+
+              private fun secureStorageFailure(): Result<String> = Result.failure(
+                  StremioAuthError.UnknownError("Secure credential storage is unavailable on this device")
+              )
+
+          ''' + anchor
+          if anchor not in s:
+              raise SystemExit('Connection state anchor changed unexpectedly')
+          s = s.replace(anchor, helper, 1)
+
+          replacements = {
+              '''    suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+              try {
+          ''': '''    suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+              if (!secureStorageReady()) return@withContext secureStorageFailure()
+              try {
+          ''',
+              '''    ): Result<String> = withContext(Dispatchers.IO) {
+              try {
+                  val loginResult = stremioAuthService.register(email, password, marketing)
+          ''': '''    ): Result<String> = withContext(Dispatchers.IO) {
+              if (!secureStorageReady()) return@withContext secureStorageFailure()
+              try {
+                  val loginResult = stremioAuthService.register(email, password, marketing)
+          ''',
+              '''    suspend fun completeFacebookLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              try {
+          ''': '''    suspend fun completeFacebookLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              if (!secureStorageReady()) return@withContext secureStorageFailure()
+              try {
+          ''',
+              '''    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              try {
+          ''': '''    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              if (!secureStorageReady()) return@withContext secureStorageFailure()
+              try {
+          ''',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'Auth write guard anchor changed: {old[:70]!r}')
+              s = s.replace(old, new, 1)
+
+          path.write_text(s)
+
+          service = Path('app/src/main/java/com/hereliesaz/illumera/data/remote/StremioAuthService.kt')
+          text = service.read_text()
+          if 'pollFacebookLogin(state: String, maxAttempts: Int = 25)' in text:
+              text = text.replace(
+                  'pollFacebookLogin(state: String, maxAttempts: Int = 25)',
+                  'pollFacebookLogin(state: String, maxAttempts: Int = 300)',
+                  1,
+              )
+          if 'pollFacebookLogin(state: String, maxAttempts: Int = 300)' not in text:
+              raise SystemExit('Facebook polling timeout was not hardened')
+          service.write_text(text)
+          PY
+
+      - name: Run production quality gate
         working-directory: illumera
         run: |
           chmod +x gradlew
-          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Commit validated changes
+      - name: Commit validated hardening
         working-directory: illumera
         env:
           BRANCH: production-hardening
@@ -150,5 +296,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "Upgrade actions to Node 24 and resolve review findings"
+          git commit -m "Finish production hardening and reviewed fixes"
           git push origin "HEAD:$BRANCH"
