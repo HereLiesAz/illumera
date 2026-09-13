@@ -6,6 +6,7 @@ import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
@@ -23,7 +24,8 @@ class ProfileViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val profileMutationCoordinator: ProfileMutationCoordinator,
     private val debridManager: DebridManager,
-    private val traktAuthManager: TraktAuthManager
+    private val traktAuthManager: TraktAuthManager,
+    private val queueManager: QueueManager
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<ProfileEntity>>(emptyList())
@@ -201,6 +203,7 @@ class ProfileViewModel @Inject constructor(
             profileConfigurationManager.deleteProfileState(id)
             debridManager.clearForProfile(id)
             traktAuthManager.clearTokensForProfile(id)
+            queueManager.clearForProfile(id)
             deleteCustomAvatarFile(avatarRef)
         }
     }
