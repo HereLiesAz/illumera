@@ -74,13 +74,53 @@ jobs:
         working-directory: illumera
         run: |
           set -euo pipefail
-          # Tighten two guards in the one-shot patcher before executing it:
-          # keep action-version comments scoped to their action, and make the
-          # Debrid dialog anchor distinguishable from the Trakt dialog.
           python - <<'PY'
           from pathlib import Path
           p = Path('.ci/apply-recent-review-fixes.py')
           s = p.read_text()
+
+          old_once = '''def replace_once(path: str, old: str, new: str) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected exactly one occurrence, found {count}: {old[:100]!r}")
+              write(path, text.replace(old, new, 1))
+          '''
+          new_once = '''def replace_once(path: str, old: str, new: str) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count == 1:
+                  write(path, text.replace(old, new, 1))
+                  return
+              if count == 0 and new in text:
+                  return
+              raise RuntimeError(f"{path}: expected one old occurrence or an already-applied replacement, found {count}: {old[:100]!r}")
+          '''
+          if old_once not in s:
+              raise SystemExit('replace_once helper shape changed')
+          s = s.replace(old_once, new_once, 1)
+
+          old_exact = '''def replace_exact_count(path: str, old: str, new: str, expected: int) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count != expected:
+                  raise RuntimeError(f"{path}: expected {expected} occurrences, found {count}: {old[:100]!r}")
+              write(path, text.replace(old, new))
+          '''
+          new_exact = '''def replace_exact_count(path: str, old: str, new: str, expected: int) -> None:
+              text = read(path)
+              count = text.count(old)
+              if count == expected:
+                  write(path, text.replace(old, new))
+                  return
+              if count == 0 and text.count(new) == expected:
+                  return
+              raise RuntimeError(f"{path}: expected {expected} old occurrences or an already-applied replacement, found {count}: {old[:100]!r}")
+          '''
+          if old_exact not in s:
+              raise SystemExit('replace_exact_count helper shape changed')
+          s = s.replace(old_exact, new_exact, 1)
+
           broad = '    text = text.replace("# v4\\n", "# v7.0.1\\n") if "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4" in text else text\n'
           if broad not in s:
               raise SystemExit('Expected broad action-comment line was not found')
@@ -99,7 +139,7 @@ jobs:
         working-directory: illumera
         run: |
           chmod +x gradlew
-          ./gradlew :app:compileDebugKotlin --no-daemon
+          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Commit validated changes
         working-directory: illumera
