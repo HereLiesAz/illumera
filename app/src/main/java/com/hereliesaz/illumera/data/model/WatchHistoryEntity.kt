@@ -12,6 +12,7 @@ data class WatchHistoryEntity(
     val poster: String?,
     val background: String? = null,
     val logo: String? = null,
+    val seriesId: String? = null,
     val position: Long,
     val duration: Long,
     val lastWatched: Long,

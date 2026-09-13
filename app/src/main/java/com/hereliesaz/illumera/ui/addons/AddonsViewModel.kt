@@ -14,6 +14,8 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonCatalogRepository
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +75,7 @@ class AddonsViewModel @Inject constructor(
 
     private val _events = Channel<AddonEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
+    private var catalogLoadJob: Job? = null
 
     init { loadAddons() }
 
@@ -89,22 +92,25 @@ class AddonsViewModel @Inject constructor(
         force: Boolean = false
     ) {
         val current = _uiState.value
-        if (current.isCatalogLoading) return
-        if (source == AddonCatalogSource.COLLECTION && current.activeCollection == null) return
-        if (!force && current.catalogSource == source && current.catalogItems.isNotEmpty()) return
+        val collection = if (source == AddonCatalogSource.COLLECTION) current.activeCollection else null
+        if (source == AddonCatalogSource.COLLECTION && collection == null) return
+        val sameTarget = current.catalogSource == source &&
+            (source != AddonCatalogSource.COLLECTION || current.activeCollection == collection)
+        if (!force && sameTarget && !current.isCatalogLoading && current.catalogItems.isNotEmpty()) return
+        if (!force && sameTarget && current.isCatalogLoading) return
 
+        // A source/collection change supersedes the in-flight request immediately.
+        catalogLoadJob?.cancel()
         _uiState.value = current.copy(
             catalogSource = source,
-            activeCollection = if (source == AddonCatalogSource.COLLECTION) current.activeCollection else null,
-            catalogItems = if (current.catalogSource == source) current.catalogItems else emptyList(),
+            activeCollection = if (source == AddonCatalogSource.COLLECTION) collection else null,
+            catalogItems = if (sameTarget) current.catalogItems else emptyList(),
             isCatalogLoading = true,
             catalogError = null
         )
 
-        viewModelScope.launch {
+        catalogLoadJob = viewModelScope.launch {
             try {
-                val snapshot = _uiState.value
-                val collection = if (source == AddonCatalogSource.COLLECTION) snapshot.activeCollection else null
                 val items = catalogRepository.fetch(source, collection)
                 if (_uiState.value.catalogSource == source &&
                     (source != AddonCatalogSource.COLLECTION || _uiState.value.activeCollection == collection)
@@ -115,8 +121,12 @@ class AddonsViewModel @Inject constructor(
                         catalogError = null
                     )
                 }
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
-                if (_uiState.value.catalogSource == source) {
+                if (_uiState.value.catalogSource == source &&
+                    (source != AddonCatalogSource.COLLECTION || _uiState.value.activeCollection == collection)
+                ) {
                     _uiState.value = _uiState.value.copy(
                         isCatalogLoading = false,
                         catalogError = e.message ?: "Could not load the addon catalog"
@@ -135,13 +145,14 @@ class AddonsViewModel @Inject constructor(
     }
 
     fun addCollection(url: String) {
-        if (url.isBlank() || _uiState.value.isCatalogLoading) return
+        if (url.isBlank()) return
+        catalogLoadJob?.cancel()
         _uiState.value = _uiState.value.copy(
             isCatalogLoading = true,
             catalogError = null,
             catalogItems = emptyList()
         )
-        viewModelScope.launch {
+        catalogLoadJob = viewModelScope.launch {
             try {
                 val result = catalogRepository.addCollection(url)
                 _uiState.value = _uiState.value.copy(
@@ -152,6 +163,8 @@ class AddonsViewModel @Inject constructor(
                     isCatalogLoading = false,
                     catalogError = null
                 )
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isCatalogLoading = false,
@@ -210,8 +223,15 @@ class AddonsViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             try {
-                val trimmedUrl = normalizedInput.trimEnd('/')
-                val plainUrl = if (trimmedUrl.endsWith("manifest.json")) trimmedUrl else "$trimmedUrl/manifest.json"
+                val uri = Uri.parse(normalizedInput)
+                val encodedPath = uri.encodedPath.orEmpty()
+                val manifestPath = if (encodedPath.trimEnd('/').endsWith("manifest.json", ignoreCase = true)) {
+                    encodedPath
+                } else {
+                    encodedPath.trimEnd('/') + "/manifest.json"
+                }
+                // Rebuild only the path so query parameters/configuration tokens survive.
+                val plainUrl = uri.buildUpon().encodedPath(manifestPath).build().toString()
                 val validUrl = DebridAddonUrlHelper.withDebridKeyIfKnown(
                     plainUrl,
                     debridManager.connectedProvider.value,

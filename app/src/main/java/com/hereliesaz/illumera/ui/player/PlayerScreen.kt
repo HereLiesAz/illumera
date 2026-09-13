@@ -51,6 +51,7 @@ fun PlayerScreen(
     poster: String,
     movieId: String,
     mediaType: String,
+    seriesId: String? = null,
     onBack: (PlayerSessionResult) -> Unit,
     backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER,
     sources: List<PlayerSourceOption> = emptyList(),
@@ -164,7 +165,8 @@ fun PlayerScreen(
                 title = title,
                 poster = poster,
                 position = state.positionMs.coerceAtLeast(0L),
-                duration = state.durationMs.takeIf { it > 0L }
+                duration = state.durationMs.takeIf { it > 0L },
+                seriesId = seriesId
             )
             playbackController.release()
         }
@@ -183,7 +185,8 @@ fun PlayerScreen(
                     title = title,
                     poster = poster,
                     position = pos,
-                    duration = dur
+                    duration = dur,
+                    seriesId = seriesId
                 )
             }
         }
@@ -204,7 +207,8 @@ fun PlayerScreen(
                     title = title,
                     poster = poster,
                     position = state.positionMs.coerceAtLeast(0L),
-                    duration = state.durationMs.takeIf { it > 0L }
+                    duration = state.durationMs.takeIf { it > 0L },
+                seriesId = seriesId
                 )
             }
         }
@@ -266,7 +270,8 @@ fun PlayerScreen(
             title = title,
             poster = poster,
             position = position,
-            duration = duration
+            duration = duration,
+            seriesId = seriesId
         )
         val selectedSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
             ?: videoUrl

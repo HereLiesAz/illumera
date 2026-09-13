@@ -1938,9 +1938,10 @@ class MainActivity : ComponentActivity() {
                                         torrentProgress = null
                                         selectedVideoUrl = localUrl
                                     }
-                                    TorrentService.onStreamError = {
-                                        torrentProgress = null
-                                        uiScope.launch { tryNextRankedSource() }
+                                    TorrentService.onStreamError = { error ->
+                                        if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Ranked fallback source error: $error")
+                                        // TorrentProgress(sourceError=true) is the one signal that
+                                        // advances the ranked list; do not advance again here.
                                     }
                                     TorrentService.onStreamProgress = { torrentProgress = it }
                                     startService(Intent(this@MainActivity, TorrentService::class.java).apply {
@@ -1965,6 +1966,11 @@ class MainActivity : ComponentActivity() {
                                 poster = selectedPlaybackPoster,
                                 movieId = selectedPlaybackId,
                                 mediaType = selectedPlaybackType,
+                                seriesId = selectedMovieId.takeIf {
+                                    selectedPlaybackType.equals("series", ignoreCase = true) ||
+                                        selectedPlaybackType.equals("tv", ignoreCase = true) ||
+                                        selectedPlaybackType.equals("episode", ignoreCase = true)
+                                },
                                 sources = playerSources,
                                 subtitles = playerSubtitles,
                                 preferredAudioTrackId = rememberedTrackSelection?.audioTrackId,
@@ -2424,6 +2430,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onEpisodeSwitchDismissed = { playerState.pendingEpisodeSwitch = null; playerState.isEpisodeSwitchLoading = false },
                                 onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady, onError ->
+                                    playerState.pendingSourceSelection?.candidateStreams
+                                        ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
+                                        ?.let { playerState.currentStream = it }
                                     torrentProgress = TorrentProgress("Connecting to peers...")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null

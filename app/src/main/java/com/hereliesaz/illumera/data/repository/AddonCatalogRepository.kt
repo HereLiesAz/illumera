@@ -15,11 +15,13 @@ import com.hereliesaz.illumera.data.model.stremio.Manifest
 import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -55,14 +57,12 @@ class AddonCatalogRepository @Inject constructor(
         source: AddonCatalogSource,
         collection: SavedAddonCollection? = null
     ): List<AddonCatalogItem> = withContext(Dispatchers.IO) {
-        val items = withTimeout(CATALOG_TIMEOUT_MS) {
-            when (source) {
-                AddonCatalogSource.OFFICIAL -> fetchOfficial()
-                AddonCatalogSource.COMMUNITY -> fetchCommunity()
-                AddonCatalogSource.COLLECTION -> {
-                    requireNotNull(collection) { "Choose an addon collection first" }
-                    fetchCollection(collection.url, save = false).addons
-                }
+        val items = when (source) {
+            AddonCatalogSource.OFFICIAL -> fetchOfficial()
+            AddonCatalogSource.COMMUNITY -> fetchCommunity()
+            AddonCatalogSource.COLLECTION -> {
+                requireNotNull(collection) { "Choose an addon collection first" }
+                fetchCollection(collection.url, save = false).addons
             }
         }
         sanitize(items)
@@ -240,23 +240,28 @@ class AddonCatalogRepository @Inject constructor(
     }
 
     private suspend fun fetchOfficial(): List<AddonCatalogItem> {
-        return runCatching {
-            api.getAddonCollection(STREMIO_OFFICIAL_COLLECTION_URL)
-        }.getOrElse {
-            // Stremio also publishes the same official collection as source data.
-            // Keep this fallback so a transient API worker failure does not make the
-            // built-in catalog disappear from Illumera.
-            api.getAddonCollection(STREMIO_OFFICIAL_FALLBACK_URL)
+        return try {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getAddonCollection(STREMIO_OFFICIAL_COLLECTION_URL) }
+        } catch (_: TimeoutCancellationException) {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getAddonCollection(STREMIO_OFFICIAL_FALLBACK_URL) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getAddonCollection(STREMIO_OFFICIAL_FALLBACK_URL) }
         }
     }
 
     private suspend fun fetchCommunity(): List<AddonCatalogItem> {
-        return runCatching {
-            // This is the addon_catalog endpoint Stremio Core itself requests from Cinemeta.
-            api.getAddonCatalog(STREMIO_COMMUNITY_CATALOG_URL).addons
-        }.getOrElse {
-            // Public collection populated by addon authors through publishToCentral().
-            api.getAddonCollection(STREMIO_COMMUNITY_COLLECTION_URL)
+        return try {
+            withTimeout(CATALOG_TIMEOUT_MS) {
+                api.getAddonCatalog(STREMIO_COMMUNITY_CATALOG_URL).addons
+            }
+        } catch (_: TimeoutCancellationException) {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getAddonCollection(STREMIO_COMMUNITY_COLLECTION_URL) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getAddonCollection(STREMIO_COMMUNITY_COLLECTION_URL) }
         }
     }
 

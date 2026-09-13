@@ -362,9 +362,12 @@ class QueueManager @Inject constructor(
         if (!current.preferences.enabled) return
 
         if (resetDismissed) {
-            prefs.edit()
-                .remove(profileKey(scope.profileId, KEY_DISMISSED_SUGGESTIONS))
-                .apply()
+            synchronized(this) {
+                if (!isCurrentScopeLocked(scope)) return
+                prefs.edit()
+                    .remove(profileKey(scope.profileId, KEY_DISMISSED_SUGGESTIONS))
+                    .apply()
+            }
         }
         val dismissedKeys = if (resetDismissed) {
             emptySet()
@@ -608,15 +611,15 @@ class QueueManager @Inject constructor(
 
     @Synchronized
     private fun commit(scope: QueueScope, next: QueueState) {
+        // Scope validation and persistence share this monitor. A profile switch or
+        // deletion therefore cannot land between the generation check and the write.
+        if (!isCurrentScopeLocked(scope)) return
         prefs.edit()
             .putString(profileKey(scope.profileId, KEY_PREFERENCES), gson.toJson(next.preferences))
             .putString(profileKey(scope.profileId, KEY_MANUAL), gson.toJson(next.manualItems))
             .putString(profileKey(scope.profileId, KEY_SUGGESTIONS), gson.toJson(next.suggestions))
             .apply()
-
-        if (isCurrentScopeLocked(scope)) {
-            _state.value = next
-        }
+        _state.value = next
     }
 
     private fun load(profileId: Int): QueueState {

@@ -90,7 +90,8 @@ class PlayerViewModel @Inject constructor(
         title: String,
         poster: String?,
         position: Long,
-        duration: Long?
+        duration: Long?,
+        seriesId: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             if (id.startsWith("trailer_") || id.startsWith("debrid_")) return@launch
@@ -111,6 +112,7 @@ class PlayerViewModel @Inject constructor(
                 poster = poster ?: existing?.poster,
                 background = existing?.background,
                 logo = existing?.logo,
+                seriesId = seriesId ?: existing?.seriesId,
                 position = finalPosition,
                 duration = safeDuration,
                 lastWatched = System.currentTimeMillis(),

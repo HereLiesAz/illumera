@@ -32,9 +32,14 @@ data class AddonCatalogItem(
             (manifest.behaviorHints?.configurable == true ||
                 manifest.behaviorHints?.configurationRequired == true)
         ) {
-            transportUrl
-                .substringBeforeLast("/manifest.json", transportUrl.trimEnd('/'))
+            val normalized = if (transportUrl.startsWith("stremio://", ignoreCase = true)) {
+                "https://" + transportUrl.substringAfter("://")
+            } else transportUrl
+            val query = normalized.substringAfter('?', "").takeIf { it.isNotBlank() }
+            val path = normalized.substringBefore('?')
+                .substringBeforeLast("/manifest.json", normalized.substringBefore('?').trimEnd('/'))
                 .trimEnd('/') + "/configure"
+            if (query == null) path else "$path?$query"
         } else {
             null
         }

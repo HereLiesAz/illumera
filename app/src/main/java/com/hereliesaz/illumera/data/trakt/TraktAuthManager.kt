@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.BuildConfig
 import com.hereliesaz.illumera.data.model.trakt.TraktDeviceCodeResponse
 import com.hereliesaz.illumera.data.model.trakt.TraktTokenResponse
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.remote.TraktApiService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -39,7 +40,8 @@ sealed class DeviceAuthState {
 class TraktAuthManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val traktApi: TraktApiService,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val profileMutationCoordinator: ProfileMutationCoordinator
 ) {
     companion object {
         private const val TAG = "TraktAuthManager"
@@ -117,15 +119,18 @@ class TraktAuthManager @Inject constructor(
 
     // ── Token Storage (per-profile) ──
 
-    private fun saveTokens(response: TraktTokenResponse, profileId: Int) {
-        prefs.edit()
-            .putString(profileKey(KEY_ACCESS_TOKEN, profileId), response.accessToken)
-            .putString(profileKey(KEY_REFRESH_TOKEN, profileId), response.refreshToken)
-            .putLong(profileKey(KEY_EXPIRES_AT, profileId), response.createdAt + response.expiresIn)
-            .apply()
-        if (activeProfileId() == profileId) {
-            _isConnected.value = true
-        }
+    private suspend fun saveTokens(response: TraktTokenResponse, profileId: Int): Boolean {
+        return profileMutationCoordinator.withExistingProfile(profileId) {
+            prefs.edit()
+                .putString(profileKey(KEY_ACCESS_TOKEN, profileId), response.accessToken)
+                .putString(profileKey(KEY_REFRESH_TOKEN, profileId), response.refreshToken)
+                .putLong(profileKey(KEY_EXPIRES_AT, profileId), response.createdAt + response.expiresIn)
+                .apply()
+            if (activeProfileId() == profileId) {
+                _isConnected.value = true
+            }
+            true
+        } == true
     }
 
     fun getAccessToken(): String? {
@@ -258,11 +263,14 @@ class TraktAuthManager @Inject constructor(
                     200 -> {
                         val tokenBody = response.body()
                         if (tokenBody != null) {
+                            if (!saveTokens(tokenBody, profileId)) {
+                                _authState.value = DeviceAuthState.Idle
+                                return
+                            }
                             if (activeProfileId() != profileId) {
                                 _authState.value = DeviceAuthState.Idle
                                 return
                             }
-                            saveTokens(tokenBody, profileId)
                             _authState.value = DeviceAuthState.Success
                             return
                         }
@@ -304,8 +312,12 @@ class TraktAuthManager @Inject constructor(
             )
             val body = response.body()
             if (response.isSuccessful && body != null) {
+                // A successful OAuth refresh may rotate the refresh token. Persist the
+                // replacement pair to the initiating profile even if the UI switched
+                // profiles while the request was in flight, otherwise that profile can
+                // be permanently stranded with a consumed refresh token.
+                if (!saveTokens(body, profileId)) return null
                 if (activeProfileId() != profileId) return null
-                saveTokens(body, profileId)
                 needsRefresh = false
                 Log.i(TAG, "Token refreshed successfully")
                 body.accessToken

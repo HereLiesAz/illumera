@@ -29,4 +29,14 @@ class ProfileMutationCoordinator @Inject constructor(
         dao.updateProfile(updated)
         updated
     }
+
+    suspend fun <T> withExistingProfile(
+        profileId: Int,
+        block: suspend (ProfileEntity) -> T
+    ): T? = mutex.withLock {
+        val current = dao.getProfileById(profileId) ?: return@withLock null
+        block(current)
+    }
+
+    suspend fun <T> serialized(block: suspend () -> T): T = mutex.withLock { block() }
 }

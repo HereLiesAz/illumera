@@ -33,7 +33,7 @@ class StreamSortingServiceTest {
 
         val result = filter(
             streams,
-            ProfileEntity(name = "Test", sourceSkipSeedless = true)
+            ProfileEntity(name = "Test")
         )
 
         assertEquals(setOf("seeded", "unknown"), result.mapNotNull { it.url }.toSet())
@@ -160,5 +160,72 @@ class StreamSortingServiceTest {
         )
 
         assertTrue(result.any { it.url == "caption-tagged" })
+    }
+
+    @Test
+    fun forcedAudio_doesNotTreatBareTwoLetterWordsAsLanguageMetadata() {
+        val result = filter(
+            listOf(
+                Stream(name = "No Way Home 1080p", url = "title-word"),
+                Stream(name = "Norwegian 1080p", url = "norwegian")
+            ),
+            ProfileEntity(
+                name = "Test",
+                preferredAudioLanguage = "no",
+                sourceAudioLanguageRequirement = "primary"
+            )
+        )
+
+        assertEquals(listOf("norwegian"), result.mapNotNull { it.url })
+    }
+
+    @Test
+    fun forcedSubtitle_acceptsSubbedCue() {
+        val result = filter(
+            listOf(Stream(title = "1080p English subbed", url = "subbed")),
+            ProfileEntity(
+                name = "Test",
+                preferredSubtitleLanguage = "en",
+                sourceSubtitleLanguageRequirement = "primary"
+            )
+        )
+
+        assertEquals(listOf("subbed"), result.mapNotNull { it.url })
+    }
+
+    @Test
+    fun forcedSubtitle_normalizesIso3AndAddonLanguageCodes() {
+        val streams = listOf(
+            Stream(
+                title = "1080p release",
+                url = "english",
+                subtitles = listOf(StreamSubtitle(lang = "eng", url = "https://example.invalid/en.srt"))
+            ),
+            Stream(
+                title = "1080p release",
+                url = "brazilian",
+                subtitles = listOf(StreamSubtitle(lang = "pob", url = "https://example.invalid/ptbr.srt"))
+            )
+        )
+
+        val english = filter(
+            streams,
+            ProfileEntity(
+                name = "Test",
+                preferredSubtitleLanguage = "en",
+                sourceSubtitleLanguageRequirement = "primary"
+            )
+        )
+        val brazilian = filter(
+            streams,
+            ProfileEntity(
+                name = "Test",
+                preferredSubtitleLanguage = "pt-BR",
+                sourceSubtitleLanguageRequirement = "primary"
+            )
+        )
+
+        assertEquals(listOf("english"), english.mapNotNull { it.url })
+        assertEquals(listOf("brazilian"), brazilian.mapNotNull { it.url })
     }
 }

@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.stream
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.StreamQuality
 import com.hereliesaz.illumera.data.model.stremio.Stream
+import com.hereliesaz.illumera.ui.player.base.normalizeLanguageToIso2
 import java.util.Locale
 import kotlin.math.abs
 import javax.inject.Inject
@@ -118,11 +119,11 @@ class StreamSortingService @Inject constructor() {
         .orEmpty()
 
     private fun languageCodesMatch(advertised: String?, required: String): Boolean {
-        val actual = normalizeLanguageTag(advertised)
-        if (actual.isEmpty()) return false
-        val wanted = normalizeLanguageTag(required)
-        if (wanted.isEmpty()) return false
-        return actual == wanted || actual.substringBefore('-') == wanted.substringBefore('-')
+        val actual = normalizeLanguageToIso2(advertised)
+        val wanted = normalizeLanguageToIso2(required)
+        if (actual == "und" || wanted == "und") return false
+        return actual.equals(wanted, ignoreCase = true) ||
+            actual.substringBefore('-').equals(wanted.substringBefore('-'), ignoreCase = true)
     }
 
     private fun containsAudioLanguage(text: String, language: String): Boolean {
@@ -161,9 +162,15 @@ class StreamSortingService @Inject constructor() {
         val locale = Locale.forLanguageTag(normalized)
 
         return buildSet {
-            add(base)
-            add(normalized)
-            add(normalized.replace('-', ' '))
+            // Two-letter ISO codes such as "no", "it", "he", and "id" are ordinary
+            // words in release titles. Keep them for structured lang-code matching, but
+            // do not treat them as free-text aliases. Three-letter/region tags remain
+            // useful explicit release metadata.
+            if (base.length > 2) add(base)
+            if (normalized.length > 2) {
+                add(normalized)
+                add(normalized.replace('-', ' '))
+            }
             locale.getDisplayLanguage(Locale.ENGLISH)
                 .trim()
                 .lowercase(Locale.ROOT)
@@ -242,7 +249,7 @@ class StreamSortingService @Inject constructor() {
 
     companion object {
         private val AUDIO_CUE_REGEX = Regex("(?i)\\b(audio|dub(?:bed)?|dual)\\b")
-        private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|cc|captions?)\\b")
+        private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|subbed|cc|captions?)\\b")
 
         private val LANGUAGE_ALIASES = mapOf(
             "en" to setOf("english", "eng"),
