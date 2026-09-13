@@ -6,6 +6,7 @@ import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,8 @@ class MainViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
-    private val debridManager: DebridManager
+    private val debridManager: DebridManager,
+    private val queueManager: QueueManager
 ) : ViewModel() {
 
     private val _activeProfile = MutableStateFlow<ProfileEntity?>(null)
@@ -51,6 +53,7 @@ class MainViewModel @Inject constructor(
 
             profileConfigurationManager.loadRuntimeState(id)
             activeProfileId = id
+            queueManager.reloadForActiveProfile()
 
             profileJob?.cancel()
             profileJob = launch {
@@ -108,6 +111,7 @@ class MainViewModel @Inject constructor(
             activeProfileId?.let { profileConfigurationManager.saveRuntimeState(it) }
             profileConfigurationManager.clearLastActiveProfileId()
             activeProfileId = null
+            queueManager.reloadForActiveProfile()
             profileJob?.cancel()
             traktSyncJob?.cancel()
             traktConnectionWatchJob?.cancel()

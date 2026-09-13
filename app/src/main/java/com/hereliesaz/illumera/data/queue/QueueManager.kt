@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -83,31 +84,134 @@ class QueueManager @Inject constructor(
     @ApplicationContext context: Context,
     private val addonDao: AddonDao,
     private val traktApi: TraktSyncApiService,
-    private val repository: AddonRepository
+    private val repository: AddonRepository,
+    private val profileConfigurationManager: ProfileConfigurationManager
 ) {
+    private data class QueueScope(
+        val profileId: Int,
+        val generation: Long
+    )
+
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val gson = Gson()
-    private val _state = MutableStateFlow(load())
+
+    @Volatile
+    private var loadedProfileId: Int? = activeProfileId()
+
+    @Volatile
+    private var scopeGeneration: Long = 0L
+
+    private val _state = MutableStateFlow(
+        loadedProfileId?.let(::load) ?: QueueState()
+    )
     val state: StateFlow<QueueState> = _state.asStateFlow()
 
+    private fun activeProfileId(): Int? = profileConfigurationManager.getLastActiveProfileId()
+
+    private fun profilePrefix(profileId: Int): String = "profile_${profileId}_"
+
+    private fun profileKey(profileId: Int, key: String): String =
+        "${profilePrefix(profileId)}$key"
+
+    private fun ratingKey(profileId: Int, itemKey: String): String =
+        profileKey(profileId, "rating_$itemKey")
+
+    private fun ensureScopeLocked(): QueueScope? {
+        val active = activeProfileId()
+        if (active != loadedProfileId) {
+            loadedProfileId = active
+            scopeGeneration += 1L
+            _state.value = active?.let(::load) ?: QueueState()
+        }
+        return active?.let { QueueScope(it, scopeGeneration) }
+    }
+
+    private fun captureScope(): QueueScope? = synchronized(this) {
+        ensureScopeLocked()
+    }
+
+    private fun isCurrentScopeLocked(scope: QueueScope): Boolean =
+        loadedProfileId == scope.profileId &&
+            scopeGeneration == scope.generation &&
+            activeProfileId() == scope.profileId
+
+    private fun isCurrentScope(scope: QueueScope): Boolean = synchronized(this) {
+        isCurrentScopeLocked(scope)
+    }
+
+    private fun stateForScope(scope: QueueScope): QueueState? = synchronized(this) {
+        if (isCurrentScopeLocked(scope)) _state.value else null
+    }
+
+    private fun setRefreshing(scope: QueueScope, refreshing: Boolean): Boolean = synchronized(this) {
+        if (!isCurrentScopeLocked(scope)) return@synchronized false
+        _state.value = _state.value.copy(isRefreshingSuggestions = refreshing)
+        true
+    }
+
+    /**
+     * Reload queue state after login, logout, or an explicit profile switch.
+     * Incrementing the generation invalidates any async refresh started by the
+     * previously active profile, even if the user later switches back to it.
+     */
     @Synchronized
-    fun setEnabled(enabled: Boolean) = updatePreferences { copy(enabled = enabled) }
+    fun reloadForActiveProfile() {
+        loadedProfileId = activeProfileId()
+        scopeGeneration += 1L
+        _state.value = loadedProfileId?.let(::load) ?: QueueState()
+    }
+
+    /** Remove every persisted queue key owned by a deleted profile. */
+    @Synchronized
+    fun clearForProfile(profileId: Int) {
+        val prefix = profilePrefix(profileId)
+        val editor = prefs.edit()
+        prefs.all.keys
+            .filter { it.startsWith(prefix) }
+            .forEach(editor::remove)
+        editor.apply()
+
+        if (loadedProfileId == profileId) {
+            loadedProfileId = null
+            scopeGeneration += 1L
+            _state.value = QueueState()
+        }
+    }
 
     @Synchronized
-    fun setIncludeMovies(enabled: Boolean) = updatePreferences { copy(includeMovies = enabled) }
+    fun setEnabled(enabled: Boolean) {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) { copy(enabled = enabled) }
+    }
 
     @Synchronized
-    fun setIncludeEpisodes(enabled: Boolean) = updatePreferences { copy(includeEpisodes = enabled) }
+    fun setIncludeMovies(enabled: Boolean) {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) { copy(includeMovies = enabled) }
+    }
 
     @Synchronized
-    fun setIncludeWholeShows(enabled: Boolean) = updatePreferences { copy(includeWholeShows = enabled) }
+    fun setIncludeEpisodes(enabled: Boolean) {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) { copy(includeEpisodes = enabled) }
+    }
 
     @Synchronized
-    fun setOnlyUnseenSuggestions(enabled: Boolean) = updatePreferences { copy(onlyUnseenSuggestions = enabled) }
+    fun setIncludeWholeShows(enabled: Boolean) {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) { copy(includeWholeShows = enabled) }
+    }
+
+    @Synchronized
+    fun setOnlyUnseenSuggestions(enabled: Boolean) {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) { copy(onlyUnseenSuggestions = enabled) }
+    }
 
     @Synchronized
     fun setSuggestionSource(source: QueueSuggestionSource, enabled: Boolean) {
-        updatePreferences {
+        val scope = ensureScopeLocked() ?: return
+        updatePreferences(scope) {
             val next = suggestionSources.toMutableSet().apply {
                 if (enabled) add(source) else remove(source)
             }
@@ -117,17 +221,21 @@ class QueueManager @Inject constructor(
 
     @Synchronized
     fun add(item: QueueItem) {
-        if (_state.value.manualItems.any { it.stableKey == item.stableKey }) return
-        commit(_state.value.copy(manualItems = _state.value.manualItems + item.copy(origin = QueueOrigin.MANUAL)))
+        val scope = ensureScopeLocked() ?: return
+        val current = _state.value
+        if (current.manualItems.any { it.stableKey == item.stableKey }) return
+        commit(scope, current.copy(manualItems = current.manualItems + item.copy(origin = QueueOrigin.MANUAL)))
     }
 
     @Synchronized
     fun remove(key: String) {
-        commit(_state.value.copy(manualItems = _state.value.manualItems.filterNot { it.stableKey == key }))
+        val scope = ensureScopeLocked() ?: return
+        commit(scope, _state.value.copy(manualItems = _state.value.manualItems.filterNot { it.stableKey == key }))
     }
 
     @Synchronized
     fun move(key: String, delta: Int) {
+        val scope = ensureScopeLocked() ?: return
         val items = _state.value.manualItems.toMutableList()
         val from = items.indexOfFirst { it.stableKey == key }
         if (from < 0) return
@@ -135,11 +243,12 @@ class QueueManager @Inject constructor(
         if (from == to) return
         val item = items.removeAt(from)
         items.add(to, item)
-        commit(_state.value.copy(manualItems = items))
+        commit(scope, _state.value.copy(manualItems = items))
     }
 
     @Synchronized
     fun moveSuggestion(key: String, targetIndex: Int) {
+        val scope = ensureScopeLocked() ?: return
         val suggestions = _state.value.suggestions.toMutableList()
         val from = suggestions.indexOfFirst { it.stableKey == key }
         if (from < 0 || suggestions.isEmpty()) return
@@ -147,30 +256,35 @@ class QueueManager @Inject constructor(
         if (from == to) return
         val item = suggestions.removeAt(from)
         suggestions.add(to, item)
-        commit(_state.value.copy(suggestions = suggestions))
+        commit(scope, _state.value.copy(suggestions = suggestions))
     }
 
     @Synchronized
     fun removeSuggestion(key: String) {
+        val scope = ensureScopeLocked() ?: return
         val current = _state.value
         if (current.suggestions.none { it.stableKey == key }) return
-        val dismissed = dismissedSuggestionKeys().toMutableSet().apply { add(key) }
-        prefs.edit().putStringSet(KEY_DISMISSED_SUGGESTIONS, dismissed).apply()
-        commit(current.copy(suggestions = current.suggestions.filterNot { it.stableKey == key }))
+        val dismissed = dismissedSuggestionKeys(scope.profileId).toMutableSet().apply { add(key) }
+        prefs.edit()
+            .putStringSet(profileKey(scope.profileId, KEY_DISMISSED_SUGGESTIONS), dismissed)
+            .apply()
+        commit(scope, current.copy(suggestions = current.suggestions.filterNot { it.stableKey == key }))
     }
 
     @Synchronized
     fun rateSuggestion(key: String, rating: Int) {
+        val scope = ensureScopeLocked() ?: return
         val normalized = rating.coerceIn(-1, 1)
         val suggestions = _state.value.suggestions.map {
             if (it.stableKey == key) it.copy(rating = normalized) else it
         }
-        commit(_state.value.copy(suggestions = suggestions))
-        prefs.edit().putInt("rating_$key", normalized).apply()
+        prefs.edit().putInt(ratingKey(scope.profileId, key), normalized).apply()
+        commit(scope, _state.value.copy(suggestions = suggestions))
     }
 
     @Synchronized
     fun advanceAfterPlayback(playbackId: String): QueueItem? {
+        val scope = ensureScopeLocked() ?: return null
         val current = _state.value
         if (!current.preferences.enabled) return null
 
@@ -188,13 +302,15 @@ class QueueManager @Inject constructor(
         if (suggestionIndex >= 0) suggestions.removeAt(suggestionIndex)
 
         if (manualIndex >= 0 || suggestionIndex >= 0) {
-            commit(current.copy(manualItems = manual, suggestions = suggestions))
+            commit(scope, current.copy(manualItems = manual, suggestions = suggestions))
         }
         return manual.firstOrNull() ?: suggestions.firstOrNull()
     }
 
     suspend fun ensureSuggestions() {
-        if (_state.value.suggestions.size < SUGGESTION_COUNT) {
+        val scope = captureScope() ?: return
+        val current = stateForScope(scope) ?: return
+        if (current.suggestions.size < SUGGESTION_COUNT) {
             refreshSuggestions(preserveExisting = true)
         }
     }
@@ -205,7 +321,8 @@ class QueueManager @Inject constructor(
      * used by Watchlist/Home so queue cards visually match the rest of the app.
      */
     suspend fun resolveMissingArtwork() {
-        val snapshot = _state.value
+        val scope = captureScope() ?: return
+        val snapshot = stateForScope(scope) ?: return
         val missing = (snapshot.manualItems + snapshot.suggestions)
             .filter { it.poster.isNullOrBlank() }
             .distinctBy { it.stableKey }
@@ -213,26 +330,26 @@ class QueueManager @Inject constructor(
 
         val resolved = mutableMapOf<String, String>()
         for (item in missing) {
+            if (!isCurrentScope(scope)) return
             val meta = runCatching {
                 val display = item.toMetaItem()
                 repository.resolveMetaDetails(display.type, display.id)
             }.getOrNull()
+            if (!isCurrentScope(scope)) return
             val poster = meta?.poster
             if (!poster.isNullOrBlank()) resolved[item.stableKey] = poster
         }
         if (resolved.isEmpty()) return
 
-        synchronized(this) {
-            val current = _state.value
-            val manual = current.manualItems.map { item ->
-                resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
-            }
-            val suggestions = current.suggestions.map { item ->
-                resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
-            }
-            if (manual != current.manualItems || suggestions != current.suggestions) {
-                commit(current.copy(manualItems = manual, suggestions = suggestions))
-            }
+        val current = stateForScope(scope) ?: return
+        val manual = current.manualItems.map { item ->
+            resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
+        }
+        val suggestions = current.suggestions.map { item ->
+            resolved[item.stableKey]?.let { item.copy(poster = it) } ?: item
+        }
+        if (manual != current.manualItems || suggestions != current.suggestions) {
+            commit(scope, current.copy(manualItems = manual, suggestions = suggestions))
         }
     }
 
@@ -240,16 +357,26 @@ class QueueManager @Inject constructor(
         resetDismissed: Boolean = false,
         preserveExisting: Boolean = false
     ) {
-        val current = _state.value
+        val scope = captureScope() ?: return
+        val current = stateForScope(scope) ?: return
         if (!current.preferences.enabled) return
+
         if (resetDismissed) {
-            prefs.edit().remove(KEY_DISMISSED_SUGGESTIONS).apply()
+            prefs.edit()
+                .remove(profileKey(scope.profileId, KEY_DISMISSED_SUGGESTIONS))
+                .apply()
         }
-        val dismissedKeys = if (resetDismissed) emptySet() else dismissedSuggestionKeys()
-        _state.value = current.copy(isRefreshingSuggestions = true)
+        val dismissedKeys = if (resetDismissed) {
+            emptySet()
+        } else {
+            dismissedSuggestionKeys(scope.profileId)
+        }
+        if (!setRefreshing(scope, true)) return
 
         try {
             val history = addonDao.getAllWatchHistoryOnce()
+            if (!isCurrentScope(scope)) return
+
             val excludedIds = mutableSetOf<String>()
 
             if (current.preferences.onlyUnseenSuggestions) {
@@ -264,8 +391,9 @@ class QueueManager @Inject constructor(
             // Keep the unseen filter honest even when the local Trakt sync has not run yet.
             // The authenticated Trakt history is authoritative for items watched elsewhere.
             if (useTrakt && current.preferences.onlyUnseenSuggestions) {
-                runCatching { traktApi.getWatchedMovies() }
-                    .getOrNull()
+                val watchedMovies = runCatching { traktApi.getWatchedMovies() }.getOrNull()
+                if (!isCurrentScope(scope)) return
+                watchedMovies
                     ?.takeIf { it.isSuccessful }
                     ?.body().orEmpty()
                     .forEach { watched ->
@@ -273,8 +401,9 @@ class QueueManager @Inject constructor(
                         watched.movie.ids.tmdb?.let { excludedIds += normalizeId("tmdb:$it") }
                     }
 
-                runCatching { traktApi.getWatchedShows() }
-                    .getOrNull()
+                val watchedShows = runCatching { traktApi.getWatchedShows() }.getOrNull()
+                if (!isCurrentScope(scope)) return
+                watchedShows
                     ?.takeIf { it.isSuccessful }
                     ?.body().orEmpty()
                     .forEach { watched ->
@@ -309,8 +438,11 @@ class QueueManager @Inject constructor(
                 val countBeforeRecommendations = candidates.size
 
                 if (current.preferences.includeMovies) {
-                    runCatching { traktApi.getMovieRecommendations(50) }
-                        .getOrNull()
+                    val movieRecommendations = runCatching {
+                        traktApi.getMovieRecommendations(50)
+                    }.getOrNull()
+                    if (!isCurrentScope(scope)) return
+                    movieRecommendations
                         ?.takeIf { it.isSuccessful }
                         ?.body().orEmpty()
                         .forEach { movie ->
@@ -326,8 +458,11 @@ class QueueManager @Inject constructor(
                 }
 
                 if (current.preferences.includeEpisodes || current.preferences.includeWholeShows) {
-                    runCatching { traktApi.getShowRecommendations(50) }
-                        .getOrNull()
+                    val showRecommendations = runCatching {
+                        traktApi.getShowRecommendations(50)
+                    }.getOrNull()
+                    if (!isCurrentScope(scope)) return
+                    showRecommendations
                         ?.takeIf { it.isSuccessful }
                         ?.body().orEmpty()
                         .forEach { show ->
@@ -346,8 +481,9 @@ class QueueManager @Inject constructor(
                 // Watchlist is a fallback pool — only used when recommendations alone
                 // yield fewer than 10 candidates, to avoid overwhelming personalized results.
                 if (candidates.size - countBeforeRecommendations < 10) {
-                    runCatching { traktApi.getWatchlist(limit = 100) }
-                        .getOrNull()
+                    val watchlist = runCatching { traktApi.getWatchlist(limit = 100) }.getOrNull()
+                    if (!isCurrentScope(scope)) return
+                    watchlist
                         ?.takeIf { it.isSuccessful }
                         ?.body().orEmpty()
                         .forEach { watchlistItem ->
@@ -418,27 +554,31 @@ class QueueManager @Inject constructor(
                     }
             }
 
-            val latestDismissedKeys = dismissedSuggestionKeys()
+            if (!isCurrentScope(scope)) return
+            val latestDismissedKeys = dismissedSuggestionKeys(scope.profileId)
             val ranked = candidates
                 .asSequence()
                 .filter(::isEligible)
                 .distinctBy { it.stableKey }
                 .filter { it.stableKey !in latestDismissedKeys }
-                .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+                .filter { prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0) >= 0 }
                 .sortedWith(
-                    compareByDescending<QueueItem> { prefs.getInt("rating_${it.stableKey}", 0) }
-                        .thenBy { it.title }
+                    compareByDescending<QueueItem> {
+                        prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0)
+                    }.thenBy { it.title }
                 )
                 .take(SUGGESTION_COUNT * 4)
-                .map { it.copy(rating = prefs.getInt("rating_${it.stableKey}", 0)) }
+                .map {
+                    it.copy(rating = prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0))
+                }
                 .toList()
 
-            val latestState = _state.value
+            val latestState = stateForScope(scope) ?: return
             val existing = if (preserveExisting) {
                 latestState.suggestions
                     .filter(::isEligible)
                     .filter { it.stableKey !in latestDismissedKeys }
-                    .filter { prefs.getInt("rating_${it.stableKey}", 0) >= 0 }
+                    .filter { prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0) >= 0 }
             } else {
                 emptyList()
             }
@@ -447,38 +587,57 @@ class QueueManager @Inject constructor(
                 .distinctBy { it.stableKey }
                 .take(SUGGESTION_COUNT)
 
-            commit(latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+            commit(scope, latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
         } catch (_: Exception) {
-            _state.value = _state.value.copy(isRefreshingSuggestions = false)
+            setRefreshing(scope, false)
         }
     }
 
-    private fun dismissedSuggestionKeys(): Set<String> =
-        prefs.getStringSet(KEY_DISMISSED_SUGGESTIONS, emptySet())?.toSet().orEmpty()
+    private fun dismissedSuggestionKeys(profileId: Int): Set<String> =
+        prefs.getStringSet(
+            profileKey(profileId, KEY_DISMISSED_SUGGESTIONS),
+            emptySet()
+        )?.toSet().orEmpty()
 
-    private fun updatePreferences(block: QueuePreferences.() -> QueuePreferences) {
-        commit(_state.value.copy(preferences = _state.value.preferences.block()))
+    private fun updatePreferences(
+        scope: QueueScope,
+        block: QueuePreferences.() -> QueuePreferences
+    ) {
+        commit(scope, _state.value.copy(preferences = _state.value.preferences.block()))
     }
 
-    private fun commit(next: QueueState) {
-        _state.value = next
+    @Synchronized
+    private fun commit(scope: QueueScope, next: QueueState) {
         prefs.edit()
-            .putString(KEY_PREFERENCES, gson.toJson(next.preferences))
-            .putString(KEY_MANUAL, gson.toJson(next.manualItems))
-            .putString(KEY_SUGGESTIONS, gson.toJson(next.suggestions))
+            .putString(profileKey(scope.profileId, KEY_PREFERENCES), gson.toJson(next.preferences))
+            .putString(profileKey(scope.profileId, KEY_MANUAL), gson.toJson(next.manualItems))
+            .putString(profileKey(scope.profileId, KEY_SUGGESTIONS), gson.toJson(next.suggestions))
             .apply()
+
+        if (isCurrentScopeLocked(scope)) {
+            _state.value = next
+        }
     }
 
-    private fun load(): QueueState {
+    private fun load(profileId: Int): QueueState {
         val preferences = runCatching {
-            gson.fromJson(prefs.getString(KEY_PREFERENCES, null), QueuePreferences::class.java)
+            gson.fromJson(
+                prefs.getString(profileKey(profileId, KEY_PREFERENCES), null),
+                QueuePreferences::class.java
+            )
         }.getOrNull() ?: QueuePreferences()
         val listType = object : TypeToken<List<QueueItem>>() {}.type
         val manual: List<QueueItem> = runCatching {
-            gson.fromJson<List<QueueItem>>(prefs.getString(KEY_MANUAL, "[]"), listType)
+            gson.fromJson<List<QueueItem>>(
+                prefs.getString(profileKey(profileId, KEY_MANUAL), "[]"),
+                listType
+            )
         }.getOrNull().orEmpty()
         val suggestions: List<QueueItem> = runCatching {
-            gson.fromJson<List<QueueItem>>(prefs.getString(KEY_SUGGESTIONS, "[]"), listType)
+            gson.fromJson<List<QueueItem>>(
+                prefs.getString(profileKey(profileId, KEY_SUGGESTIONS), "[]"),
+                listType
+            )
         }.getOrNull().orEmpty()
         return QueueState(preferences, manual, suggestions)
     }
