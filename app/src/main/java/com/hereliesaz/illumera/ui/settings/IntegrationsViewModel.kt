@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.model.StremioAddonItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.sync.LibraryRefreshService
@@ -78,6 +79,7 @@ class IntegrationsViewModel @Inject constructor(
     private val stremioAuthManager: StremioAuthManager,
     private val addonRepository: AddonRepository,
     private val profileConfigurationManager: ProfileConfigurationManager,
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
     private val dao: AddonDao,
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
@@ -128,7 +130,7 @@ class IntegrationsViewModel @Inject constructor(
         }
         // Load TMDB settings from active profile
         viewModelScope.launch(Dispatchers.IO) {
-            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
             val profile = dao.getProfileById(profileId)
             if (profile != null) {
                 _uiState.value = _uiState.value.copy(
@@ -146,26 +148,25 @@ class IntegrationsViewModel @Inject constructor(
      */
     private suspend fun applyStremioAvatarToProfile() {
         val avatarUrl = stremioAuthManager.getStoredAvatarUrl() ?: return
-        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
-        val profile = dao.getProfileById(profileId) ?: return
-        dao.insertProfile(profile.copy(avatarRef = ProfileAssets.urlAvatarRef(avatarUrl)))
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return
+        profileMutationCoordinator.update(profileId) {
+            it.copy(avatarRef = ProfileAssets.urlAvatarRef(avatarUrl))
+        }
     }
 
     fun updateTmdbEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(tmdbEnabled = enabled))
+            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
+            profileMutationCoordinator.update(profileId) { it.copy(tmdbEnabled = enabled) }
         }
     }
 
     fun updateTmdbLanguage(language: String) {
         _uiState.value = _uiState.value.copy(tmdbLanguage = language)
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) dao.insertProfile(profile.copy(tmdbLanguage = language))
+            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
+            profileMutationCoordinator.update(profileId) { it.copy(tmdbLanguage = language) }
         }
     }
 
