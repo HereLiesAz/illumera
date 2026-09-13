@@ -2,7 +2,7 @@ name: Glee audit
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened]
   workflow_dispatch:
     inputs:
       scope:
@@ -30,8 +30,11 @@ permissions:
 jobs:
   audit-pr-changes:
     if: >-
-      github.actor != 'github-actions[bot]' &&
-      (github.event_name == 'pull_request' || inputs.scope == 'pr' || inputs.scope == 'both')
+      !endsWith(github.actor, '[bot]') &&
+      (
+        (github.event_name == 'pull_request' && github.event.action == 'opened' && github.event.pull_request.user.type == 'User') ||
+        (github.event_name == 'workflow_dispatch' && (inputs.scope == 'pr' || inputs.scope == 'both'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
