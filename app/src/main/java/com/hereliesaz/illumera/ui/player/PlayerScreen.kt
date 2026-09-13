@@ -98,6 +98,7 @@ fun PlayerScreen(
     }
     val uiState by playbackController.uiState.collectAsState()
     var suspectHandledForUrl by remember(videoUrl) { mutableStateOf(false) }
+    var handledTorrentFailureAttemptId by remember(movieId) { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, autoFallbackEnabled) {
         if (!autoFallbackEnabled || suspectHandledForUrl || !uiState.isReady || uiState.durationMs <= 0L) return@LaunchedEffect
@@ -280,6 +281,29 @@ fun PlayerScreen(
                 subtitleDelayMs = uiState.subtitleDelayMs
             )
         )
+    }
+
+    LaunchedEffect(
+        torrentProgress?.sourceError,
+        torrentProgress?.attemptId,
+        autoFallbackEnabled,
+        videoUrl,
+        onSuspectSource
+    ) {
+        val progress = torrentProgress ?: return@LaunchedEffect
+        if (!progress.sourceError || handledTorrentFailureAttemptId == progress.attemptId) {
+            return@LaunchedEffect
+        }
+        handledTorrentFailureAttemptId = progress.attemptId
+
+        if (autoFallbackEnabled && onSuspectSource != null) {
+            playbackController.pause()
+            onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR)
+        } else if (videoUrl.isBlank()) {
+            // Preserve the old no-fallback behavior for an initial torrent failure:
+            // leave the player and return to Details instead of hanging on an error overlay.
+            persistAndBack()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
