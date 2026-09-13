@@ -28,7 +28,8 @@ enum class PlaybackDurationStatus {
     NORMAL,
     DEBRID_DOWNLOADING,
     DEBRID_REMOVED,
-    IMPLAUSIBLY_SHORT
+    IMPLAUSIBLY_SHORT,
+    SOURCE_ERROR
 }
 
 @HiltViewModel
