@@ -76,6 +76,13 @@ jobs:
         working-directory: illumera
         run: |
           python .ci/prune-review-patcher.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.ci/finalize-hardening.py')
+          text = path.read_text()
+          text = text.replace('"canonicalLanguageTag",', '"normalizeLanguageToIso2",')
+          path.write_text(text)
+          PY
           python .ci/finalize-hardening.py
 
       - name: Run production quality gate
