@@ -51,6 +51,7 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import io.github.assrender.AssExtractorsFactory
@@ -798,7 +799,7 @@ class ExoPlayerBackend(
 
     private fun applyVideoResizeMode(pv: PlayerView, mode: Int) {
         val encodedZoom = mode == 5
-        pv.resizeMode = if (encodedZoom) 0 else mode
+        pv.resizeMode = if (encodedZoom) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode
 
         val contentFrame = pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_content_frame)
         val targetView = contentFrame ?: (pv.videoSurfaceView as? android.view.View)

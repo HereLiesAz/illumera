@@ -1,0 +1,3437 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.3.2" type="baseline" client="gradle" dependencies="false" name="AGP (9.3.2)" variant="all" version="9.3.2">
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="        String.format(&quot;%d:%02d:%02d&quot;, hours, minutes, seconds)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt"
+            line="3667"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="        String.format(&quot;%d:%02d&quot;, minutes, seconds)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt"
+            line="3669"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                            String.format(&quot;%.1f&quot;, it)"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt"
+            line="537"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="DefaultLocale"
+        message="Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+        errorLine1="                    imdbRating = enrichment.rating?.let { String.format(&quot;%.1f&quot;, it) },"
+        errorLine2="                                                          ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/HomeViewModel.kt"
+            line="470"
+            column="59"/>
+    </issue>
+
+    <issue
+        id="WrongConstant"
+        message="Must be one of: DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER"
+        errorLine1="                .setExtensionRendererMode(playbackSettings.decoderPriority)"
+        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1111"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="WrongConstant"
+        message="Must be one of: DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER"
+        errorLine1="                .setExtensionRendererMode(playbackSettings.decoderPriority)"
+        errorLine2="                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1115"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="LeanbackUsesWifi"
+        message="Requiring Wifi permissions limits app availability on TVs that support only Ethernet"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.ACCESS_WIFI_STATE&quot; />"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="6"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="QueryPermissionsNeeded"
+        message="Consider adding a `&lt;queries>` declaration to your manifest when calling this method; see https://g.co/dev/packagevisibility for details"
+        errorLine1="        return intent.resolveActivity(pm) != null"
+        errorLine2="                      ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1177"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/exit_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/home_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;575dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/imdb_logo.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/movies_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/palette_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/personalization_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/profile_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/puzzle_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/search_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;800dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/series_icon.xml"
+            line="2"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of com.android.application than 9.3.2 is available: 9.4.0"
+        errorLine1="agp = &quot;9.3.2&quot;"
+        errorLine2="      ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="2"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of com.android.library than 9.3.2 is available: 9.4.0"
+        errorLine1="agp = &quot;9.3.2&quot;"
+        errorLine2="      ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="2"
+            column="7"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose:compose-bom than 2026.08.00 is available: 2026.09.00"
+        errorLine1="composeBom = &quot;2026.08.00&quot;"
+        errorLine2="             ~~~~~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="7"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-compiler than 2.8.4 is available: 2.8.5"
+        errorLine1="room = &quot;2.8.4&quot;"
+        errorLine2="       ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="12"
+            column="8"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-ktx than 2.8.4 is available: 2.8.5"
+        errorLine1="room = &quot;2.8.4&quot;"
+        errorLine2="       ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="12"
+            column="8"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.room:room-runtime than 2.8.4 is available: 2.8.5"
+        errorLine1="room = &quot;2.8.4&quot;"
+        errorLine2="       ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="12"
+            column="8"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-common than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-container than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-datasource than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-datasource-okhttp than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-decoder than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-exoplayer than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-exoplayer-dash than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-exoplayer-hls than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-exoplayer-rtsp than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-exoplayer-smoothstreaming than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-extractor than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-session than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.media3:media3-ui than 1.10.1 is available: 1.11.1"
+        errorLine1="media3 = &quot;1.10.1&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="17"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose.animation:animation-core than 1.12.0 is available: 1.12.1"
+        errorLine1="animationCore = &quot;1.12.0&quot;"
+        errorLine2="                ~~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="18"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.annotation:annotation than 1.9.1 is available: 1.10.0"
+        errorLine1="annotation = &quot;1.9.1&quot;"
+        errorLine2="             ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="27"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlin.android than 2.4.0 is available: 2.4.20"
+        errorLine1="kotlin = &quot;2.4.0&quot;"
+        errorLine2="         ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="3"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlin.plugin.compose than 2.4.0 is available: 2.4.20"
+        errorLine1="kotlin = &quot;2.4.0&quot;"
+        errorLine2="         ~~~~~~~">
+        <location
+            file="$HOME/work/illumera/illumera/illumera/gradle/libs.versions.toml"
+            line="3"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                playerView?.subtitleView?.visibility = android.view.View.GONE"
+        errorLine2="                            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="143"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                        playerView?.subtitleView?.visibility = android.view.View.GONE"
+        errorLine2="                                    ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="163"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                        playerView?.subtitleView?.visibility = android.view.View.VISIBLE"
+        errorLine2="                                    ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="166"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                        p.setSeekParameters("
+        errorLine2="                          ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="260"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                            if (isTorrentStream) SeekParameters.NEXT_SYNC"
+        errorLine2="                                                                ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="261"
+            column="65"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                            else SeekParameters.CLOSEST_SYNC"
+        errorLine2="                                                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="262"
+            column="49"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        override fun onDownstreamFormatChanged("
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="328"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            eventTime: AnalyticsListener.EventTime,"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="329"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            mediaLoadData: MediaLoadData"
+        errorLine2="                           ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="330"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            if (mediaLoadData.trackType == C.TRACK_TYPE_VIDEO &amp;&amp; frameRateManager != null) {"
+        errorLine2="                              ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="333"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val rawRate = mediaLoadData.trackFormat?.frameRate ?: Format.NO_VALUE.toFloat()"
+        errorLine2="                                            ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="334"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            if (mediaLoadData.trackType != C.TRACK_TYPE_TEXT) return"
+        errorLine2="                              ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="345"
+            column="31"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            val trackFormat = mediaLoadData.trackFormat ?: return"
+        errorLine2="                                            ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="346"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)"
+        errorLine2="                            ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="394"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)"
+        errorLine2="                                                        ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="394"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.setSeekParameters(SeekParameters.CLOSEST_SYNC)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="548"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.setSeekParameters(SeekParameters.CLOSEST_SYNC)"
+        errorLine2="                                                    ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="548"
+            column="53"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        player.setSeekParameters("
+        errorLine2="               ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="562"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            if (isTorrentStream) SeekParameters.NEXT_SYNC"
+        errorLine2="                                                ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="563"
+            column="49"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            else SeekParameters.CLOSEST_SYNC"
+        errorLine2="                                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="564"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        player.setSeekParameters("
+        errorLine2="               ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="574"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            if (deltaMs >= 0L) SeekParameters.NEXT_SYNC else SeekParameters.PREVIOUS_SYNC"
+        errorLine2="                                              ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="575"
+            column="47"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            if (deltaMs >= 0L) SeekParameters.NEXT_SYNC else SeekParameters.PREVIOUS_SYNC"
+        errorLine2="                                                                            ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="575"
+            column="77"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val format = locator.trackGroup.getFormat(locator.trackIndex)"
+        errorLine2="                                                ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="730"
+            column="49"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    playerView?.subtitleView?.visibility = android.view.View.GONE"
+        errorLine2="                                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="736"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    playerView?.subtitleView?.visibility = android.view.View.VISIBLE"
+        errorLine2="                                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="739"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.resizeMode = if (encodedZoom) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode"
+        errorLine2="           ~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="802"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.resizeMode = if (encodedZoom) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode"
+        errorLine2="                                                                ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="802"
+            column="65"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val targetView = contentFrame ?: (pv.videoSurfaceView as? android.view.View)"
+        errorLine2="                                             ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="805"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.subtitleView?.setStyle("
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="816"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.subtitleView?.setStyle("
+        errorLine2="                         ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="816"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            CaptionStyleCompat("
+        errorLine2="            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="817"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                CaptionStyleCompat.EDGE_TYPE_OUTLINE,"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="821"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.subtitleView?.apply {"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="829"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, scaledSize)"
+        errorLine2="            ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="831"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            setApplyEmbeddedFontSizes(false)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="832"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        pv.subtitleView?.apply {"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="837"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            setBottomPaddingFraction(fraction)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="840"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val sv = playerView?.subtitleView ?: return"
+        errorLine2="            ~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="856"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val sv = playerView?.subtitleView ?: return"
+        errorLine2="                             ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="856"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            var builder: androidx.media3.common.text.Cue.Builder? = null"
+        errorLine2="                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="864"
+            column="26"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                builder = (builder ?: cue.buildUpon())"
+        errorLine2="                ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="871"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                builder = (builder ?: cue.buildUpon())"
+        errorLine2="                                          ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="871"
+            column="43"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    .setLine(newLine, androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)"
+        errorLine2="                     ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="872"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val b = builder ?: cue.buildUpon()"
+        errorLine2="                    ~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="876"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val b = builder ?: cue.buildUpon()"
+        errorLine2="                                       ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="876"
+            column="40"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    b.setSize(newSize)"
+        errorLine2="                      ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="880"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                        b.setPosition(newPosition)"
+        errorLine2="                          ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="890"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    b.setBitmapHeight(cue.bitmapHeight * scaleFactor)"
+        errorLine2="                      ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="894"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            builder?.build() ?: cue"
+        errorLine2="                     ~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="898"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        sv.post { sv.setCues(transformed) }"
+        errorLine2="                     ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="901"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val ytSourceFactory = DefaultMediaSourceFactory("
+        errorLine2="                                      ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1050"
+            column="39"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    com.hereliesaz.illumera.data.trailer.YoutubeChunkedDataSourceFactory()"
+        errorLine2="                                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1051"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val videoSource = ytSourceFactory.createMediaSource(MediaItem.fromUri(source.url))"
+        errorLine2="                                                  ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1053"
+            column="51"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val audioSource = ytSourceFactory.createMediaSource(MediaItem.fromUri(request.separateAudioUrl))"
+        errorLine2="                                                  ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1054"
+            column="51"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                MergingMediaSource(videoSource, audioSource)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1055"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.setMediaSource(finalMediaSource)"
+        errorLine2="                   ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1068"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val trackSelector = DefaultTrackSelector(appContext).apply {"
+        errorLine2="            ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1085"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val trackSelector = DefaultTrackSelector(appContext).apply {"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1085"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            setParameters("
+        errorLine2="            ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1086"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                buildUponParameters()"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1087"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true)"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1088"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                    .setTunnelingEnabled(playbackSettings.tunnelingEnabled)"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1089"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val loadControl = if (isTorrentStream) {"
+        errorLine2="            ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1093"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultLoadControl.Builder()"
+        errorLine2="                               ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1096"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setBufferDurationsMs("
+        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1097"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .build()"
+        errorLine2="                 ~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1103"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultLoadControl.Builder().build()"
+        errorLine2="                               ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1105"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultLoadControl.Builder().build()"
+        errorLine2="                                         ~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1105"
+            column="42"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val renderersFactory = if (playbackSettings.assRendererEnabled) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1108"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            AssRenderersFactory(appContext, handler)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1110"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setExtensionRendererMode(playbackSettings.decoderPriority)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1111"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)"
+        errorLine2="                 ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1112"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setExtensionRendererMode(playbackSettings.decoderPriority)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1115"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)"
+        errorLine2="                 ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1116"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultMediaSourceFactory(appContext, AssExtractorsFactory(handler))"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1121"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultMediaSourceFactory(appContext, AssExtractorsFactory(handler))"
+        errorLine2="                                                  ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1121"
+            column="51"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1123"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val player = ExoPlayer.Builder(appContext, renderersFactory)"
+        errorLine2="                               ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1126"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setTrackSelector(trackSelector)"
+        errorLine2="             ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1127"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setLoadControl(loadControl)"
+        errorLine2="             ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1129"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1140"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1140"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF"
+        errorLine2="                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1140"
+            column="53"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="    private fun createExtractorsFactory(): DefaultExtractorsFactory {"
+        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1180"
+            column="44"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        return DefaultExtractorsFactory()"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1181"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)"
+        errorLine2="             ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1182"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)"
+        errorLine2="                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1182"
+            column="64"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setTsExtractorTimestampSearchBytes(1_500 * TsExtractor.TS_PACKET_SIZE)"
+        errorLine2="             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1183"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            .setTsExtractorTimestampSearchBytes(1_500 * TsExtractor.TS_PACKET_SIZE)"
+        errorLine2="                                                                    ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1183"
+            column="69"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            return DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1191"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .createMediaSource(mediaItem)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1192"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            okHttpFactory.setDefaultRequestProperties(mapOf(&quot;Authorization&quot; to authorization))"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1207"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                DefaultMediaSourceFactory(okHttpFactory, AssExtractorsFactory(handler))"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1220"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                DefaultMediaSourceFactory(okHttpFactory, AssExtractorsFactory(handler))"
+        errorLine2="                                                         ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1220"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                DefaultMediaSourceFactory(okHttpFactory)"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1222"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            return factory.createMediaSource(mediaItem)"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1224"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        val mainSource = if (isHls) {"
+        errorLine2="            ~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1238"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            HlsMediaSource.Factory(okHttpFactory)"
+        errorLine2="                           ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1239"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .setAllowChunklessPreparation(true)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1240"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .createMediaSource(mainMediaItem)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1241"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            DashMediaSource.Factory(okHttpFactory)"
+        errorLine2="                            ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1243"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .createMediaSource(mainMediaItem)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1244"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            SingleSampleMediaSource.Factory(okHttpFactory)"
+        errorLine2="                                    ~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1250"
+            column="37"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                .createMediaSource(config, C.TIME_UNSET)"
+        errorLine2="                 ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1251"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        return MergingMediaSource(mainSource, *subtitleSources.toTypedArray())"
+        errorLine2="               ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1253"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            player.setMediaSource(mediaSource)"
+        errorLine2="                   ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1497"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            livePlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1534"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            livePlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC)"
+        errorLine2="                                                        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1534"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="            for (trackIndex in 0 until mediaTrackGroup.length) {"
+        errorLine2="                                                       ~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1552"
+            column="56"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="                val format = mediaTrackGroup.getFormat(trackIndex)"
+        errorLine2="                                             ~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1553"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1=") : DefaultRenderersFactory(context) {"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2217"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1=") : DefaultRenderersFactory(context) {"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2217"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="    override fun buildTextRenderers("
+        errorLine2="                 ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2218"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        output: androidx.media3.exoplayer.text.TextOutput,"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2220"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        out: ArrayList&lt;Renderer>"
+        errorLine2="                       ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2223"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)"
+        errorLine2="              ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2226"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="    renderer: Renderer,"
+        errorLine2="              ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2234"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1=") : ForwardingRenderer(renderer) {"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2236"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1=") : ForwardingRenderer(renderer) {"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2236"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="    override fun render(positionUs: Long, elapsedRealtimeUs: Long) {"
+        errorLine2="                 ~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2237"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="UnsafeOptInUsageError"
+        message="This declaration is opt-in and its usage should be marked with `@androidx.media3.common.util.UnstableApi` or `@OptIn(markerClass = androidx.media3.common.util.UnstableApi.class)`"
+        errorLine1="        super.render(adjustedPositionUs, elapsedRealtimeUs)"
+        errorLine2="              ~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2239"
+            column="15"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/cast/CastDetailScreen.kt"
+            line="286"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="            val isCompactDashboardEditor = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/DashboardEditorScreen.kt"
+            line="198"
+            column="44"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt"
+            line="1276"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt"
+            line="1427"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt"
+            line="1519"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/components/DetailsSkeleton.kt"
+            line="25"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val isCompactHome = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/HomeScreen.kt"
+            line="127"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = configuration.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/HubRow.kt"
+            line="124"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = configuration.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="159"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="            val isCompact = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt"
+            line="518"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenHeightDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)"
+        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt"
+            line="1213"
+            column="38"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenHeightDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt"
+            line="1950"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="        val isCompactProfiles = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/profiles/ProfileScreen.kt"
+            line="217"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidthDp = LocalConfiguration.current.screenWidthDp"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/util/ResponsiveDialog.kt"
+            line="16"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val isCompact = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/SettingsScreen.kt"
+            line="78"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val screenWidth = LocalConfiguration.current.screenWidthDp.dp"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/studio/StudioDetailScreen.kt"
+            line="298"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val isCompactThemeEditor = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeEditorScreen.kt"
+            line="173"
+            column="32"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="        val isCompactTheme = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeScreen.kt"
+            line="205"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="ConfigurationScreenWidthHeight"
+        message="Using Configuration.screenWidthDp instead of LocalWindowInfo.current.containerSize"
+        errorLine1="    val isCompactWatchlist = LocalConfiguration.current.screenWidthDp &lt; 600"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistScreen.kt"
+            line="128"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt"
+            line="191"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/BasePlayerScaffold.kt"
+            line="3082"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/DashboardEditorScreen.kt"
+            line="1821"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be named modifier"
+        errorLine1="    thumbnailModifier: Modifier = Modifier,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/GlassSidebar.kt"
+            line="639"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    thumbnailModifier: Modifier = Modifier,"
+        errorLine2="    ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/GlassSidebar.kt"
+            line="639"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier,"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/GlassSidebar.kt"
+            line="962"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/navigation/NavDrawer.kt"
+            line="345"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/navigation/NavDrawer.kt"
+            line="457"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/search/SearchScreen.kt"
+            line="828"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be named modifier"
+        errorLine1="    keyModifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/SettingsSubScreens.kt"
+            line="964"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeEditorScreen.kt"
+            line="519"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="ModifierParameter"
+        message="Modifier parameter should be the first optional parameter"
+        errorLine1="    modifier: Modifier = Modifier"
+        errorLine2="    ~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/navigation/TopNavigationBar.kt"
+            line="528"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="Aligned16KB"
+        message="The native library `arm64-v8a/libmpeghJNI.so` (from `__local_aars__:/home/runner/work/illumera/illumera/illumera/playbackcore/libs/lib-decoder-mpegh-release.aar:unspecified`) is not 16 KB aligned">
+        <location
+            file="$GRADLE_USER_HOME/caches/9.7.1/transforms/72f28ae1f6a0cb9c2fe1b450a485f64a/transformed/lib-decoder-mpegh-release/jni/arm64-v8a/libmpeghJNI.so"/>
+    </issue>
+
+    <issue
+        id="Aligned16KB"
+        message="The native library `arm64-v8a/libmpeghJNI.so` (from `__local_aars__:/home/runner/work/illumera/illumera/illumera/playbackcore/libs/lib-decoder-mpegh-release.aar:unspecified`) is not 16 KB aligned">
+        <location
+            file="$GRADLE_USER_HOME/caches/9.7.1/transforms/72f28ae1f6a0cb9c2fe1b450a485f64a/transformed/lib-decoder-mpegh-release/jni/arm64-v8a/libmpeghJNI.so"/>
+    </issue>
+
+    <issue
+        id="Aligned16KB"
+        message="The native library `arm64-v8a/libmpeghJNI.so` (from `__local_aars__:/home/runner/work/illumera/illumera/illumera/playbackcore/libs/lib-decoder-mpegh-release.aar:unspecified`) is not 16 KB aligned">
+        <location
+            file="$GRADLE_USER_HOME/caches/9.7.1/transforms/72f28ae1f6a0cb9c2fe1b450a485f64a/transformed/lib-decoder-mpegh-release/jni/arm64-v8a/libmpeghJNI.so"/>
+    </issue>
+
+    <issue
+        id="ChromeOsAbiSupport"
+        message="Missing x86_64 ABI support for ChromeOS"
+        errorLine1="            abiFilters += listOf(&quot;arm64-v8a&quot;, &quot;armeabi-v7a&quot;)"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="70"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="InsecureBaseConfiguration"
+        message="Insecure Base Configuration"
+        errorLine1="    &lt;base-config cleartextTrafficPermitted=&quot;true&quot; />"
+        errorLine2="                                            ~~~~">
+        <location
+            file="src/main/res/xml/network_security_config.xml"
+            line="5"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="DataExtractionRules"
+        message="The attribute `android:allowBackup` is deprecated from Android 12 and higher and may be removed in future versions. Consider adding the attribute `android:dataExtractionRules` specifying an `@xml` resource which configures cloud backups and device transfers on Android 12 and higher."
+        errorLine1="        android:allowBackup=&quot;false&quot;"
+        errorLine2="                             ~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="21"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is never &lt; 26"
+        errorLine1="        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.M) return false"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/FrameRateManager.kt"
+            line="41"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is never &lt; 26"
+        errorLine1="        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.M) return"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/FrameRateManager.kt"
+            line="73"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is never &lt; 26"
+        errorLine1="        if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.M) return null"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/FrameRateManager.kt"
+            line="90"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 26"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/sync/LibraryRefreshService.kt"
+            line="275"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 26"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/sync/LibraryRefreshService.kt"
+            line="288"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 26"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/torrent/TorrentService.kt"
+            line="63"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 26. Merge all the resources in this folder into `mipmap-anydpi`.">
+        <location
+            file="src/main/res/mipmap-anydpi-v26"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="    LaunchedEffect(lastFocusedIndex, gridState.layoutInfo.totalItemsCount) {"
+        errorLine2="                                               ~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/GridViewScreen.kt"
+            line="206"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                        .then(if (pivotFocusRequester != null &amp;&amp; index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester) else Modifier)"
+        errorLine2="                                                                                    ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/HubRow.kt"
+            line="185"
+            column="85"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                            else if (pivotFocusRequester != null &amp;&amp; index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)"
+        errorLine2="                                                                                       ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="437"
+            column="88"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                            else if (pivotFocusRequester != null &amp;&amp; index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)"
+        errorLine2="                                                                                       ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="457"
+            column="88"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="            val currentSectionStart = (listState.firstVisibleItemIndex / sectionSize) * sectionSize"
+        errorLine2="                                                 ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="598"
+            column="50"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                                else if (pivotFocusRequester != null &amp;&amp; scrollIndex == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)"
+        errorLine2="                                                                                                 ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="683"
+            column="98"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                                if (pivotFocusRequester != null &amp;&amp; scrollIndex == listState.firstVisibleItemIndex) {"
+        errorLine2="                                                                                            ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="711"
+            column="93"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                                else if (pivotFocusRequester != null &amp;&amp; index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)"
+        errorLine2="                                                                                           ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="888"
+            column="92"/>
+    </issue>
+
+    <issue
+        id="FrequentlyChangingValue"
+        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
+        errorLine1="                                    if (pivotFocusRequester != null &amp;&amp; index == listState.firstVisibleItemIndex) {"
+        errorLine2="                                                                                          ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/home/InfiniteLoopRow.kt"
+            line="934"
+            column="91"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="                var restoreIndex by rememberSaveable { mutableStateOf(-1) }"
+        errorLine2="                                                       ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/cast/CastDetailScreen.kt"
+            line="103"
+            column="56"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="    var restoreIndex by rememberSaveable { mutableStateOf(-1) }"
+        errorLine2="                                           ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/details/DetailsScreen.kt"
+            line="229"
+            column="44"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="            var trailerReturnToken by rememberSaveable { mutableStateOf(0) }"
+        errorLine2="                                                         ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="894"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
+        errorLine1="                        var lastBackPressMs by remember { mutableStateOf(0L) }"
+        errorLine2="                                                          ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="980"
+            column="59"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
+        errorLine1="                                var lastBackPressMs by remember { mutableStateOf(0L) }"
+        errorLine2="                                                                  ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="1096"
+            column="67"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
+        errorLine1="    var lastScrobblePositionMs by remember { mutableStateOf(0L) }"
+        errorLine2="                                             ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/PlayerScreen.kt"
+            line="126"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
+        errorLine1="    var lastScrobbleDurationMs by remember { mutableStateOf(0L) }"
+        errorLine2="                                             ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/PlayerScreen.kt"
+            line="127"
+            column="46"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableIntStateOf` instead of `mutableStateOf`"
+        errorLine1="                var restoreIndex by rememberSaveable { mutableStateOf(-1) }"
+        errorLine2="                                                       ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/studio/StudioDetailScreen.kt"
+            line="107"
+            column="56"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var hue by remember(selectedSlot) { mutableStateOf(h) }"
+        errorLine2="                                        ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeEditorScreen.kt"
+            line="130"
+            column="41"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var saturation by remember(selectedSlot) { mutableStateOf(s) }"
+        errorLine2="                                               ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeEditorScreen.kt"
+            line="131"
+            column="48"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var lightness by remember(selectedSlot) { mutableStateOf(l) }"
+        errorLine2="                                              ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/ThemeEditorScreen.kt"
+            line="132"
+            column="47"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.layout.exo_player_view` appears to be unused"
+        errorLine1="&lt;merge xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
+        errorLine2="^">
+        <location
+            file="src/main/res/layout/exo_player_view.xml"
+            line="2"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.raw.illumera` appears to be unused">
+        <location
+            file="src/main/res/raw/illumera.png"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.drawable.watchlist_icon_filled` appears to be unused"
+        errorLine1="&lt;vector xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
+        errorLine2="^">
+        <location
+            file="src/main/res/drawable/watchlist_icon_filled.xml"
+            line="1"
+            column="1"/>
+    </issue>
+
+    <issue
+        id="UseOfNonLambdaOffsetOverload"
+        message="State backed values should use the lambda overload of Modifier.offset"
+        errorLine1="                .offset(x = offsetDp.dp)"
+        errorLine2="                 ~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/components/DetailsSkeleton.kt"
+            line="41"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
+        <location
+            file="src/main/res/mipmap-hdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
+        <location
+            file="src/main/res/mipmap-mdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
+        <location
+            file="src/main/res/mipmap-xhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
+        <location
+            file="src/main/res/mipmap-xxhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconLauncherShape"
+        message="Launcher icons should not fill every pixel of their square region; see the design guide for details">
+        <location
+            file="src/main/res/mipmap-xxxhdpi/ic_launcher.png"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_1.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_1.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_10.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_10.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_11.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_11.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_12.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_12.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_13.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_13.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_14.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_14.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_15.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_15.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_16.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_16.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_2.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_2.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_3.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_3.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_4.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_4.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_5.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_5.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_6.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_6.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_7.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_7.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_8.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_8.webp"/>
+    </issue>
+
+    <issue
+        id="IconLocation"
+        message="Found bitmap drawable `res/drawable/avatar_9.webp` in densityless folder">
+        <location
+            file="src/main/res/drawable/avatar_9.webp"/>
+    </issue>
+
+    <issue
+        id="IconMissingDensityFolder"
+        message="Missing density variation folders in `src/main/res`: drawable-hdpi, drawable-mdpi, drawable-xhdpi">
+        <location
+            file="src/main/res"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true"
+        errorLine2="                            ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/addons/AddonCatalogDialog.kt"
+            line="435"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/repository/AddonCatalogRepository.kt"
+            line="53"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/repository/AddonCatalogRepository.kt"
+            line="239"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/repository/AddonCatalogRepository.kt"
+            line="271"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(url) }.getOrNull()"
+        errorLine2="                                ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/repository/AddonCatalogRepository.kt"
+            line="281"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                val uri = Uri.parse(normalizedInput)"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/addons/AddonsViewModel.kt"
+            line="226"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/addons/AddonsViewModel.kt"
+            line="263"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putBoolean(KEY_UPDATE_POPUP_ENABLED, enabled).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/update/AppUpdateManager.kt"
+            line="65"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                Uri.parse(url)"
+        errorLine2="                ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/update/AppUpdateManager.kt"
+            line="308"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                    prefs.edit()"
+        errorLine2="                    ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/debrid/DebridManager.kt"
+            line="113"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/debrid/DebridManager.kt"
+            line="137"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/debrid/DebridManager.kt"
+            line="148"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putString(key(seriesId), &quot;$season:$episode&quot;).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/EpisodeBrowseStore.kt"
+            line="21"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.url))"
+        errorLine2="                                                            ~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1009"
+            column="61"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val sourceUri = Uri.parse(sourceUrl)"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="1187"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(raw) }.getOrNull()"
+        errorLine2="                                ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/player/base/ExoPlayerBackend.kt"
+            line="2054"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))"
+        errorLine2="                                                         ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt"
+            line="2372"
+            column="58"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="            val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()"
+        errorLine2="                                       ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/remote_input/LinkServer.kt"
+            line="45"
+            column="40"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                val uri = Uri.parse(rawUrl)"
+        errorLine2="                          ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/remote_input/LinkServer.kt"
+            line="225"
+            column="27"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return null"
+        errorLine2="                            ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="160"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    val uri = runCatching { Uri.parse(rawUrl) }.getOrNull() ?: return null"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="184"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val scheme = Uri.parse(url).scheme?.lowercase()"
+        errorLine2="                     ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="243"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="            setDataAndType(Uri.parse(url), &quot;video/*&quot;)"
+        errorLine2="                           ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="249"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return trimmed"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/MainActivity.kt"
+            line="567"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX function `createBitmap` instead?"
+        errorLine1="        val bitmap = Bitmap.createBitmap(NOISE_SIZE, NOISE_SIZE, Bitmap.Config.ALPHA_8)"
+        errorLine2="                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/ui/components/NoiseOverlay.kt"
+            line="23"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().apply {"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/PlaybackTrackSelectionStore.kt"
+            line="55"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/PlaybackTrackSelectionStore.kt"
+            line="85"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        val editor = prefs.edit()"
+        errorLine2="                     ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/PlaybackTrackSelectionStore.kt"
+            line="94"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putStringSet(KEY_PENDING_SETUP_PROFILES, updated).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt"
+            line="80"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putStringSet(KEY_PENDING_SETUP_PROFILES, updated).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt"
+            line="89"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().remove(KEY_LAST_ACTIVE_PROFILE_ID).apply()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt"
+            line="264"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().remove(KEY_LAST_ACTIVE_PROFILE_ID).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt"
+            line="389"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/profile/ProfileConfigurationManager.kt"
+            line="393"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        val editor = prefs.edit()"
+        errorLine2="                     ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt"
+            line="168"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt"
+            line="268"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putInt(ratingKey(scope.profileId, key), normalized).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt"
+            line="281"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                prefs.edit()"
+        errorLine2="                ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt"
+            line="367"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/queue/QueueManager.kt"
+            line="617"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().apply {"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/SourceSelectionStore.kt"
+            line="23"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/SourceSelectionStore.kt"
+            line="35"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putBoolean(sourceListDisabledKey(scopedId), disabled).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/SourceSelectionStore.kt"
+            line="43"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().putString(excludedSourcesKey(scopedId), excludedIds.joinToString(&quot;,&quot;)).apply()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/SourceSelectionStore.kt"
+            line="53"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        val editor = prefs.edit()"
+        errorLine2="                     ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/player/SourceSelectionStore.kt"
+            line="64"
+            column="22"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX function `createBitmap` instead?"
+        errorLine1="                val bitmap = Bitmap.createBitmap(POSTER_WIDTH, POSTER_HEIGHT, Bitmap.Config.ARGB_8888)"
+        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/StartupOptimizer.kt"
+            line="69"
+            column="30"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().apply {"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="175"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().apply {"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="197"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit().apply {"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="221"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="236"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().apply {"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="252"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().apply {"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="284"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().apply {"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="342"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit().apply {"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="373"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        encryptedPrefs?.edit()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+            line="423"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/auth/StremioLibrarySyncManager.kt"
+            line="193"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(urlValue) }.getOrNull() ?: return null"
+        errorLine2="                                ~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/repository/SubtitleRepository.kt"
+            line="243"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)"
+        errorLine2="        ^">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/torrent/TorrentDeviceTuner.kt"
+            line="95"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="                        prefs.edit()"
+        errorLine2="                        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/torrent/TorrentTrackers.kt"
+            line="81"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false"
+        errorLine2="                                ~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/torrent/TorrentTrackers.kt"
+            line="116"
+            column="33"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trakt/TraktAuthManager.kt"
+            line="97"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trakt/TraktAuthManager.kt"
+            line="124"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="            prefs.edit()"
+        errorLine2="            ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trakt/TraktAuthManager.kt"
+            line="171"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        prefs.edit()"
+        errorLine2="        ~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trakt/TraktAuthManager.kt"
+            line="185"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="            val uri = Uri.parse(normalized)"
+        errorLine2="                      ~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trailer/YouTubeExtractor.kt"
+            line="260"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="    private fun hasNParam(url: String) = runCatching { !Uri.parse(url).getQueryParameter(&quot;n&quot;).isNullOrBlank() }.getOrDefault(false)"
+        errorLine2="                                                        ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trailer/YouTubeExtractor.kt"
+            line="358"
+            column="57"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="        val uri = Uri.parse(url)"
+        errorLine2="                  ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/hereliesaz/illumera/data/trailer/YouTubeExtractor.kt"
+            line="376"
+            column="19"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    testImplementation(&quot;junit:junit:4.13.2&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="181"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="ContentDescription"
+        message="Missing `contentDescription` attribute on image"
+        errorLine1="        &lt;ImageView"
+        errorLine2="         ~~~~~~~~~">
+        <location
+            file="src/main/res/layout/exo_player_view.xml"
+            line="19"
+            column="10"/>
+    </issue>
+
+</issues>

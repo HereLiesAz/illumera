@@ -70,12 +70,20 @@ class StreamSortingService @Inject constructor() {
             secondary = profile?.preferredAudioLanguageSecondary.orEmpty()
         )
         if (languages.isEmpty()) return true
-        // filename and name are authoritative language sources — no audio cue required
-        val authoritativeText = listOfNotNull(stream.behaviorHints?.filename, stream.name).joinToString(" ")
-        if (authoritativeText.isNotBlank() && languages.any { containsLanguageAlias(authoritativeText, it) }) return true
-        // title/description require a nearby audio cue to avoid false positives from content titles
-        val contextualText = listOfNotNull(stream.title, stream.description).joinToString(" ")
-        return contextualText.isNotBlank() && languages.any { containsAudioLanguage(contextualText, it) }
+
+        val authoritativeFields = listOfNotNull(
+            stream.behaviorHints?.filename?.takeIf { it.isNotBlank() },
+            stream.name?.takeIf { it.isNotBlank() }
+        )
+        val contextualText = listOfNotNull(
+            stream.title?.takeIf { it.isNotBlank() },
+            stream.description?.takeIf { it.isNotBlank() }
+        ).joinToString(" ")
+
+        return languages.any { language ->
+            authoritativeFields.any { field -> containsAuthoritativeAudioLanguage(field, language) } ||
+                containsAudioLanguage(contextualText, language)
+        }
     }
 
     private fun matchesSubtitleLanguageRequirement(stream: Stream, profile: ProfileEntity?): Boolean {
@@ -124,6 +132,13 @@ class StreamSortingService @Inject constructor() {
         if (actual == "und" || wanted == "und") return false
         return actual.equals(wanted, ignoreCase = true) ||
             actual.substringBefore('-').equals(wanted.substringBefore('-'), ignoreCase = true)
+    }
+
+    private fun containsAuthoritativeAudioLanguage(text: String, language: String): Boolean {
+        return languageAliases(language)
+            .asSequence()
+            .filter { alias -> alias.length > 2 }
+            .any { alias -> languageMatches(text, alias).any() }
     }
 
     private fun containsAudioLanguage(text: String, language: String): Boolean {
