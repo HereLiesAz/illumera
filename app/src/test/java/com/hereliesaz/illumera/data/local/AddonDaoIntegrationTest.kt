@@ -1,8 +1,6 @@
 package com.hereliesaz.illumera.data.local
 
-import android.content.Context
 import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.RecentSearchEntity
@@ -20,6 +18,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class AddonDaoIntegrationTest {
@@ -28,8 +27,7 @@ class AddonDaoIntegrationTest {
 
     @Before
     fun setUp() {
-        // ApplicationProvider avoids Robolectric's generic getApplication bridge under Kotlin 2.4+.
-        val context = ApplicationProvider.getApplicationContext<Context>()
+        val context = RuntimeEnvironment.getApplication()
         db = Room.inMemoryDatabaseBuilder(context, LumeraDatabase::class.java)
             .allowMainThreadQueries()
             .build()
