@@ -69,7 +69,9 @@ jobs:
 
       - name: Apply direct production hardening
         working-directory: illumera
-        run: python .ci/finish-production-hardening.py
+        run: |
+          python .ci/repair-hardening-transformer.py
+          python .ci/finish-production-hardening.py
 
       - name: Run production quality gate
         working-directory: illumera
@@ -81,7 +83,7 @@ jobs:
         working-directory: illumera
         run: |
           set -euo pipefail
-          rm -f .ci/apply-recent-review-fixes.py .ci/finalize-hardening.py .ci/prune-review-patcher.py .ci/finish-production-hardening.py
+          rm -f .ci/apply-recent-review-fixes.py .ci/finalize-hardening.py .ci/prune-review-patcher.py .ci/finish-production-hardening.py .ci/repair-hardening-transformer.py
           rm -f .github/workflows/temp-recent-review-fixes.yml
           rmdir .ci 2>/dev/null || true
           git config user.name "github-actions[bot]"
