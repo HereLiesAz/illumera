@@ -650,7 +650,7 @@ fun TopNavProfileAvatar(
                         overflow = TextOverflow.Visible
                     )
                     Text(
-                        text = "Change Profile",
+                        text = "Log Out / Switch Profile",
                         fontSize = 10.sp,
                         color = contentColor.copy(alpha = 0.7f),
                         maxLines = 1,

@@ -5,7 +5,7 @@ illumera is based on [Lumera](https://github.com/HereLiesAz/Lumera).
 A feature-rich Android TV streaming application built with Kotlin and Jetpack Compose for TV.
 
 Browse, discover, and stream content from Stremio-compatible addons.
-Connect your Stremio account — with email/password or Facebook — to instantly
+Connect your Stremio account — with email/password, phone handoff, Facebook, or Apple — to instantly
 import your existing addon collection and sync Continue Watching progress.
 
 ![illumera](screenshots/banner.png)

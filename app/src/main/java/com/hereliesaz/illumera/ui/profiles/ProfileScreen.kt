@@ -1,14 +1,19 @@
 package com.hereliesaz.illumera.ui.profiles
 
+import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
@@ -23,6 +28,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,6 +44,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
@@ -48,6 +56,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -61,6 +70,9 @@ import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidInput
 import com.hereliesaz.illumera.ui.components.CenterCarouselRow
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
+import com.hereliesaz.illumera.remote_input.IntegrationServerManager
+import com.hereliesaz.illumera.remote_input.ServerInfo
+import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
 import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import com.hereliesaz.illumera.ui.util.rememberIsTvDevice
 import com.hereliesaz.illumera.ui.theme.LumeraTheme
@@ -81,6 +93,7 @@ fun ProfileScreen(
 ) {
     val wizardStep by viewModel.wizardStep.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()
 
     Box(
         modifier = Modifier
@@ -145,7 +158,7 @@ fun WelcomeView(onStart: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "WELCOME TO LUMERA",
+            "WELCOME TO ILLUMERA",
             style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
             color = Color.White
         )
@@ -334,15 +347,22 @@ fun ProfileSelectorView(
         StremioConnectDialog(
             profileName = setupTarget.name,
             isLoading = isInitializingProfile,
+            socialLoginState = setupSocialLoginState,
             onSkip = {
+                viewModel.resetSetupSocialLoginState()
                 viewModel.initializeProfileFromScratch(setupTarget.id) {
                     showStremioConnectDialog = false
                     setupTargetProfile = null
                     onSelect(setupTarget)
                 }
             },
-            onConnect = { email, password, onError ->
-                viewModel.initializeProfileFromScratchWithStremio(setupTarget.id, email, password) { success, message ->
+            onConnect = { email, password, useAccountAvatar, onError ->
+                viewModel.initializeProfileFromScratchWithStremio(
+                    setupTarget.id,
+                    email,
+                    password,
+                    useAccountAvatar
+                ) { success, message ->
                     if (success) {
                         showStremioConnectDialog = false
                         setupTargetProfile = null
@@ -352,7 +372,33 @@ fun ProfileSelectorView(
                     }
                 }
             },
+            onFacebookLogin = { useAccountAvatar ->
+                viewModel.initializeProfileFromScratchWithFacebook(
+                    setupTarget.id,
+                    useAccountAvatar
+                ) { success, _ ->
+                    if (success) {
+                        showStremioConnectDialog = false
+                        setupTargetProfile = null
+                        onSelect(setupTarget)
+                    }
+                }
+            },
+            onAppleLogin = { useAccountAvatar ->
+                viewModel.initializeProfileFromScratchWithApple(
+                    setupTarget.id,
+                    useAccountAvatar
+                ) { success, _ ->
+                    if (success) {
+                        showStremioConnectDialog = false
+                        setupTargetProfile = null
+                        onSelect(setupTarget)
+                    }
+                }
+            },
+            onResetSocialLogin = { viewModel.resetSetupSocialLoginState() },
             onDismiss = {
+                viewModel.resetSetupSocialLoginState()
                 viewModel.initializeProfileFromScratch(setupTarget.id) {
                     showStremioConnectDialog = false
                     setupTargetProfile = null
@@ -535,21 +581,95 @@ private fun ScratchConfirmDialog(
 private fun StremioConnectDialog(
     profileName: String,
     isLoading: Boolean,
+    socialLoginState: SetupSocialLoginState,
     onSkip: () -> Unit,
-    onConnect: (email: String, password: String, onError: (String) -> Unit) -> Unit,
+    onConnect: (email: String, password: String, useAccountAvatar: Boolean, onError: (String) -> Unit) -> Unit,
+    onFacebookLogin: (useAccountAvatar: Boolean) -> Unit,
+    onAppleLogin: (useAccountAvatar: Boolean) -> Unit,
+    onResetSocialLogin: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var useAccountAvatar by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val isTvDevice = rememberIsTvDevice()
+    var serverInfo by remember { mutableStateOf<ServerInfo?>(null) }
+    var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val serverManager = remember { IntegrationServerManager() }
+    val scope = rememberCoroutineScope()
+    val currentOnConnect by rememberUpdatedState(onConnect)
+    val currentUseAccountAvatar by rememberUpdatedState(useAccountAvatar)
+
+    LaunchedEffect(isTvDevice, socialLoginState) {
+        if (isTvDevice && socialLoginState is SetupSocialLoginState.Idle) {
+            val info = serverManager.startServer { receivedEmail, receivedPassword ->
+                scope.launch {
+                    currentOnConnect(
+                        receivedEmail,
+                        receivedPassword,
+                        currentUseAccountAvatar
+                    ) { errorMessage = it }
+                }
+            }
+            if (info != null) {
+                serverInfo = info
+                qrBitmap = generateQrCodeBitmap(info.url)
+            }
+        } else {
+            serverManager.stopServer()
+            serverInfo = null
+            qrBitmap = null
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { serverManager.stopServer() }
+    }
+
+    when (val socialState = socialLoginState) {
+        is SetupSocialLoginState.WaitingForUser -> {
+            SetupSocialLoginDialog(
+                provider = socialState.provider,
+                url = socialState.url,
+                errorMessage = null,
+                onRetry = {
+                    when (socialState.provider) {
+                        SetupSocialProvider.FACEBOOK -> onFacebookLogin(useAccountAvatar)
+                        SetupSocialProvider.APPLE -> onAppleLogin(useAccountAvatar)
+                    }
+                },
+                onBack = onResetSocialLogin
+            )
+            return
+        }
+        is SetupSocialLoginState.Error -> {
+            SetupSocialLoginDialog(
+                provider = socialState.provider,
+                url = null,
+                errorMessage = socialState.message,
+                onRetry = {
+                    when (socialState.provider) {
+                        SetupSocialProvider.FACEBOOK -> onFacebookLogin(useAccountAvatar)
+                        SetupSocialProvider.APPLE -> onAppleLogin(useAccountAvatar)
+                    }
+                },
+                onBack = onResetSocialLogin
+            )
+            return
+        }
+        SetupSocialLoginState.Idle -> Unit
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
-                .width(rememberDialogWidth(520))
+                .width(rememberDialogWidth(560))
+                .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -562,7 +682,8 @@ private fun StremioConnectDialog(
                 Text(
                     text = "Log in to automatically pull \"$profileName\"'s addons and library from your Stremio account.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
                 )
                 Spacer(Modifier.height(24.dp))
 
@@ -583,10 +704,39 @@ private fun StremioConnectDialog(
                     modifier = Modifier.fillMaxWidth(),
                     onDone = {
                         if (email.isNotBlank() && password.isNotBlank() && !isLoading) {
-                            onConnect(email, password) { errorMessage = it }
+                            onConnect(email, password, useAccountAvatar) { errorMessage = it }
                         }
                     }
                 )
+
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = !isLoading) { useAccountAvatar = !useAccountAvatar }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = useAccountAvatar,
+                        onCheckedChange = { if (!isLoading) useAccountAvatar = it },
+                        enabled = !isLoading
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Use my connected account avatar if available",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Uses the Stremio avatar returned after email, Facebook, or Apple sign-in.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                }
 
                 if (errorMessage != null) {
                     Spacer(Modifier.height(12.dp))
@@ -597,15 +747,71 @@ private fun StremioConnectDialog(
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(20.dp))
                 VoidButton(
-                    text = if (isLoading) "Connecting…" else "Connect",
-                    onClick = { onConnect(email, password) { errorMessage = it } },
+                    text = if (isLoading) "Connecting…" else "Connect with Email & Password",
+                    onClick = { onConnect(email, password, useAccountAvatar) { errorMessage = it } },
                     enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
                     isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
+                VoidButton(
+                    text = "Continue with Facebook",
+                    onClick = { onFacebookLogin(useAccountAvatar) },
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                VoidButton(
+                    text = "Sign in with Apple",
+                    onClick = { onAppleLogin(useAccountAvatar) },
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (isTvDevice) {
+                    Spacer(Modifier.height(22.dp))
+                    Text(
+                        text = "Or enter your Stremio credentials on your phone",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    val info = serverInfo
+                    val qr = qrBitmap
+                    if (info != null && qr != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(150.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.White)
+                                .padding(4.dp)
+                        ) {
+                            Image(
+                                bitmap = qr.asImageBitmap(),
+                                contentDescription = "Open Stremio credential sign-in on phone",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Scan the QR code and enter your Stremio email and password on your phone.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2.dp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
                 VoidButton(
                     text = "Skip for now",
                     onClick = onSkip,
@@ -613,6 +819,141 @@ private fun StremioConnectDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SetupSocialLoginDialog(
+    provider: SetupSocialProvider,
+    url: String?,
+    errorMessage: String?,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    val isTvDevice = rememberIsTvDevice()
+    val context = LocalContext.current
+    val qrBitmap by produceState<Bitmap?>(initialValue = null, url, isTvDevice) {
+        value = if (isTvDevice) url?.let { generateQrCodeBitmap(it) } else null
+    }
+
+    LaunchedEffect(url, isTvDevice) {
+        if (!isTvDevice && !url.isNullOrBlank()) {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+    }
+
+    Dialog(onDismissRequest = onBack) {
+        Column(
+            modifier = Modifier
+                .width(rememberDialogWidth(440))
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.Black)
+                .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
+                .padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (provider == SetupSocialProvider.APPLE) "Sign in with Apple" else "Continue with Facebook",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White
+            )
+            Spacer(Modifier.height(12.dp))
+
+            if (errorMessage != null) {
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFFF6B6B),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                VoidButton(
+                    text = "Retry",
+                    onClick = onRetry,
+                    isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                VoidButton(
+                    text = "Back",
+                    onClick = onBack,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                return@Column
+            }
+
+            if (isTvDevice) {
+                Text(
+                    text = "Scan this code with your phone and complete the ${provider.displayName} sign-in. illumera will continue automatically.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                if (qrBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(180.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.White)
+                            .padding(6.dp)
+                    ) {
+                        Image(
+                            bitmap = qrBitmap!!.asImageBitmap(),
+                            contentDescription = "${provider.displayName} sign-in QR code",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            } else {
+                Text(
+                    text = "Finish the ${provider.displayName} sign-in in your browser, then return to illumera.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                if (!url.isNullOrBlank()) {
+                    VoidButton(
+                        text = "Open Browser",
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        },
+                        isPrimary = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 2.dp
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Waiting for ${provider.displayName} sign-in…",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
+            )
+            Spacer(Modifier.height(16.dp))
+            VoidButton(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
