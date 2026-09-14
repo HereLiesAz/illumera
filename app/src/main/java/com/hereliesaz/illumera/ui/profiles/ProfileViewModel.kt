@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.ui.profiles
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
@@ -12,17 +13,31 @@ import com.hereliesaz.illumera.data.remote.StremioAuthError
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+
+enum class SetupSocialProvider(val displayName: String) {
+    FACEBOOK("Facebook"),
+    APPLE("Apple")
+}
+
+sealed class SetupSocialLoginState {
+    object Idle : SetupSocialLoginState()
+    data class WaitingForUser(val provider: SetupSocialProvider, val url: String) : SetupSocialLoginState()
+    data class Error(val provider: SetupSocialProvider, val message: String) : SetupSocialLoginState()
+}
 
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val dao: AddonDao,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val profileMutationCoordinator: ProfileMutationCoordinator,
+    private val stremioAuthManager: StremioAuthManager,
     private val debridManager: DebridManager,
     private val traktAuthManager: TraktAuthManager,
     private val queueManager: QueueManager
@@ -39,6 +54,10 @@ class ProfileViewModel @Inject constructor(
 
     private val _isInitializingProfile = MutableStateFlow(false)
     val isInitializingProfile: StateFlow<Boolean> = _isInitializingProfile
+
+    private val _setupSocialLoginState = MutableStateFlow<SetupSocialLoginState>(SetupSocialLoginState.Idle)
+    val setupSocialLoginState: StateFlow<SetupSocialLoginState> = _setupSocialLoginState
+    private var setupSocialLoginJob: Job? = null
 
     // WIZARD DATA
     var tempName = ""
@@ -161,6 +180,7 @@ class ProfileViewModel @Inject constructor(
         profileId: Int,
         email: String,
         password: String,
+        useAccountAvatar: Boolean,
         onResult: (success: Boolean, errorMessage: String?) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
@@ -168,13 +188,105 @@ class ProfileViewModel @Inject constructor(
             try {
                 val result = profileConfigurationManager.initializeFromScratchWithStremio(profileId, email, password)
                 result.fold(
-                    onSuccess = { onResult(true, null) },
+                    onSuccess = {
+                        applyConnectedAccountAvatar(profileId, useAccountAvatar)
+                        onResult(true, null)
+                    },
                     onFailure = { error ->
-                        val message = when (error) {
-                            is StremioAuthError.InvalidCredentials -> "Invalid email or password."
-                            is StremioAuthError.NetworkError -> "Network error. Check your connection and try again."
-                            else -> error.message ?: "Couldn't connect to Stremio."
-                        }
+                        onResult(false, setupErrorMessage(error))
+                    }
+                )
+            } finally {
+                _isInitializingProfile.value = false
+            }
+        }
+    }
+
+    fun initializeProfileFromScratchWithFacebook(
+        profileId: Int,
+        useAccountAvatar: Boolean,
+        onResult: (success: Boolean, errorMessage: String?) -> Unit
+    ) {
+        startSetupSocialLogin(
+            provider = SetupSocialProvider.FACEBOOK,
+            profileId = profileId,
+            useAccountAvatar = useAccountAvatar,
+            onResult = onResult
+        )
+    }
+
+    fun initializeProfileFromScratchWithApple(
+        profileId: Int,
+        useAccountAvatar: Boolean,
+        onResult: (success: Boolean, errorMessage: String?) -> Unit
+    ) {
+        startSetupSocialLogin(
+            provider = SetupSocialProvider.APPLE,
+            profileId = profileId,
+            useAccountAvatar = useAccountAvatar,
+            onResult = onResult
+        )
+    }
+
+    private fun startSetupSocialLogin(
+        provider: SetupSocialProvider,
+        profileId: Int,
+        useAccountAvatar: Boolean,
+        onResult: (success: Boolean, errorMessage: String?) -> Unit
+    ) {
+        setupSocialLoginJob?.cancel()
+
+        val handoff = runCatching {
+            when (provider) {
+                SetupSocialProvider.FACEBOOK -> stremioAuthManager.startFacebookLogin()
+                SetupSocialProvider.APPLE -> stremioAuthManager.startAppleLogin()
+            }
+        }.getOrElse { error ->
+            val message = error.message ?: "Could not start ${provider.displayName} sign-in."
+            _setupSocialLoginState.value = SetupSocialLoginState.Error(provider, message)
+            onResult(false, message)
+            return
+        }
+
+        val (state, url) = handoff
+        _setupSocialLoginState.value = SetupSocialLoginState.WaitingForUser(provider, url)
+        _isInitializingProfile.value = true
+
+        setupSocialLoginJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val authResult = withTimeoutOrNull(5 * 60_000L) {
+                    when (provider) {
+                        SetupSocialProvider.FACEBOOK -> stremioAuthManager.completeFacebookLogin(state)
+                        SetupSocialProvider.APPLE -> stremioAuthManager.completeAppleLogin(state)
+                    }
+                }
+
+                if (authResult == null) {
+                    val message = "${provider.displayName} sign-in timed out. Please try again."
+                    _setupSocialLoginState.value = SetupSocialLoginState.Error(provider, message)
+                    onResult(false, message)
+                    return@launch
+                }
+
+                authResult.fold(
+                    onSuccess = {
+                        val setupResult = profileConfigurationManager.initializeFromScratchWithConnectedStremio(profileId)
+                        setupResult.fold(
+                            onSuccess = {
+                                applyConnectedAccountAvatar(profileId, useAccountAvatar)
+                                _setupSocialLoginState.value = SetupSocialLoginState.Idle
+                                onResult(true, null)
+                            },
+                            onFailure = { error ->
+                                val message = setupErrorMessage(error)
+                                _setupSocialLoginState.value = SetupSocialLoginState.Error(provider, message)
+                                onResult(false, message)
+                            }
+                        )
+                    },
+                    onFailure = { error ->
+                        val message = setupErrorMessage(error)
+                        _setupSocialLoginState.value = SetupSocialLoginState.Error(provider, message)
                         onResult(false, message)
                     }
                 )
@@ -182,6 +294,30 @@ class ProfileViewModel @Inject constructor(
                 _isInitializingProfile.value = false
             }
         }
+    }
+
+    fun resetSetupSocialLoginState() {
+        setupSocialLoginJob?.cancel()
+        setupSocialLoginJob = null
+        _setupSocialLoginState.value = SetupSocialLoginState.Idle
+        _isInitializingProfile.value = false
+    }
+
+    private suspend fun applyConnectedAccountAvatar(profileId: Int, enabled: Boolean) {
+        resolveSetupAccountAvatarRef(
+            enabled = enabled,
+            stremioAvatarUrl = stremioAuthManager.getStoredAvatarUrl()
+        )?.let { avatarRef ->
+            profileMutationCoordinator.update(profileId) { current ->
+                current.copy(avatarRef = avatarRef)
+            }
+        }
+    }
+
+    private fun setupErrorMessage(error: Throwable): String = when (error) {
+        is StremioAuthError.InvalidCredentials -> "Invalid email or password."
+        is StremioAuthError.NetworkError -> "Network error. Check your connection and try again."
+        else -> error.message ?: "Couldn't connect to Stremio."
     }
 
     fun initializeProfileByCopy(targetProfileId: Int, sourceProfileId: Int, onComplete: () -> Unit) {
