@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,7 @@ fun AddonsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTv = rememberIsTvDevice()
+    val isCompact = LocalConfiguration.current.screenWidthDp < 600
     var openedStremio by remember { mutableStateOf(false) }
 
     val qrBitmap by produceState<Bitmap?>(initialValue = null, isTv) {
@@ -137,41 +139,75 @@ fun AddonsScreen(
 
                 Spacer(Modifier.height(18.dp))
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    VoidButton(
-                        text = "OPEN STREMIO ADDONS",
-                        onClick = {
-                            openedStremio = true
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(STREMIO_ADDONS_URL))
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            }.onFailure {
-                                openedStremio = false
-                            }
-                        },
-                        enabled = !state.isSyncing,
-                        isPrimary = true,
-                        modifier = Modifier.width(250.dp)
-                    )
-
-                    VoidButton(
-                        text = if (state.isSyncing) "SYNCING…" else "SYNC CHANGES",
-                        onClick = viewModel::syncFromStremio,
-                        enabled = !state.isSyncing,
-                        modifier = Modifier.width(190.dp)
-                    )
-
-                    if (state.isSyncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
+                val openStremio: () -> Unit = {
+                    openedStremio = true
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse(STREMIO_ADDONS_URL))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         )
+                    }.onFailure {
+                        openedStremio = false
+                    }
+                }
+
+                if (isCompact) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        VoidButton(
+                            text = "OPEN STREMIO ADDONS",
+                            onClick = openStremio,
+                            enabled = !state.isSyncing,
+                            isPrimary = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        VoidButton(
+                            text = if (state.isSyncing) "SYNCING…" else "SYNC CHANGES",
+                            onClick = viewModel::syncFromStremio,
+                            enabled = !state.isSyncing,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (state.isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        VoidButton(
+                            text = "OPEN STREMIO ADDONS",
+                            onClick = openStremio,
+                            enabled = !state.isSyncing,
+                            isPrimary = true,
+                            modifier = Modifier.width(250.dp)
+                        )
+
+                        VoidButton(
+                            text = if (state.isSyncing) "SYNCING…" else "SYNC CHANGES",
+                            onClick = viewModel::syncFromStremio,
+                            enabled = !state.isSyncing,
+                            modifier = Modifier.width(190.dp)
+                        )
+
+                        if (state.isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
