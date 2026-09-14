@@ -369,8 +369,10 @@ class StremioAuthService @Inject constructor() {
             }
             
             val collectionResponse = gson.fromJson(responseBody, StremioAddonCollectionResponse::class.java)
-            
-            collectionResponse.result?.addons ?: emptyList()
+            val result = collectionResponse.result
+                ?: throw StremioAuthError.UnknownError("Stremio returned a malformed addon collection")
+            result.addons
+                ?: throw StremioAuthError.UnknownError("Stremio returned a malformed addon collection")
             
         } catch (e: StremioAuthError) {
             throw e
