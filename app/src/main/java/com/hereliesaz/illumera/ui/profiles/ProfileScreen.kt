@@ -93,7 +93,6 @@ fun ProfileScreen(
 ) {
     val wizardStep by viewModel.wizardStep.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()
 
     Box(
         modifier = Modifier
@@ -197,6 +196,7 @@ fun ProfileSelectorView(
     var showScratchConfirmDialog by remember { mutableStateOf(false) }
     var showStremioConnectDialog by remember { mutableStateOf(false) }
     val isInitializingProfile by viewModel.isInitializingProfile.collectAsState()
+    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize(),

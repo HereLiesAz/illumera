@@ -271,7 +271,7 @@ fun AddonCatalogDialog(
                                     item = item,
                                     installed = state.addons.any { installed ->
                                         installed.id == item.manifest.id ||
-                                            normalizeTransportUrl(installed.transportUrl) == normalizeTransportUrl(item.transportUrl)
+                                            normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)
                                     },
                                     onInstall = { onInstall(item) },
                                     onConfigure = { onConfigure(item) }
@@ -428,7 +428,7 @@ private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (st
     AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName
 }
 
-private fun normalizeTransportUrl(url: String): String =
+private fun normalizeCatalogTransportUrl(url: String): String =
     url.removeSuffix("/manifest.json").trimEnd('/').lowercase()
 
 private fun isLocalTransport(url: String): Boolean {
