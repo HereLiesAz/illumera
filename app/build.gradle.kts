@@ -123,6 +123,10 @@ android {
         resValues = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -179,6 +183,12 @@ dependencies {
     implementation(files("../playbackcore/libs/lib-decoder-mpegh-release.aar"))
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("io.mockk:mockk:1.14.11")
+    testImplementation("androidx.room:room-testing:2.8.4")
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
+
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation(libs.androidx.compose.material3)
