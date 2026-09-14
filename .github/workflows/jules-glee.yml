@@ -11,6 +11,6 @@ permissions:
 
 jobs:
   glee:
-    uses: HereLiesAz/workflows-starter-template/.github/workflows/jules-glee-reusable.yml@main
+    uses: HereLiesAz/workflows-starter-template/.github/workflows/jules-glee-reusable.yml@72b4e445b76a540a31689cfa07eb811db0031da6
     secrets:
       JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
