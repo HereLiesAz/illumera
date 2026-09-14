@@ -1,0 +1,158 @@
+package com.hereliesaz.illumera.data.repository
+
+import com.google.gson.JsonParser
+import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.model.AddonEntity
+import com.hereliesaz.illumera.data.model.stremio.Manifest
+import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
+import com.hereliesaz.illumera.data.model.stremio.SubtitleResponse
+import com.hereliesaz.illumera.data.remote.StremioApiService
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class SubtitleRepositoryTest {
+
+    @Test
+    fun seriesRequestPreservesEpisodeIdAndEncodesVideoMetadata() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val addon = addon(url = "https://subs.example", nickname = "My Subs")
+        every { dao.getAllAddons() } returns flowOf(listOf(addon))
+        coEvery { api.getManifest("https://subs.example/manifest.json") } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val expectedUrl = "https://subs.example/subtitles/series/tt123:2:4/videoHash=abc%20123&videoSize=456&filename=My%20File.mkv.json"
+        coEvery { api.getSubtitles(expectedUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "s1", lang = "EN_us", url = "/captions/en.srt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitles(
+            type = " SERIES ",
+            playbackId = "tt123:2:4",
+            videoHash = " abc 123 ",
+            videoSize = 456,
+            filename = " My File.mkv "
+        )
+
+        assertEquals(1, result.size)
+        assertEquals("s1", result.single().id)
+        assertEquals("en-us", result.single().lang)
+        assertEquals("My Subs", result.single().addonName)
+        assertEquals("https://subs.example/captions/en.srt", result.single().url)
+        coVerify(exactly = 1) { api.getSubtitles(expectedUrl) }
+    }
+
+    @Test
+    fun manifestRulesSkipUnsupportedTypeAndIdPrefix() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val addon = addon()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(
+                JsonParser.parseString(
+                    """{"name":"subtitles","types":["series"],"idPrefixes":["tt"]}"""
+                )
+            )
+        )
+        val repository = SubtitleRepository(api, dao)
+
+        assertTrue(repository.getSubtitles("movie", "tt123").isEmpty())
+        assertTrue(repository.getSubtitles("series", "kitsu:123:1:1").isEmpty())
+
+        coVerify(exactly = 0) { api.getSubtitles(any()) }
+    }
+
+    @Test
+    fun manifestFailureFallsBackToQueryingAddon() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val addon = addon()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon))
+        coEvery { api.getManifest(any()) } throws IllegalStateException("manifest unavailable")
+        coEvery { api.getSubtitles("https://addon.example/subtitles/movie/tt123.json") } returns SubtitleResponse(
+            listOf(StreamSubtitle(lang = "fr", url = "https://cdn.example/fr.vtt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitles("movie", "tt123")
+
+        assertEquals(1, result.size)
+        assertEquals("fr", result.single().lang)
+        assertEquals("https://cdn.example/fr.vtt", result.single().url)
+    }
+
+    @Test
+    fun disabledAddonsAreIgnoredAndEmptyAddonListReturnsImmediately() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon(enabled = false)))
+
+        assertTrue(SubtitleRepository(api, dao).getSubtitles("movie", "tt123").isEmpty())
+
+        coVerify(exactly = 0) { api.getManifest(any()) }
+        coVerify(exactly = 0) { api.getSubtitles(any()) }
+    }
+
+    @Test
+    fun invalidSchemesAndDuplicateSubtitleRowsAreRemoved() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitle\""))
+        )
+        coEvery { api.getSubtitles(any()) } returns SubtitleResponse(
+            listOf(
+                StreamSubtitle(id = "one", lang = "EN", url = "https://cdn.example/a.srt"),
+                StreamSubtitle(id = "two", lang = "en", url = "https://cdn.example/a.srt"),
+                StreamSubtitle(id = "bad", lang = "en", url = "ftp://cdn.example/a.srt"),
+                StreamSubtitle(id = "relative", lang = "es", url = "relative/es.srt")
+            )
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitles("movie", "tt123")
+
+        assertEquals(2, result.size)
+        assertEquals(setOf("https://cdn.example/a.srt", "https://addon.example/relative/es.srt"), result.map { it.url }.toSet())
+    }
+
+    @Test
+    fun manifestCapabilityIsCachedAcrossRequests() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        coEvery { api.getSubtitles(any()) } returns SubtitleResponse()
+        val repository = SubtitleRepository(api, dao)
+
+        repository.getSubtitles("movie", "tt1")
+        repository.getSubtitles("movie", "tt2")
+
+        coVerify(exactly = 1) { api.getManifest("https://addon.example/manifest.json") }
+        coVerify(exactly = 2) { api.getSubtitles(any()) }
+    }
+
+    private fun addon(
+        url: String = "https://addon.example",
+        nickname: String? = null,
+        enabled: Boolean = true
+    ) = AddonEntity(
+        transportUrl = url,
+        id = "addon",
+        name = "Addon",
+        version = "1.0.0",
+        description = null,
+        iconUrl = null,
+        isEnabled = enabled,
+        nickname = nickname
+    )
+}
