@@ -1,0 +1,74 @@
+name: Temporary Kotlin build repair
+
+on:
+  push:
+    paths:
+      - '.github/workflows/temp-fix-kotlin-build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply exact source fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          addon_path = Path('app/src/main/java/com/hereliesaz/illumera/ui/addons/AddonCatalogDialog.kt')
+          addon = addon_path.read_text()
+          old_call = 'normalizeTransportUrl(installed.transportUrl) == normalizeTransportUrl(item.transportUrl)'
+          new_call = 'normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)'
+          old_def = 'private fun normalizeTransportUrl(url: String): String ='
+          new_def = 'private fun normalizeCatalogTransportUrl(url: String): String ='
+          if addon.count(old_call) != 1:
+              raise SystemExit(f'Expected exactly one addon normalizer call, found {addon.count(old_call)}')
+          if addon.count(old_def) != 1:
+              raise SystemExit(f'Expected exactly one addon normalizer definition, found {addon.count(old_def)}')
+          addon = addon.replace(old_call, new_call).replace(old_def, new_def)
+          addon_path.write_text(addon)
+
+          profile_path = Path('app/src/main/java/com/hereliesaz/illumera/ui/profiles/ProfileScreen.kt')
+          profile = profile_path.read_text()
+          top_state = '    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()\n'
+          selector_anchor = '    val isInitializingProfile by viewModel.isInitializingProfile.collectAsState()\n'
+          if profile.count(top_state) != 1:
+              raise SystemExit(f'Expected exactly one misplaced social state collection, found {profile.count(top_state)}')
+          if profile.count(selector_anchor) != 1:
+              raise SystemExit(f'Expected exactly one selector loading-state anchor, found {profile.count(selector_anchor)}')
+          profile = profile.replace(top_state, '', 1)
+          profile = profile.replace(
+              selector_anchor,
+              selector_anchor + '    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()\n',
+              1,
+          )
+          profile_path.write_text(profile)
+          PY
+
+          grep -q 'normalizeCatalogTransportUrl(installed.transportUrl)' app/src/main/java/com/hereliesaz/illumera/ui/addons/AddonCatalogDialog.kt
+          test "$(grep -c 'private fun normalizeCatalogTransportUrl' app/src/main/java/com/hereliesaz/illumera/ui/addons/AddonCatalogDialog.kt)" -eq 1
+          test "$(grep -c 'val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()' app/src/main/java/com/hereliesaz/illumera/ui/profiles/ProfileScreen.kt)" -eq 1
+
+      - name: Commit fixes and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/temp-fix-kotlin-build.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/hereliesaz/illumera/ui/addons/AddonCatalogDialog.kt \
+                  app/src/main/java/com/hereliesaz/illumera/ui/profiles/ProfileScreen.kt \
+                  .github/workflows/temp-fix-kotlin-build.yml
+          git diff --cached --check
+          git commit -m 'Fix Kotlin compilation regressions'
+          git push origin HEAD:main
