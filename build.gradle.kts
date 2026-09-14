@@ -1,3 +1,17 @@
+buildscript {
+    configurations.classpath {
+        resolutionStrategy.force(
+            // Security-only build-tool overrides. These dependencies are pulled by
+            // AGP/Jetifier/bundletool, not packaged into the Android application.
+            "org.jdom:jdom2:2.0.6.1",
+            "org.apache.httpcomponents:httpclient:4.5.14",
+            "org.apache.httpcomponents:httpmime:4.5.14",
+            "org.apache.commons:commons-lang3:3.18.0",
+            "org.bitbucket.b_c:jose4j:0.9.6"
+        )
+    }
+}
+
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
     alias(libs.plugins.android.application) apply false
