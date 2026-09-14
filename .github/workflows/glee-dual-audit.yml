@@ -1,7 +1,8 @@
-name: Legacy Jules Glee Audit (manual)
-
-# Automatic PR auditing is centralized in jules-glee.yml. This older implementation
-# is retained only as an explicit manual comparison tool so PRs are not audited twice.
+# centralized-by: HereLiesAz/workflows
+# central-source-path: .github/workflows/glee-dual-audit.yml
+# central-source-sha256: 2902eb5791e7e77933cf762178df3ae73a741a5f929b95022ab7150dec9eae77
+# This file intentionally contains no repository secrets.
+name: Legacy Jules Glee Audit (manual) [central proxy]
 on:
   workflow_dispatch:
     inputs:
@@ -12,107 +13,18 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-
-concurrency:
-  group: legacy-glee-${{ inputs.pr_number || github.run_id }}
-  cancel-in-progress: true
-
+  id-token: write
 jobs:
-  audit-pr:
+  central-dispatch:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Run Jules Glee audit
+      - name: Dispatch to HereLiesAz/workflows
         env:
-          JULES_API_KEY: ${{ secrets.JULES_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ inputs.pr_number }}
+          WORKFLOWS_GATEWAY_URL: ${{ vars.WORKFLOWS_GATEWAY_URL }}
+          EVENT_JSON: ${{ toJSON(github.event) }}
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+          SOURCE_WORKFLOW_PATH: .github/workflows/glee-dual-audit.yml
+          SOURCE_SHA256: 2902eb5791e7e77933cf762178df3ae73a741a5f929b95022ab7150dec9eae77
         shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${JULES_API_KEY:-}" || { echo 'JULES_API_KEY secret is not configured'; exit 1; }
-
-          PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefName,baseRefName)
-          HEAD_BRANCH=$(jq -r '.headRefName' <<<"$PR_JSON")
-          BASE_BRANCH=$(jq -r '.baseRefName' <<<"$PR_JSON")
-
-          OWNER="${REPO%%/*}"
-          NAME="${REPO##*/}"
-          SOURCE=''
-          STARTING_BRANCH=''
-          PAGE_TOKEN=''
-          while :; do
-            URL='https://jules.googleapis.com/v1alpha/sources?pageSize=100'
-            [ -z "$PAGE_TOKEN" ] || URL="$URL&pageToken=$(jq -rn --arg v "$PAGE_TOKEN" '$v|@uri')"
-            PAGE=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "$URL")
-            SOURCE_JSON=$(jq -c --arg owner "$OWNER" --arg repo "$NAME" '[.sources[]? | select((.githubRepo.owner|ascii_downcase)==($owner|ascii_downcase) and (.githubRepo.repo|ascii_downcase)==($repo|ascii_downcase))][0] // empty' <<<"$PAGE")
-            if [ -n "$SOURCE_JSON" ]; then
-              SOURCE=$(jq -r '.name // empty' <<<"$SOURCE_JSON")
-              STARTING_BRANCH=$(jq -r --arg base "$BASE_BRANCH" '[.githubRepo.branches[]?.displayName | select(. == $base)][0] // .githubRepo.defaultBranch.displayName // empty' <<<"$SOURCE_JSON")
-              break
-            fi
-            PAGE_TOKEN=$(jq -r '.nextPageToken // empty' <<<"$PAGE")
-            [ -n "$PAGE_TOKEN" ] || break
-          done
-          test -n "$SOURCE" || { echo "Jules source not found for $REPO"; exit 1; }
-          test -n "$STARTING_BRANCH" || { echo 'Jules source has no usable branch'; exit 1; }
-
-          git diff --no-ext-diff --unified=30 "origin/$BASE_BRANCH...origin/$HEAD_BRANCH" > /tmp/pr.diff
-          test -s /tmp/pr.diff || { echo 'PR diff is empty'; exit 1; }
-
-          {
-            echo "Audit pull request #$PR_NUMBER from $HEAD_BRANCH into $BASE_BRANCH as Glee."
-            echo 'Find concrete production-impacting defects only. Trace callers and surrounding code before reporting.'
-            echo 'Return a concise report with severity, file/symbol, failure scenario, cause, and smallest sensible fix. If no finding survives scrutiny, say so plainly.'
-            echo
-            echo '--- BEGIN AUTHORITATIVE PR DIFF ---'
-            cat /tmp/pr.diff
-            echo '--- END AUTHORITATIVE PR DIFF ---'
-          } > /tmp/prompt.txt
-
-          jq -n \
-            --rawfile prompt /tmp/prompt.txt \
-            --arg title "Glee PR audit — #$PR_NUMBER — ${GITHUB_SHA:0:12}" \
-            --arg source "$SOURCE" \
-            --arg branch "$STARTING_BRANCH" \
-            '{prompt:$prompt,title:$title,sourceContext:{source:$source,githubRepoContext:{startingBranch:$branch}},requirePlanApproval:false,automationMode:"AUTOMATION_MODE_UNSPECIFIED"}' \
-            > /tmp/session.json
-
-          RESPONSE=$(curl -fsS -X POST \
-            -H "x-goog-api-key: $JULES_API_KEY" \
-            -H 'Content-Type: application/json' \
-            --data-binary @/tmp/session.json \
-            'https://jules.googleapis.com/v1alpha/sessions')
-          SESSION_ID=$(jq -r '.name' <<<"$RESPONSE" | sed 's#^sessions/##')
-          test -n "$SESSION_ID" || { echo "$RESPONSE"; exit 1; }
-
-          STATE=''
-          for _ in $(seq 1 120); do
-            STATUS=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID")
-            STATE=$(jq -r '.state' <<<"$STATUS")
-            case "$STATE" in
-              COMPLETED) break ;;
-              FAILED|AWAITING_USER_FEEDBACK) echo "$STATUS"; exit 1 ;;
-            esac
-            sleep 15
-          done
-          test "$STATE" = COMPLETED || { echo "Jules audit timed out in state ${STATE:-unknown}"; exit 1; }
-
-          ACTIVITIES=$(curl -fsS -H "x-goog-api-key: $JULES_API_KEY" "https://jules.googleapis.com/v1alpha/sessions/$SESSION_ID/activities?pageSize=100")
-          REPORT=$(jq -r '[.activities[] | .agentMessaged.agentMessage? // empty] | map(select(length>0)) | last // empty' <<<"$ACTIVITIES")
-          test -n "$REPORT" || { echo 'Jules completed without an audit report'; exit 1; }
-
-          {
-            echo "## Glee audit — PR #$PR_NUMBER"
-            echo
-            echo "$REPORT"
-          } > /tmp/glee.md
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file /tmp/glee.md
-          cat /tmp/glee.md >> "$GITHUB_STEP_SUMMARY"
+        run: "set -euo pipefail\n[[ -n \"${WORKFLOWS_GATEWAY_URL:-}\" ]] || { echo \"Repository variable WORKFLOWS_GATEWAY_URL is not configured.\" >&2; exit 1; }\noidc_response=\"$(curl --fail-with-body --silent --show-error -H \"Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}\" \"${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=hereliesaz-workflows\")\"\noidc_token=\"$(jq -r '.value // empty' <<<\"$oidc_response\")\"\n[[ -n \"$oidc_token\" ]] || { echo \"GitHub did not issue an OIDC token.\" >&2; exit 1; }\necho \"::add-mask::$oidc_token\"\npayload=\"$(jq -n   --arg repository \"$GITHUB_REPOSITORY\" --arg repository_id \"$GITHUB_REPOSITORY_ID\"   --arg repository_owner \"$GITHUB_REPOSITORY_OWNER\" --arg repository_owner_id \"$GITHUB_REPOSITORY_OWNER_ID\"   --arg sha \"$GITHUB_SHA\" --arg ref \"$GITHUB_REF\" --arg ref_name \"$GITHUB_REF_NAME\" --arg ref_type \"$GITHUB_REF_TYPE\"   --arg head_ref \"$GITHUB_HEAD_REF\" --arg base_ref \"$GITHUB_BASE_REF\" --arg actor \"$GITHUB_ACTOR\" --arg actor_id \"$GITHUB_ACTOR_ID\"   --arg event_name \"$GITHUB_EVENT_NAME\" --arg run_id \"$GITHUB_RUN_ID\" --arg run_number \"$GITHUB_RUN_NUMBER\" --arg run_attempt \"$GITHUB_RUN_ATTEMPT\"   --arg workflow_ref \"$GITHUB_WORKFLOW_REF\" --arg workflow_name \"$GITHUB_WORKFLOW\" --arg source_workflow_path \"$SOURCE_WORKFLOW_PATH\"   --arg source_sha256 \"$SOURCE_SHA256\" --argjson event \"$EVENT_JSON\" --argjson inputs \"$INPUTS_JSON\" --argjson vars \"$VARS_JSON\"   '{repository:$repository,repository_id:$repository_id,repository_owner:$repository_owner,repository_owner_id:$repository_owner_id,sha:$sha,check_sha:($event.pull_request.head.sha // $sha),ref:$ref,ref_name:$ref_name,ref_type:$ref_type,head_ref:$head_ref,base_ref:$base_ref,actor:$actor,actor_id:$actor_id,event_name:$event_name,event:$event,inputs:$inputs,vars:$vars,run_id:$run_id,run_number:$run_number,run_attempt:$run_attempt,workflow_ref:$workflow_ref,workflow_name:$workflow_name,source_workflow_path:$source_workflow_path,source_sha256:$source_sha256}')\"\ncurl --fail-with-body --silent --show-error -X POST \"${WORKFLOWS_GATEWAY_URL%/}/dispatch\" -H \"Authorization: Bearer ${oidc_token}\" -H \"Content-Type: application/json\" --data-binary \"$payload\""
