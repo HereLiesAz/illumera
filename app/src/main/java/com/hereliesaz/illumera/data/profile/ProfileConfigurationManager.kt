@@ -166,32 +166,41 @@ class ProfileConfigurationManager @Inject constructor(
      * the Stremio side didn't complete, not that setup as a whole failed.
      */
     suspend fun initializeFromScratchWithStremio(profileId: Int, email: String, password: String): Result<Int> {
-        val defaultSnapshot = createDefaultRuntimeSnapshot()
         val loginResult = stremioAuthManager.login(email, password)
 
         return loginResult.fold(
-            onSuccess = {
-                stremioAuthManager.saveCredentialsForProfile(profileId)
-                val addonsResult = stremioAuthManager.fetchAddons()
-                addonsResult.fold(
-                    onSuccess = { entries ->
-                        val fetched = buildSnapshotFromStremioAddons(entries)
-                        writeSnapshot(
-                            profileId,
-                            defaultSnapshot.copy(
-                                addons = defaultSnapshot.addons + fetched.addons,
-                                catalogConfigs = defaultSnapshot.catalogConfigs + fetched.catalogConfigs
-                            )
-                        )
-                        clearPendingSetup(profileId)
-                        Result.success(fetched.addons.size)
-                    },
-                    onFailure = { error ->
-                        writeSnapshot(profileId, defaultSnapshot)
-                        clearPendingSetup(profileId)
-                        Result.failure(error)
-                    }
+            onSuccess = { initializeFromScratchWithConnectedStremio(profileId) },
+            onFailure = { error ->
+                val defaultSnapshot = createDefaultRuntimeSnapshot()
+                stremioAuthManager.clearCredentialsForProfile(profileId)
+                writeSnapshot(profileId, defaultSnapshot)
+                clearPendingSetup(profileId)
+                Result.failure(error)
+            }
+        )
+    }
+
+    /**
+     * Completes fresh-profile initialization when Stremio authentication was already
+     * completed through a hosted flow such as Facebook or Apple.
+     */
+    suspend fun initializeFromScratchWithConnectedStremio(profileId: Int): Result<Int> {
+        val defaultSnapshot = createDefaultRuntimeSnapshot()
+        stremioAuthManager.saveCredentialsForProfile(profileId)
+        val addonsResult = stremioAuthManager.fetchAddons()
+
+        return addonsResult.fold(
+            onSuccess = { entries ->
+                val fetched = buildSnapshotFromStremioAddons(entries)
+                writeSnapshot(
+                    profileId,
+                    defaultSnapshot.copy(
+                        addons = defaultSnapshot.addons + fetched.addons,
+                        catalogConfigs = defaultSnapshot.catalogConfigs + fetched.catalogConfigs
+                    )
                 )
+                clearPendingSetup(profileId)
+                Result.success(fetched.addons.size)
             },
             onFailure = { error ->
                 stremioAuthManager.clearCredentialsForProfile(profileId)

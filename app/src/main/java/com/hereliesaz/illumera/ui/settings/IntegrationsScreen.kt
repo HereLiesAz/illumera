@@ -1299,8 +1299,8 @@ private fun StremioManagementDialog(
                 // Disconnect
                 ManagementMenuItem(
                     icon = Icons.Default.Logout,
-                    title = "Disconnect Account",
-                    subtitle = "Remove Stremio connection",
+                    title = "Log Out of Stremio",
+                    subtitle = "Sign this profile out of its Stremio account",
                     onClick = onDisconnect,
                     isDestructive = true
                 )
@@ -1475,7 +1475,7 @@ private fun DisconnectConfirmDialog(
         ) {
             Column {
                 Text(
-                    "Disconnect Stremio?",
+                    "Log out of Stremio?",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
@@ -1483,7 +1483,7 @@ private fun DisconnectConfirmDialog(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    "Your installed addons will remain, but you won't be able to sync new addons until you reconnect.",
+                    "This profile will be signed out of Stremio. Installed addons remain, but account sync stops until you sign in again.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -1501,7 +1501,7 @@ private fun DisconnectConfirmDialog(
                     )
 
                     IntegrationButton(
-                        text = "Disconnect",
+                        text = "Log Out",
                         onClick = onConfirm,
                         isDestructive = true,
                         modifier = Modifier.weight(1f),

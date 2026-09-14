@@ -181,7 +181,7 @@ class IntegrationServer(
                 <div class="container">
                     <div id="form-container">
                         <div class="logo"><span>📺</span></div>
-                        <h1>Connect Stremio to Lumera</h1>
+                        <h1>Connect Stremio to illumera</h1>
                         <p>Enter your Stremio credentials to sync your addons</p>
                         
                         <div class="error" id="error-msg"></div>

@@ -62,7 +62,7 @@ enum class NavDestination(
     Watchlist(R.drawable.watchlist_icon, "Watchlist"),
     Queue(R.drawable.watchlist_icon, "Queue"),
     Search(R.drawable.search_icon, "Search"),
-    Profile(R.drawable.profile_icon, "Profile", iconSize = 18.dp),
+    Profile(R.drawable.profile_icon, "Log Out", iconSize = 18.dp),
     Settings(R.drawable.settings_icon, "Settings"),
     Exit(R.drawable.exit_icon, "Exit", iconSize = 21.dp)
 }
@@ -575,7 +575,7 @@ fun ProfileAvatarItem(
                         overflow = TextOverflow.Visible
                     )
                     Text(
-                        text = "Change Profile",
+                        text = "Log Out / Switch Profile",
                         fontSize = 10.sp,
                         color = contentColor.copy(alpha = 0.7f),
                         maxLines = 1,

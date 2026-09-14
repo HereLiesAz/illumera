@@ -29,8 +29,8 @@ fetch/paginate/search — see below), `IntroRepository` (IntroDB skip-segment
 data), `SubtitleRepository` (subtitle fetch/matching).
 
 **Integration services**, each in its own package under `data/`:
-`auth`/`remote` (Stremio account API — email/password or Facebook login via
-Stremio's own hosted OAuth handoff, addon-collection get/set, and two-way
+`auth`/`remote` (Stremio account API — email/password, TV-to-phone credential handoff, and hosted
+Facebook/Apple OAuth, addon-collection get/set, and two-way
 Continue Watching sync against the `datastoreMeta`/`Get`/`Put` library API;
 see `StremioAuthManager`/`StremioAuthService`/`StremioLibrarySyncManager`),
 `debrid` (a `DebridManager` fronting
