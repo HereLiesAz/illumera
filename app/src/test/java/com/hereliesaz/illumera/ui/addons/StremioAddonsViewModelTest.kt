@@ -10,7 +10,9 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.secondArg
 import io.mockk.slot
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +45,11 @@ class StremioAddonsViewModelTest {
         profileManager = mockk()
         connectionState = MutableStateFlow(StremioConnectionState.Connected("user@example.com"))
         every { authManager.connectionState } returns connectionState
-        coEvery { profileManager.saveActiveRuntimeState() } returns Unit
+        every { profileManager.getLastActiveProfileId() } returns 7
+        coEvery { profileManager.withActiveProfileRuntime<Unit>(7, any()) } coAnswers {
+            secondArg<suspend () -> Unit>().invoke()
+        }
+        coEvery { profileManager.saveRuntimeState(7) } returns Unit
         every { profileManager.resetStartupCapture() } returns Unit
         coEvery { addonRepository.updateAddons(any()) } returns Unit
         coEvery { addonRepository.installAddon(any()) } returns Unit
@@ -88,7 +94,7 @@ class StremioAddonsViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { authManager.fetchAddons() }
-        coVerify(exactly = 1) { profileManager.saveActiveRuntimeState() }
+        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
         assertFalse(viewModel.uiState.value.isSyncing)
     }
 
@@ -125,7 +131,7 @@ class StremioAddonsViewModelTest {
             orderedSlot.captured.map { it.transportUrl }
         )
         assertEquals(listOf(0, 1, 2), orderedSlot.captured.map { it.sortOrder })
-        coVerify(exactly = 1) { profileManager.saveActiveRuntimeState() }
+        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
         assertTrue(viewModel.uiState.value.error == null)
         assertTrue(viewModel.uiState.value.message?.contains("Synced 2 Stremio addons") == true)
     }
@@ -143,7 +149,25 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 0) { addonRepository.getAddons() }
         coVerify(exactly = 0) { addonRepository.installAddon(any()) }
         coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
-        coVerify(exactly = 0) { profileManager.saveActiveRuntimeState() }
+        coVerify(exactly = 0) { profileManager.saveRuntimeState(any()) }
+    }
+
+    @Test
+    fun profileChangeBeforeRuntimeLockStopsSyncWithoutMutation() = runTest(dispatcher) {
+        coEvery { profileManager.withActiveProfileRuntime<Unit>(7, any()) } throws
+            CancellationException("Active profile changed before refresh started")
+        val viewModel = newViewModel()
+
+        viewModel.syncFromStremio()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isSyncing)
+        assertTrue(viewModel.uiState.value.error?.contains("Profile changed") == true)
+        coVerify(exactly = 0) { authManager.fetchAddons() }
+        coVerify(exactly = 0) { addonRepository.installAddon(any()) }
+        coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
+        coVerify(exactly = 0) { addonRepository.updateAddons(any()) }
+        coVerify(exactly = 0) { profileManager.saveRuntimeState(any()) }
     }
 
     @Test
@@ -172,7 +196,7 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 1) { addonRepository.installAddon("https://good.example/manifest.json") }
         coVerify(exactly = 1) { addonRepository.installAddon("https://broken.example/manifest.json") }
         coVerify(exactly = 1) { addonRepository.deleteAddon("https://old.example") }
-        coVerify(exactly = 1) { profileManager.saveActiveRuntimeState() }
+        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
         assertTrue(viewModel.uiState.value.error?.contains("Some addons") == true)
         assertTrue(viewModel.uiState.value.message?.contains("1 could not be reconciled") == true)
     }
