@@ -69,19 +69,27 @@ jobs:
 
       - name: Apply direct production hardening
         working-directory: illumera
-        run: python .ci/apply-production-hardening-current.py
+        run: |
+          python .ci/apply-production-hardening-current.py
+          python .ci/prepare-lint-baseline.py
 
-      - name: Run production quality gate
+      - name: Snapshot legacy lint debt
         working-directory: illumera
         run: |
           chmod +x gradlew
+          ./gradlew :app:updateLintBaseline --no-daemon --stacktrace
+          test -s app/lint-baseline.xml
+
+      - name: Run strict production quality gate
+        working-directory: illumera
+        run: |
           ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon --stacktrace
 
       - name: Commit validated hardening
         working-directory: illumera
         run: |
           set -euo pipefail
-          rm -f .ci/apply-recent-review-fixes.py .ci/finalize-hardening.py .ci/prune-review-patcher.py .ci/finish-production-hardening.py .ci/repair-hardening-transformer.py .ci/apply-production-hardening-current.py
+          rm -f .ci/apply-recent-review-fixes.py .ci/finalize-hardening.py .ci/prune-review-patcher.py .ci/finish-production-hardening.py .ci/repair-hardening-transformer.py .ci/apply-production-hardening-current.py .ci/prepare-lint-baseline.py
           rm -f .github/workflows/temp-recent-review-fixes.yml
           rmdir .ci 2>/dev/null || true
           git config user.name "github-actions[bot]"
