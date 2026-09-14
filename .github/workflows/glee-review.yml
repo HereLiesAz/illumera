@@ -1,7 +1,8 @@
-name: Legacy Glee PR Review (Claude)
-
-# Legacy adversarial review retained for optional manual comparison.
-# Jules is the canonical Glee implementation and the only automatic PR reviewer.
+# centralized-by: HereLiesAz/workflows
+# central-source-path: .github/workflows/glee-review.yml
+# central-source-sha256: 730fc821278ec7aeb27b89cade677899020e9b38c131e9517396081e37b0b450
+# This file intentionally contains no repository secrets.
+name: Legacy Glee PR Review (Claude) [central proxy]
 on:
   workflow_dispatch:
     inputs:
@@ -12,46 +13,18 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-
+  id-token: write
 jobs:
-  glee-review:
+  central-dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve trusted base
+      - name: Dispatch to HereLiesAz/workflows
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-        run: |
-          set -euo pipefail
-          BASE_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json baseRefOid --jq .baseRefOid)
-          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
-
-      - name: Checkout trusted base
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.BASE_SHA }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Legacy Glee adversarial review (Claude)
-        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ inputs.pr_number }}
-
-            This is a legacy/manual comparison reviewer, not the canonical Glee agent.
-            Audit the pull request adversarially for concrete correctness failures,
-            unsupported claims, and materially important missing tests. Verify every
-            finding against the surrounding code. The workspace contains only the
-            trusted base revision; inspect the PR using `gh pr diff` and `gh pr view`.
-            Do not execute PR code. Do not approve, merge, or push commits.
-
-            Use `mcp__github_inline_comment__create_inline_comment` (with
-            `confirmed: true`) for specific findings and `gh pr comment` for at most
-            one closing summary.
-          claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+          WORKFLOWS_GATEWAY_URL: ${{ vars.WORKFLOWS_GATEWAY_URL }}
+          EVENT_JSON: ${{ toJSON(github.event) }}
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+          SOURCE_WORKFLOW_PATH: .github/workflows/glee-review.yml
+          SOURCE_SHA256: 730fc821278ec7aeb27b89cade677899020e9b38c131e9517396081e37b0b450
+        shell: bash
+        run: "set -euo pipefail\n[[ -n \"${WORKFLOWS_GATEWAY_URL:-}\" ]] || { echo \"Repository variable WORKFLOWS_GATEWAY_URL is not configured.\" >&2; exit 1; }\noidc_response=\"$(curl --fail-with-body --silent --show-error -H \"Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}\" \"${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=hereliesaz-workflows\")\"\noidc_token=\"$(jq -r '.value // empty' <<<\"$oidc_response\")\"\n[[ -n \"$oidc_token\" ]] || { echo \"GitHub did not issue an OIDC token.\" >&2; exit 1; }\necho \"::add-mask::$oidc_token\"\npayload=\"$(jq -n   --arg repository \"$GITHUB_REPOSITORY\" --arg repository_id \"$GITHUB_REPOSITORY_ID\"   --arg repository_owner \"$GITHUB_REPOSITORY_OWNER\" --arg repository_owner_id \"$GITHUB_REPOSITORY_OWNER_ID\"   --arg sha \"$GITHUB_SHA\" --arg ref \"$GITHUB_REF\" --arg ref_name \"$GITHUB_REF_NAME\" --arg ref_type \"$GITHUB_REF_TYPE\"   --arg head_ref \"$GITHUB_HEAD_REF\" --arg base_ref \"$GITHUB_BASE_REF\" --arg actor \"$GITHUB_ACTOR\" --arg actor_id \"$GITHUB_ACTOR_ID\"   --arg event_name \"$GITHUB_EVENT_NAME\" --arg run_id \"$GITHUB_RUN_ID\" --arg run_number \"$GITHUB_RUN_NUMBER\" --arg run_attempt \"$GITHUB_RUN_ATTEMPT\"   --arg workflow_ref \"$GITHUB_WORKFLOW_REF\" --arg workflow_name \"$GITHUB_WORKFLOW\" --arg source_workflow_path \"$SOURCE_WORKFLOW_PATH\"   --arg source_sha256 \"$SOURCE_SHA256\" --argjson event \"$EVENT_JSON\" --argjson inputs \"$INPUTS_JSON\" --argjson vars \"$VARS_JSON\"   '{repository:$repository,repository_id:$repository_id,repository_owner:$repository_owner,repository_owner_id:$repository_owner_id,sha:$sha,check_sha:($event.pull_request.head.sha // $sha),ref:$ref,ref_name:$ref_name,ref_type:$ref_type,head_ref:$head_ref,base_ref:$base_ref,actor:$actor,actor_id:$actor_id,event_name:$event_name,event:$event,inputs:$inputs,vars:$vars,run_id:$run_id,run_number:$run_number,run_attempt:$run_attempt,workflow_ref:$workflow_ref,workflow_name:$workflow_name,source_workflow_path:$source_workflow_path,source_sha256:$source_sha256}')\"\ncurl --fail-with-body --silent --show-error -X POST \"${WORKFLOWS_GATEWAY_URL%/}/dispatch\" -H \"Authorization: Bearer ${oidc_token}\" -H \"Content-Type: application/json\" --data-binary \"$payload\""
