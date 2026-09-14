@@ -10,7 +10,6 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.secondArg
 import io.mockk.slot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers

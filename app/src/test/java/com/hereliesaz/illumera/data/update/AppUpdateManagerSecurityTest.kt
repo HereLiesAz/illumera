@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.data.update
 
 import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import io.mockk.mockk
 import okhttp3.OkHttpClient
 import org.junit.After
@@ -11,14 +12,13 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class AppUpdateManagerSecurityTest {
 
     @Before
     fun setUp() {
-        RuntimeEnvironment.getApplication<android.app.Application>()
+        ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences("lumera_update_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -27,7 +27,7 @@ class AppUpdateManagerSecurityTest {
 
     @After
     fun tearDown() {
-        RuntimeEnvironment.getApplication<android.app.Application>()
+        ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences("lumera_update_prefs", Context.MODE_PRIVATE)
             .edit()
             .clear()
@@ -85,7 +85,7 @@ class AppUpdateManagerSecurityTest {
 
     @Test
     fun popupPreferenceDefaultsOnAndRoundTrips() {
-        val context = RuntimeEnvironment.getApplication<android.app.Application>()
+        val context = ApplicationProvider.getApplicationContext<Context>()
         val manager = AppUpdateManager(mockk<OkHttpClient>(), context)
 
         assertTrue(manager.isPopupEnabled)
