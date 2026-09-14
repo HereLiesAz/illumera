@@ -104,21 +104,19 @@ class TraktAuthInterceptorTest {
     }
 
     @Test
-    fun waiterReusesTokenAlreadyRefreshedByAnotherCaller() {
-        var token = "stale"
-        every { authManager.getAccessToken() } answers { token }
+    fun callerBlockedOnRefreshLockReusesTokenAlreadyRefreshedElsewhere() {
+        every { authManager.getAccessToken() } returnsMany listOf("stale", "fresh")
         every { authManager.needsRefresh } returns false
-        coEvery { authManager.refreshAccessToken() } answers {
-            token = "fresh"
-            token
-        }
+        coEvery { authManager.refreshAccessToken() } returns "should-not-be-used"
         server.enqueue(MockResponse().setResponseCode(401))
         server.enqueue(MockResponse().setResponseCode(200))
 
-        executeRequest()
+        val responseCode = executeRequest()
 
+        assertEquals(200, responseCode)
+        assertEquals("Bearer stale", server.takeRequest().getHeader("Authorization"))
         assertEquals("Bearer fresh", server.takeRequest().getHeader("Authorization"))
-        assertEquals("Bearer fresh", server.takeRequest().getHeader("Authorization"))
+        coVerify(exactly = 0) { authManager.refreshAccessToken() }
     }
 
     private fun executeRequest(): Int {
