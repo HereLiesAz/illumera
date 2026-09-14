@@ -54,84 +54,103 @@ class StremioAddonsViewModel @Inject constructor(
             return
         }
 
+        val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId()
+        if (initiatingProfileId == null) {
+            _uiState.value = StremioAddonsUiState(
+                message = "Select a profile before syncing Stremio addons.",
+                error = "No active profile is selected."
+            )
+            return
+        }
+
         if (_uiState.value.isSyncing) return
         _uiState.value = StremioAddonsUiState(isSyncing = true)
 
         viewModelScope.launch {
             try {
-                val entries = stremioAuthManager.fetchAddons().getOrElse { throw it }
-                val remoteUrls = entries
-                    .map { normalizeTransportUrl(it.transportUrl) }
-                    .filter { it.isNotBlank() }
-                    .distinct()
+                profileConfigurationManager.withActiveProfileRuntime(initiatingProfileId) {
+                    val entries = stremioAuthManager.fetchAddons().getOrElse { throw it }
+                    val remoteUrls = entries
+                        .map { normalizeTransportUrl(it.transportUrl) }
+                        .filter { it.isNotBlank() }
+                        .distinct()
 
-                val current = addonRepository.getAddons().first()
-                val currentByUrl = current.associateBy { normalizeTransportUrl(it.transportUrl) }
-                var installedCount = 0
-                var removedCount = 0
-                var failedCount = 0
+                    val current = addonRepository.getAddons().first()
+                    val currentByUrl = current.associateBy { normalizeTransportUrl(it.transportUrl) }
+                    var installedCount = 0
+                    var removedCount = 0
+                    var failedCount = 0
 
-                for (transportUrl in remoteUrls) {
-                    if (currentByUrl.containsKey(transportUrl)) continue
-                    try {
-                        addonRepository.installAddon("$transportUrl/manifest.json")
-                        installedCount++
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (_: Exception) {
-                        failedCount++
-                    }
-                }
-
-                val remoteSet = remoteUrls.toSet()
-                current.forEach { addon ->
-                    val localUrl = normalizeTransportUrl(addon.transportUrl)
-                    if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
+                    for (transportUrl in remoteUrls) {
+                        if (currentByUrl.containsKey(transportUrl)) continue
                         try {
-                            addonRepository.deleteAddon(addon.transportUrl)
-                            removedCount++
+                            addonRepository.installAddon("$transportUrl/manifest.json")
+                            installedCount++
                         } catch (ce: CancellationException) {
                             throw ce
                         } catch (_: Exception) {
                             failedCount++
                         }
                     }
-                }
 
-                val refreshed = addonRepository.getAddons().first()
-                val remoteOrder = remoteUrls.withIndex().associate { (index, url) -> url to index }
-                val ordered = refreshed
-                    .sortedWith(
-                        compareBy(
-                            { remoteOrder[normalizeTransportUrl(it.transportUrl)] ?: Int.MAX_VALUE },
-                            { if (normalizeTransportUrl(it.transportUrl) == CINEMETA_TRANSPORT_URL) 0 else 1 },
-                            { it.name.lowercase() }
+                    val remoteSet = remoteUrls.toSet()
+                    current.forEach { addon ->
+                        val localUrl = normalizeTransportUrl(addon.transportUrl)
+                        if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
+                            try {
+                                addonRepository.deleteAddon(addon.transportUrl)
+                                removedCount++
+                            } catch (ce: CancellationException) {
+                                throw ce
+                            } catch (_: Exception) {
+                                failedCount++
+                            }
+                        }
+                    }
+
+                    val refreshed = addonRepository.getAddons().first()
+                    val remoteOrder = remoteUrls.withIndex().associate { (index, url) -> url to index }
+                    val ordered = refreshed
+                        .sortedWith(
+                            compareBy(
+                                { remoteOrder[normalizeTransportUrl(it.transportUrl)] ?: Int.MAX_VALUE },
+                                { if (normalizeTransportUrl(it.transportUrl) == CINEMETA_TRANSPORT_URL) 0 else 1 },
+                                { it.name.lowercase() }
+                            )
                         )
+                        .mapIndexed { index, addon -> addon.copy(sortOrder = index) }
+
+                    addonRepository.updateAddons(ordered)
+                    profileConfigurationManager.saveRuntimeState(initiatingProfileId)
+                    profileConfigurationManager.resetStartupCapture()
+
+                    val summary = buildString {
+                        append("Synced ${remoteUrls.size} Stremio addon")
+                        if (remoteUrls.size != 1) append('s')
+                        if (installedCount > 0 || removedCount > 0) {
+                            append(" · +$installedCount / -$removedCount")
+                        }
+                        if (failedCount > 0) {
+                            append(" · $failedCount could not be reconciled")
+                        }
+                    }
+
+                    _uiState.value = StremioAddonsUiState(
+                        isSyncing = false,
+                        message = summary,
+                        error = if (failedCount > 0) "Some addons could not be refreshed." else null
                     )
-                    .mapIndexed { index, addon -> addon.copy(sortOrder = index) }
-
-                addonRepository.updateAddons(ordered)
-                profileConfigurationManager.saveActiveRuntimeState()
-                profileConfigurationManager.resetStartupCapture()
-
-                val summary = buildString {
-                    append("Synced ${remoteUrls.size} Stremio addon")
-                    if (remoteUrls.size != 1) append('s')
-                    if (installedCount > 0 || removedCount > 0) {
-                        append(" · +$installedCount / -$removedCount")
-                    }
-                    if (failedCount > 0) {
-                        append(" · $failedCount could not be reconciled")
-                    }
                 }
-
-                _uiState.value = StremioAddonsUiState(
-                    isSyncing = false,
-                    message = summary,
-                    error = if (failedCount > 0) "Some addons could not be refreshed." else null
-                )
             } catch (ce: CancellationException) {
-                throw ce
+                if (ce.message?.startsWith("Active profile changed") == true) {
+                    _uiState.value = StremioAddonsUiState(
+                        isSyncing = false,
+                        message = "Addon sync stopped because the active profile changed.",
+                        error = "Profile changed during addon sync."
+                    )
+                } else {
+                    throw ce
+                }
             } catch (error: Exception) {
                 _uiState.value = StremioAddonsUiState(
                     isSyncing = false,
