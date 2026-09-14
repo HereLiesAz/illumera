@@ -29,3 +29,17 @@ plugins {
     // deprecating kapt in favor of KSP anyway.
     alias(libs.plugins.ksp) apply false
 }
+
+allprojects {
+    configurations.configureEach {
+        resolutionStrategy.force(
+            // Android SDK/AGP tooling resolves these again through internal project
+            // configurations, so enforce the patched versions there as well.
+            "org.jdom:jdom2:2.0.6.1",
+            "org.apache.httpcomponents:httpclient:4.5.14",
+            "org.apache.httpcomponents:httpmime:4.5.14",
+            "org.apache.commons:commons-lang3:3.18.0",
+            "org.bitbucket.b_c:jose4j:0.9.6"
+        )
+    }
+}
