@@ -72,18 +72,382 @@ jobs:
             cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
           done
 
-      - name: Apply and verify source hardening
+      - name: Apply direct production hardening
         working-directory: illumera
+        shell: bash
         run: |
-          python .ci/prune-review-patcher.py
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          path = Path('.ci/finalize-hardening.py')
-          text = path.read_text()
-          text = text.replace('"canonicalLanguageTag",', '"normalizeLanguageToIso2",')
-          path.write_text(text)
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          def replace_count(path: str, old: str, new: str, expected: int) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} matches, found {count}")
+              p.write_text(text.replace(old, new))
+
+          details = "app/src/main/java/com/hereliesaz/illumera/ui/details/DetailsViewModel.kt"
+          replace_once(details, '''        viewModelScope.launch {
+              val resumePlaybackId = if (meta.type == "series") {
+                  resolveSeriesResumePlaybackId(meta.id, meta.videos)
+              } else {
+                  val movieHistory = dao.getHistoryItem(meta.id)
+                  if (movieHistory?.watched == true) null else movieHistory?.id
+              }
+              val isMovieWatched = if (meta.type != "series") {
+                  dao.getHistoryItem(meta.id)?.watched == true
+              } else false
+              if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
+                  val episodeProgressMap = if (meta.type == "series") {
+                      buildEpisodeProgressMap(meta.id)
+                  } else emptyMap()
+                  _state.value = _state.value.copy(
+                      resumePlaybackId = resumePlaybackId,
+                      isResumeStateReady = true,
+                      isMovieWatched = isMovieWatched,
+                      autoPlayStream = null,
+                      episodeProgressMap = episodeProgressMap
+                  )
+                  if (meta.type == "series") {
+                      computeAndStoreNextUp(meta.id, meta.name, meta.poster, meta.videos)
+                  }
+              }
+          }
+          ''', '''        viewModelScope.launch {
+              try {
+                  val resumePlaybackId = if (meta.type == "series") {
+                      resolveSeriesResumePlaybackId(meta.id, meta.videos)
+                  } else {
+                      val movieHistory = dao.getHistoryItem(meta.id)
+                      if (movieHistory?.watched == true) null else movieHistory?.id
+                  }
+                  val isMovieWatched = if (meta.type != "series") {
+                      dao.getHistoryItem(meta.id)?.watched == true
+                  } else false
+                  if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
+                      val episodeProgressMap = if (meta.type == "series") {
+                          buildEpisodeProgressMap(meta.id)
+                      } else emptyMap()
+                      _state.value = _state.value.copy(
+                          resumePlaybackId = resumePlaybackId,
+                          isResumeStateReady = true,
+                          isMovieWatched = isMovieWatched,
+                          autoPlayStream = null,
+                          episodeProgressMap = episodeProgressMap
+                      )
+                      if (meta.type == "series") {
+                          computeAndStoreNextUp(meta.id, meta.name, meta.poster, meta.videos)
+                      }
+                  }
+              } catch (ce: CancellationException) {
+                  throw ce
+              } catch (e: Exception) {
+                  if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
+                      Log.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
+                      _state.value = _state.value.copy(
+                          resumePlaybackId = null,
+                          isResumeStateReady = true,
+                          isMovieWatched = false,
+                          autoPlayStream = null,
+                          episodeProgressMap = emptyMap()
+                      )
+                  }
+              }
+          }
+          ''')
+
+          queue = "app/src/main/java/com/hereliesaz/illumera/ui/queue/QueueScreen.kt"
+          replace_once(queue, '''    requestEntryFocus: Boolean = false,
+              focusedQueueKey: String? = null,
+              onQueueFocused: (String) -> Unit = {}
+          ) {''', '''    requestEntryFocus: Boolean = false,
+              focusedQueueKey: String? = null,
+              restoreEntryFocusWhenFocusedKeyMissing: Boolean = false,
+              onQueueFocused: (String?) -> Unit = {}
+          ) {''')
+          replace_once(queue, '''    LaunchedEffect(state.manualItems, state.suggestions) {
+              queueManager.resolveMissingArtwork()
+          }
+
+          Column(''', '''    LaunchedEffect(state.manualItems, state.suggestions) {
+              queueManager.resolveMissingArtwork()
+          }
+
+          LaunchedEffect(
+              state.manualItems,
+              state.suggestions,
+              focusedQueueKey,
+              restoreEntryFocusWhenFocusedKeyMissing
+          ) {
+              val key = focusedQueueKey ?: return@LaunchedEffect
+              val stillExists = state.manualItems.any { it.stableKey == key } ||
+                  state.suggestions.any { it.stableKey == key }
+              if (!stillExists) {
+                  onQueueFocused(null)
+                  if (restoreEntryFocusWhenFocusedKeyMissing) {
+                      kotlinx.coroutines.delay(50)
+                      runCatching { entryRequester.requestFocus() }
+                  }
+              }
+          }
+
+          Column(''')
+
+          watchlist = "app/src/main/java/com/hereliesaz/illumera/ui/watchlist/WatchlistScreen.kt"
+          replace_once(watchlist, '''    var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
+          ''', '''    var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
+              var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
+          ''')
+          replace_count(watchlist, '''                        onFocused = { _: MetaItem?, key: String ->
+                              lastFocusedKey = key
+                              viewModel.lastFocusedKey = key
+                          },''', '''                        onFocused = { _: MetaItem?, key: String ->
+                              lastFocusedKey = key
+                              viewModel.lastFocusedKey = key
+                              lastQueueFocusedKey = null
+                              viewModel.lastQueueFocusedKey = null
+                          },''', 2)
+          replace_once(watchlist, '''                QueueSection(
+                      entryRequester = entryRequester,
+                      startPadding = startPadding,
+                      requestEntryFocus = !hasWatchlistMedia && viewModel.lastQueueFocusedKey == null,
+                      focusedQueueKey = viewModel.lastQueueFocusedKey,
+                      onQueueFocused = { key -> viewModel.lastQueueFocusedKey = key },
+                      onOpenItem = { queueItem: QueueItem ->
+                          onMovieClick(queueItem.toMetaItem())
+                      }
+                  )''', '''                QueueSection(
+                      entryRequester = entryRequester,
+                      startPadding = startPadding,
+                      requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
+                      focusedQueueKey = lastQueueFocusedKey,
+                      restoreEntryFocusWhenFocusedKeyMissing = !hasWatchlistMedia,
+                      onQueueFocused = { key ->
+                          lastQueueFocusedKey = key
+                          viewModel.lastQueueFocusedKey = key
+                          if (key != null) {
+                              lastFocusedKey = null
+                              viewModel.lastFocusedKey = null
+                          }
+                      },
+                      onOpenItem = { queueItem: QueueItem ->
+                          onMovieClick(queueItem.toMetaItem())
+                      }
+                  )''')
+
+          integrations_screen = "app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsScreen.kt"
+          replace_once(integrations_screen, '''    val accentColor = MaterialTheme.colorScheme.primary
+              val context = LocalContext.current
+
+              LaunchedEffect(Unit) {''', '''    val accentColor = MaterialTheme.colorScheme.primary
+              val context = LocalContext.current
+              val debridScrollState = rememberScrollState()
+              val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
+
+              LaunchedEffect(Unit) {''')
+          replace_once(integrations_screen, '''                modifier = Modifier
+                      .width(rememberDialogWidth(460))
+                      .clip(RoundedCornerShape(16.dp))
+                      .background(MaterialTheme.colorScheme.background)
+                      .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                      .imePadding()
+                      .padding(24.dp)
+              ) {
+                  Column {''', '''                modifier = Modifier
+                      .width(rememberDialogWidth(460))
+                      .heightIn(max = maxDialogHeight)
+                      .clip(RoundedCornerShape(16.dp))
+                      .background(MaterialTheme.colorScheme.background)
+                      .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                      .imePadding()
+                      .padding(24.dp)
+              ) {
+                  Column(modifier = Modifier.verticalScroll(debridScrollState)) {''')
+
+          integrations_vm = "app/src/main/java/com/hereliesaz/illumera/ui/settings/IntegrationsViewModel.kt"
+          replace_once(integrations_vm, '''import kotlinx.coroutines.launch
+          ''', '''import kotlinx.coroutines.launch
+          import kotlinx.coroutines.withTimeoutOrNull
+          ''')
+          replace_once(integrations_vm, '''        facebookLoginJob = viewModelScope.launch {
+              val result = stremioAuthManager.completeFacebookLogin(state)
+              result.fold(''', '''        facebookLoginJob = viewModelScope.launch {
+              val result = withTimeoutOrNull(5 * 60_000L) {
+                  stremioAuthManager.completeFacebookLogin(state)
+              }
+              if (result == null) {
+                  _uiState.value = _uiState.value.copy(
+                      facebookLoginState = FacebookLoginState.Error("Facebook login timed out. Please try again.")
+                  )
+                  return@launch
+              }
+              result.fold(''')
+
+          auth = "app/src/main/java/com/hereliesaz/illumera/data/auth/StremioAuthManager.kt"
+          replace_once(auth, '''    private val encryptedPrefs: SharedPreferences by lazy {
+              try {
+                  createEncryptedPrefs()
+              } catch (e: Exception) {
+                  // AEADBadTagException / KeyStore corruption — nuke and rebuild
+                  Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
+                  clearCorruptedPrefs()
+                  try {
+                      createEncryptedPrefs()
+                  } catch (e2: Exception) {
+                      // KeyStore is permanently broken on this device — fall back to plain prefs
+                      Log.e("StremioAuthManager", "KeyStore permanently broken, using plain prefs", e2)
+                      context.getSharedPreferences(PREFS_FILE + "_fallback", Context.MODE_PRIVATE)
+                  }
+              }
+          }
+          ''', '''    private val encryptedPrefs: SharedPreferences? by lazy {
+              try {
+                  createEncryptedPrefs()
+              } catch (e: Exception) {
+                  Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
+                  clearCorruptedPrefs()
+                  try {
+                      createEncryptedPrefs()
+                  } catch (e2: Exception) {
+                      Log.e("StremioAuthManager", "Secure credential storage unavailable", e2)
+                      null
+                  }
+              }
+          }
+          ''')
+          replace_once(auth, '''    private val _connectionState = MutableStateFlow<StremioConnectionState>(StremioConnectionState.Disconnected)
+          ''', '''    private fun clearLegacyFallbackPrefs() {
+              val prefsDir = File(context.filesDir.parent, "shared_prefs")
+              File(prefsDir, "${PREFS_FILE}_fallback.xml").delete()
+              File(prefsDir, "${PREFS_FILE}_fallback.xml.bak").delete()
+          }
+
+              private val _connectionState = MutableStateFlow<StremioConnectionState>(StremioConnectionState.Disconnected)
+          ''')
+          replace_once(auth, '''    init {
+              refreshConnectionState()
+          }
+          ''', '''    init {
+              clearLegacyFallbackPrefs()
+              refreshConnectionState()
+          }
+          ''')
+          replace_count(auth, '''return encryptedPrefs.getString(''', '''return encryptedPrefs?.getString(''', 3)
+          replace_once(auth, '''    fun saveCredentialsForProfile(profileId: Int) {
+          ''', '''    fun saveCredentialsForProfile(profileId: Int) {
+              val prefs = encryptedPrefs ?: return
+          ''')
+          replace_once(auth, '''    fun loadCredentialsForProfile(profileId: Int) {
+              val authKey = encryptedPrefs.getString(profileScopedAuthKey(profileId), null)
+              val email = encryptedPrefs.getString(profileScopedEmail(profileId), null)
+              val avatar = encryptedPrefs.getString(profileScopedAvatar(profileId), null)
+          ''', '''    fun loadCredentialsForProfile(profileId: Int) {
+              val prefs = encryptedPrefs ?: run {
+                  _connectionState.value = StremioConnectionState.Disconnected
+                  return
+              }
+              val authKey = prefs.getString(profileScopedAuthKey(profileId), null)
+              val email = prefs.getString(profileScopedEmail(profileId), null)
+              val avatar = prefs.getString(profileScopedAvatar(profileId), null)
+          ''')
+          replace_once(auth, '''    fun copyCredentialsBetweenProfiles(sourceProfileId: Int, targetProfileId: Int) {
+              val authKey = encryptedPrefs.getString(profileScopedAuthKey(sourceProfileId), null)
+              val email = encryptedPrefs.getString(profileScopedEmail(sourceProfileId), null)
+              val avatar = encryptedPrefs.getString(profileScopedAvatar(sourceProfileId), null)
+          ''', '''    fun copyCredentialsBetweenProfiles(sourceProfileId: Int, targetProfileId: Int) {
+              val prefs = encryptedPrefs ?: return
+              val authKey = prefs.getString(profileScopedAuthKey(sourceProfileId), null)
+              val email = prefs.getString(profileScopedEmail(sourceProfileId), null)
+              val avatar = prefs.getString(profileScopedAvatar(sourceProfileId), null)
+          ''')
+          replace_once(auth, '''    fun clearCredentialsForProfile(profileId: Int) {
+              encryptedPrefs.edit()
+          ''', '''    fun clearCredentialsForProfile(profileId: Int) {
+              val prefs = encryptedPrefs ?: return
+              prefs.edit()
+          ''')
+          storage_failure = 'Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))'
+          replace_once(auth, '''    suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+              try {''', f'''    suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {{
+              val prefs = encryptedPrefs ?: return@withContext {storage_failure}
+              try {{''')
+          replace_once(auth, '''    ): Result<String> = withContext(Dispatchers.IO) {
+              try {
+                  val loginResult = stremioAuthService.register(email, password, marketing)''', f'''    ): Result<String> = withContext(Dispatchers.IO) {{
+              val prefs = encryptedPrefs ?: return@withContext {storage_failure}
+              try {{
+                  val loginResult = stremioAuthService.register(email, password, marketing)''')
+          replace_once(auth, '''    suspend fun completeFacebookLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              try {''', f'''    suspend fun completeFacebookLogin(state: String): Result<String> = withContext(Dispatchers.IO) {{
+              val prefs = encryptedPrefs ?: return@withContext {storage_failure}
+              try {{''')
+          replace_once(auth, '''    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+              try {''', f'''    suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {{
+              val prefs = encryptedPrefs ?: return@withContext {storage_failure}
+              try {{''')
+          replace_count(auth, '''            encryptedPrefs.edit().apply {''', '''            prefs.edit().apply {''', 7)
+          replace_once(auth, '''    fun disconnect() {
+              val authKey = getStoredAuthKey()
+              encryptedPrefs.edit()
+                  .remove(KEY_AUTH_KEY)
+                  .remove(KEY_EMAIL)
+                  .remove(KEY_AVATAR)
+                  .apply()
+          ''', '''    fun disconnect() {
+              val authKey = getStoredAuthKey()
+              encryptedPrefs?.edit()
+                  ?.remove(KEY_AUTH_KEY)
+                  ?.remove(KEY_EMAIL)
+                  ?.remove(KEY_AVATAR)
+                  ?.apply()
+          ''')
+
+          manifest = "app/src/main/AndroidManifest.xml"
+          replace_once(manifest, '''        android:supportsRtl="true"
+              android:extractNativeLibs="true"
+              android:theme="@style/Theme.Illumera">''', '''        android:supportsRtl="true"
+              android:theme="@style/Theme.Illumera">''')
+
+          jules = ".github/workflows/jules-glee.yml"
+          replace_once(jules, '''uses: HereLiesAz/workflows-starter-template/.github/workflows/jules-glee-reusable.yml@main''', '''uses: HereLiesAz/workflows-starter-template/.github/workflows/jules-glee-reusable.yml@72b4e445b76a540a31689cfa07eb811db0031da6''')
+
+          for workflow in (
+              ".github/workflows/glee-review.yml",
+              ".github/workflows/glee-review-antigravity.yml",
+          ):
+              replace_once(
+                  workflow,
+                  "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
+                  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+              )
+
+          # Semantic assertions: refuse to proceed if a security or regression fix vanished.
+          checks = {
+              details: ["Resume-state lookup failed; falling back to normal playback"],
+              queue: ["restoreEntryFocusWhenFocusedKeyMissing", "onQueueFocused(null)"],
+              watchlist: ["lastQueueFocusedKey by remember", "restoreEntryFocusWhenFocusedKeyMissing = !hasWatchlistMedia"],
+              integrations_vm: ["withTimeoutOrNull(5 * 60_000L)"],
+              auth: ["Secure credential storage unavailable", "private val encryptedPrefs: SharedPreferences?"],
+              jules: ["@72b4e445b76a540a31689cfa07eb811db0031da6"],
+          }
+          for path, needles in checks.items():
+              text = Path(path).read_text()
+              for needle in needles:
+                  if needle not in text:
+                      raise SystemExit(f"{path}: missing semantic assertion {needle!r}")
+
+          print("Direct production hardening applied and verified.")
           PY
-          python .ci/finalize-hardening.py
 
       - name: Run production quality gate
         working-directory: illumera
