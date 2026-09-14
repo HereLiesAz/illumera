@@ -104,7 +104,8 @@ fun QueueSection(
     queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager,
     requestEntryFocus: Boolean = false,
     focusedQueueKey: String? = null,
-    onQueueFocused: (String) -> Unit = {}
+    restoreEntryFocusWhenFocusedKeyMissing: Boolean = false,
+    onQueueFocused: (String?) -> Unit = {}
 ) {
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -121,6 +122,24 @@ fun QueueSection(
 
     LaunchedEffect(state.manualItems, state.suggestions) {
         queueManager.resolveMissingArtwork()
+    }
+
+    LaunchedEffect(
+        state.manualItems,
+        state.suggestions,
+        focusedQueueKey,
+        restoreEntryFocusWhenFocusedKeyMissing
+    ) {
+        val key = focusedQueueKey ?: return@LaunchedEffect
+        val stillExists = state.manualItems.any { it.stableKey == key } ||
+            state.suggestions.any { it.stableKey == key }
+        if (!stillExists) {
+            onQueueFocused(null)
+            if (restoreEntryFocusWhenFocusedKeyMissing) {
+                kotlinx.coroutines.delay(50)
+                runCatching { entryRequester.requestFocus() }
+            }
+        }
     }
 
     Column(

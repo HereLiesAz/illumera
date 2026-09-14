@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 sealed class IntegrationsEvent {
@@ -240,7 +241,15 @@ class IntegrationsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url))
 
         facebookLoginJob = viewModelScope.launch {
-            val result = stremioAuthManager.completeFacebookLogin(state)
+            val result = withTimeoutOrNull(5 * 60_000L) {
+                stremioAuthManager.completeFacebookLogin(state)
+            }
+            if (result == null) {
+                _uiState.value = _uiState.value.copy(
+                    facebookLoginState = FacebookLoginState.Error("Facebook login timed out. Please try again.")
+                )
+                return@launch
+            }
             result.fold(
                 onSuccess = {
                     _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Success)

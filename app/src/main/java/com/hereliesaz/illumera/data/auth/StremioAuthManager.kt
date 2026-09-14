@@ -48,23 +48,20 @@ class StremioAuthManager @Inject constructor(
         private const val KEY_AVATAR = "stremio_avatar"
     }
 
-    private val encryptedPrefs: SharedPreferences by lazy {
+    private val encryptedPrefs: SharedPreferences? by lazy {
         try {
             createEncryptedPrefs()
         } catch (e: Exception) {
-            // AEADBadTagException / KeyStore corruption — nuke and rebuild
             Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
             clearCorruptedPrefs()
             try {
                 createEncryptedPrefs()
             } catch (e2: Exception) {
-                // KeyStore is permanently broken on this device — fall back to plain prefs
-                Log.e("StremioAuthManager", "KeyStore permanently broken, using plain prefs", e2)
-                context.getSharedPreferences(PREFS_FILE + "_fallback", Context.MODE_PRIVATE)
+                Log.e("StremioAuthManager", "Secure credential storage unavailable", e2)
+                null
             }
         }
     }
-
     private fun createEncryptedPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -95,10 +92,17 @@ class StremioAuthManager @Inject constructor(
         }
     }
 
+    private fun clearLegacyFallbackPrefs() {
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+        File(prefsDir, "${PREFS_FILE}_fallback.xml").delete()
+        File(prefsDir, "${PREFS_FILE}_fallback.xml.bak").delete()
+    }
+
     private val _connectionState = MutableStateFlow<StremioConnectionState>(StremioConnectionState.Disconnected)
     val connectionState: StateFlow<StremioConnectionState> = _connectionState.asStateFlow()
 
     init {
+        clearLegacyFallbackPrefs()
         refreshConnectionState()
     }
 
@@ -120,14 +124,14 @@ class StremioAuthManager @Inject constructor(
      * Gets the stored auth key (for API calls).
      */
     fun getStoredAuthKey(): String? {
-        return encryptedPrefs.getString(KEY_AUTH_KEY, null)
+        return encryptedPrefs?.getString(KEY_AUTH_KEY, null)
     }
 
     /**
      * Gets the stored email (for display purposes).
      */
     fun getStoredEmail(): String? {
-        return encryptedPrefs.getString(KEY_EMAIL, null)
+        return encryptedPrefs?.getString(KEY_EMAIL, null)
     }
 
     /**
@@ -135,7 +139,7 @@ class StremioAuthManager @Inject constructor(
      * accounts carry their FB photo here — see [StremioAuthService.login]).
      */
     fun getStoredAvatarUrl(): String? {
-        return encryptedPrefs.getString(KEY_AVATAR, null)
+        return encryptedPrefs?.getString(KEY_AVATAR, null)
     }
 
     suspend fun getDataExportUrl(): Result<String> = withContext(Dispatchers.IO) {
@@ -160,6 +164,7 @@ class StremioAuthManager @Inject constructor(
     private fun profileScopedAvatar(profileId: Int): String = "${KEY_AVATAR}_profile_$profileId"
 
     fun saveCredentialsForProfile(profileId: Int) {
+        val prefs = encryptedPrefs ?: return
         val authKey = getStoredAuthKey()
         val email = getStoredEmail()
         val avatar = getStoredAvatarUrl()
@@ -167,7 +172,7 @@ class StremioAuthManager @Inject constructor(
         val emailProfileKey = profileScopedEmail(profileId)
         val avatarProfileKey = profileScopedAvatar(profileId)
 
-        encryptedPrefs.edit().apply {
+        prefs.edit().apply {
             if (authKey != null && email != null) {
                 putString(authProfileKey, authKey)
                 putString(emailProfileKey, email)
@@ -181,11 +186,15 @@ class StremioAuthManager @Inject constructor(
     }
 
     fun loadCredentialsForProfile(profileId: Int) {
-        val authKey = encryptedPrefs.getString(profileScopedAuthKey(profileId), null)
-        val email = encryptedPrefs.getString(profileScopedEmail(profileId), null)
-        val avatar = encryptedPrefs.getString(profileScopedAvatar(profileId), null)
+        val prefs = encryptedPrefs ?: run {
+            _connectionState.value = StremioConnectionState.Disconnected
+            return
+        }
+        val authKey = prefs.getString(profileScopedAuthKey(profileId), null)
+        val email = prefs.getString(profileScopedEmail(profileId), null)
+        val avatar = prefs.getString(profileScopedAvatar(profileId), null)
 
-        encryptedPrefs.edit().apply {
+        prefs.edit().apply {
             if (authKey != null && email != null) {
                 putString(KEY_AUTH_KEY, authKey)
                 putString(KEY_EMAIL, email)
@@ -201,14 +210,15 @@ class StremioAuthManager @Inject constructor(
     }
 
     fun copyCredentialsBetweenProfiles(sourceProfileId: Int, targetProfileId: Int) {
-        val authKey = encryptedPrefs.getString(profileScopedAuthKey(sourceProfileId), null)
-        val email = encryptedPrefs.getString(profileScopedEmail(sourceProfileId), null)
-        val avatar = encryptedPrefs.getString(profileScopedAvatar(sourceProfileId), null)
+        val prefs = encryptedPrefs ?: return
+        val authKey = prefs.getString(profileScopedAuthKey(sourceProfileId), null)
+        val email = prefs.getString(profileScopedEmail(sourceProfileId), null)
+        val avatar = prefs.getString(profileScopedAvatar(sourceProfileId), null)
         val authProfileKey = profileScopedAuthKey(targetProfileId)
         val emailProfileKey = profileScopedEmail(targetProfileId)
         val avatarProfileKey = profileScopedAvatar(targetProfileId)
 
-        encryptedPrefs.edit().apply {
+        prefs.edit().apply {
             if (authKey != null && email != null) {
                 putString(authProfileKey, authKey)
                 putString(emailProfileKey, email)
@@ -222,7 +232,8 @@ class StremioAuthManager @Inject constructor(
     }
 
     fun clearCredentialsForProfile(profileId: Int) {
-        encryptedPrefs.edit()
+        val prefs = encryptedPrefs ?: return
+        prefs.edit()
             .remove(profileScopedAuthKey(profileId))
             .remove(profileScopedEmail(profileId))
             .remove(profileScopedAvatar(profileId))
@@ -234,10 +245,11 @@ class StremioAuthManager @Inject constructor(
      * Returns the auth key on success.
      */
     suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+        val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val loginResult = stremioAuthService.login(email, password)
 
-            encryptedPrefs.edit().apply {
+            prefs.edit().apply {
                 putString(KEY_AUTH_KEY, loginResult.authKey)
                 putString(KEY_EMAIL, email)
                 if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
@@ -246,6 +258,8 @@ class StremioAuthManager @Inject constructor(
             _connectionState.value = StremioConnectionState.Connected(email)
 
             Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: StremioAuthError.InvalidCredentials) {
             Result.failure(e)
         } catch (e: StremioAuthError.NetworkError) {
@@ -263,10 +277,11 @@ class StremioAuthManager @Inject constructor(
         password: String,
         marketing: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
+        val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val loginResult = stremioAuthService.register(email, password, marketing)
 
-            encryptedPrefs.edit().apply {
+            prefs.edit().apply {
                 putString(KEY_AUTH_KEY, loginResult.authKey)
                 putString(KEY_EMAIL, email)
                 if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
@@ -274,6 +289,8 @@ class StremioAuthManager @Inject constructor(
 
             _connectionState.value = StremioConnectionState.Connected(email)
             Result.success(loginResult.authKey)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: StremioAuthError) {
             Result.failure(e)
         } catch (e: Exception) {
@@ -315,13 +332,14 @@ class StremioAuthManager @Inject constructor(
      * mirroring [login] but sourced from Facebook instead of a typed password.
      */
     suspend fun completeFacebookLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+        val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val (email, fbToken) = stremioAuthService.pollFacebookLogin(state)
                 ?: return@withContext Result.failure(StremioAuthError.NetworkError("Facebook login timed out or was not completed"))
 
             val loginResult = stremioAuthService.login(email, fbToken, facebook = true)
 
-            encryptedPrefs.edit().apply {
+            prefs.edit().apply {
                 putString(KEY_AUTH_KEY, loginResult.authKey)
                 putString(KEY_EMAIL, email)
                 if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
@@ -343,6 +361,7 @@ class StremioAuthManager @Inject constructor(
 
     /** Completes Apple OAuth and stores the resulting Stremio credentials. */
     suspend fun completeAppleLogin(state: String): Result<String> = withContext(Dispatchers.IO) {
+        val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val credentials = stremioAuthService.pollAppleLogin(state)
                 ?: return@withContext Result.failure(
@@ -351,7 +370,7 @@ class StremioAuthManager @Inject constructor(
             val loginResult = stremioAuthService.loginWithApple(credentials)
             val accountLabel = credentials.email.ifBlank { "Apple account" }
 
-            encryptedPrefs.edit().apply {
+            prefs.edit().apply {
                 putString(KEY_AUTH_KEY, loginResult.authKey)
                 putString(KEY_EMAIL, accountLabel)
                 if (loginResult.avatarUrl != null) putString(KEY_AVATAR, loginResult.avatarUrl) else remove(KEY_AVATAR)
@@ -401,11 +420,11 @@ class StremioAuthManager @Inject constructor(
      */
     fun disconnect() {
         val authKey = getStoredAuthKey()
-        encryptedPrefs.edit()
-            .remove(KEY_AUTH_KEY)
-            .remove(KEY_EMAIL)
-            .remove(KEY_AVATAR)
-            .apply()
+        encryptedPrefs?.edit()
+            ?.remove(KEY_AUTH_KEY)
+            ?.remove(KEY_EMAIL)
+            ?.remove(KEY_AVATAR)
+            ?.apply()
 
         _connectionState.value = StremioConnectionState.Disconnected
 
