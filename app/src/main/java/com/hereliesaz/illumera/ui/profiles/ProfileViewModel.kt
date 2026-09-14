@@ -193,6 +193,7 @@ class ProfileViewModel @Inject constructor(
                         onResult(true, null)
                     },
                     onFailure = { error ->
+                        preserveConnectedCredentialsAfterSetupFetchFailure(profileId, email, error)
                         onResult(false, setupErrorMessage(error))
                     }
                 )
@@ -255,10 +256,7 @@ class ProfileViewModel @Inject constructor(
         setupSocialLoginJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val authResult = withTimeoutOrNull(5 * 60_000L) {
-                    when (provider) {
-                        SetupSocialProvider.FACEBOOK -> stremioAuthManager.completeFacebookLogin(state)
-                        SetupSocialProvider.APPLE -> stremioAuthManager.completeAppleLogin(state)
-                    }
+                    completeSetupSocialLogin(provider, state)
                 }
 
                 if (authResult == null) {
@@ -278,6 +276,7 @@ class ProfileViewModel @Inject constructor(
                                 onResult(true, null)
                             },
                             onFailure = { error ->
+                                preserveConnectedCredentialsAfterSetupFetchFailure(profileId, null, error)
                                 val message = setupErrorMessage(error)
                                 _setupSocialLoginState.value = SetupSocialLoginState.Error(provider, message)
                                 onResult(false, message)
@@ -296,6 +295,29 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The Stremio service polls Facebook for ~25 seconds and Apple for ~50 seconds per
+     * call. Repeat those bounded polls until our setup flow's five-minute deadline so
+     * normal users are not failed while they are still completing OAuth on another device.
+     */
+    private suspend fun completeSetupSocialLogin(
+        provider: SetupSocialProvider,
+        state: String
+    ): Result<String> {
+        while (true) {
+            val result = when (provider) {
+                SetupSocialProvider.FACEBOOK -> stremioAuthManager.completeFacebookLogin(state)
+                SetupSocialProvider.APPLE -> stremioAuthManager.completeAppleLogin(state)
+            }
+            if (result.isSuccess) return result
+
+            val error = result.exceptionOrNull()
+            val pollWindowExpired = error is StremioAuthError.NetworkError &&
+                error.message.contains("timed out or was not completed", ignoreCase = true)
+            if (!pollWindowExpired) return result
+        }
+    }
+
     fun resetSetupSocialLoginState() {
         setupSocialLoginJob?.cancel()
         setupSocialLoginJob = null
@@ -308,10 +330,33 @@ class ProfileViewModel @Inject constructor(
             enabled = enabled,
             stremioAvatarUrl = stremioAuthManager.getStoredAvatarUrl()
         )?.let { avatarRef ->
+            var previousAvatarRef: String? = null
             profileMutationCoordinator.update(profileId) { current ->
+                previousAvatarRef = current.avatarRef
                 current.copy(avatarRef = avatarRef)
             }
+            if (previousAvatarRef != null && previousAvatarRef != avatarRef) {
+                deleteCustomAvatarFile(previousAvatarRef)
+            }
         }
+    }
+
+    /**
+     * Fresh-profile setup writes the default snapshot even when addon fetch fails. If
+     * authentication already succeeded, keep those credentials profile-scoped so a
+     * transient collection/network failure does not silently sign the user back out.
+     */
+    private fun preserveConnectedCredentialsAfterSetupFetchFailure(
+        profileId: Int,
+        expectedEmail: String?,
+        error: Throwable
+    ) {
+        if (error is StremioAuthError.InvalidCredentials) return
+        val authKey = stremioAuthManager.getStoredAuthKey() ?: return
+        val storedEmail = stremioAuthManager.getStoredEmail() ?: return
+        if (authKey.isBlank()) return
+        if (expectedEmail != null && !storedEmail.equals(expectedEmail, ignoreCase = true)) return
+        stremioAuthManager.saveCredentialsForProfile(profileId)
     }
 
     private fun setupErrorMessage(error: Throwable): String = when (error) {
