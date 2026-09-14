@@ -97,7 +97,7 @@ fun VoidButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") isPrimary: Boolean = false,
     isDestructive: Boolean = false,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null
@@ -110,12 +110,12 @@ fun VoidButton(
     val bgColor = if (!enabled) Color.White.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.08f)
     val textColor = when {
         !enabled -> Color.White.copy(alpha = 0.3f)
-        isFocused || isPrimary -> activeColor
+        isFocused -> activeColor
         else -> Color.White
     }
     val borderColor = when {
         !enabled -> Color.White.copy(alpha = 0.1f)
-        isFocused || isPrimary -> activeColor
+        isFocused -> activeColor
         else -> Color.White.copy(alpha = 0.2f)
     }
 
