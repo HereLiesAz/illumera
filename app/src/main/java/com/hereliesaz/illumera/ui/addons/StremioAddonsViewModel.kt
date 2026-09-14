@@ -55,10 +55,9 @@ class StremioAddonsViewModel @Inject constructor(
         }
 
         if (_uiState.value.isSyncing) return
+        _uiState.value = StremioAddonsUiState(isSyncing = true)
 
         viewModelScope.launch {
-            _uiState.value = StremioAddonsUiState(isSyncing = true)
-
             try {
                 val entries = stremioAuthManager.fetchAddons().getOrElse { throw it }
                 val remoteUrls = entries
