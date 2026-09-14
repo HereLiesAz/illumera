@@ -28,6 +28,7 @@ class AddonDaoIntegrationTest {
 
     @Before
     fun setUp() {
+        // ApplicationProvider avoids Robolectric's generic getApplication bridge under Kotlin 2.4+.
         val context = ApplicationProvider.getApplicationContext<Context>()
         db = Room.inMemoryDatabaseBuilder(context, LumeraDatabase::class.java)
             .allowMainThreadQueries()
