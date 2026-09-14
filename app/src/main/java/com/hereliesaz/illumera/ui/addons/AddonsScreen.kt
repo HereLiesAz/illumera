@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,7 +62,7 @@ internal const val STREMIO_ADDONS_URL = "https://web.stremio.com/#/addons"
 fun AddonsScreen(
     onBack: () -> Unit,
     @Suppress("UNUSED_PARAMETER") isTopNav: Boolean = false,
-    viewModel: AddonsViewModel = hiltViewModel()
+    viewModel: StremioAddonsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
