@@ -77,6 +77,22 @@ class StremioAddonsViewModelTest {
     }
 
     @Test
+    fun repeatedSyncRequestWhileFirstIsPendingIsIgnored() = runTest(dispatcher) {
+        coEvery { authManager.fetchAddons() } returns Result.success(emptyList())
+        every { addonRepository.getAddons() } returns flowOf(emptyList())
+        val viewModel = newViewModel()
+
+        viewModel.syncFromStremio()
+        assertTrue(viewModel.uiState.value.isSyncing)
+        viewModel.syncFromStremio()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { authManager.fetchAddons() }
+        coVerify(exactly = 1) { profileManager.saveActiveRuntimeState() }
+        assertFalse(viewModel.uiState.value.isSyncing)
+    }
+
+    @Test
     fun syncUsesRemoteCollectionAsAuthorityAndPreservesCinemetaFallback() = runTest(dispatcher) {
         val cinemeta = addon("https://v3-cinemeta.strem.io", "Cinemeta", 0)
         val keep = addon("https://keep.example", "Keep", 1)
