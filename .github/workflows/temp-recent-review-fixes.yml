@@ -85,12 +85,12 @@ jobs:
         run: |
           ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Commit validated hardening
+      - name: Commit validated app hardening
         working-directory: illumera
         run: |
           set -euo pipefail
+          git restore --source=HEAD --worktree -- .github/workflows
           rm -f .ci/apply-recent-review-fixes.py .ci/finalize-hardening.py .ci/prune-review-patcher.py .ci/finish-production-hardening.py .ci/repair-hardening-transformer.py .ci/apply-production-hardening-current.py .ci/prepare-lint-baseline.py
-          rm -f .github/workflows/temp-recent-review-fixes.yml
           rmdir .ci 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
