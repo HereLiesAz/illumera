@@ -1,4 +1,5 @@
 [versions]
+# Android build toolchain versions are explicit for reproducible centralized builds.
 agp = "9.4.0"
 kotlin = "2.4.20"
 ksp = "2.3.11"
