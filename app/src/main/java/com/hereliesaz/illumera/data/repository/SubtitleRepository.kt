@@ -1,6 +1,5 @@
 package com.hereliesaz.illumera.data.repository
 
-import android.net.Uri
 import com.google.gson.JsonElement
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
@@ -14,6 +13,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.net.URI
 import java.net.URLEncoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -240,9 +240,9 @@ class SubtitleRepository @Inject constructor(
 
     private fun resolveSubtitleUrl(rawUrl: String?, addonBaseUrl: String): String? {
         val urlValue = rawUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val uri = runCatching { Uri.parse(urlValue) }.getOrNull() ?: return null
+        val uri = runCatching { URI(urlValue) }.getOrNull() ?: return null
         if (uri.isAbsolute) {
-            val scheme = uri.scheme?.lowercase()
+            val scheme = uri.scheme?.lowercase(Locale.ROOT)
             if (scheme != "http" && scheme != "https") return null
             return urlValue
         }
