@@ -174,13 +174,13 @@ class AddonDaoIntegrationTest {
 
         assertEquals(
             listOf("show:1:2", "show:1:1"),
-            dao.getSeriesEpisodeHistory("show:").map { it.id }
+            dao.getSeriesEpisodeHistory("show:%").map { it.id }
         )
-        assertEquals("show:1:2", dao.getLatestSeriesEpisodeHistory("show:")?.id)
-        assertEquals(2, dao.getHistoryItemsForSeries("show", "show:").size)
+        assertEquals("show:1:2", dao.getLatestSeriesEpisodeHistory("show:%")?.id)
+        assertEquals(2, dao.getHistoryItemsForSeries("show", "show:%").size)
 
-        dao.deleteSeriesHistory("show:")
-        assertTrue(dao.getSeriesEpisodeHistory("show:").isEmpty())
+        dao.deleteSeriesHistory("show:%")
+        assertTrue(dao.getSeriesEpisodeHistory("show:%").isEmpty())
         assertEquals("other:1:1", dao.getHistoryItem("other:1:1")?.id)
     }
 
