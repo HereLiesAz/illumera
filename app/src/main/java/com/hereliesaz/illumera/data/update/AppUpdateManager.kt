@@ -348,8 +348,10 @@ class AppUpdateManager @Inject constructor(
         /** Strip the SHA-256 line from the changelog shown to users. */
         private fun stripHashFromChangelog(body: String?): String {
             if (body == null) return "No changelog provided."
-            return body.replace(Regex("""(?m)^SHA-256:\s*[a-fA-F0-9]{64}\s*$"""), "").trim()
-                .ifEmpty { "No changelog provided." }
+            return body.replace(
+                Regex("""(?m)^SHA-256:[ \t]*[a-fA-F0-9]{64}[ \t]*(?:\r?\n|$)"""),
+                ""
+            ).trim().ifEmpty { "No changelog provided." }
         }
     }
 }
