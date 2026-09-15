@@ -1,6 +1,5 @@
 package com.hereliesaz.illumera.data.trakt
 
-import android.util.Log
 import com.hereliesaz.illumera.BuildConfig
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -13,10 +12,6 @@ class TraktAuthInterceptor @Inject constructor(
     private val traktAuthManager: TraktAuthManager
 ) : Interceptor {
 
-    companion object {
-        private const val TAG = "TraktAuthInterceptor"
-    }
-
     // Guards refreshAccessToken() so concurrent requests (this interceptor is a
     // @Singleton shared across every call OkHttp dispatches) single-flight a
     // refresh instead of racing: a thread that loses the lock re-checks the
@@ -28,7 +23,6 @@ class TraktAuthInterceptor @Inject constructor(
 
         // Fix #7: proactively refresh if token is expired or about to expire
         if (token != null && traktAuthManager.needsRefresh) {
-            Log.d(TAG, "Token expiring soon, proactive refresh")
             val newToken = refreshTokenSynchronized(token)
             if (newToken != null) {
                 token = newToken
@@ -39,16 +33,12 @@ class TraktAuthInterceptor @Inject constructor(
 
         // If we get a 401, try refreshing the token and retry once
         if (response.code == 401 && token != null) {
-            Log.d(TAG, "Got 401, attempting token refresh")
-
             val newToken = refreshTokenSynchronized(token)
 
             if (newToken != null) {
-                Log.d(TAG, "Token refreshed, retrying request")
                 response.close()
                 return chain.proceed(buildRequest(chain.request(), newToken))
             }
-            Log.w(TAG, "Token refresh failed")
             // Refresh didn't produce a usable token — retrying with the same
             // one would just fail the same way, so return the original 401.
         }
