@@ -28,7 +28,8 @@ class StreamSortingServiceTest {
         val streams = listOf(
             Stream(title = "1080p seeds: 0", url = "zero"),
             Stream(title = "1080p seeds: 8", url = "seeded"),
-            Stream(title = "1080p", url = "unknown")
+            Stream(title = "1080p", url = "unknown"),
+            Stream(title = "1080p peers: 0", url = "peer-only")
         )
 
         val result = filter(
@@ -36,7 +37,7 @@ class StreamSortingServiceTest {
             ProfileEntity(name = "Test")
         )
 
-        assertEquals(setOf("seeded", "unknown"), result.mapNotNull { it.url }.toSet())
+        assertEquals(setOf("seeded", "unknown", "peer-only"), result.mapNotNull { it.url }.toSet())
     }
 
     @Test
@@ -228,4 +229,24 @@ class StreamSortingServiceTest {
         assertEquals(listOf("english"), english.mapNotNull { it.url })
         assertEquals(listOf("brazilian"), brazilian.mapNotNull { it.url })
     }
+    @Test
+    fun seedSortingRanksUnknownAboveExplicitZeroWithoutInventingASeedCount() {
+        val streams = listOf(
+            Stream(title = "1080p seeds: 12", url = "seeded"),
+            Stream(title = "1080p", url = "unknown"),
+            Stream(title = "1080p seeds: 0", url = "zero")
+        )
+
+        val result = service.sortAndFilter(
+            streams = streams,
+            enabledQualities = StreamQuality.entries.toSet(),
+            excludePhrases = emptyList(),
+            addonSortOrders = emptyMap(),
+            sortBy = "seeds",
+            profile = ProfileEntity(name = "Test", sourceSkipSeedless = false)
+        )
+
+        assertEquals(listOf("seeded", "unknown", "zero"), result.mapNotNull { it.url })
+    }
+
 }

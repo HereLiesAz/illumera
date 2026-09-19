@@ -263,8 +263,8 @@ class AddonRepository @Inject constructor(
                     val sourceLabel = addon.nickname ?: addon.name
                     response.streams.orEmpty().map { stream ->
                         stream.copy(
-                            name = "[$sourceLabel] ${stream.name ?: ""}".trim(),
-                            addonTransportUrl = addon.transportUrl
+                            addonTransportUrl = addon.transportUrl,
+                            addonDisplayName = sourceLabel
                         )
                     }
                 } catch (e: Exception) { emptyList<Stream>() }

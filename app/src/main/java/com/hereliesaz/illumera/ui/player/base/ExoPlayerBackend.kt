@@ -1026,7 +1026,7 @@ class ExoPlayerBackend(
                     )
                     .setSubtitleConfigurations(subtitleConfigs)
                     .build()
-                createMediaSource(source.url, mediaItem)
+                createMediaSource(source.url, mediaItem, source.requestHeaders)
             }
 
             if (loadToken != token || released) return@launch
@@ -1183,7 +1183,11 @@ class ExoPlayerBackend(
             .setTsExtractorTimestampSearchBytes(1_500 * TsExtractor.TS_PACKET_SIZE)
     }
 
-    private fun createMediaSource(sourceUrl: String, mediaItem: MediaItem): MediaSource {
+    private fun createMediaSource(
+        sourceUrl: String,
+        mediaItem: MediaItem,
+        requestHeaders: Map<String, String> = emptyMap()
+    ): MediaSource {
         val sourceUri = Uri.parse(sourceUrl)
         val isHttp = sourceUri.scheme?.lowercase(Locale.US)?.startsWith("http") == true
 
@@ -1195,62 +1199,74 @@ class ExoPlayerBackend(
         val userInfo = sourceUri.userInfo
         val isLocalhost = sourceUri.host == "127.0.0.1" || sourceUri.host == "localhost"
         isTorrentStream = isLocalhost
-        val okHttpFactory = OkHttpDataSource.Factory(getOrCreateOkHttpClient(isLocalhost))
-            .setUserAgent(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
 
+        val streamHeaders = requestHeaders.toMutableMap()
         if (!userInfo.isNullOrEmpty() && userInfo.contains(':')) {
             val authorization = "Basic " + Base64.getEncoder()
                 .encodeToString(userInfo.toByteArray(Charsets.UTF_8))
-            okHttpFactory.setDefaultRequestProperties(mapOf("Authorization" to authorization))
+            streamHeaders["Authorization"] = authorization
         }
+
+        val okHttpFactory = createHttpDataSourceFactory(
+            isLocalhost = isLocalhost,
+            requestHeaders = streamHeaders
+        )
 
         val urlLower = sourceUrl.lowercase(Locale.US)
         val isHls = urlLower.contains(".m3u8") || urlLower.contains("/hls") ||
             urlLower.contains("/playlist")
         val isDash = urlLower.contains(".mpd") || urlLower.contains("/dash")
 
-        // DefaultMediaSourceFactory handles SubtitleConfigurations natively,
-        // so for non-HLS/non-DASH (e.g. MKV) pass the full mediaItem directly.
-        if (!isHls && !isDash) {
-            val handler = assHandler
-            val factory = if (playbackSettings.assRendererEnabled && handler != null) {
-                DefaultMediaSourceFactory(okHttpFactory, AssExtractorsFactory(handler))
-            } else {
-                DefaultMediaSourceFactory(okHttpFactory)
-            }
-            return factory.createMediaSource(mediaItem)
-        }
-
-        // HLS/DASH factories don't support SubtitleConfigurations on the MediaItem,
-        // so we strip them and merge sidecar sources manually.
         val subtitleConfigs = mediaItem.localConfiguration
             ?.subtitleConfigurations.orEmpty()
-
         val mainMediaItem = if (subtitleConfigs.isNotEmpty()) {
             mediaItem.buildUpon().setSubtitleConfigurations(emptyList()).build()
         } else {
             mediaItem
         }
 
-        val mainSource = if (isHls) {
-            HlsMediaSource.Factory(okHttpFactory)
+        val mainSource = when {
+            isHls -> HlsMediaSource.Factory(okHttpFactory)
                 .setAllowChunklessPreparation(true)
                 .createMediaSource(mainMediaItem)
-        } else {
-            DashMediaSource.Factory(okHttpFactory)
+            isDash -> DashMediaSource.Factory(okHttpFactory)
                 .createMediaSource(mainMediaItem)
+            else -> {
+                val handler = assHandler
+                val factory = if (playbackSettings.assRendererEnabled && handler != null) {
+                    DefaultMediaSourceFactory(okHttpFactory, AssExtractorsFactory(handler))
+                } else {
+                    DefaultMediaSourceFactory(okHttpFactory)
+                }
+                factory.createMediaSource(mainMediaItem)
+            }
         }
 
         if (subtitleConfigs.isEmpty()) return mainSource
 
+        // Never forward stream cookies/auth headers to unrelated subtitle hosts.
+        val subtitleFactory = createHttpDataSourceFactory(isLocalhost = false)
         val subtitleSources = subtitleConfigs.map { config ->
-            SingleSampleMediaSource.Factory(okHttpFactory)
+            SingleSampleMediaSource.Factory(subtitleFactory)
                 .createMediaSource(config, C.TIME_UNSET)
         }
         return MergingMediaSource(mainSource, *subtitleSources.toTypedArray())
+    }
+
+    private fun createHttpDataSourceFactory(
+        isLocalhost: Boolean,
+        requestHeaders: Map<String, String> = emptyMap()
+    ): OkHttpDataSource.Factory {
+        return OkHttpDataSource.Factory(getOrCreateOkHttpClient(isLocalhost))
+            .setUserAgent(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            .also { factory ->
+                if (requestHeaders.isNotEmpty()) {
+                    factory.setDefaultRequestProperties(requestHeaders)
+                }
+            }
     }
 
     private var torrentOkHttpClient: OkHttpClient? = null

@@ -164,6 +164,35 @@ class SourceSelectionStoreTest {
         assertEquals(setOf("x"), store.getExcludedSources("show:1:1"))
     }
 
+
+    @Test
+    fun addonProvenanceProvidesFallbackWithoutMutatingStreamName() {
+        store.rememberSelection(
+            "movie",
+            Stream(
+                name = "1080p",
+                url = "https://example.test/old",
+                addonTransportUrl = "https://torrentio.example",
+                addonDisplayName = "Torrentio"
+            )
+        )
+
+        val replacement = Stream(
+            name = "720p",
+            url = "https://example.test/new",
+            addonTransportUrl = "https://torrentio.example",
+            addonDisplayName = "Torrentio"
+        )
+        val unrelated = Stream(
+            name = "1080p",
+            url = "https://example.test/other",
+            addonTransportUrl = "https://mediafusion.example",
+            addonDisplayName = "MediaFusion"
+        )
+
+        assertEquals(replacement, store.findPreferredStream("movie", listOf(unrelated, replacement)))
+    }
+
     companion object {
         private const val PREFS_FILE = "source_selection_prefs"
     }

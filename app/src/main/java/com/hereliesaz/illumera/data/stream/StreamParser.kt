@@ -9,7 +9,7 @@ object StreamParser {
     private val seedPatterns = listOf(
         Regex("""👤\s*(\d[\d,.]*)"""),
         Regex("""(?i)\bseeds?[:\s]+(\d[\d,.]*)"""),
-        Regex("""(?i)\bpeers?[:\s]+(\d[\d,.]*)"""),
+        // Peer counts are not seed counts. Peer-only metadata means seed count is unknown.
         // Requires a real separator (space/colon) between "S" and the digits so this
         // doesn't match a season/episode marker like "S02E05" (no separator there).
         Regex("""(?i)\bS[:\s]+(\d[\d,.]*)""")

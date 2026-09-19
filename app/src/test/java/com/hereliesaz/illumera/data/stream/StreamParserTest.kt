@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.data.stream
 
+import com.google.gson.Gson
 import com.hereliesaz.illumera.data.model.StreamQuality
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
@@ -30,8 +31,13 @@ class StreamParserTest {
     fun extractSeedsSupportsCommonAddonFormats() {
         assertEquals(1234, StreamParser.extractSeeds("👤 1,234"))
         assertEquals(98, StreamParser.extractSeeds("Seeds: 98"))
-        assertEquals(77, StreamParser.extractSeeds("peers 77"))
         assertEquals(1234, StreamParser.extractSeeds("S 1.234"))
+    }
+
+    @Test
+    fun extractSeedsDoesNotMistakePeerCountForSeedCount() {
+        assertNull(StreamParser.extractSeeds("peers: 0"))
+        assertNull(StreamParser.extractSeeds("Peers 77"))
     }
 
     @Test
@@ -103,4 +109,19 @@ class StreamParserTest {
         assertNull(parsed.seeds)
         assertTrue(parsed.formats.isEmpty())
     }
+    @Test
+    fun streamBehaviorHintsPreserveStandardAddonHooksDuringJsonDecode() {
+        val stream = Gson().fromJson(
+            """{"url":"https://cdn.example/video","behaviorHints":{"notWebReady":true,"proxyHeaders":{"request":{"Cookie":"session=abc"},"response":{"X-Test":"ok"}},"videoHash":"hash123","videoSize":42,"filename":"movie.mkv"}}""",
+            Stream::class.java
+        )
+
+        assertEquals(true, stream.behaviorHints?.notWebReady)
+        assertEquals("session=abc", stream.behaviorHints?.proxyHeaders?.request?.get("Cookie"))
+        assertEquals("ok", stream.behaviorHints?.proxyHeaders?.response?.get("X-Test"))
+        assertEquals("hash123", stream.behaviorHints?.videoHash)
+        assertEquals(42L, stream.behaviorHints?.videoSize)
+        assertEquals("movie.mkv", stream.behaviorHints?.filename)
+    }
+
 }

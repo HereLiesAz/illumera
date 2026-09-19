@@ -11,7 +11,10 @@ data class PlayerSourceOption(
     val title: String? = null,
     val description: String? = null,
     val fileIdx: Int = -1,
-    val fileName: String = ""
+    val fileName: String = "",
+    val addonTransportUrl: String? = null,
+    val addonDisplayName: String? = null,
+    val requestHeaders: Map<String, String> = emptyMap()
 )
 
 @Immutable

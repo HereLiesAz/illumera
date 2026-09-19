@@ -3154,7 +3154,9 @@ private fun BoxScope.PlayerSourceSidebar(
                 title = source.title ?: source.label,
                 description = source.description,
                 url = source.url,
-                addonTransportUrl = source.id
+                addonTransportUrl = source.addonTransportUrl,
+                addonDisplayName = source.addonDisplayName,
+                sourceSelectionId = source.id
             )
         }
     }
@@ -3174,13 +3176,13 @@ private fun BoxScope.PlayerSourceSidebar(
         excludedSourceIds = excludedSourceIds,
         sourceListDisabled = sourceListDisabled,
         onToggleSourceExcluded = { stream ->
-            val sourceId = stream.addonTransportUrl ?: stream.url
+            val sourceId = stream.sourceSelectionId ?: stream.addonTransportUrl ?: stream.url
             if (sourceId != null) onToggleSourceExcluded(sourceId)
         },
         onToggleSourceListDisabled = onToggleSourceListDisabled,
         onEpisodeSelected = {},
         onSourceSelected = { stream ->
-            val sourceId = stream.addonTransportUrl ?: stream.url ?: return@GlassSidebar
+            val sourceId = stream.sourceSelectionId ?: stream.addonTransportUrl ?: stream.url ?: return@GlassSidebar
             onSelectSource(sourceId)
         },
         onBack = onClose,
@@ -3227,7 +3229,9 @@ private fun BoxScope.EpisodeSwitchSourceSidebar(
                 title = source.title ?: source.label,
                 description = source.description,
                 url = source.url,
-                addonTransportUrl = source.url
+                addonTransportUrl = source.addonTransportUrl,
+                addonDisplayName = source.addonDisplayName,
+                sourceSelectionId = source.id
             )
         }
     }

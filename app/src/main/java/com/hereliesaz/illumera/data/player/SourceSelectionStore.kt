@@ -18,7 +18,7 @@ class SourceSelectionStore @Inject constructor(
     fun rememberSelection(playbackId: String, stream: Stream) {
         val scopedId = canonicalSourceScopeId(playbackId)
         val streamFingerprint = streamFingerprint(stream) ?: return
-        val addonTag = addonTag(stream)
+        val addonTag = preferredAddonTag(stream)
 
         prefs.edit().apply {
             putString(streamKey(scopedId), streamFingerprint)
@@ -94,7 +94,7 @@ class SourceSelectionStore @Inject constructor(
         }
 
         if (!savedAddon.isNullOrBlank()) {
-            val addonMatch = playableStreams.firstOrNull { addonTag(it) == savedAddon }
+            val addonMatch = playableStreams.firstOrNull { savedAddon in addonTags(it) }
             if (addonMatch != null) return addonMatch
         }
 
@@ -132,7 +132,18 @@ class SourceSelectionStore @Inject constructor(
         ).joinToString("|")
     }
 
-    private fun addonTag(stream: Stream): String? {
+    private fun preferredAddonTag(stream: Stream): String? =
+        normalize(stream.addonTransportUrl)
+            ?: normalize(stream.addonDisplayName)
+            ?: legacyAddonTag(stream)
+
+    private fun addonTags(stream: Stream): Set<String> = buildSet {
+        normalize(stream.addonTransportUrl)?.let(::add)
+        normalize(stream.addonDisplayName)?.let(::add)
+        legacyAddonTag(stream)?.let(::add)
+    }
+
+    private fun legacyAddonTag(stream: Stream): String? {
         val sourceName = stream.name ?: return null
         if (!sourceName.contains("[") || !sourceName.contains("]")) return null
         return normalize(sourceName.substringAfter("[").substringBefore("]"))

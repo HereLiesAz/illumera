@@ -235,7 +235,8 @@ class StreamSortingService @Inject constructor() {
             else {
                 val seeds = StreamParser.parse(stream).seeds
                 when {
-                    seeds == null -> minimumSeeds + 1
+                    // Unknown is not seedless; absence of a metric must not be treated as failure.
+                    seeds == null -> 0
                     seeds >= minimumSeeds -> 0
                     else -> minimumSeeds - seeds
                 }
@@ -257,7 +258,16 @@ class StreamSortingService @Inject constructor() {
         return when (sort) {
             "quality" -> compareByDescending { StreamParser.parse(it).quality.sortOrder }
             "size" -> compareByDescending { StreamParser.parse(it).sizeBytes ?: 0L }
-            "seeds" -> compareByDescending { StreamParser.parse(it).seeds ?: 0 }
+            "seeds" -> compareByDescending<Stream> { stream ->
+                val seeds = StreamParser.parse(stream).seeds
+                when {
+                    seeds == null -> 1
+                    seeds > 0 -> 2
+                    else -> 0
+                }
+            }.thenByDescending { stream ->
+                StreamParser.parse(stream).seeds ?: Int.MIN_VALUE
+            }
             else -> compareByDescending { StreamParser.parse(it).quality.sortOrder }
         }
     }

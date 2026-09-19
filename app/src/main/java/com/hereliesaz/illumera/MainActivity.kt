@@ -538,25 +538,42 @@ private fun UpdateReadyToInstallDialog(
     }
 }
 
+private fun buildPlayerSourceOption(stream: Stream): PlayerSourceOption? {
+    val url = resolvePlayableSourceUrl(stream) ?: return null
+    val requestHeaders = stream.behaviorHints?.proxyHeaders?.request.orEmpty()
+    val headerIdentity = requestHeaders.entries
+        .sortedBy { it.key.lowercase(Locale.ROOT) }
+        .joinToString("&") { (key, value) -> "$key=$value" }
+    val sourceId = listOf(
+        stream.addonTransportUrl.orEmpty(),
+        url,
+        (stream.fileIdx ?: -1).toString(),
+        headerIdentity
+    ).joinToString("\u001f")
+
+    return PlayerSourceOption(
+        id = sourceId,
+        url = url,
+        label = sourceDisplayLabel(stream),
+        name = stream.name,
+        title = stream.title,
+        description = stream.description,
+        fileIdx = stream.fileIdx ?: -1,
+        fileName = stream.behaviorHints?.filename ?: "",
+        addonTransportUrl = stream.addonTransportUrl,
+        addonDisplayName = stream.addonDisplayName,
+        requestHeaders = requestHeaders
+    )
+}
+
 private fun buildSourcePayload(
     streams: List<Stream>,
     selectedStream: Stream
 ): List<PlayerSourceOption> {
     val selectedUrl = resolvePlayableSourceUrl(selectedStream)
-    return streams.mapNotNull { stream ->
-        val url = resolvePlayableSourceUrl(stream) ?: return@mapNotNull null
-        PlayerSourceOption(
-            id = url,
-            url = url,
-            label = sourceDisplayLabel(stream),
-            name = stream.name,
-            title = stream.title,
-            description = stream.description,
-            fileIdx = stream.fileIdx ?: -1,
-            fileName = stream.behaviorHints?.filename ?: ""
-        )
-    }
-        .distinctBy { it.url }
+    return streams
+        .mapNotNull(::buildPlayerSourceOption)
+        .distinctBy { it.id }
         .sortedByDescending { option -> option.url == selectedUrl }
 }
 
@@ -2339,19 +2356,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 } else null,
                                 episodeSwitchSources = playerState.pendingEpisodeSwitch?.let { pending ->
-                                    pending.streams?.mapNotNull { stream ->
-                                        val url = resolvePlayableSourceUrl(stream) ?: return@mapNotNull null
-                                        PlayerSourceOption(
-                                            id = url,
-                                            url = url,
-                                            label = sourceDisplayLabel(stream),
-                                            name = stream.name,
-                                            title = stream.title,
-                                            description = stream.description,
-                                            fileIdx = stream.fileIdx ?: -1,
-                                            fileName = stream.behaviorHints?.filename ?: ""
-                                        )
-                                    }?.distinctBy { it.url }
+                                    pending.streams
+                                        ?.mapNotNull(::buildPlayerSourceOption)
+                                        ?.distinctBy { it.id }
                                 },
                                 isEpisodeSwitchLoading = playerState.isEpisodeSwitchLoading,
                                 episodeSwitchTitle = playerState.pendingEpisodeSwitch?.playbackTitle,

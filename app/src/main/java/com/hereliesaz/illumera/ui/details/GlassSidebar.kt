@@ -369,11 +369,15 @@ fun SourcesContent(
     var filter by remember { mutableStateOf("All Addons") }
 
     val addonNames = remember(actualStreams) {
-        listOf("All Addons") + actualStreams.mapNotNull { it.name?.substringAfter("[")?.substringBefore("]") }.distinct()
+        listOf("All Addons") + actualStreams
+            .mapNotNull { it.addonDisplayName?.takeIf(String::isNotBlank) }
+            .distinct()
     }
 
     val filtered = remember(actualStreams, filter) {
-        actualStreams.filter { filter == "All Addons" || (it.name?.contains(filter) == true) }
+        actualStreams.filter {
+            filter == "All Addons" || it.addonDisplayName == filter
+        }
     }
 
     // -1 (not 0) when selectedStreamId doesn't appear in this filtered subset — otherwise
@@ -382,7 +386,7 @@ fun SourcesContent(
         if (selectedStreamId == null) -1
         else {
             filtered.indexOfFirst { s ->
-                (s.addonTransportUrl ?: s.url) == selectedStreamId
+                (s.sourceSelectionId ?: s.addonTransportUrl ?: s.url) == selectedStreamId
             }
         }
     }
@@ -454,11 +458,11 @@ fun SourcesContent(
                             Text("No streams found.", color = Color.Gray, style = MaterialTheme.typography.bodyLarge)
                         }
                     } else {
-                        itemsIndexed(filtered, key = { index, s -> "${index}_${s.addonTransportUrl ?: s.url ?: index}" }) { index, s ->
+                        itemsIndexed(filtered, key = { index, s -> "${index}_${s.sourceSelectionId ?: s.addonTransportUrl ?: s.url ?: index}" }) { index, s ->
                             RawSourceItem(
                                 stream = s,
                                 isPlaying = index == selectedIndex && selectedStreamId != null,
-                                isExcluded = (s.addonTransportUrl ?: s.url) in excludedSourceIds,
+                                isExcluded = (s.sourceSelectionId ?: s.addonTransportUrl ?: s.url) in excludedSourceIds,
                                 sourceListDisabled = sourceListDisabled,
                                 onToggleExcluded = onToggleSourceExcluded?.let { callback -> { callback(s) } },
                                 onToggleSourceListDisabled = onToggleSourceListDisabled,
@@ -967,7 +971,10 @@ fun RawSourceItem(
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
     val primary = MaterialTheme.colorScheme.primary
     val mainText = stream.description ?: stream.title ?: stream.name ?: "Unknown"
-    val subText = stream.name ?: ""
+    val subText = listOfNotNull(
+        stream.addonDisplayName?.takeIf { it.isNotBlank() }?.let { "[$it]" },
+        stream.name?.takeIf { it.isNotBlank() }
+    ).joinToString(" ")
     val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
 
     Box(modifier = modifier.fillMaxWidth()) {

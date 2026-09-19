@@ -89,7 +89,8 @@ class AddonRepositoryTest {
         val result = AddonRepository(api, dao).getStreams("movie", "tt1")
 
         assertEquals(1, result.size)
-        assertEquals("[Favorite] 1080p", result.single().name)
+        assertEquals("1080p", result.single().name)
+        assertEquals("Favorite", result.single().addonDisplayName)
         assertEquals("https://one.example", result.single().addonTransportUrl)
         coVerify(exactly = 1) { api.getStreams(any()) }
     }
@@ -108,7 +109,8 @@ class AddonRepositoryTest {
         val result = AddonRepository(api, dao).getStreams("movie", "tt1")
 
         assertEquals(1, result.size)
-        assertEquals("[Good] 720p", result.single().name)
+        assertEquals("720p", result.single().name)
+        assertEquals("Good", result.single().addonDisplayName)
     }
 
     @Test
