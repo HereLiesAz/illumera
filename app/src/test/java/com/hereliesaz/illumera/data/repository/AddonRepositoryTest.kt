@@ -118,6 +118,66 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun preferredAddonMetaMayCanonicalizeReturnedId() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(emptyList())
+
+        coEvery {
+            api.getMeta("https://flix.example/meta/movie/tmdb:603.json")
+        } returns MetaResponse(
+            MetaItem(
+                id = "tt0133093",
+                type = "movie",
+                name = "The Matrix"
+            )
+        )
+
+        val result = AddonRepository(api, dao).resolveMetaDetails(
+            type = "movie",
+            id = "tmdb:603",
+            preferredAddonBaseUrl = "https://flix.example"
+        )
+
+        assertEquals("tt0133093", result?.id)
+        assertEquals("The Matrix", result?.name)
+        assertEquals("https://flix.example", result?.addonBaseUrl)
+    }
+
+    @Test
+    fun fallbackAddonStillRejectsMismatchedMetaId() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val fallbackAddon = AddonEntity(
+            transportUrl = "https://fallback.example",
+            id = "fallback",
+            name = "Fallback",
+            version = "1",
+            description = null,
+            iconUrl = null,
+            supportsMeta = true,
+            typesJson = "[\"movie\"]"
+        )
+        every { dao.getAllAddons() } returns flowOf(listOf(fallbackAddon))
+
+        coEvery {
+            api.getMeta("https://fallback.example/meta/movie/tt-requested.json")
+        } returns MetaResponse(
+            MetaItem(id = "tt-unrelated", type = "movie", name = "Wrong Movie")
+        )
+        coEvery {
+            api.getMeta("https://v3-cinemeta.strem.io/meta/movie/tt-requested.json")
+        } throws IllegalStateException("no fallback")
+
+        val result = AddonRepository(api, dao).resolveMetaDetails(
+            type = "movie",
+            id = "tt-requested"
+        )
+
+        assertEquals(null, result)
+    }
+
+    @Test
     fun getMetaDetailsPreservesAddonVideoListWithoutSeasonEpisodeDeduplication() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>(relaxed = true)
