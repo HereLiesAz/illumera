@@ -2392,68 +2392,79 @@ class MainActivity : ComponentActivity() {
                                             return@let
                                         }
 
-                                        // Now save progress for current episode
-                                        handlePlayerSessionEnd(
-                                            sessionResult = PlayerSessionResult(
-                                                positionMs = 0L,
-                                                durationMs = null,
-                                                isCompleted = false,
-                                                selectedSourceUrl = pending.playerCurrentSourceUrl ?: selectedVideoUrl,
-                                                selectedAudioTrackId = null,
-                                                selectedSubtitleTrackId = null
-                                            ),
-                                            selectedPlaybackId = selectedPlaybackId,
-                                            playbackTrackSelectionStore = playbackTrackSelectionStore,
-                                            sourceSelectionStore = sourceSelectionStore,
-                                            pendingSourceSelection = playerState.pendingSourceSelection,
-                                            onConsumePendingSelection = { playerState.pendingSourceSelection = null },
-                                            onResumeHintResolved = { detailsResumePlaybackHint = it },
-                                            rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
-                                        )
+                                        playerState.isEpisodeSwitchLoading = true
+                                        uiScope.launch {
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = pending.streamRequestId,
+                                                stream = streamToPlay,
+                                                fallback = pending.addonSubs
+                                            )
 
-                                        val subtitlePayload = buildSubtitlePayload(streamToPlay, pending.addonSubs)
-                                        val sourcePayload = buildSourcePayload(pending.streams, streamToPlay)
+                                            // Now save progress for current episode
+                                            handlePlayerSessionEnd(
+                                                sessionResult = PlayerSessionResult(
+                                                    positionMs = 0L,
+                                                    durationMs = null,
+                                                    isCompleted = false,
+                                                    selectedSourceUrl = pending.playerCurrentSourceUrl ?: selectedVideoUrl,
+                                                    selectedAudioTrackId = null,
+                                                    selectedSubtitleTrackId = null
+                                                ),
+                                                selectedPlaybackId = selectedPlaybackId,
+                                                playbackTrackSelectionStore = playbackTrackSelectionStore,
+                                                sourceSelectionStore = sourceSelectionStore,
+                                                pendingSourceSelection = playerState.pendingSourceSelection,
+                                                onConsumePendingSelection = { playerState.pendingSourceSelection = null },
+                                                onResumeHintResolved = { detailsResumePlaybackHint = it },
+                                                rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
+                                            )
 
-                                        playerState.pendingSourceSelection = PendingSourceSelection(
-                                            playbackId = pending.playbackId,
-                                            launchedStream = streamToPlay,
-                                            candidateStreams = pending.streams
-                                        )
-                                        playerState.currentStream = streamToPlay
-                                        playerState.pendingEpisodeSwitch = null
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
+                                            val sourcePayload = buildSourcePayload(pending.streams, streamToPlay)
 
-                                        if (sourceUrl.startsWith("magnet:")) {
-                                            selectedPlaybackId = pending.playbackId
-                                            selectedPlaybackType = "series"
-                                            selectedPlaybackTitle = pending.playbackTitle
-                                            playerState.selectedPlayerSubtitles = subtitlePayload
-                                            playerState.selectedPlayerSources = sourcePayload
-                                            torrentProgress = TorrentProgress("Connecting to peers...")
-                                            TorrentService.onStreamReady = { localUrl ->
-                                                torrentProgress = null
-                                                selectedVideoUrl = localUrl
+                                            playerState.pendingSourceSelection = PendingSourceSelection(
+                                                playbackId = pending.playbackId,
+                                                launchedStream = streamToPlay,
+                                                candidateStreams = pending.streams
+                                            )
+                                            playerState.currentStream = streamToPlay
+                                            playerState.pendingEpisodeSwitch = null
+                                            playerState.isEpisodeSwitchLoading = false
+
+                                            if (sourceUrl.startsWith("magnet:")) {
+                                                selectedPlaybackId = pending.playbackId
+                                                selectedPlaybackType = "series"
+                                                selectedPlaybackTitle = pending.playbackTitle
+                                                playerState.selectedPlayerSubtitles = subtitlePayload
+                                                playerState.selectedPlayerSources = sourcePayload
+                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                TorrentService.onStreamReady = { localUrl ->
+                                                    torrentProgress = null
+                                                    selectedVideoUrl = localUrl
+                                                }
+                                                TorrentService.onStreamError = { error ->
+                                                    torrentProgress = null
+                                                    if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                                }
+                                                TorrentService.onStreamProgress = { progress ->
+                                                    torrentProgress = progress
+                                                }
+                                                val intent = Intent(this@MainActivity, TorrentService::class.java).apply {
+                                                    putExtra("MAGNET_LINK", sourceUrl)
+                                                    putExtra("FILE_IDX", streamToPlay.fileIdx ?: -1)
+                                                    putExtra("FILE_NAME", streamToPlay.behaviorHints?.filename ?: "")
+                                                }
+                                                startService(intent)
+                                            } else {
+                                                stopService(Intent(this@MainActivity, TorrentService::class.java))
+                                                selectedPlaybackId = pending.playbackId
+                                                selectedPlaybackType = "series"
+                                                selectedPlaybackTitle = pending.playbackTitle
+                                                playerState.selectedPlayerSubtitles = subtitlePayload
+                                                playerState.selectedPlayerSources = sourcePayload
+                                                selectedVideoUrl = sourceUrl
                                             }
-                                            TorrentService.onStreamError = { error ->
-                                                torrentProgress = null
-                                                if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
-                                            }
-                                            TorrentService.onStreamProgress = { progress ->
-                                                torrentProgress = progress
-                                            }
-                                            val intent = Intent(this@MainActivity, TorrentService::class.java).apply {
-                                                putExtra("MAGNET_LINK", sourceUrl)
-                                                putExtra("FILE_IDX", streamToPlay.fileIdx ?: -1)
-                                                putExtra("FILE_NAME", streamToPlay.behaviorHints?.filename ?: "")
-                                            }
-                                            startService(intent)
-                                        } else {
-                                            stopService(Intent(this@MainActivity, TorrentService::class.java))
-                                            selectedPlaybackId = pending.playbackId
-                                            selectedPlaybackType = "series"
-                                            selectedPlaybackTitle = pending.playbackTitle
-                                            playerState.selectedPlayerSubtitles = subtitlePayload
-                                            playerState.selectedPlayerSources = sourcePayload
-                                            selectedVideoUrl = sourceUrl
                                         }
                                     }
                                 },
