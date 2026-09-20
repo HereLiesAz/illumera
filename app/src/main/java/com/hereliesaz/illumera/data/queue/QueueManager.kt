@@ -602,6 +602,7 @@ class QueueManager @Inject constructor(
 
             commit(scope, latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
         } catch (cancelled: CancellationException) {
+            setRefreshing(scope, false)
             throw cancelled
         } catch (_: Exception) {
             setRefreshing(scope, false)
