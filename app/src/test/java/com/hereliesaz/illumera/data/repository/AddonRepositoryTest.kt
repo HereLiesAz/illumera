@@ -92,6 +92,8 @@ class AddonRepositoryTest {
         assertEquals("1080p", result.single().name)
         assertEquals("Favorite", result.single().addonDisplayName)
         assertEquals("https://one.example", result.single().addonTransportUrl)
+        assertEquals("movie", result.single().addonRequestType)
+        assertEquals("tt1", result.single().addonRequestId)
         coVerify(exactly = 1) { api.getStreams(any()) }
     }
 

@@ -26,6 +26,8 @@ data class Stream(
     // Illumera-only provenance/UI metadata. Never serialize these as addon protocol fields.
     @Transient val addonTransportUrl: String? = null,
     @Transient val addonDisplayName: String? = null,
+    @Transient val addonRequestType: String? = null,
+    @Transient val addonRequestId: String? = null,
     @Transient val sourceSelectionId: String? = null
 )
 

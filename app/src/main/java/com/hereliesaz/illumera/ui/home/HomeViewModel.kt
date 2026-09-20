@@ -198,6 +198,8 @@ class HomeViewModel @Inject constructor(
                     }
                     appendItemsToRow(configId, batch)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // Silently fail - user can try scrolling again
             } finally {
@@ -496,6 +498,8 @@ class HomeViewModel @Inject constructor(
                 )
 
                 applyTmdbEnrichmentToState(item.type, item.id, fallback, item)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w("HomeViewModel", "TMDB enrichment failed for ${item.id}: ${e.message}")
                 markTmdbEnriched(item.type, item.id)
@@ -792,6 +796,8 @@ class HomeViewModel @Inject constructor(
                     }
                     onResult(fetchedRow.title, fetchedRow.items)
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // Ignore error
             }

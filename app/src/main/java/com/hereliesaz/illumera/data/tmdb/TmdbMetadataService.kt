@@ -4,6 +4,7 @@ import android.util.Log
 import com.hereliesaz.illumera.BuildConfig
 import com.hereliesaz.illumera.data.model.tmdb.*
 import com.hereliesaz.illumera.data.remote.TmdbApiService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -205,6 +206,8 @@ class TmdbMetadataService @Inject constructor(
             )
             enrichmentCache[cacheKey] = enrichment
             enrichment
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch TMDB enrichment: ${e.message}", e)
             null
@@ -239,7 +242,9 @@ class TmdbMetadataService @Inject constructor(
                         runtimeMinutes = ep.runtime
                     )
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch TMDB season $season: ${e.message}")
             }
         }
@@ -316,6 +321,8 @@ class TmdbMetadataService @Inject constructor(
 
             recommendationsCache[cacheKey] = items
             items
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch recommendations for $tmdbId: ${e.message}")
             emptyList()
@@ -356,6 +363,8 @@ class TmdbMetadataService @Inject constructor(
 
             collectionCache[cacheKey] = items
             items
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch collection $collectionId: ${e.message}")
             emptyList()
@@ -388,7 +397,13 @@ class TmdbMetadataService @Inject constructor(
 
             // English fallback for empty biography
             val biography = if (person.biography.isNullOrBlank() && normalizedLanguage != "en") {
-                runCatching { tmdbApi.getPersonDetails(personId, apiKey, "en").body()?.biography }.getOrNull()
+                try {
+                    tmdbApi.getPersonDetails(personId, apiKey, "en").body()?.biography
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
             } else {
                 person.biography
             }?.takeIf { it.isNotBlank() }
@@ -414,6 +429,8 @@ class TmdbMetadataService @Inject constructor(
             )
             personCache[cacheKey] = detail
             detail
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch person detail: ${e.message}", e)
             null
@@ -456,6 +473,8 @@ class TmdbMetadataService @Inject constructor(
                         thumbnail = "https://img.youtube.com/vi/${video.key}/hqdefault.jpg"
                     )
                 }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch videos for $tmdbId: ${e.message}")
             emptyList()
@@ -488,6 +507,8 @@ class TmdbMetadataService @Inject constructor(
             }
 
             null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch best trailer for $tmdbId: ${e.message}")
             null
@@ -550,6 +571,8 @@ class TmdbMetadataService @Inject constructor(
                     description = resp.description?.takeIf { it.isNotBlank() }
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch $kind detail $entityId: ${e.message}", e)
             null
@@ -599,6 +622,8 @@ class TmdbMetadataService @Inject constructor(
                 )
             } ?: emptyList()
             Pair(items, resp?.totalPages ?: 1)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "Failed to discover $mediaType for $kind $entityId: ${e.message}")
             Pair(emptyList(), 1)
