@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.domain.AddonSubtitle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -101,11 +102,11 @@ class SubtitleRepository @Inject constructor(
 
         if (videoHash == null && videoSize == null && filename == null) {
             return fallback?.let(::distinctSubtitles)
-                ?: runCatching { getSubtitles(type, playbackId) }.getOrDefault(emptyList())
+                ?: requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
         }
 
         if (fallback != null) {
-            val sourceAware = runCatching {
+            val sourceAware = requestOrNull {
                 getSubtitles(
                     type = type,
                     playbackId = playbackId,
@@ -113,7 +114,7 @@ class SubtitleRepository @Inject constructor(
                     videoSize = videoSize,
                     filename = filename
                 )
-            }.getOrDefault(emptyList())
+            }.orEmpty()
 
             // Source-aware rows take precedence when the generic request returned the same track.
             return distinctSubtitles(sourceAware + fallback)
@@ -124,10 +125,10 @@ class SubtitleRepository @Inject constructor(
         // source-aware variants concurrently so correctness does not double the latency.
         return coroutineScope {
             val genericDeferred = async {
-                runCatching { getSubtitles(type, playbackId) }.getOrDefault(emptyList())
+                requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
             }
             val sourceAwareDeferred = async {
-                runCatching {
+                requestOrNull {
                     getSubtitles(
                         type = type,
                         playbackId = playbackId,
@@ -135,10 +136,20 @@ class SubtitleRepository @Inject constructor(
                         videoSize = videoSize,
                         filename = filename
                     )
-                }.getOrDefault(emptyList())
+                }.orEmpty()
             }
 
             distinctSubtitles(sourceAwareDeferred.await() + genericDeferred.await())
+        }
+    }
+
+    private suspend fun <T> requestOrNull(block: suspend () -> T): T? {
+        return try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -207,12 +218,10 @@ class SubtitleRepository @Inject constructor(
         subtitleCapabilityCache[transportUrl]?.let { return it }
 
         val manifestUrl = "${transportUrl.trimEnd('/')}/manifest.json"
-        val capability = runCatching {
+        val capability = requestOrNull {
             val manifest = withTimeout(MANIFEST_TIMEOUT_MS) { api.getManifest(manifestUrl) }
             SubtitleCapability.Known(parseSubtitleResourceRules(manifest))
-        }.getOrElse {
-            SubtitleCapability.Unknown
-        }
+        } ?: SubtitleCapability.Unknown
 
         subtitleCapabilityCache[transportUrl] = capability
         return capability
@@ -282,9 +291,9 @@ class SubtitleRepository @Inject constructor(
             "$baseUrl/subtitles/$pathType/$pathId.json"
         }
 
-        val response = runCatching {
+        val response = requestOrNull {
             withTimeout(PER_ADDON_TIMEOUT_MS) { api.getSubtitles(subtitleUrl) }
-        }.getOrNull() ?: return emptyList()
+        } ?: return emptyList()
 
         val addonName = addon.nickname?.takeIf { it.isNotBlank() } ?: addon.name
         return response.subtitles.mapNotNull { subtitle ->
