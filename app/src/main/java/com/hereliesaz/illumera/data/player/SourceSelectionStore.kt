@@ -16,7 +16,7 @@ class SourceSelectionStore @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
     fun rememberSelection(playbackId: String, stream: Stream) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return
         val streamFingerprint = streamFingerprint(stream) ?: return
         val addonTag = preferredAddonTag(stream)
 
@@ -31,7 +31,7 @@ class SourceSelectionStore @Inject constructor(
     }
 
     fun clearSelection(playbackId: String) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return
         prefs.edit()
             .remove(streamKey(scopedId))
             .remove(addonPrefKey(scopedId))
@@ -39,28 +39,28 @@ class SourceSelectionStore @Inject constructor(
     }
 
     fun rememberSourceListDisabled(playbackId: String, disabled: Boolean) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return
         prefs.edit().putBoolean(sourceListDisabledKey(scopedId), disabled).apply()
     }
 
     fun isSourceListDisabled(playbackId: String): Boolean {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return false
         return prefs.getBoolean(sourceListDisabledKey(scopedId), false)
     }
 
     fun rememberExcludedSources(playbackId: String, excludedIds: Set<String>) {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return
         prefs.edit().putString(excludedSourcesKey(scopedId), excludedIds.joinToString(",")).apply()
     }
 
     fun getExcludedSources(playbackId: String): Set<String> {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return emptySet()
         val raw = prefs.getString(excludedSourcesKey(scopedId), null) ?: return emptySet()
         return raw.split(",").filter { it.isNotBlank() }.toSet()
     }
 
     fun clearSelectionsForPrefix(prefix: String) {
-        val scopedPrefix = canonicalSourceScopeId(prefix)
+        val scopedPrefix = canonicalSourceScopeId(prefix) ?: return
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
             if (key.startsWith("${KEY_STREAM_PREFIX}$scopedPrefix") ||
@@ -73,7 +73,7 @@ class SourceSelectionStore @Inject constructor(
     }
 
     fun hasRememberedSelection(playbackId: String): Boolean {
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return false
         return !prefs.getString(streamKey(scopedId), null).isNullOrBlank()
             || !prefs.getString(addonPrefKey(scopedId), null).isNullOrBlank()
     }
@@ -84,7 +84,7 @@ class SourceSelectionStore @Inject constructor(
         val playableStreams = streams.filter(::isPlayableStream)
         if (playableStreams.isEmpty()) return null
 
-        val scopedId = canonicalSourceScopeId(playbackId)
+        val scopedId = canonicalSourceScopeId(playbackId) ?: return null
         val savedFingerprint = prefs.getString(streamKey(scopedId), null)
         val savedAddon = prefs.getString(addonPrefKey(scopedId), null)
 
@@ -149,9 +149,10 @@ class SourceSelectionStore @Inject constructor(
         return normalize(sourceName.substringAfter("[").substringBefore("]"))
     }
 
-    private fun canonicalSourceScopeId(playbackId: String): String {
-        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: DEFAULT_PROFILE_ID
-        return "p$profileId:${playbackId.trim()}"
+    private fun canonicalSourceScopeId(playbackId: String): String? {
+        val normalizedPlaybackId = playbackId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return null
+        return "p$profileId:$normalizedPlaybackId"
     }
 
     private fun normalize(value: String?): String? {
@@ -167,7 +168,6 @@ class SourceSelectionStore @Inject constructor(
 
     companion object {
         private const val PREFS_FILE = "source_selection_prefs"
-        private const val DEFAULT_PROFILE_ID = 1
         private const val KEY_STREAM_PREFIX = "stream_"
         private const val KEY_ADDON_PREFIX = "addon_"
         private const val KEY_SOURCE_LIST_DISABLED_PREFIX = "src_list_disabled_"
