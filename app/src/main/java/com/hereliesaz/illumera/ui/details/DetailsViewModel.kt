@@ -138,7 +138,7 @@ class DetailsViewModel @Inject constructor(
 
 
     fun loadDetails(type: String, id: String, addonBaseUrl: String? = null) {
-        val requestKey = "$type:$id"
+        val requestKey = "$type:$id:${addonBaseUrl.orEmpty()}"
 
         // Keep current details when reopening the same item (e.g., returning from player).
         if (

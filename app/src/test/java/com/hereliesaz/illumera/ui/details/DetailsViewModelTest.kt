@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.ui.details
 
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
+import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
 import com.hereliesaz.illumera.data.player.EpisodeBrowseStore
@@ -65,6 +66,40 @@ class DetailsViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun sameMediaIdReloadsWhenAddonOriginChanges() = runTest(dispatcher) {
+        val first = MetaItem(id = "tt1", type = "movie", name = "First Provider")
+        val second = MetaItem(id = "tt1", type = "movie", name = "Second Provider")
+
+        coEvery {
+            repository.resolveMetaDetails("movie", "tt1", "https://one.example")
+        } returns first
+        coEvery {
+            repository.resolveMetaDetails("movie", "tt1", "https://two.example")
+        } returns second
+        coEvery { repository.getStreams(any(), any()) } returns emptyList()
+        coEvery { subtitleRepository.getSubtitles(any(), any()) } returns emptyList()
+
+        val viewModel = newViewModel()
+        viewModel.loadDetails("movie", "tt1", "https://one.example")
+        advanceUntilIdle()
+
+        assertEquals("First Provider", viewModel.state.value.meta?.name)
+        assertEquals("movie:tt1:https://one.example", viewModel.state.value.contentKey)
+
+        viewModel.loadDetails("movie", "tt1", "https://two.example")
+        advanceUntilIdle()
+
+        assertEquals("Second Provider", viewModel.state.value.meta?.name)
+        assertEquals("movie:tt1:https://two.example", viewModel.state.value.contentKey)
+        coVerify(exactly = 1) {
+            repository.resolveMetaDetails("movie", "tt1", "https://one.example")
+        }
+        coVerify(exactly = 1) {
+            repository.resolveMetaDetails("movie", "tt1", "https://two.example")
+        }
     }
 
     @Test

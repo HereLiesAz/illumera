@@ -15,13 +15,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -329,17 +333,21 @@ private fun UpdateAvailableDialog(
     onDontShowAgain: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .width(rememberDialogWidth(480))
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
-                .padding(24.dp)
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
+            val maxDialogHeight = maxHeight * 0.9f
+
             androidx.compose.foundation.layout.Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .width(rememberDialogWidth(480))
+                    .heightIn(max = maxDialogHeight)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.background)
+                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .padding(24.dp)
             ) {
                 Text(
                     "Update Available",
@@ -356,15 +364,24 @@ private fun UpdateAvailableDialog(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
+
                 if (info.changelog.isNotBlank()) {
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        info.changelog,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(0.7f),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            info.changelog,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(0.7f),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
+
                 Spacer(Modifier.height(24.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

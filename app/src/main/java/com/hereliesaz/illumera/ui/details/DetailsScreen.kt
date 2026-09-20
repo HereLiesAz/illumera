@@ -140,14 +140,15 @@ fun DetailsScreen(
     trailerReturnToken: Int = 0,
     viewModel: DetailsViewModel = hiltViewModel(key = "details_${type}_${id}")
 ) {
-    LaunchedEffect(type, id) { viewModel.loadDetails(type, id, addonBaseUrl) }
+    LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
 
     val state by viewModel.state.collectAsState()
     val movie = state.meta
     val streamId = state.resolvedId ?: movie?.id ?: id // Resolved IMDb ID for stream/subtitle requests
-    // Check contentKey to prevent stale content from the previous item flashing for one frame.
-    // contentKey is set when meta loads and matches "$type:$id" of the navigation params.
-    val isCurrentMovie = movie != null && !state.isLoading && state.contentKey == "$type:$id"
+    // Include addon origin in identity so the same media ID from a different addon
+    // cannot reuse another provider's resolved details state.
+    val expectedContentKey = "$type:$id:${addonBaseUrl.orEmpty()}"
+    val isCurrentMovie = movie != null && !state.isLoading && state.contentKey == expectedContentKey
     val showMovieContent = isCurrentMovie
 
     LaunchedEffect(showMovieContent) {
