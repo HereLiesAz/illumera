@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.ui.player.base
 
 import androidx.compose.runtime.Immutable
+import com.hereliesaz.illumera.data.model.stremio.Stream
 
 @Immutable
 data class PlayerSourceOption(
@@ -14,7 +15,10 @@ data class PlayerSourceOption(
     val fileName: String = "",
     val addonTransportUrl: String? = null,
     val addonDisplayName: String? = null,
-    val requestHeaders: Map<String, String> = emptyMap()
+    val requestHeaders: Map<String, String> = emptyMap(),
+    // Preserve the exact addon payload. Player/UI projections must not become a lossy
+    // replacement for protocol fields such as infoHash, sources, subtitles or behaviorHints.
+    val addonStream: Stream? = null
 )
 
 @Immutable
