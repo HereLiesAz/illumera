@@ -2430,8 +2430,11 @@ class MainActivity : ComponentActivity() {
                                             return@let
                                         }
 
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
+                                        playerState.pendingEpisodeSwitch = null
                                         playerState.isEpisodeSwitchLoading = true
-                                        uiScope.launch {
+                                        playerState.episodeSwitchJob = uiScope.launch {
                                             val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
                                                 type = "series",
                                                 playbackId = pending.streamRequestId,
@@ -2506,7 +2509,13 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onEpisodeSwitchDismissed = { playerState.pendingEpisodeSwitch = null; playerState.isEpisodeSwitchLoading = false },
+                                onEpisodeSwitchDismissed = {
+                                    playerState.episodeSwitchGeneration += 1L
+                                    playerState.episodeSwitchJob?.cancel()
+                                    playerState.episodeSwitchJob = null
+                                    playerState.pendingEpisodeSwitch = null
+                                    playerState.isEpisodeSwitchLoading = false
+                                },
                                 onResolveSourceSubtitles = { source ->
                                     val stream = source.addonStream
                                     val requestType = stream?.addonRequestType
