@@ -56,6 +56,15 @@ class LibraryRefreshService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + serviceJob)
     private var refreshJob: Job? = null
 
+    private suspend fun <T> refreshResult(block: suspend () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+
     companion object {
         private const val TAG = "LibraryRefreshService"
         private const val CHANNEL_ID = "library_refresh"
@@ -159,7 +168,7 @@ class LibraryRefreshService : Service() {
         val installedAddons = addonRepository.getAddons().firstOrNull().orEmpty()
         for (addon in installedAddons) {
             val manifestUrl = "${addon.transportUrl.trimEnd('/')}/manifest.json"
-            runCatching {
+            refreshResult {
                 val manifest = addonRepository.fetchManifest(manifestUrl)
                 val validConfigIds = manifest.catalogs.orEmpty()
                     .map { "${addon.transportUrl}/${it.type}/${it.id}" }
@@ -206,14 +215,14 @@ class LibraryRefreshService : Service() {
                 }
 
             updateNotification("Syncing playback progress…")
-            runCatching { traktSyncManager.syncPlaybackProgress() }
+            refreshResult { traktSyncManager.syncPlaybackProgress() }
                 .onFailure {
                     failures += "Trakt playback: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Trakt playback sync failed", it)
                 }
 
             updateNotification("Syncing watched history…")
-            runCatching { traktSyncManager.syncSeriesNextUp() }
+            refreshResult { traktSyncManager.syncSeriesNextUp() }
                 .onFailure {
                     failures += "Trakt history: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Trakt history sync failed", it)

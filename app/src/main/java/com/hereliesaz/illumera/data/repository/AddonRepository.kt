@@ -264,7 +264,9 @@ class AddonRepository @Inject constructor(
                     response.streams.orEmpty().map { stream ->
                         stream.copy(
                             addonTransportUrl = addon.transportUrl,
-                            addonDisplayName = sourceLabel
+                            addonDisplayName = sourceLabel,
+                            addonRequestType = type,
+                            addonRequestId = id
                         )
                     }
                 } catch (e: Exception) { emptyList<Stream>() }

@@ -10,6 +10,7 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +95,15 @@ class QueueManager @Inject constructor(
 
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val gson = Gson()
+
+    private suspend fun <T> requestOrNull(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
 
     @Volatile
     private var loadedProfileId: Int? = activeProfileId()
@@ -331,10 +341,10 @@ class QueueManager @Inject constructor(
         val resolved = mutableMapOf<String, String>()
         for (item in missing) {
             if (!isCurrentScope(scope)) return
-            val meta = runCatching {
+            val meta = requestOrNull {
                 val display = item.toMetaItem()
                 repository.resolveMetaDetails(display.type, display.id)
-            }.getOrNull()
+            }
             if (!isCurrentScope(scope)) return
             val poster = meta?.poster
             if (!poster.isNullOrBlank()) resolved[item.stableKey] = poster
@@ -394,7 +404,7 @@ class QueueManager @Inject constructor(
             // Keep the unseen filter honest even when the local Trakt sync has not run yet.
             // The authenticated Trakt history is authoritative for items watched elsewhere.
             if (useTrakt && current.preferences.onlyUnseenSuggestions) {
-                val watchedMovies = runCatching { traktApi.getWatchedMovies() }.getOrNull()
+                val watchedMovies = requestOrNull { traktApi.getWatchedMovies() }
                 if (!isCurrentScope(scope)) return
                 watchedMovies
                     ?.takeIf { it.isSuccessful }
@@ -404,7 +414,7 @@ class QueueManager @Inject constructor(
                         watched.movie.ids.tmdb?.let { excludedIds += normalizeId("tmdb:$it") }
                     }
 
-                val watchedShows = runCatching { traktApi.getWatchedShows() }.getOrNull()
+                val watchedShows = requestOrNull { traktApi.getWatchedShows() }
                 if (!isCurrentScope(scope)) return
                 watchedShows
                     ?.takeIf { it.isSuccessful }
@@ -441,9 +451,9 @@ class QueueManager @Inject constructor(
                 val countBeforeRecommendations = candidates.size
 
                 if (current.preferences.includeMovies) {
-                    val movieRecommendations = runCatching {
+                    val movieRecommendations = requestOrNull {
                         traktApi.getMovieRecommendations(50)
-                    }.getOrNull()
+                    }
                     if (!isCurrentScope(scope)) return
                     movieRecommendations
                         ?.takeIf { it.isSuccessful }
@@ -461,9 +471,9 @@ class QueueManager @Inject constructor(
                 }
 
                 if (current.preferences.includeEpisodes || current.preferences.includeWholeShows) {
-                    val showRecommendations = runCatching {
+                    val showRecommendations = requestOrNull {
                         traktApi.getShowRecommendations(50)
-                    }.getOrNull()
+                    }
                     if (!isCurrentScope(scope)) return
                     showRecommendations
                         ?.takeIf { it.isSuccessful }
@@ -484,7 +494,7 @@ class QueueManager @Inject constructor(
                 // Watchlist is a fallback pool — only used when recommendations alone
                 // yield fewer than 10 candidates, to avoid overwhelming personalized results.
                 if (candidates.size - countBeforeRecommendations < 10) {
-                    val watchlist = runCatching { traktApi.getWatchlist(limit = 100) }.getOrNull()
+                    val watchlist = requestOrNull { traktApi.getWatchlist(limit = 100) }
                     if (!isCurrentScope(scope)) return
                     watchlist
                         ?.takeIf { it.isSuccessful }
@@ -591,6 +601,9 @@ class QueueManager @Inject constructor(
                 .take(SUGGESTION_COUNT)
 
             commit(scope, latestState.copy(suggestions = nextSuggestions, isRefreshingSuggestions = false))
+        } catch (cancelled: CancellationException) {
+            setRefreshing(scope, false)
+            throw cancelled
         } catch (_: Exception) {
             setRefreshing(scope, false)
         }
