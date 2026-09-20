@@ -48,7 +48,7 @@ class WatchlistViewModel @Inject constructor(
             else dao.getWatchlistByType(profileId, "movie")
                 .map { list -> list.map { it.toMetaItem() } }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
 
     val seriesItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
         .flatMapLatest { profileId ->
@@ -56,7 +56,7 @@ class WatchlistViewModel @Inject constructor(
             else dao.getWatchlistByType(profileId, "series")
                 .map { list -> list.map { it.toMetaItem() } }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
 
     /**
      * Resolve poster from addons for items missing one (e.g., pulled from Trakt).
@@ -74,12 +74,15 @@ class WatchlistViewModel @Inject constructor(
             var succeeded = false
             var cancelled = false
             try {
-                profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
-                    val meta = repository.resolveMetaDetails(item.type, item.id)
-                    if (!meta?.poster.isNullOrBlank()) {
+                // Network resolution must not hold the profile runtime lock. A slow addon
+                // should never block loadRuntimeState() during a profile switch.
+                val meta = repository.resolveMetaDetails(item.type, item.id)
+                val poster = meta?.poster?.takeIf { it.isNotBlank() }
+                if (poster != null) {
+                    profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
                         val existing = dao.getWatchlistItem(ownerProfileId, item.id)
                         if (existing != null) {
-                            dao.addToWatchlist(existing.copy(poster = meta?.poster))
+                            dao.addToWatchlist(existing.copy(poster = poster))
                             succeeded = true
                         }
                     }
