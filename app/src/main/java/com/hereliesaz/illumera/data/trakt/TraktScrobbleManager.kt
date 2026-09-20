@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.trakt.TraktScrobbleMovie
 import com.hereliesaz.illumera.data.model.trakt.TraktScrobbleRequest
 import com.hereliesaz.illumera.data.model.trakt.TraktScrobbleShow
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -36,7 +37,8 @@ class TraktScrobbleManager @Inject constructor(
         private const val MIN_SCROBBLE_INTERVAL_MS = 5_000L
     }
 
-    private var lastScrobbleTimeMs = 0L
+    private val pauseDebounceLock = Any()
+    private val lastPauseScrobbleTimeMsByAccount = mutableMapOf<String, Long>()
 
     /**
      * Called when playback starts or resumes.
@@ -57,6 +59,8 @@ class TraktScrobbleManager @Inject constructor(
                 } else {
                     Log.w(TAG, "start error: ${response.errorBody()?.string()}")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "start failed for $playbackId", e)
             }
@@ -68,8 +72,8 @@ class TraktScrobbleManager @Inject constructor(
      */
     suspend fun scrobblePause(playbackId: String, mediaType: String, positionMs: Long, durationMs: Long, force: Boolean = false) {
         Log.d(TAG, "pause: id=$playbackId, force=$force")
-        if (!shouldScrobble()) return
-        if (!force && !isDebouncedOk()) { Log.d(TAG, "scrobblePause debounced"); return }
+        val accountKey = traktAuthManager.getAccessToken() ?: return
+        if (!force && !isDebouncedOk(accountKey)) { Log.d(TAG, "scrobblePause debounced"); return }
         val progress = calculateProgress(positionMs, durationMs)
         val request = buildRequest(playbackId, mediaType, progress)
         if (request == null) { Log.w(TAG, "scrobblePause: buildRequest returned null"); return }
@@ -79,6 +83,8 @@ class TraktScrobbleManager @Inject constructor(
                 val response = traktSyncApi.scrobblePause(request)
                 Log.d(TAG, "pause: ${response.code()} progress=${"%.1f".format(progress)}%")
                 if (!response.isSuccessful) Log.w(TAG, "pause error: ${response.errorBody()?.string()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "pause failed for $playbackId", e)
             }
@@ -99,6 +105,8 @@ class TraktScrobbleManager @Inject constructor(
                 val response = traktSyncApi.scrobbleStop(request)
                 Log.d(TAG, "stop: ${response.code()} progress=${"%.1f".format(progress)}%")
                 if (!response.isSuccessful) Log.w(TAG, "stop error: ${response.errorBody()?.string()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "stop failed for $playbackId", e)
             }
@@ -134,11 +142,15 @@ class TraktScrobbleManager @Inject constructor(
 
     private fun shouldScrobble(): Boolean = traktAuthManager.getAccessToken() != null
 
-    private fun isDebouncedOk(): Boolean {
+    private fun isDebouncedOk(accountKey: String): Boolean = synchronized(pauseDebounceLock) {
         val now = System.currentTimeMillis()
-        if (now - lastScrobbleTimeMs < MIN_SCROBBLE_INTERVAL_MS) return false
-        lastScrobbleTimeMs = now
-        return true
+        val lastScrobbleTimeMs = lastPauseScrobbleTimeMsByAccount[accountKey] ?: 0L
+        if (now - lastScrobbleTimeMs < MIN_SCROBBLE_INTERVAL_MS) {
+            false
+        } else {
+            lastPauseScrobbleTimeMsByAccount[accountKey] = now
+            true
+        }
     }
 
     private fun calculateProgress(positionMs: Long, durationMs: Long): Float {

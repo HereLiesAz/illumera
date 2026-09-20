@@ -1686,11 +1686,36 @@ fun SourcePreferencesSettings(
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
+            val sourceSortOptions = listOf(
+                "Quality" to "quality",
+                "File Size" to "size",
+                "Seeds" to "seeds"
+            )
+            val effectiveSecondarySort = currentProfile.sourceSortSecondary
+                .takeIf { secondary ->
+                    secondary != currentProfile.sourceSortPrimary &&
+                        sourceSortOptions.any { it.second == secondary }
+                }
+                ?: when (currentProfile.sourceSortPrimary) {
+                    "size", "seeds" -> "quality"
+                    else -> "size"
+                }
+
             SettingOptionRow(
                 label = "Sort By",
-                options = listOf("Quality" to "quality", "File Size" to "size", "Seeds" to "seeds"),
+                options = sourceSortOptions,
                 selectedOption = currentProfile.sourceSortPrimary,
                 onOptionSelected = { viewModel.updateSourceSortPrimary(currentProfile.id, it) },
+                onBack = onGoBack
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            SettingOptionRow(
+                label = "Then By",
+                options = sourceSortOptions.filter { it.second != currentProfile.sourceSortPrimary },
+                selectedOption = effectiveSecondarySort,
+                onOptionSelected = { viewModel.updateSourceSortSecondary(currentProfile.id, it) },
                 onBack = onGoBack
             )
 

@@ -57,6 +57,7 @@ class StreamSortingService @Inject constructor() {
                 buildComparator(
                     addonSortOrders = addonSortOrders,
                     sortBy = sortBy,
+                    secondarySortBy = profile?.sourceSortSecondary,
                     preferredSizeBytes = preferredSizeBytes,
                     minimumSeeds = minimumSeeds
                 )
@@ -222,6 +223,7 @@ class StreamSortingService @Inject constructor() {
     private fun buildComparator(
         addonSortOrders: Map<String, Int>,
         sortBy: String,
+        secondarySortBy: String?,
         preferredSizeBytes: Long,
         minimumSeeds: Int
     ): Comparator<Stream> {
@@ -245,13 +247,32 @@ class StreamSortingService @Inject constructor() {
 
         comparator = comparator.thenBy { addonSortOrders[it.addonTransportUrl] ?: Int.MAX_VALUE }
 
-        comparator = when (sortBy) {
-            "size" -> comparator.then(sortComparatorFor("size")).then(sortComparatorFor("quality"))
-            "seeds" -> comparator.then(sortComparatorFor("seeds")).then(sortComparatorFor("quality"))
-            else -> comparator.then(sortComparatorFor("quality")).then(sortComparatorFor("size"))
+        val primary = normalizeSortKey(sortBy)
+        val secondary = normalizeSortKey(secondarySortBy)
+            .takeIf { it != primary }
+            ?: legacySecondaryFor(primary)
+
+        val orderedKeys = buildList {
+            add(primary)
+            if (secondary != primary) add(secondary)
+            SORT_KEYS.forEach { key ->
+                if (key !in this) add(key)
+            }
         }
-        comparator = comparator.then(sortComparatorFor("seeds"))
+
+        orderedKeys.forEach { key ->
+            comparator = comparator.then(sortComparatorFor(key))
+        }
         return comparator
+    }
+
+    private fun normalizeSortKey(sort: String?): String =
+        sort?.takeIf { it in SORT_KEYS } ?: "quality"
+
+    private fun legacySecondaryFor(primary: String): String = when (primary) {
+        "size" -> "quality"
+        "seeds" -> "quality"
+        else -> "size"
     }
 
     private fun sortComparatorFor(sort: String): Comparator<Stream> {
@@ -273,6 +294,7 @@ class StreamSortingService @Inject constructor() {
     }
 
     companion object {
+        private val SORT_KEYS = listOf("quality", "size", "seeds")
         private val AUDIO_CUE_REGEX = Regex("(?i)\\b(audio|dub(?:bed)?|dual)\\b")
         private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|subbed|cc|captions?)\\b")
 

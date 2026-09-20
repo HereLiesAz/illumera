@@ -147,6 +147,10 @@ class SettingsViewModel @Inject constructor(
         updateProfile(profileId) { it.copy(sourceSortPrimary = sort) }
     }
 
+    fun updateSourceSortSecondary(profileId: Int, sort: String) {
+        updateProfile(profileId) { it.copy(sourceSortSecondary = sort) }
+    }
+
     fun updateSourceMaxSizeGb(profileId: Int, sizeGb: Int) {
         updateProfile(profileId) { it.copy(sourceMaxSizeGb = sizeGb) }
     }
