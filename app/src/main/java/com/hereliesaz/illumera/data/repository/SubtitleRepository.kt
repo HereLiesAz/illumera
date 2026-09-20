@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.domain.AddonSubtitle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -91,7 +92,7 @@ class SubtitleRepository @Inject constructor(
         type: String,
         playbackId: String,
         stream: Stream,
-        fallback: List<AddonSubtitle> = emptyList()
+        fallback: List<AddonSubtitle>? = null
     ): List<AddonSubtitle> {
         val hints = stream.behaviorHints
         val videoHash = hints?.videoHash?.trim()?.takeIf { it.isNotEmpty() }
@@ -99,21 +100,46 @@ class SubtitleRepository @Inject constructor(
         val filename = hints?.filename?.trim()?.takeIf { it.isNotEmpty() }
 
         if (videoHash == null && videoSize == null && filename == null) {
-            return distinctSubtitles(fallback)
+            return fallback?.let(::distinctSubtitles)
+                ?: runCatching { getSubtitles(type, playbackId) }.getOrDefault(emptyList())
         }
 
-        val sourceAware = runCatching {
-            getSubtitles(
-                type = type,
-                playbackId = playbackId,
-                videoHash = videoHash,
-                videoSize = videoSize,
-                filename = filename
-            )
-        }.getOrDefault(emptyList())
+        if (fallback != null) {
+            val sourceAware = runCatching {
+                getSubtitles(
+                    type = type,
+                    playbackId = playbackId,
+                    videoHash = videoHash,
+                    videoSize = videoSize,
+                    filename = filename
+                )
+            }.getOrDefault(emptyList())
 
-        // Source-aware rows take precedence when the generic request returned the same track.
-        return distinctSubtitles(sourceAware + fallback)
+            // Source-aware rows take precedence when the generic request returned the same track.
+            return distinctSubtitles(sourceAware + fallback)
+        }
+
+        // Live source switches do not have a trustworthy generic fallback: the current
+        // player's subtitle set may already be source-specific. Fetch the generic and
+        // source-aware variants concurrently so correctness does not double the latency.
+        return coroutineScope {
+            val genericDeferred = async {
+                runCatching { getSubtitles(type, playbackId) }.getOrDefault(emptyList())
+            }
+            val sourceAwareDeferred = async {
+                runCatching {
+                    getSubtitles(
+                        type = type,
+                        playbackId = playbackId,
+                        videoHash = videoHash,
+                        videoSize = videoSize,
+                        filename = filename
+                    )
+                }.getOrDefault(emptyList())
+            }
+
+            distinctSubtitles(sourceAwareDeferred.await() + genericDeferred.await())
+        }
     }
 
     private fun distinctSubtitles(subtitles: List<AddonSubtitle>): List<AddonSubtitle> =
