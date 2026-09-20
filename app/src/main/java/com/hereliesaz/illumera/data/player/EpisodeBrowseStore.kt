@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.data.player
 
 import android.content.Context
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,18 +13,21 @@ import javax.inject.Singleton
  */
 @Singleton
 class EpisodeBrowseStore @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val profileConfigurationManager: ProfileConfigurationManager
 ) {
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
     fun rememberEpisode(seriesId: String, season: Int, episode: Int) {
-        if (seriesId.isBlank() || season <= 0) return
-        prefs.edit().putString(key(seriesId), "$season:$episode").apply()
+        if (season <= 0) return
+        val scopedKey = key(seriesId) ?: return
+        prefs.edit().putString(scopedKey, "$season:$episode").apply()
     }
 
     /** Returns a suffix matching `MetaVideo`'s `":$season:$episode"` id convention, or null. */
     fun getRememberedEpisodeSuffix(seriesId: String): String? {
-        val raw = prefs.getString(key(seriesId), null) ?: return null
+        val scopedKey = key(seriesId) ?: return null
+        val raw = prefs.getString(scopedKey, null) ?: return null
         val parts = raw.split(":")
         if (parts.size != 2) return null
         val season = parts[0].toIntOrNull() ?: return null
@@ -31,7 +35,11 @@ class EpisodeBrowseStore @Inject constructor(
         return ":$season:$episode"
     }
 
-    private fun key(seriesId: String): String = "series_${seriesId.trim()}"
+    private fun key(seriesId: String): String? {
+        val normalizedSeriesId = seriesId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return null
+        return "p$profileId:series_$normalizedSeriesId"
+    }
 
     companion object {
         private const val PREFS_FILE = "episode_browse_prefs"
