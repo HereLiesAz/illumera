@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -37,16 +38,16 @@ class WatchlistViewModelTest {
         every { profileManager.activeProfileId } returns activeProfileId
 
         every { dao.getWatchlistByType(1, "movie") } returns flowOf(
-            listOf(WatchlistEntity(profileId = 1, id = "m1", type = "movie", title = "One"))
+            listOf(WatchlistEntity(profileId = 1, id = "m1", type = "movie", title = "One", poster = null, addedAt = 1L))
         )
         every { dao.getWatchlistByType(1, "series") } returns flowOf(
-            listOf(WatchlistEntity(profileId = 1, id = "s1", type = "series", title = "Series One"))
+            listOf(WatchlistEntity(profileId = 1, id = "s1", type = "series", title = "Series One", poster = null, addedAt = 1L))
         )
         every { dao.getWatchlistByType(2, "movie") } returns flowOf(
-            listOf(WatchlistEntity(profileId = 2, id = "m2", type = "movie", title = "Two"))
+            listOf(WatchlistEntity(profileId = 2, id = "m2", type = "movie", title = "Two", poster = null, addedAt = 2L))
         )
         every { dao.getWatchlistByType(2, "series") } returns flowOf(
-            listOf(WatchlistEntity(profileId = 2, id = "s2", type = "series", title = "Series Two"))
+            listOf(WatchlistEntity(profileId = 2, id = "s2", type = "series", title = "Series Two", poster = null, addedAt = 2L))
         )
     }
 
