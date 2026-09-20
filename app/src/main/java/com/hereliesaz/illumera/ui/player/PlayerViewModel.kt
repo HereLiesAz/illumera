@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -103,35 +104,51 @@ class PlayerViewModel @Inject constructor(
         duration: Long?,
         seriesId: String? = null
     ) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             if (id.startsWith("trailer_") || id.startsWith("debrid_")) return@launch
             if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return@launch
             val safePosition = position.coerceAtLeast(0L)
             if (safePosition < 5_000L) return@launch
 
-            val existing = dao.getHistoryItem(id)
-            val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
-            if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) return@launch
+            val saved = try {
+                profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                    val existing = dao.getHistoryItem(id)
+                    val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
+                    if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) {
+                        return@withActiveProfileRuntime false
+                    }
 
-            val completed = isCompleted(safePosition, safeDuration, type)
-            val finalPosition = if (completed) safeDuration else safePosition
+                    val completed = isCompleted(safePosition, safeDuration, type)
+                    val finalPosition = if (completed) safeDuration else safePosition
 
-            val entry = WatchHistoryEntity(
-                id = id,
-                title = title,
-                poster = poster ?: existing?.poster,
-                background = existing?.background,
-                logo = existing?.logo,
-                seriesId = seriesId ?: existing?.seriesId,
-                position = finalPosition,
-                duration = safeDuration,
-                lastWatched = System.currentTimeMillis(),
-                type = type.ifBlank { "movie" },
-                watched = completed,
-                scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
-            )
-            dao.upsertHistory(entry)
-            stremioLibrarySyncManager.syncLibrary()
+                    val entry = WatchHistoryEntity(
+                        id = id,
+                        title = title,
+                        poster = poster ?: existing?.poster,
+                        background = existing?.background,
+                        logo = existing?.logo,
+                        seriesId = seriesId ?: existing?.seriesId,
+                        position = finalPosition,
+                        duration = safeDuration,
+                        lastWatched = System.currentTimeMillis(),
+                        type = type.ifBlank { "movie" },
+                        watched = completed,
+                        scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
+                    )
+                    dao.upsertHistory(entry)
+                    true
+                }
+            } catch (_: CancellationException) {
+                false
+            }
+
+            if (
+                saved &&
+                profileConfigurationManager.activeProfileId.value == ownerProfileId
+            ) {
+                stremioLibrarySyncManager.syncLibrary()
+            }
         }
     }
 
