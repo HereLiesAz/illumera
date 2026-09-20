@@ -44,7 +44,7 @@ class WatchlistViewModel @Inject constructor(
 
     val movieItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
         .flatMapLatest { profileId ->
-            if (profileId == null) flowOf(emptyList())
+            if (profileId == null) flowOf(emptyList<MetaItem>())
             else dao.getWatchlistByType(profileId, "movie")
                 .map { list -> list.map { it.toMetaItem() } }
         }
@@ -52,7 +52,7 @@ class WatchlistViewModel @Inject constructor(
 
     val seriesItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
         .flatMapLatest { profileId ->
-            if (profileId == null) flowOf(emptyList())
+            if (profileId == null) flowOf(emptyList<MetaItem>())
             else dao.getWatchlistByType(profileId, "series")
                 .map { list -> list.map { it.toMetaItem() } }
         }
