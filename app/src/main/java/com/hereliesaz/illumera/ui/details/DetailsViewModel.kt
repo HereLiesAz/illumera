@@ -83,6 +83,7 @@ class DetailsViewModel @Inject constructor(
         val autoPlayStream: Stream? = null,
         val addonSubtitles: List<AddonSubtitle> = emptyList(),
         val availableStreams: List<Stream> = emptyList(),
+        val activeStreamMediaType: String? = null,
         val activeStreamRequestId: String? = null,
         val sidebarState: SidebarState = SidebarState.Closed,
         val episodeProgressMap: Map<String, EpisodeProgress> = emptyMap(), // "S1:E3" → progress
@@ -759,6 +760,7 @@ class DetailsViewModel @Inject constructor(
                 autoPlayStream = preferredStream,
                 addonSubtitles = resolvedSubtitles,
                 availableStreams = streams,
+                activeStreamMediaType = mediaType,
                 activeStreamRequestId = streamRequestId,
                 activeSourceSelectionId = sourceSelectionId,
                 sourceListDisabled = sourceListDisabled,
@@ -813,6 +815,7 @@ class DetailsViewModel @Inject constructor(
             autoPlayStream = null,
             addonSubtitles = addonSubtitles,
             availableStreams = streams,
+            activeStreamMediaType = mediaType,
             activeStreamRequestId = streamRequestId,
             activeSourceSelectionId = sourceSelectionId,
             sourceListDisabled = sourceListDisabled,
@@ -932,8 +935,8 @@ class DetailsViewModel @Inject constructor(
     }
 
     fun selectStreamForPlayback(stream: Stream) {
+        val mediaType = _state.value.activeStreamMediaType ?: return
         val requestId = _state.value.activeStreamRequestId ?: return
-        val mediaType = _state.value.meta?.type ?: return
         val fallbackSubtitles = _state.value.addonSubtitles
 
         sourceSelectionJob?.cancel()
