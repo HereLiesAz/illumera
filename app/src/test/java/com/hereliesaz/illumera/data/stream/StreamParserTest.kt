@@ -110,6 +110,25 @@ class StreamParserTest {
         assertTrue(parsed.formats.isEmpty())
     }
     @Test
+    fun legacyBehaviorHintsGroupIsPreservedAsBingeGroup() {
+        val stream = Gson().fromJson(
+            """{"url":"https://cdn.example/video","behaviorHints":{"group":"legacy-1080p"}}""",
+            Stream::class.java
+        )
+
+        assertEquals("legacy-1080p", stream.behaviorHints?.bingeGroup)
+    }
+
+    @Test
+    fun streamTargetsAreNotDiscardedDuringJsonDecode() {
+        val youtube = Gson().fromJson("""{"ytId":"abc123"}""", Stream::class.java)
+        val external = Gson().fromJson("""{"externalUrl":"https://example.com/watch"}""", Stream::class.java)
+
+        assertEquals("abc123", youtube.ytId)
+        assertEquals("https://example.com/watch", external.externalUrl)
+    }
+
+    @Test
     fun streamBehaviorHintsPreserveStandardAddonHooksDuringJsonDecode() {
         val stream = Gson().fromJson(
             """{"url":"https://cdn.example/video","behaviorHints":{"notWebReady":true,"proxyHeaders":{"request":{"Cookie":"session=abc"},"response":{"X-Test":"ok"}},"videoHash":"hash123","videoSize":42,"filename":"movie.mkv"}}""",
