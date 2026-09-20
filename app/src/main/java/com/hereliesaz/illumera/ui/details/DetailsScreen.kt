@@ -975,24 +975,8 @@ fun DetailsScreen(
                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
             },
             onSourceSelected = { stream ->
-                val playbackId = pendingPlaybackId.ifBlank { movie?.id ?: id }
-                val urlToPlay = resolvePlayableUrl(stream)
-                if (!urlToPlay.isNullOrEmpty()) {
-                    viewModel.closeSidebar()
-                    val playbackType = pendingPlaybackType.ifBlank { movie?.type ?: type }
-                    val playbackTitle = pendingPlaybackTitle.ifBlank { movie?.name ?: "" }
-                    onPlayClick(
-                        urlToPlay,
-                        playbackId,
-                        playbackType,
-                        playbackTitle,
-                        movie?.name ?: "",
-                        movie?.logo ?: "",
-                        stream,
-                        addonSubtitles,
-                        availableStreams,
-                        movie?.videos ?: emptyList()
-                    )
+                if (!resolvePlayableUrl(stream).isNullOrEmpty()) {
+                    viewModel.selectStreamForPlayback(stream)
                 }
             }
         )
