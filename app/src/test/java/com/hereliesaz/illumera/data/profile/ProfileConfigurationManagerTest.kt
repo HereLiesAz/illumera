@@ -66,9 +66,11 @@ class ProfileConfigurationManagerTest {
 
         setLastActiveProfile(42)
         assertEquals(42, manager.getLastActiveProfileId())
+        assertEquals(42, manager.activeProfileId.value)
 
         manager.clearLastActiveProfileId()
         assertNull(manager.getLastActiveProfileId())
+        assertNull(manager.activeProfileId.value)
     }
 
     @Test
@@ -119,6 +121,8 @@ class ProfileConfigurationManagerTest {
             .edit()
             .putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId)
             .commit()
+        // Simulate a fresh process reading the persisted active profile.
+        manager = ProfileConfigurationManager(context, dao, authManager, addonRepository)
     }
 
     companion object {

@@ -160,18 +160,22 @@ class PlaybackTrackSelectionStoreTest {
     }
 
     @Test
-    fun nullActiveProfileUsesStableDefaultProfileScope() {
+    fun noActiveProfileDoesNotReadOrWriteProfileOneTrackMemory() {
         activeProfileId = null
         store.updateSelection(
             playbackId = "movie",
             audioTrackId = "default",
-            subtitleTrackId = null,
+            subtitleTrackId = "subtitle",
+            subtitleDelayMs = 500L,
             updateAudio = true,
-            updateSubtitle = false
+            updateSubtitle = true,
+            updateSubtitleDelay = true
         )
 
+        assertNull(store.getSelection("movie"))
+
         activeProfileId = 1
-        assertEquals("default", store.getSelection("movie")?.audioTrackId)
+        assertNull(store.getSelection("movie"))
     }
 
     @Test

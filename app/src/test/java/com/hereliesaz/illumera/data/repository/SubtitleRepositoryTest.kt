@@ -4,6 +4,8 @@ import com.google.gson.JsonParser
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.stremio.Manifest
+import com.hereliesaz.illumera.data.model.stremio.Stream
+import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
 import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
 import com.hereliesaz.illumera.data.model.stremio.SubtitleResponse
 import com.hereliesaz.illumera.data.remote.StremioApiService
@@ -11,6 +13,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -47,6 +50,181 @@ class SubtitleRepositoryTest {
         assertEquals("My Subs", result.single().addonName)
         assertEquals("https://subs.example/captions/en.srt", result.single().url)
         coVerify(exactly = 1) { api.getSubtitles(expectedUrl) }
+    }
+
+    @Test
+    fun selectedStreamHintsTriggerSourceAwareSubtitleQueryAndMergeFallback() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val expectedUrl = "https://addon.example/subtitles/movie/tt123/videoHash=hash123&videoSize=9876&filename=Movie%20File.mkv.json"
+        coEvery { api.getSubtitles(expectedUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "specific", lang = "en", url = "https://cdn.example/specific.srt"))
+        )
+        val fallback = listOf(
+            com.hereliesaz.illumera.domain.AddonSubtitle(
+                id = "generic",
+                url = "https://cdn.example/generic.srt",
+                lang = "en",
+                addonName = "Addon"
+            )
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(
+                behaviorHints = StreamBehaviorHints(
+                    videoHash = " hash123 ",
+                    videoSize = 9876L,
+                    filename = " Movie File.mkv "
+                )
+            ),
+            fallback = fallback
+        )
+
+        assertEquals(
+            setOf("https://cdn.example/generic.srt", "https://cdn.example/specific.srt"),
+            result.map { it.url }.toSet()
+        )
+        coVerify(exactly = 1) { api.getSubtitles(expectedUrl) }
+    }
+
+    @Test
+    fun sourceAwareDuplicateWinsOverGenericSubtitleIdentity() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val expectedUrl = "https://addon.example/subtitles/movie/tt123/videoHash=hash123.json"
+        coEvery { api.getSubtitles(expectedUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "specific-id", lang = "en", url = "https://cdn.example/same.srt"))
+        )
+        val fallback = listOf(
+            com.hereliesaz.illumera.domain.AddonSubtitle(
+                id = "generic-id",
+                url = "https://cdn.example/same.srt",
+                lang = "en",
+                addonName = "Addon"
+            )
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123")),
+            fallback = fallback
+        )
+
+        assertEquals(1, result.size)
+        assertEquals("specific-id", result.single().id)
+    }
+
+    @Test
+    fun liveSourceResolutionFetchesFreshGenericAndSourceAwareVariants() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val genericUrl = "https://addon.example/subtitles/movie/tt123.json"
+        val sourceUrl = "https://addon.example/subtitles/movie/tt123/videoHash=hash123.json"
+        coEvery { api.getSubtitles(genericUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "generic", lang = "en", url = "https://cdn.example/generic.srt"))
+        )
+        coEvery { api.getSubtitles(sourceUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "specific", lang = "en", url = "https://cdn.example/specific.srt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123"))
+        )
+
+        assertEquals(
+            setOf("https://cdn.example/generic.srt", "https://cdn.example/specific.srt"),
+            result.map { it.url }.toSet()
+        )
+        coVerify(exactly = 1) { api.getSubtitles(genericUrl) }
+        coVerify(exactly = 1) { api.getSubtitles(sourceUrl) }
+    }
+
+    @Test
+    fun liveSourceWithoutHintsFetchesFreshGenericSubtitles() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val genericUrl = "https://addon.example/subtitles/movie/tt123.json"
+        coEvery { api.getSubtitles(genericUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "generic", lang = "en", url = "https://cdn.example/generic.srt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(title = "1080p")
+        )
+
+        assertEquals(listOf("https://cdn.example/generic.srt"), result.map { it.url })
+        coVerify(exactly = 1) { api.getSubtitles(genericUrl) }
+    }
+
+    @Test
+    fun sourceAwareSubtitleCancellationPropagatesToCaller() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        coEvery { api.getSubtitles(any()) } throws CancellationException("cancel source selection")
+
+        try {
+            SubtitleRepository(api, dao).getSubtitlesForStream(
+                type = "movie",
+                playbackId = "tt123",
+                stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123")),
+                fallback = emptyList()
+            )
+            throw AssertionError("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // Cancellation must escape so the caller cannot commit stale playback state.
+        }
+    }
+
+    @Test
+    fun selectedStreamWithoutSubtitleHintsReusesFallbackWithoutNetworkQuery() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val fallback = listOf(
+            com.hereliesaz.illumera.domain.AddonSubtitle(
+                id = "generic",
+                url = "https://cdn.example/generic.srt",
+                lang = "en",
+                addonName = "Addon"
+            )
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(title = "1080p"),
+            fallback = fallback
+        )
+
+        assertEquals(fallback, result)
+        coVerify(exactly = 0) { api.getManifest(any()) }
+        coVerify(exactly = 0) { api.getSubtitles(any()) }
     }
 
     @Test

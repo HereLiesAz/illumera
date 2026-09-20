@@ -11,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -30,6 +31,7 @@ class SearchViewModelTest {
     private lateinit var repository: AddonRepository
     private lateinit var dao: AddonDao
     private lateinit var profileManager: ProfileConfigurationManager
+    private lateinit var activeProfileId: MutableStateFlow<Int?>
 
     @Before
     fun setUp() {
@@ -37,7 +39,8 @@ class SearchViewModelTest {
         repository = mockk()
         dao = mockk(relaxed = true)
         profileManager = mockk()
-        every { profileManager.getLastActiveProfileId() } returns 7
+        activeProfileId = MutableStateFlow(7)
+        every { profileManager.activeProfileId } returns activeProfileId
         coEvery { dao.getRecentSearches(7) } returns emptyList()
     }
 
@@ -57,6 +60,24 @@ class SearchViewModelTest {
         advanceUntilIdle()
 
         assertEquals(listOf("alien", "matrix"), viewModel.state.value.recentSearches)
+    }
+
+    @Test
+    fun recentSearchesFollowActiveProfileChanges() = runTest(dispatcher) {
+        coEvery { dao.getRecentSearches(7) } returns listOf(RecentSearchEntity(7, "alien", 20))
+        coEvery { dao.getRecentSearches(8) } returns listOf(RecentSearchEntity(8, "arrival", 30))
+
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+        assertEquals(listOf("alien"), viewModel.state.value.recentSearches)
+
+        activeProfileId.value = 8
+        advanceUntilIdle()
+        assertEquals(listOf("arrival"), viewModel.state.value.recentSearches)
+
+        activeProfileId.value = null
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.recentSearches.isEmpty())
     }
 
     @Test

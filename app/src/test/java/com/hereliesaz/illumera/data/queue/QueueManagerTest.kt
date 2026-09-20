@@ -5,8 +5,11 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -191,6 +194,24 @@ class QueueManagerTest {
     }
 
     @Test
+    fun cancelledSuggestionRefreshPropagatesAndClearsRefreshingState() = runTest {
+        val traktApi = mockk<TraktSyncApiService>(relaxed = true)
+        coEvery { traktApi.getMovieRecommendations(any()) } throws
+            CancellationException("cancel refresh")
+        val queue = newManager(traktApi = traktApi)
+        queue.setEnabled(true)
+
+        try {
+            queue.refreshSuggestions()
+            throw AssertionError("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // Expected: cancellation remains control flow, not a failed network request.
+        }
+
+        assertFalse(queue.state.value.isRefreshingSuggestions)
+    }
+
+    @Test
     fun clearForProfileRemovesPersistedQueueWithoutTouchingOtherProfile() {
         manager.add(QueueItem(id = "one", type = "movie", title = "One"))
         activeProfileId = 2
@@ -207,11 +228,15 @@ class QueueManagerTest {
         assertEquals(listOf("two"), manager.state.value.manualItems.map { it.id })
     }
 
-    private fun newManager() = QueueManager(
+    private fun newManager(
+        addonDao: AddonDao = mockk(relaxed = true),
+        traktApi: TraktSyncApiService = mockk(relaxed = true),
+        repository: AddonRepository = mockk(relaxed = true)
+    ) = QueueManager(
         context = context,
-        addonDao = mockk<AddonDao>(relaxed = true),
-        traktApi = mockk<TraktSyncApiService>(relaxed = true),
-        repository = mockk<AddonRepository>(relaxed = true),
+        addonDao = addonDao,
+        traktApi = traktApi,
+        repository = repository,
         profileConfigurationManager = profileManager
     )
 

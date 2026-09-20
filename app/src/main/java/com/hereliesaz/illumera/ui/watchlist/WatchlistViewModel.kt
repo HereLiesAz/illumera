@@ -8,23 +8,25 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class WatchlistViewModel @Inject constructor(
     private val dao: AddonDao,
     private val repository: AddonRepository,
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
-
-    private val profileId: Int
-        get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
 
     private val resolveInFlight = mutableSetOf<String>()
     // Cools down retries for items that just failed to resolve, instead of retrying
@@ -40,13 +42,21 @@ class WatchlistViewModel @Inject constructor(
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
 
-    val movieItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType(profileId, "movie")
-        .map { list -> list.map { it.toMetaItem() } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val movieItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
+        .flatMapLatest { profileId ->
+            if (profileId == null) flowOf(emptyList<MetaItem>())
+            else dao.getWatchlistByType(profileId, "movie")
+                .map { list -> list.map { it.toMetaItem() } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
 
-    val seriesItems: StateFlow<List<MetaItem>> = dao.getWatchlistByType(profileId, "series")
-        .map { list -> list.map { it.toMetaItem() } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val seriesItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
+        .flatMapLatest { profileId ->
+            if (profileId == null) flowOf(emptyList<MetaItem>())
+            else dao.getWatchlistByType(profileId, "series")
+                .map { list -> list.map { it.toMetaItem() } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
 
     /**
      * Resolve poster from addons for items missing one (e.g., pulled from Trakt).
@@ -54,25 +64,38 @@ class WatchlistViewModel @Inject constructor(
      */
     fun resolvePosterIfNeeded(item: MetaItem) {
         if (!item.poster.isNullOrBlank()) return
-        val lastFailure = lastResolveFailureAt[item.id]
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
+        val requestKey = "$ownerProfileId:${item.type}:${item.id}"
+        val lastFailure = lastResolveFailureAt[requestKey]
         if (lastFailure != null && System.currentTimeMillis() - lastFailure < resolveFailureCooldownMs) return
-        if (!resolveInFlight.add(item.id)) return
+        if (!resolveInFlight.add(requestKey)) return
 
         viewModelScope.launch(Dispatchers.IO) {
             var succeeded = false
+            var cancelled = false
             try {
+                // Network resolution must not hold the profile runtime lock. A slow addon
+                // should never block loadRuntimeState() during a profile switch.
                 val meta = repository.resolveMetaDetails(item.type, item.id)
-                if (!meta?.poster.isNullOrBlank()) {
-                    val existing = dao.getWatchlistItem(profileId, item.id)
-                    if (existing != null) {
-                        dao.addToWatchlist(existing.copy(poster = meta?.poster))
-                        succeeded = true
+                val poster = meta?.poster?.takeIf { it.isNotBlank() }
+                if (poster != null) {
+                    profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                        val existing = dao.getWatchlistItem(ownerProfileId, item.id)
+                        if (existing != null) {
+                            dao.addToWatchlist(existing.copy(poster = poster))
+                            succeeded = true
+                        }
                     }
                 }
+            } catch (error: CancellationException) {
+                cancelled = true
+                throw error
             } catch (_: Exception) {
             } finally {
-                resolveInFlight.remove(item.id)
-                if (!succeeded) lastResolveFailureAt[item.id] = System.currentTimeMillis()
+                resolveInFlight.remove(requestKey)
+                if (!succeeded && !cancelled) {
+                    lastResolveFailureAt[requestKey] = System.currentTimeMillis()
+                }
             }
         }
     }

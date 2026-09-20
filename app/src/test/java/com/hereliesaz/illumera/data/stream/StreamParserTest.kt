@@ -117,6 +117,26 @@ class StreamParserTest {
         assertTrue(parsed.formats.isEmpty())
     }
     @Test
+    fun illumeraStreamMetadataNeverLeaksIntoAddonJson() {
+        val stream = Stream(
+            url = "https://cdn.example/video",
+            addonTransportUrl = "https://addon.example",
+            addonDisplayName = "Addon",
+            addonRequestType = "series",
+            addonRequestId = "custom:episode:id",
+            sourceSelectionId = "ui-selection"
+        )
+
+        val json = Gson().toJson(stream)
+
+        assertTrue(!json.contains("addonTransportUrl"))
+        assertTrue(!json.contains("addonDisplayName"))
+        assertTrue(!json.contains("addonRequestType"))
+        assertTrue(!json.contains("addonRequestId"))
+        assertTrue(!json.contains("sourceSelectionId"))
+    }
+
+    @Test
     fun streamBehaviorHintsPreserveStandardAddonHooksDuringJsonDecode() {
         val stream = Gson().fromJson(
             """{"url":"https://cdn.example/video","behaviorHints":{"notWebReady":true,"proxyHeaders":{"request":{"Cookie":"session=abc"},"response":{"X-Test":"ok"}},"videoHash":"hash123","videoSize":42,"filename":"movie.mkv"}}""",
