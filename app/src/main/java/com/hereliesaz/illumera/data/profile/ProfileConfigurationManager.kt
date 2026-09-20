@@ -276,7 +276,7 @@ class ProfileConfigurationManager @Inject constructor(
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
-            prefs.edit().remove(KEY_LAST_ACTIVE_PROFILE_ID).apply()
+            clearLastActiveProfileId()
         }
     }
 
