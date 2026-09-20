@@ -451,6 +451,31 @@ fun PlaybackSettings(
                 }
             }
 
+            Spacer(Modifier.height(12.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "Watched Completion",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+                color = Color.White.copy(0.7f),
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                text = "Mark an item watched at ${currentProfile.watchedThreshold}% played.",
+                color = Color.White.copy(0.6f),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+            VoidSlider(
+                value = currentProfile.watchedThreshold.toFloat(),
+                onValueChange = {
+                    viewModel.updateWatchedThreshold(currentProfile.id, it.toInt())
+                },
+                valueRange = 50f..99f,
+                steps = 48
+            )
+
             TorrentTuningSettings(onGoBack = onGoBack)
 
             // LANGUAGE PREFERENCES SECTION
