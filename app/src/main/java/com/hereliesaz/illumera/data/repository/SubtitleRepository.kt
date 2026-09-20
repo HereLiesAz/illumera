@@ -4,6 +4,7 @@ import com.google.gson.JsonElement
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.stremio.Manifest
+import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.domain.AddonSubtitle
@@ -75,15 +76,52 @@ class SubtitleRepository @Inject constructor(
             }
         }
 
-        jobs.awaitAll()
-            .flatten()
-            .distinctBy { subtitle ->
-                val url = subtitle.url.lowercase(Locale.ROOT)
-                val lang = subtitle.lang.orEmpty().lowercase(Locale.ROOT)
-                val addon = subtitle.addonName.lowercase(Locale.ROOT)
-                "$url|$lang|$addon"
-            }
+        distinctSubtitles(jobs.awaitAll().flatten())
     }
+
+    /**
+     * Refines a generic subtitle result once the actual stream is known. Stremio subtitle
+     * addons may key results by behaviorHints.videoHash/videoSize/filename; those values do
+     * not exist until after source selection, so callers should use this at that boundary.
+     *
+     * When a stream exposes no such hints the already-fetched generic results are returned
+     * without another network round-trip.
+     */
+    suspend fun getSubtitlesForStream(
+        type: String,
+        playbackId: String,
+        stream: Stream,
+        fallback: List<AddonSubtitle> = emptyList()
+    ): List<AddonSubtitle> {
+        val hints = stream.behaviorHints
+        val videoHash = hints?.videoHash?.trim()?.takeIf { it.isNotEmpty() }
+        val videoSize = hints?.videoSize?.takeIf { it > 0L }
+        val filename = hints?.filename?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (videoHash == null && videoSize == null && filename == null) {
+            return distinctSubtitles(fallback)
+        }
+
+        val sourceAware = runCatching {
+            getSubtitles(
+                type = type,
+                playbackId = playbackId,
+                videoHash = videoHash,
+                videoSize = videoSize,
+                filename = filename
+            )
+        }.getOrDefault(emptyList())
+
+        return distinctSubtitles(fallback + sourceAware)
+    }
+
+    private fun distinctSubtitles(subtitles: List<AddonSubtitle>): List<AddonSubtitle> =
+        subtitles.distinctBy { subtitle ->
+            val url = subtitle.url.lowercase(Locale.ROOT)
+            val lang = subtitle.lang.orEmpty().lowercase(Locale.ROOT)
+            val addon = subtitle.addonName.lowercase(Locale.ROOT)
+            "$url|$lang|$addon"
+        }
 
     private fun buildSubtitleRequest(type: String, playbackId: String): SubtitleRequest {
         val normalizedType = type.trim().lowercase(Locale.ROOT)
