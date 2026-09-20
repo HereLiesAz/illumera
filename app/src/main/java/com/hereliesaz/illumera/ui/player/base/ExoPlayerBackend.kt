@@ -61,6 +61,7 @@ import io.github.assrender.SubtitleOverlayView
 import java.util.Locale
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -102,6 +103,13 @@ class ExoPlayerBackend(
      */
     var onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null
 
+    /**
+     * Resolves the external subtitle set for a concrete source immediately before a
+     * live source switch. The switch then uses the existing current-position rebuild,
+     * so source-specific subtitle hooks do not require a second reload.
+     */
+    var onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null
+
     override val backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER
 
     private val scopeJob = SupervisorJob()
@@ -127,6 +135,7 @@ class ExoPlayerBackend(
 
     private var released = false
     private var loadToken = 0L
+    private var sourceSelectionGeneration = 0L
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
     private var audioSwitchRecoveryJob: Job? = null
@@ -198,6 +207,26 @@ class ExoPlayerBackend(
 
     private var externalSubtitleSources: Map<String, PlayerSubtitleSource> = emptyMap()
     private var externalSubtitleLabelKeys: Map<String, String?> = emptyMap()
+
+    private fun replaceExternalSubtitles(subtitles: List<PlayerSubtitleSource>) {
+        val normalized = subtitles.mapIndexed { index, subtitle ->
+            val normalizedId = subtitle.id.trim().ifBlank { "ext_$index" }
+            val normalizedLabel = subtitle.label.ifBlank { "Subtitle ${index + 1}" }
+            subtitle.copy(id = normalizedId, label = normalizedLabel)
+        }
+
+        loadRequest = loadRequest?.copy(subtitles = normalized)
+        externalSubtitleSources = normalized.associateBy { subtitle ->
+            externalSubtitleTrackId(subtitle.id)
+        }
+        externalSubtitleLabelKeys = externalSubtitleSources.mapValues { (_, source) ->
+            normalizedSubtitleLabelKey(source.label)
+        }
+
+        subtitleFormatHintsByTrackId.clear()
+        subtitleFormatHintsByLabelLanguage.clear()
+        subtitleFormatHintsByLabel.clear()
+    }
     private var okHttpClient: OkHttpClient? = null
     private var forcedSubtitleTrackId: String? = null
     private var ioAutoRetrySourceId: String? = null
@@ -434,6 +463,7 @@ class ExoPlayerBackend(
 
     override fun load(request: PlayerLoadRequest) {
         if (released) return
+        sourceSelectionGeneration++
         loadToken++
         _excludedSourceIds.value = emptySet()
         _sourceListDisabled.value = false
@@ -601,9 +631,39 @@ class ExoPlayerBackend(
         if (released) return
         if (sourceId == currentSourceId) return
         val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
-        _uiState.update { it.copy(errorMessage = null) }
+        val resolver = onResolveSourceSubtitles
 
-        // Magnet URLs need TorrentService — delegate to the callback
+        sourceSelectionGeneration++
+        val generation = sourceSelectionGeneration
+        _uiState.update { it.copy(errorMessage = null, isBuffering = resolver != null || it.isBuffering) }
+
+        if (resolver == null) {
+            selectSourceAfterSubtitleResolution(sourceId, source)
+            return
+        }
+
+        scope.launch {
+            val resolvedSubtitles = try {
+                resolver(source)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+
+            if (released || generation != sourceSelectionGeneration) return@launch
+            if (resolvedSubtitles != null) {
+                replaceExternalSubtitles(resolvedSubtitles)
+            }
+            selectSourceAfterSubtitleResolution(sourceId, source)
+        }
+    }
+
+    private fun selectSourceAfterSubtitleResolution(sourceId: String, source: PlayerSourceOption) {
+        if (released) return
+        if (sourceSelectionGeneration <= 0L) return
+
+        // Magnet URLs need TorrentService — delegate to the callback.
         if (source.url.startsWith("magnet:")) {
             val handler = onMagnetSourceSelected
             if (handler != null) {
