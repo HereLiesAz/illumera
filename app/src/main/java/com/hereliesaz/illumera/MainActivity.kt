@@ -1954,6 +1954,20 @@ class MainActivity : ComponentActivity() {
                                 )
                                 playerState.selectedPlayerSources = buildSourcePayload(candidates, nextStream)
 
+                                val requestType = nextStream.addonRequestType
+                                val requestId = nextStream.addonRequestId
+                                if (!requestType.isNullOrBlank() && !requestId.isNullOrBlank()) {
+                                    val addonSubs = subtitleRepository.getSubtitlesForStream(
+                                        type = requestType,
+                                        playbackId = requestId,
+                                        stream = nextStream
+                                    )
+                                    playerState.selectedPlayerSubtitles = buildSubtitlePayload(
+                                        nextStream,
+                                        addonSubs
+                                    )
+                                }
+
                                 if (nextUrl.startsWith("magnet:")) {
                                     selectedVideoUrl = ""
                                     torrentProgress = TorrentProgress("Trying next source…")
