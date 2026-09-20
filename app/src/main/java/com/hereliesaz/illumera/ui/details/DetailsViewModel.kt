@@ -742,6 +742,11 @@ class DetailsViewModel @Inject constructor(
         }
 
         if (preferredStream != null) {
+            _state.value = _state.value.copy(
+                isLoadingStreams = true,
+                sidebarState = SidebarState.Closed,
+                activeStreamRequestId = streamRequestId
+            )
             val resolvedSubtitles = subtitleRepository.getSubtitlesForStream(
                 type = mediaType,
                 playbackId = streamRequestId,
@@ -768,6 +773,11 @@ class DetailsViewModel @Inject constructor(
                 !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank()
             }
             if (firstPlayable != null) {
+                _state.value = _state.value.copy(
+                    isLoadingStreams = true,
+                    sidebarState = SidebarState.Closed,
+                    activeStreamRequestId = streamRequestId
+                )
                 val resolvedSubtitles = subtitleRepository.getSubtitlesForStream(
                     type = mediaType,
                     playbackId = streamRequestId,
