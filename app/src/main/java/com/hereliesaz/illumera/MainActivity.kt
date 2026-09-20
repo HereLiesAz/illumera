@@ -678,6 +678,17 @@ private fun buildSubtitlePayload(stream: Stream, addonSubtitles: List<AddonSubti
         }
 }
 
+private fun List<PlayerSubtitlePayload>.toPlayerSubtitleSources(): List<PlayerSubtitleSource> =
+    map { subtitle ->
+        PlayerSubtitleSource(
+            id = subtitle.id,
+            url = subtitle.url,
+            label = subtitle.name,
+            language = subtitle.language
+        )
+    }
+
+
 private fun handlePlayerSessionEnd(
     sessionResult: PlayerSessionResult,
     selectedPlaybackId: String,
@@ -1863,14 +1874,7 @@ class MainActivity : ComponentActivity() {
                             }
                             val playerSources = remember(playerState.selectedPlayerSources) { playerState.selectedPlayerSources }
                             val playerSubtitles = remember(playerState.selectedPlayerSubtitles) {
-                                playerState.selectedPlayerSubtitles.map { subtitle ->
-                                    PlayerSubtitleSource(
-                                        id = subtitle.id,
-                                        url = subtitle.url,
-                                        label = subtitle.name,
-                                        language = subtitle.language
-                                    )
-                                }
+                                playerState.selectedPlayerSubtitles.toPlayerSubtitleSources()
                             }
 
                             // Compute next episode
@@ -2469,6 +2473,21 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onEpisodeSwitchDismissed = { playerState.pendingEpisodeSwitch = null; playerState.isEpisodeSwitchLoading = false },
+                                onResolveSourceSubtitles = { source ->
+                                    val stream = source.addonStream
+                                    val requestType = stream?.addonRequestType
+                                    val requestId = stream?.addonRequestId
+                                    if (stream == null || requestType.isNullOrBlank() || requestId.isNullOrBlank()) {
+                                        playerSubtitles
+                                    } else {
+                                        val addonSubs = subtitleRepository.getSubtitlesForStream(
+                                            type = requestType,
+                                            playbackId = requestId,
+                                            stream = stream
+                                        )
+                                        buildSubtitlePayload(stream, addonSubs).toPlayerSubtitleSources()
+                                    }
+                                },
                                 onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady, onError ->
                                     playerState.pendingSourceSelection?.candidateStreams
                                         ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
