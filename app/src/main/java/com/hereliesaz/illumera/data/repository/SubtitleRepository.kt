@@ -112,7 +112,8 @@ class SubtitleRepository @Inject constructor(
             )
         }.getOrDefault(emptyList())
 
-        return distinctSubtitles(fallback + sourceAware)
+        // Source-aware rows take precedence when the generic request returned the same track.
+        return distinctSubtitles(sourceAware + fallback)
     }
 
     private fun distinctSubtitles(subtitles: List<AddonSubtitle>): List<AddonSubtitle> =
