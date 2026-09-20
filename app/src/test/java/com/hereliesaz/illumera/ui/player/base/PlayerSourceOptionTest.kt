@@ -35,7 +35,9 @@ class PlayerSourceOptionTest {
                 filename = "movie.mkv"
             ),
             addonTransportUrl = "https://addon.example",
-            addonDisplayName = "Addon"
+            addonDisplayName = "Addon",
+            addonRequestType = "series",
+            addonRequestId = "custom:episode:id"
         )
 
         val projected = PlayerSourceOption(
@@ -58,5 +60,7 @@ class PlayerSourceOptionTest {
         assertEquals("video-hash", projected.behaviorHints?.videoHash)
         assertEquals(42L, projected.behaviorHints?.videoSize)
         assertEquals("movie.mkv", projected.behaviorHints?.filename)
+        assertEquals("series", projected.addonRequestType)
+        assertEquals("custom:episode:id", projected.addonRequestId)
     }
 }
