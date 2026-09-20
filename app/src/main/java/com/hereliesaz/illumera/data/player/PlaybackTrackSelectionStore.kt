@@ -105,7 +105,7 @@ class PlaybackTrackSelectionStore @Inject constructor(
 
     private fun canonicalPlaybackId(playbackId: String): String? {
         val normalizedPlaybackId = playbackId.trim().takeIf { it.isNotEmpty() } ?: return null
-        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: DEFAULT_PROFILE_ID
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return null
         return "p$profileId:$normalizedPlaybackId"
     }
 
@@ -117,7 +117,6 @@ class PlaybackTrackSelectionStore @Inject constructor(
 
     companion object {
         private const val PREFS_FILE = "playback_track_selection_prefs"
-        private const val DEFAULT_PROFILE_ID = 1
         private const val KEY_AUDIO_PREFIX = "audio_"
         private const val KEY_SUBTITLE_PREFIX = "subtitle_"
         private const val KEY_SUBTITLE_DELAY_PREFIX = "subtitleDelay_"
