@@ -653,13 +653,13 @@ class ExoPlayerBackend(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                null
+                // Never carry the previous source's external subtitles into a new source
+                // merely because resolution failed. Empty is honest; stale is corruption.
+                emptyList()
             }
 
             if (released || generation != sourceSelectionGeneration) return@launch
-            if (resolvedSubtitles != null) {
-                replaceExternalSubtitles(resolvedSubtitles)
-            }
+            replaceExternalSubtitles(resolvedSubtitles)
             selectSourceAfterSubtitleResolution(sourceId, source)
         }
     }
