@@ -83,6 +83,7 @@ class DetailsViewModel @Inject constructor(
         val autoPlayStream: Stream? = null,
         val addonSubtitles: List<AddonSubtitle> = emptyList(),
         val availableStreams: List<Stream> = emptyList(),
+        val activeStreamRequestId: String? = null,
         val sidebarState: SidebarState = SidebarState.Closed,
         val episodeProgressMap: Map<String, EpisodeProgress> = emptyMap(), // "S1:E3" → progress
         val episodeEnrichmentMap: Map<String, TmdbEpisodeEnrichment> = emptyMap(), // "S1:E3" → TMDB data
@@ -115,6 +116,7 @@ class DetailsViewModel @Inject constructor(
 
     private var loadDetailsJob: Job? = null
     private var loadStreamsJob: Job? = null
+    private var sourceSelectionJob: Job? = null
     private var tmdbEnrichmentJob: Job? = null
     private var loadRequestVersion: Long = 0L
     private var loadedContentKey: String? = null
@@ -720,6 +722,7 @@ class DetailsViewModel @Inject constructor(
      *  preferred/first-playable stream when appropriate, otherwise showing the sources sidebar. */
     private suspend fun applyResolvedStreams(
         mediaType: String,
+        streamRequestId: String,
         displayTitle: String,
         sourceSelectionId: String,
         forceSourcePicker: Boolean,
@@ -739,12 +742,19 @@ class DetailsViewModel @Inject constructor(
         }
 
         if (preferredStream != null) {
+            val resolvedSubtitles = subtitleRepository.getSubtitlesForStream(
+                type = mediaType,
+                playbackId = streamRequestId,
+                stream = preferredStream,
+                fallback = addonSubtitles
+            )
             _state.value = _state.value.copy(
                 isLoadingStreams = false,
                 sidebarState = SidebarState.Closed,
                 autoPlayStream = preferredStream,
-                addonSubtitles = addonSubtitles,
+                addonSubtitles = resolvedSubtitles,
                 availableStreams = streams,
+                activeStreamRequestId = streamRequestId,
                 activeSourceSelectionId = sourceSelectionId,
                 sourceListDisabled = sourceListDisabled,
                 excludedSourceIds = excludedSourceIds
@@ -758,12 +768,19 @@ class DetailsViewModel @Inject constructor(
                 !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank()
             }
             if (firstPlayable != null) {
+                val resolvedSubtitles = subtitleRepository.getSubtitlesForStream(
+                    type = mediaType,
+                    playbackId = streamRequestId,
+                    stream = firstPlayable,
+                    fallback = addonSubtitles
+                )
                 _state.value = _state.value.copy(
                     isLoadingStreams = false,
                     sidebarState = SidebarState.Closed,
                     autoPlayStream = firstPlayable,
-                    addonSubtitles = addonSubtitles,
+                    addonSubtitles = resolvedSubtitles,
                     availableStreams = streams,
+                    activeStreamRequestId = streamRequestId,
                     activeSourceSelectionId = sourceSelectionId,
                     sourceListDisabled = sourceListDisabled,
                     excludedSourceIds = excludedSourceIds
@@ -786,6 +803,7 @@ class DetailsViewModel @Inject constructor(
             autoPlayStream = null,
             addonSubtitles = addonSubtitles,
             availableStreams = streams,
+            activeStreamRequestId = streamRequestId,
             activeSourceSelectionId = sourceSelectionId,
             sourceListDisabled = sourceListDisabled,
             excludedSourceIds = excludedSourceIds,
@@ -844,7 +862,7 @@ class DetailsViewModel @Inject constructor(
         if (cached != null && System.currentTimeMillis() - cached.fetchedAt <= STREAMS_CACHE_TTL_MS) {
             loadStreamsJob = viewModelScope.launch {
                 applyResolvedStreams(
-                    type, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
+                    type, id, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, cached.streams, cached.subtitles
                 )
             }
@@ -888,7 +906,7 @@ class DetailsViewModel @Inject constructor(
                 }
 
                 applyResolvedStreams(
-                    type, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
+                    type, id, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, rawStreams, addonSubtitles
                 )
             } catch (e: Exception) {
@@ -900,6 +918,35 @@ class DetailsViewModel @Inject constructor(
                     sidebarState = SidebarState.Sources(displayTitle, emptyList())
                 )
             }
+        }
+    }
+
+    fun selectStreamForPlayback(stream: Stream) {
+        val requestId = _state.value.activeStreamRequestId ?: return
+        val mediaType = _state.value.meta?.type ?: return
+        val fallbackSubtitles = _state.value.addonSubtitles
+
+        sourceSelectionJob?.cancel()
+        sourceSelectionJob = viewModelScope.launch {
+            _state.value = _state.value.copy(
+                isLoadingStreams = true,
+                autoPlayStream = null,
+                sidebarState = SidebarState.Closed
+            )
+
+            val resolvedSubtitles = subtitleRepository.getSubtitlesForStream(
+                type = mediaType,
+                playbackId = requestId,
+                stream = stream,
+                fallback = fallbackSubtitles
+            )
+
+            _state.value = _state.value.copy(
+                isLoadingStreams = false,
+                autoPlayStream = stream,
+                addonSubtitles = resolvedSubtitles,
+                sidebarState = SidebarState.Closed
+            )
         }
     }
 
@@ -990,6 +1037,8 @@ class DetailsViewModel @Inject constructor(
     fun closeSidebar() {
         loadStreamsJob?.cancel()
         loadStreamsJob = null
+        sourceSelectionJob?.cancel()
+        sourceSelectionJob = null
         _state.value = _state.value.copy(
             isLoadingStreams = false,
             autoPlayStream = null,
