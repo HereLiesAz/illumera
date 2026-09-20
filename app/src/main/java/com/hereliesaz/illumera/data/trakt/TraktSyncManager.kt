@@ -14,6 +14,7 @@ import com.hereliesaz.illumera.data.model.trakt.TraktSyncRequest
 import com.hereliesaz.illumera.data.model.trakt.TraktSyncSeason
 import com.hereliesaz.illumera.data.model.trakt.TraktWatchlistItem
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -97,6 +98,8 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 synced
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Activity check failed", e)
                 false
@@ -119,7 +122,9 @@ class TraktSyncManager @Inject constructor(
                             pushToTrakt(localItems)
                             Log.d(TAG, "Initial push: ${localItems.size} items")
                         }
-                    } catch (e: Exception) {
+                    } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
                         Log.w(TAG, "Initial push failed", e)
                     }
                 }
@@ -185,6 +190,8 @@ class TraktSyncManager @Inject constructor(
 
                 Log.i(TAG, "Sync complete: pulled=${toPull.size}, removed=${toRemove.size}")
                 Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.e(TAG, "Watchlist sync failed: ${e.message}", e)
                 Result.failure(e)
@@ -200,6 +207,8 @@ class TraktSyncManager @Inject constructor(
         withContext(Dispatchers.IO) {
             try {
                 pushToTrakt(listOf(item))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push watchlist add to Trakt", e)
             }
@@ -220,6 +229,8 @@ class TraktSyncManager @Inject constructor(
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Trakt watchlist remove failed: ${response.code()}")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push watchlist remove to Trakt", e)
             }
@@ -238,6 +249,8 @@ class TraktSyncManager @Inject constructor(
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Trakt collection add failed: ${response.code()}")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to add item to Trakt collection", e)
             }
@@ -274,6 +287,8 @@ class TraktSyncManager @Inject constructor(
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Trakt bulk history update failed: ${response.code()}")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to update series history on Trakt", e)
             }
@@ -292,6 +307,8 @@ class TraktSyncManager @Inject constructor(
                 val body = TraktSyncRequest(movies = listOf(TraktSyncItem(ids = TraktIds(imdb = imdbId))))
                 val response = traktSyncApi.addToHistory(body)
                 Log.d(TAG, "pushMovieWatched $imdbId: ${response.code()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push movie watched to Trakt", e)
             }
@@ -308,6 +325,8 @@ class TraktSyncManager @Inject constructor(
                 val body = TraktSyncRequest(movies = listOf(TraktSyncItem(ids = TraktIds(imdb = imdbId))))
                 val response = traktSyncApi.removeFromHistory(body)
                 Log.d(TAG, "pushMovieUnwatched $imdbId: ${response.code()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push movie unwatched to Trakt", e)
             }
@@ -331,6 +350,8 @@ class TraktSyncManager @Inject constructor(
                 )
                 val response = traktSyncApi.addToHistory(body)
                 Log.d(TAG, "pushEpisodeWatched S${season}E${episode}: ${response.code()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push episode watched to Trakt", e)
             }
@@ -354,6 +375,8 @@ class TraktSyncManager @Inject constructor(
                 )
                 val response = traktSyncApi.removeFromHistory(body)
                 Log.d(TAG, "pushEpisodeUnwatched S${season}E${episode}: ${response.code()}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to push episode unwatched to Trakt", e)
             }
@@ -505,6 +528,8 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 Log.i(TAG, "Playback sync: added=$added, removed=$removed, markedWatched=$markedWatched")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.e(TAG, "Playback progress sync failed", e)
             }
@@ -630,7 +655,9 @@ class TraktSyncManager @Inject constructor(
                                 updated++
                             }
                         }
-                    } catch (e: Exception) {
+                    } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
                         Log.w(TAG, "Failed to fetch progress for $traktSlug", e)
                     }
                 }
@@ -656,6 +683,8 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 Log.i(TAG, "Series next-up sync: updated $updated shows")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.e(TAG, "Series next-up sync failed", e)
             }
@@ -788,7 +817,9 @@ class TraktSyncManager @Inject constructor(
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch watched history", e)
             return null
         }
@@ -831,6 +862,8 @@ class TraktSyncManager @Inject constructor(
                         Log.d(TAG, "Deleted playback $playbackId from Trakt: ${deleteResponse.code()}")
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to delete playback from Trakt", e)
             } finally {
