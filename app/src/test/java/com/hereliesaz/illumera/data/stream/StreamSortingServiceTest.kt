@@ -34,25 +34,26 @@ class StreamSortingServiceTest {
 
         val result = filter(
             streams,
-            ProfileEntity(name = "Test")
+            ProfileEntity(name = "Test", sourceSkipSeedless = true)
         )
 
         assertEquals(setOf("seeded", "unknown", "peer-only"), result.mapNotNull { it.url }.toSet())
     }
 
     @Test
-    fun skipSeedless_canBeDisabled() {
+    fun skipSeedless_isOptInByDefault() {
         val streams = listOf(
             Stream(title = "1080p seeds: 0", url = "zero"),
-            Stream(title = "1080p seeds: 8", url = "seeded")
+            Stream(title = "1080p seeds: 8", url = "seeded"),
+            Stream(title = "1080p", url = "unknown")
         )
 
         val result = filter(
             streams,
-            ProfileEntity(name = "Test", sourceSkipSeedless = false)
+            ProfileEntity(name = "Test")
         )
 
-        assertEquals(setOf("zero", "seeded"), result.mapNotNull { it.url }.toSet())
+        assertEquals(setOf("zero", "seeded", "unknown"), result.mapNotNull { it.url }.toSet())
     }
 
     @Test
