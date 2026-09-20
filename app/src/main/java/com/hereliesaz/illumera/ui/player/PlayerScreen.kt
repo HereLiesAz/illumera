@@ -71,6 +71,7 @@ fun PlayerScreen(
     episodeSwitchTitle: String? = null,
     onEpisodeSwitchSourceSelected: ((sourceUrl: String) -> Unit)? = null,
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
+    onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null,
     onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
     autoFallbackEnabled: Boolean = false,
@@ -86,8 +87,11 @@ fun PlayerScreen(
     val playbackController = runtime.playbackController
     val renderSurface = runtime.renderSurface
 
-    LaunchedEffect(playbackController, onMagnetSourceSelected) {
-        (playbackController as? ExoPlayerBackend)?.onMagnetSourceSelected = onMagnetSourceSelected
+    LaunchedEffect(playbackController, onMagnetSourceSelected, onResolveSourceSubtitles) {
+        (playbackController as? ExoPlayerBackend)?.apply {
+            this.onMagnetSourceSelected = onMagnetSourceSelected
+            this.onResolveSourceSubtitles = onResolveSourceSubtitles
+        }
     }
 
     // Pre-create ExoPlayer + OkHttpClient while torrent pieces are still downloading.
