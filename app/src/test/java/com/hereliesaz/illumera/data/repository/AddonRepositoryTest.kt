@@ -9,6 +9,8 @@ import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 import com.hereliesaz.illumera.data.model.stremio.CatalogResponse
 import com.hereliesaz.illumera.data.model.stremio.Manifest
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
+import com.hereliesaz.illumera.data.model.stremio.MetaResponse
+import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamResponse
 import com.hereliesaz.illumera.data.remote.StremioApiService
@@ -113,6 +115,26 @@ class AddonRepositoryTest {
         assertEquals(1, result.size)
         assertEquals("720p", result.single().name)
         assertEquals("Good", result.single().addonDisplayName)
+    }
+
+    @Test
+    fun getMetaDetailsPreservesAddonVideoListWithoutSeasonEpisodeDeduplication() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val url = "https://addon.example/meta/series/custom-series.json"
+        val videos = listOf(
+            MetaVideo(id = "cut-a", title = "Cut A", season = 1, episode = 1),
+            MetaVideo(id = "cut-b", title = "Cut B", season = 1, episode = 1),
+            MetaVideo(id = "special-a", title = "Special A"),
+            MetaVideo(id = "special-b", title = "Special B")
+        )
+        coEvery { api.getMeta(url) } returns MetaResponse(
+            MetaItem(id = "custom-series", type = "series", name = "Custom", videos = videos)
+        )
+
+        val result = AddonRepository(api, dao).getMetaDetails(url)
+
+        assertEquals(listOf("cut-a", "cut-b", "special-a", "special-b"), result?.videos?.map { it.id })
     }
 
     @Test

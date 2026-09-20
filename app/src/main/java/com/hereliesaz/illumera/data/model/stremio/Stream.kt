@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.data.model.stremio
 
+import com.google.gson.annotations.SerializedName
 import kotlin.jvm.Transient
 
 data class StreamResponse(
@@ -42,6 +43,7 @@ data class StreamSubtitle(
 data class StreamBehaviorHints(
     val countryWhitelist: List<String>? = null,
     val notWebReady: Boolean? = null,
+    @SerializedName(value = "bingeGroup", alternate = ["group"])
     val bingeGroup: String? = null,
     val proxyHeaders: StreamProxyHeaders? = null,
     val videoHash: String? = null,
