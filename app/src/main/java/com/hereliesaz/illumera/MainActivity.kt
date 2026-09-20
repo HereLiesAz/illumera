@@ -105,6 +105,8 @@ import com.hereliesaz.illumera.ui.theme.LumeraTheme
 import com.hereliesaz.illumera.ui.theme.ThemeManager
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -136,6 +138,7 @@ private data class PendingSourceSelection(
 private data class PendingEpisodeSwitch(
     val playbackId: String,
     val playbackTitle: String,
+    val streamRequestId: String,
     val streams: List<Stream>?,
     val addonSubs: List<AddonSubtitle>,
     val playerCurrentSourceUrl: String?
@@ -151,6 +154,21 @@ private class PlayerState {
     var currentStream by mutableStateOf<Stream?>(null)
     var pendingEpisodeSwitch by mutableStateOf<PendingEpisodeSwitch?>(null)
     var isEpisodeSwitchLoading by mutableStateOf(false)
+    var episodeSwitchJob: Job? = null
+    var episodeSwitchGeneration: Long = 0L
+}
+
+private suspend fun <T> requestOrFallback(
+    fallback: T,
+    block: suspend () -> T
+): T {
+    return try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        fallback
+    }
 }
 
 private fun resolveSubtitleUrl(rawUrl: String, addonTransportUrl: String?): String? {
@@ -562,7 +580,8 @@ private fun buildPlayerSourceOption(stream: Stream): PlayerSourceOption? {
         fileName = stream.behaviorHints?.filename ?: "",
         addonTransportUrl = stream.addonTransportUrl,
         addonDisplayName = stream.addonDisplayName,
-        requestHeaders = requestHeaders
+        requestHeaders = requestHeaders,
+        addonStream = stream
     )
 }
 
@@ -675,6 +694,17 @@ private fun buildSubtitlePayload(stream: Stream, addonSubtitles: List<AddonSubti
             "$url|$lang"
         }
 }
+
+private fun List<PlayerSubtitlePayload>.toPlayerSubtitleSources(): List<PlayerSubtitleSource> =
+    map { subtitle ->
+        PlayerSubtitleSource(
+            id = subtitle.id,
+            url = subtitle.url,
+            label = subtitle.name,
+            language = subtitle.language
+        )
+    }
+
 
 private fun handlePlayerSessionEnd(
     sessionResult: PlayerSessionResult,
@@ -1861,14 +1891,7 @@ class MainActivity : ComponentActivity() {
                             }
                             val playerSources = remember(playerState.selectedPlayerSources) { playerState.selectedPlayerSources }
                             val playerSubtitles = remember(playerState.selectedPlayerSubtitles) {
-                                playerState.selectedPlayerSubtitles.map { subtitle ->
-                                    PlayerSubtitleSource(
-                                        id = subtitle.id,
-                                        url = subtitle.url,
-                                        label = subtitle.name,
-                                        language = subtitle.language
-                                    )
-                                }
+                                playerState.selectedPlayerSubtitles.toPlayerSubtitleSources()
                             }
 
                             // Compute next episode
@@ -1947,6 +1970,20 @@ class MainActivity : ComponentActivity() {
                                     candidateStreams = candidates
                                 )
                                 playerState.selectedPlayerSources = buildSourcePayload(candidates, nextStream)
+
+                                val requestType = nextStream.addonRequestType
+                                val requestId = nextStream.addonRequestId
+                                if (!requestType.isNullOrBlank() && !requestId.isNullOrBlank()) {
+                                    val addonSubs = subtitleRepository.getSubtitlesForStream(
+                                        type = requestType,
+                                        playbackId = requestId,
+                                        stream = nextStream
+                                    )
+                                    playerState.selectedPlayerSubtitles = buildSubtitlePayload(
+                                        nextStream,
+                                        addonSubs
+                                    )
+                                }
 
                                 if (nextUrl.startsWith("magnet:")) {
                                     selectedVideoUrl = ""
@@ -2040,26 +2077,28 @@ class MainActivity : ComponentActivity() {
                                         val nextStreamId = episodeStreamId(selectedMovieId, nextEpisode)
                                         val nextPlaybackTitle = episodeDisplayTitle(nextEpisode)
 
-                                        uiScope.launch {
-                                            // Show loading feedback immediately
-                                            val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
-                                            val autoSelect = currentProfile?.autoSelectSource == true
-                                            val willAutoResolve = autoplay || autoSelect
+                                        val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
+                                        val autoSelect = currentProfile?.autoSelectSource == true
+                                        val willAutoResolve = autoplay || autoSelect
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
+                                        playerState.isEpisodeSwitchLoading = true
+                                        playerState.pendingEpisodeSwitch = if (!willAutoResolve) {
+                                            PendingEpisodeSwitch(
+                                                playbackId = nextPlaybackId,
+                                                playbackTitle = nextPlaybackTitle,
+                                                streamRequestId = nextStreamId,
+                                                streams = null,
+                                                addonSubs = emptyList(),
+                                                playerCurrentSourceUrl = playerCurrentSourceUrl
+                                            )
+                                        } else {
+                                            null
+                                        }
 
-                                            if (willAutoResolve) {
-                                                playerState.isEpisodeSwitchLoading = true
-                                            } else {
-                                                playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
-                                                    playbackId = nextPlaybackId,
-                                                    playbackTitle = nextPlaybackTitle,
-                                                    streams = null,
-                                                    addonSubs = emptyList(),
-                                                    playerCurrentSourceUrl = playerCurrentSourceUrl
-                                                )
-                                            }
-
-                                            val streamsDeferred = async { try { addonRepository.getStreams("series", nextStreamId) } catch (_: Exception) { emptyList() } }
-                                            val subtitlesDeferred = async { try { subtitleRepository.getSubtitles("series", nextStreamId) } catch (_: Exception) { emptyList() } }
+                                        playerState.episodeSwitchJob = uiScope.launch {
+                                            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", nextStreamId) } }
+                                            val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", nextStreamId) } }
 
                                             val rawStreams = streamsDeferred.await()
                                             val addonSubs = subtitlesDeferred.await()
@@ -2077,6 +2116,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = emptyList(),
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2114,6 +2154,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2127,6 +2168,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2134,11 +2176,16 @@ class MainActivity : ComponentActivity() {
                                                 return@launch
                                             }
 
-                                            // Auto-resolved: clear loading + switch
-                                            playerState.isEpisodeSwitchLoading = false
+                                            // Auto-resolved: keep the guard active through subtitle refinement.
                                             playerState.pendingEpisodeSwitch = null
 
-                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, addonSubs)
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = nextStreamId,
+                                                stream = streamToPlay,
+                                                fallback = addonSubs
+                                            )
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
                                             val sourcePayload = buildSourcePayload(streams, streamToPlay)
 
                                             playerState.pendingSourceSelection = PendingSourceSelection(
@@ -2147,6 +2194,7 @@ class MainActivity : ComponentActivity() {
                                                 candidateStreams = streams
                                             )
                                             playerState.currentStream = streamToPlay
+                                            playerState.isEpisodeSwitchLoading = false
 
                                             if (nextUrl.startsWith("magnet:")) {
                                                 selectedPlaybackId = nextPlaybackId
@@ -2198,25 +2246,28 @@ class MainActivity : ComponentActivity() {
                                         val epStreamId = episodeStreamId(selectedMovieId, episode)
                                         val epTitle = episodeDisplayTitle(episode)
 
-                                        uiScope.launch {
-                                            // Show loading feedback immediately
-                                            val autoplay = currentProfile?.autoplayNextEpisode == true
-                                            val autoSelect = currentProfile?.autoSelectSource == true
-                                            val willAutoResolve = autoplay || autoSelect
+                                        val autoplay = currentProfile?.autoplayNextEpisode == true
+                                        val autoSelect = currentProfile?.autoSelectSource == true
+                                        val willAutoResolve = autoplay || autoSelect
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
+                                        playerState.isEpisodeSwitchLoading = true
+                                        playerState.pendingEpisodeSwitch = if (!willAutoResolve) {
+                                            PendingEpisodeSwitch(
+                                                playbackId = epPlaybackId,
+                                                playbackTitle = epTitle,
+                                                streamRequestId = epStreamId,
+                                                streams = null,
+                                                addonSubs = emptyList(),
+                                                playerCurrentSourceUrl = playerCurrentSourceUrl
+                                            )
+                                        } else {
+                                            null
+                                        }
 
-                                            playerState.isEpisodeSwitchLoading = true
-                                            if (!willAutoResolve) {
-                                                playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
-                                                    playbackId = epPlaybackId,
-                                                    playbackTitle = epTitle,
-                                                    streams = null,
-                                                    addonSubs = emptyList(),
-                                                    playerCurrentSourceUrl = playerCurrentSourceUrl
-                                                )
-                                            }
-
-                                            val streamsDeferred = async { try { addonRepository.getStreams("series", epStreamId) } catch (_: Exception) { emptyList() } }
-                                            val subtitlesDeferred = async { try { subtitleRepository.getSubtitles("series", epStreamId) } catch (_: Exception) { emptyList() } }
+                                        playerState.episodeSwitchJob = uiScope.launch {
+                                            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", epStreamId) } }
+                                            val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
 
                                             val rawStreams2 = streamsDeferred.await()
                                             val addonSubs = subtitlesDeferred.await()
@@ -2234,6 +2285,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = emptyList(),
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2268,6 +2320,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2281,6 +2334,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2288,8 +2342,7 @@ class MainActivity : ComponentActivity() {
                                                 return@launch
                                             }
 
-                                            // Auto-resolved: clear loading + switch
-                                            playerState.isEpisodeSwitchLoading = false
+                                            // Auto-resolved: keep the guard active through subtitle refinement.
                                             playerState.pendingEpisodeSwitch = null
                                             handlePlayerSessionEnd(
                                                 sessionResult = PlayerSessionResult(
@@ -2309,7 +2362,13 @@ class MainActivity : ComponentActivity() {
                                                 rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
                                             )
 
-                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, addonSubs)
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = epStreamId,
+                                                stream = streamToPlay,
+                                                fallback = addonSubs
+                                            )
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
                                             val sourcePayload = buildSourcePayload(streams, streamToPlay)
 
                                             playerState.pendingSourceSelection = PendingSourceSelection(
@@ -2318,6 +2377,7 @@ class MainActivity : ComponentActivity() {
                                                 candidateStreams = streams
                                             )
                                             playerState.currentStream = streamToPlay
+                                            playerState.isEpisodeSwitchLoading = false
 
                                             if (epUrl.startsWith("magnet:")) {
                                                 selectedPlaybackId = epPlaybackId
@@ -2370,72 +2430,107 @@ class MainActivity : ComponentActivity() {
                                             return@let
                                         }
 
-                                        // Now save progress for current episode
-                                        handlePlayerSessionEnd(
-                                            sessionResult = PlayerSessionResult(
-                                                positionMs = 0L,
-                                                durationMs = null,
-                                                isCompleted = false,
-                                                selectedSourceUrl = pending.playerCurrentSourceUrl ?: selectedVideoUrl,
-                                                selectedAudioTrackId = null,
-                                                selectedSubtitleTrackId = null
-                                            ),
-                                            selectedPlaybackId = selectedPlaybackId,
-                                            playbackTrackSelectionStore = playbackTrackSelectionStore,
-                                            sourceSelectionStore = sourceSelectionStore,
-                                            pendingSourceSelection = playerState.pendingSourceSelection,
-                                            onConsumePendingSelection = { playerState.pendingSourceSelection = null },
-                                            onResumeHintResolved = { detailsResumePlaybackHint = it },
-                                            rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
-                                        )
-
-                                        val subtitlePayload = buildSubtitlePayload(streamToPlay, pending.addonSubs)
-                                        val sourcePayload = buildSourcePayload(pending.streams, streamToPlay)
-
-                                        playerState.pendingSourceSelection = PendingSourceSelection(
-                                            playbackId = pending.playbackId,
-                                            launchedStream = streamToPlay,
-                                            candidateStreams = pending.streams
-                                        )
-                                        playerState.currentStream = streamToPlay
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
                                         playerState.pendingEpisodeSwitch = null
+                                        playerState.isEpisodeSwitchLoading = true
+                                        playerState.episodeSwitchJob = uiScope.launch {
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = pending.streamRequestId,
+                                                stream = streamToPlay,
+                                                fallback = pending.addonSubs
+                                            )
 
-                                        if (sourceUrl.startsWith("magnet:")) {
-                                            selectedPlaybackId = pending.playbackId
-                                            selectedPlaybackType = "series"
-                                            selectedPlaybackTitle = pending.playbackTitle
-                                            playerState.selectedPlayerSubtitles = subtitlePayload
-                                            playerState.selectedPlayerSources = sourcePayload
-                                            torrentProgress = TorrentProgress("Connecting to peers...")
-                                            TorrentService.onStreamReady = { localUrl ->
-                                                torrentProgress = null
-                                                selectedVideoUrl = localUrl
+                                            // Now save progress for current episode
+                                            handlePlayerSessionEnd(
+                                                sessionResult = PlayerSessionResult(
+                                                    positionMs = 0L,
+                                                    durationMs = null,
+                                                    isCompleted = false,
+                                                    selectedSourceUrl = pending.playerCurrentSourceUrl ?: selectedVideoUrl,
+                                                    selectedAudioTrackId = null,
+                                                    selectedSubtitleTrackId = null
+                                                ),
+                                                selectedPlaybackId = selectedPlaybackId,
+                                                playbackTrackSelectionStore = playbackTrackSelectionStore,
+                                                sourceSelectionStore = sourceSelectionStore,
+                                                pendingSourceSelection = playerState.pendingSourceSelection,
+                                                onConsumePendingSelection = { playerState.pendingSourceSelection = null },
+                                                onResumeHintResolved = { detailsResumePlaybackHint = it },
+                                                rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
+                                            )
+
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
+                                            val sourcePayload = buildSourcePayload(pending.streams, streamToPlay)
+
+                                            playerState.pendingSourceSelection = PendingSourceSelection(
+                                                playbackId = pending.playbackId,
+                                                launchedStream = streamToPlay,
+                                                candidateStreams = pending.streams
+                                            )
+                                            playerState.currentStream = streamToPlay
+                                            playerState.pendingEpisodeSwitch = null
+                                            playerState.isEpisodeSwitchLoading = false
+
+                                            if (sourceUrl.startsWith("magnet:")) {
+                                                selectedPlaybackId = pending.playbackId
+                                                selectedPlaybackType = "series"
+                                                selectedPlaybackTitle = pending.playbackTitle
+                                                playerState.selectedPlayerSubtitles = subtitlePayload
+                                                playerState.selectedPlayerSources = sourcePayload
+                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                TorrentService.onStreamReady = { localUrl ->
+                                                    torrentProgress = null
+                                                    selectedVideoUrl = localUrl
+                                                }
+                                                TorrentService.onStreamError = { error ->
+                                                    torrentProgress = null
+                                                    if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                                }
+                                                TorrentService.onStreamProgress = { progress ->
+                                                    torrentProgress = progress
+                                                }
+                                                val intent = Intent(this@MainActivity, TorrentService::class.java).apply {
+                                                    putExtra("MAGNET_LINK", sourceUrl)
+                                                    putExtra("FILE_IDX", streamToPlay.fileIdx ?: -1)
+                                                    putExtra("FILE_NAME", streamToPlay.behaviorHints?.filename ?: "")
+                                                }
+                                                startService(intent)
+                                            } else {
+                                                stopService(Intent(this@MainActivity, TorrentService::class.java))
+                                                selectedPlaybackId = pending.playbackId
+                                                selectedPlaybackType = "series"
+                                                selectedPlaybackTitle = pending.playbackTitle
+                                                playerState.selectedPlayerSubtitles = subtitlePayload
+                                                playerState.selectedPlayerSources = sourcePayload
+                                                selectedVideoUrl = sourceUrl
                                             }
-                                            TorrentService.onStreamError = { error ->
-                                                torrentProgress = null
-                                                if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
-                                            }
-                                            TorrentService.onStreamProgress = { progress ->
-                                                torrentProgress = progress
-                                            }
-                                            val intent = Intent(this@MainActivity, TorrentService::class.java).apply {
-                                                putExtra("MAGNET_LINK", sourceUrl)
-                                                putExtra("FILE_IDX", streamToPlay.fileIdx ?: -1)
-                                                putExtra("FILE_NAME", streamToPlay.behaviorHints?.filename ?: "")
-                                            }
-                                            startService(intent)
-                                        } else {
-                                            stopService(Intent(this@MainActivity, TorrentService::class.java))
-                                            selectedPlaybackId = pending.playbackId
-                                            selectedPlaybackType = "series"
-                                            selectedPlaybackTitle = pending.playbackTitle
-                                            playerState.selectedPlayerSubtitles = subtitlePayload
-                                            playerState.selectedPlayerSources = sourcePayload
-                                            selectedVideoUrl = sourceUrl
                                         }
                                     }
                                 },
-                                onEpisodeSwitchDismissed = { playerState.pendingEpisodeSwitch = null; playerState.isEpisodeSwitchLoading = false },
+                                onEpisodeSwitchDismissed = {
+                                    playerState.episodeSwitchGeneration += 1L
+                                    playerState.episodeSwitchJob?.cancel()
+                                    playerState.episodeSwitchJob = null
+                                    playerState.pendingEpisodeSwitch = null
+                                    playerState.isEpisodeSwitchLoading = false
+                                },
+                                onResolveSourceSubtitles = { source ->
+                                    val stream = source.addonStream
+                                    val requestType = stream?.addonRequestType
+                                    val requestId = stream?.addonRequestId
+                                    if (stream == null || requestType.isNullOrBlank() || requestId.isNullOrBlank()) {
+                                        playerSubtitles
+                                    } else {
+                                        val addonSubs = subtitleRepository.getSubtitlesForStream(
+                                            type = requestType,
+                                            playbackId = requestId,
+                                            stream = stream
+                                        )
+                                        buildSubtitlePayload(stream, addonSubs).toPlayerSubtitleSources()
+                                    }
+                                },
                                 onMagnetSourceSelected = { magnetUrl, sourceFileIdx, sourceFileName, onReady, onError ->
                                     playerState.pendingSourceSelection?.candidateStreams
                                         ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }

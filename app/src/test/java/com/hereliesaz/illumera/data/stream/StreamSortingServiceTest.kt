@@ -231,6 +231,52 @@ class StreamSortingServiceTest {
         assertEquals(listOf("brazilian"), brazilian.mapNotNull { it.url })
     }
     @Test
+    fun secondarySeedSortBreaksPrimaryQualityTies() {
+        val streams = listOf(
+            Stream(title = "1080p 8 GB seeds: 3", url = "large-low-seeds"),
+            Stream(title = "1080p 2 GB seeds: 20", url = "small-high-seeds")
+        )
+
+        val result = service.sortAndFilter(
+            streams = streams,
+            enabledQualities = StreamQuality.entries.toSet(),
+            excludePhrases = emptyList(),
+            addonSortOrders = emptyMap(),
+            sortBy = "quality",
+            profile = ProfileEntity(
+                name = "Test",
+                sourceSortSecondary = "seeds",
+                sourceSkipSeedless = false
+            )
+        )
+
+        assertEquals(listOf("small-high-seeds", "large-low-seeds"), result.mapNotNull { it.url })
+    }
+
+    @Test
+    fun duplicateSecondarySortFallsBackToLegacyTieBreak() {
+        val streams = listOf(
+            Stream(title = "1080p 2 GB seeds: 5", url = "small"),
+            Stream(title = "1080p 8 GB seeds: 5", url = "large")
+        )
+
+        val result = service.sortAndFilter(
+            streams = streams,
+            enabledQualities = StreamQuality.entries.toSet(),
+            excludePhrases = emptyList(),
+            addonSortOrders = emptyMap(),
+            sortBy = "size",
+            profile = ProfileEntity(
+                name = "Test",
+                sourceSortSecondary = "size",
+                sourceSkipSeedless = false
+            )
+        )
+
+        assertEquals(listOf("large", "small"), result.mapNotNull { it.url })
+    }
+
+    @Test
     fun seedSortingRanksUnknownAboveExplicitZeroWithoutInventingASeedCount() {
         val streams = listOf(
             Stream(title = "1080p seeds: 12", url = "seeded"),

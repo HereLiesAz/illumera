@@ -15,6 +15,9 @@ import com.hereliesaz.illumera.data.remote.StremioAddonEntry
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -50,6 +53,9 @@ class ProfileConfigurationManager @Inject constructor(
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     }
+
+    private val _activeProfileId = MutableStateFlow(readLastActiveProfileId())
+    val activeProfileId: StateFlow<Int?> = _activeProfileId.asStateFlow()
 
     private val runtimeMutex = Mutex()
     private var startupRuntimeCaptured = false
@@ -98,7 +104,25 @@ class ProfileConfigurationManager @Inject constructor(
         saveRuntimeState(lastActive)
     }
 
-    suspend fun saveRuntimeState(profileId: Int) {
+    suspend fun saveRuntimeState(profileId: Int) = runtimeMutex.withLock {
+        if (getLastActiveProfileId() != profileId) {
+            throw CancellationException("Active profile changed before runtime save")
+        }
+        saveRuntimeStateLocked(profileId)
+    }
+
+    /**
+     * Persists runtime state from code that already owns [runtimeMutex] through
+     * [withActiveProfileRuntime]. This avoids trying to re-enter the non-reentrant mutex.
+     */
+    internal suspend fun saveRuntimeStateWithinActiveRuntime(profileId: Int) {
+        if (getLastActiveProfileId() != profileId) {
+            throw CancellationException("Active profile changed before runtime save")
+        }
+        saveRuntimeStateLocked(profileId)
+    }
+
+    private suspend fun saveRuntimeStateLocked(profileId: Int) {
         val snapshot = captureRuntimeSnapshot()
         writeSnapshot(profileId, snapshot)
         stremioAuthManager.saveCredentialsForProfile(profileId)
@@ -270,7 +294,7 @@ class ProfileConfigurationManager @Inject constructor(
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
-            prefs.edit().remove(KEY_LAST_ACTIVE_PROFILE_ID).apply()
+            clearLastActiveProfileId()
         }
     }
 
@@ -389,16 +413,20 @@ class ProfileConfigurationManager @Inject constructor(
         return prefs.getStringSet(KEY_PENDING_SETUP_PROFILES, emptySet()) ?: emptySet()
     }
 
-    fun getLastActiveProfileId(): Int? {
-        val value = prefs.getInt(KEY_LAST_ACTIVE_PROFILE_ID, -1)
-        return if (value == -1) null else value
-    }
+    fun getLastActiveProfileId(): Int? = _activeProfileId.value
 
     fun clearLastActiveProfileId() {
         prefs.edit().remove(KEY_LAST_ACTIVE_PROFILE_ID).apply()
+        _activeProfileId.value = null
     }
 
     private fun setLastActiveProfileId(profileId: Int) {
         prefs.edit().putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId).apply()
+        _activeProfileId.value = profileId
+    }
+
+    private fun readLastActiveProfileId(): Int? {
+        val value = prefs.getInt(KEY_LAST_ACTIVE_PROFILE_ID, -1)
+        return if (value == -1) null else value
     }
 }

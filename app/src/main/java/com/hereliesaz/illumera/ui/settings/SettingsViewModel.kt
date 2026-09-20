@@ -91,6 +91,10 @@ class SettingsViewModel @Inject constructor(
         updateProfile(profileId) { it.copy(autoplayThresholdSeconds = seconds) }
     }
 
+    fun updateWatchedThreshold(profileId: Int, percent: Int) {
+        updateProfile(profileId) { it.copy(watchedThreshold = percent.coerceIn(50, 99)) }
+    }
+
     fun updatePreferredAudioLanguage(profileId: Int, language: String) {
         updateProfile(profileId) { it.copy(preferredAudioLanguage = language) }
     }
@@ -141,6 +145,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateSourceSortPrimary(profileId: Int, sort: String) {
         updateProfile(profileId) { it.copy(sourceSortPrimary = sort) }
+    }
+
+    fun updateSourceSortSecondary(profileId: Int, sort: String) {
+        updateProfile(profileId) { it.copy(sourceSortSecondary = sort) }
     }
 
     fun updateSourceMaxSizeGb(profileId: Int, sizeGb: Int) {

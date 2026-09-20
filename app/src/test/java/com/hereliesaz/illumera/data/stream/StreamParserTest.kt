@@ -35,6 +35,13 @@ class StreamParserTest {
     }
 
     @Test
+    fun explicitZeroSeedsAndMissingSeedMetricRemainDifferentStates() {
+        assertEquals(0, StreamParser.extractSeeds("Seeds: 0"))
+        assertNull(StreamParser.extractSeeds("1080p WEB-DL"))
+        assertNull(StreamParser.extractSeeds("Peers: 0"))
+    }
+
+    @Test
     fun extractSeedsDoesNotMistakePeerCountForSeedCount() {
         assertNull(StreamParser.extractSeeds("peers: 0"))
         assertNull(StreamParser.extractSeeds("Peers 77"))
@@ -126,6 +133,23 @@ class StreamParserTest {
 
         assertEquals("abc123", youtube.ytId)
         assertEquals("https://example.com/watch", external.externalUrl)
+    fun illumeraStreamMetadataNeverLeaksIntoAddonJson() {
+        val stream = Stream(
+            url = "https://cdn.example/video",
+            addonTransportUrl = "https://addon.example",
+            addonDisplayName = "Addon",
+            addonRequestType = "series",
+            addonRequestId = "custom:episode:id",
+            sourceSelectionId = "ui-selection"
+        )
+
+        val json = Gson().toJson(stream)
+
+        assertTrue(!json.contains("addonTransportUrl"))
+        assertTrue(!json.contains("addonDisplayName"))
+        assertTrue(!json.contains("addonRequestType"))
+        assertTrue(!json.contains("addonRequestId"))
+        assertTrue(!json.contains("sourceSelectionId"))
     }
 
     @Test

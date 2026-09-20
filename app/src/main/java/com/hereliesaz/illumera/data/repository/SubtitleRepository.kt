@@ -4,12 +4,15 @@ import com.google.gson.JsonElement
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.stremio.Manifest
+import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.domain.AddonSubtitle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -75,15 +78,88 @@ class SubtitleRepository @Inject constructor(
             }
         }
 
-        jobs.awaitAll()
-            .flatten()
-            .distinctBy { subtitle ->
-                val url = subtitle.url.lowercase(Locale.ROOT)
-                val lang = subtitle.lang.orEmpty().lowercase(Locale.ROOT)
-                val addon = subtitle.addonName.lowercase(Locale.ROOT)
-                "$url|$lang|$addon"
-            }
+        distinctSubtitles(jobs.awaitAll().flatten())
     }
+
+    /**
+     * Refines a generic subtitle result once the actual stream is known. Stremio subtitle
+     * addons may key results by behaviorHints.videoHash/videoSize/filename; those values do
+     * not exist until after source selection, so callers should use this at that boundary.
+     *
+     * When a stream exposes no such hints the already-fetched generic results are returned
+     * without another network round-trip.
+     */
+    suspend fun getSubtitlesForStream(
+        type: String,
+        playbackId: String,
+        stream: Stream,
+        fallback: List<AddonSubtitle>? = null
+    ): List<AddonSubtitle> {
+        val hints = stream.behaviorHints
+        val videoHash = hints?.videoHash?.trim()?.takeIf { it.isNotEmpty() }
+        val videoSize = hints?.videoSize?.takeIf { it > 0L }
+        val filename = hints?.filename?.trim()?.takeIf { it.isNotEmpty() }
+
+        if (videoHash == null && videoSize == null && filename == null) {
+            return fallback?.let(::distinctSubtitles)
+                ?: requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
+        }
+
+        if (fallback != null) {
+            val sourceAware = requestOrNull {
+                getSubtitles(
+                    type = type,
+                    playbackId = playbackId,
+                    videoHash = videoHash,
+                    videoSize = videoSize,
+                    filename = filename
+                )
+            }.orEmpty()
+
+            // Source-aware rows take precedence when the generic request returned the same track.
+            return distinctSubtitles(sourceAware + fallback)
+        }
+
+        // Live source switches do not have a trustworthy generic fallback: the current
+        // player's subtitle set may already be source-specific. Fetch the generic and
+        // source-aware variants concurrently so correctness does not double the latency.
+        return coroutineScope {
+            val genericDeferred = async {
+                requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
+            }
+            val sourceAwareDeferred = async {
+                requestOrNull {
+                    getSubtitles(
+                        type = type,
+                        playbackId = playbackId,
+                        videoHash = videoHash,
+                        videoSize = videoSize,
+                        filename = filename
+                    )
+                }.orEmpty()
+            }
+
+            distinctSubtitles(sourceAwareDeferred.await() + genericDeferred.await())
+        }
+    }
+
+    private suspend fun <T> requestOrNull(block: suspend () -> T): T? {
+        return try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun distinctSubtitles(subtitles: List<AddonSubtitle>): List<AddonSubtitle> =
+        subtitles.distinctBy { subtitle ->
+            val url = subtitle.url.lowercase(Locale.ROOT)
+            val lang = subtitle.lang.orEmpty().lowercase(Locale.ROOT)
+            val addon = subtitle.addonName.lowercase(Locale.ROOT)
+            "$url|$lang|$addon"
+        }
 
     private fun buildSubtitleRequest(type: String, playbackId: String): SubtitleRequest {
         val normalizedType = type.trim().lowercase(Locale.ROOT)
@@ -142,12 +218,10 @@ class SubtitleRepository @Inject constructor(
         subtitleCapabilityCache[transportUrl]?.let { return it }
 
         val manifestUrl = "${transportUrl.trimEnd('/')}/manifest.json"
-        val capability = runCatching {
+        val capability = requestOrNull {
             val manifest = withTimeout(MANIFEST_TIMEOUT_MS) { api.getManifest(manifestUrl) }
             SubtitleCapability.Known(parseSubtitleResourceRules(manifest))
-        }.getOrElse {
-            SubtitleCapability.Unknown
-        }
+        } ?: SubtitleCapability.Unknown
 
         subtitleCapabilityCache[transportUrl] = capability
         return capability
@@ -217,9 +291,9 @@ class SubtitleRepository @Inject constructor(
             "$baseUrl/subtitles/$pathType/$pathId.json"
         }
 
-        val response = runCatching {
+        val response = requestOrNull {
             withTimeout(PER_ADDON_TIMEOUT_MS) { api.getSubtitles(subtitleUrl) }
-        }.getOrNull() ?: return emptyList()
+        } ?: return emptyList()
 
         val addonName = addon.nickname?.takeIf { it.isNotBlank() } ?: addon.name
         return response.subtitles.mapNotNull { subtitle ->
