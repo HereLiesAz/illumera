@@ -166,21 +166,26 @@ class DetailsViewModel @Inject constructor(
 
         loadDetailsJob = viewModelScope.launch {
             try {
-                // Resolve tmdb: IDs to IMDb IDs via TMDB API so all addons work consistently
+                // Preserve the ID an addon actually returned. Cross-provider canonicalization is
+                // only a fallback for items without an addon origin; rewriting a configured
+                // addon's ID before calling its meta/stream handlers breaks custom idPrefixes.
                 val isTmdbEnabled = profileConfigurationManager.getLastActiveProfileId()
                     ?.let { dao.getProfileById(it) }?.tmdbEnabled == true
-                val resolvedId = if (isTmdbEnabled && id.startsWith("tmdb:", ignoreCase = true)) {
+                val canonicalFallbackId = if (isTmdbEnabled && id.startsWith("tmdb:", ignoreCase = true)) {
                     val tmdbNumericId = id.substringAfter(':').substringBefore(':').toIntOrNull()
                     val mediaType = tmdbService.normalizeMediaType(type)
                     tmdbNumericId?.let { tmdbService.tmdbToImdb(it, mediaType) } ?: id
                 } else id
+                val preferredId = if (!addonBaseUrl.isNullOrBlank()) id else canonicalFallbackId
 
-                val details = repository.resolveMetaDetails(type, resolvedId, addonBaseUrl)
+                val details = repository.resolveMetaDetails(type, preferredId, addonBaseUrl)
+                    ?: if (preferredId != canonicalFallbackId) {
+                        repository.resolveMetaDetails(type, canonicalFallbackId, null)
+                    } else null
                     ?: throw Exception("No meta found")
                 if (requestVersion != loadRequestVersion) return@launch
                 loadedContentKey = requestKey
-                // Use resolved ID for streams — guarantees IMDb format for stream addons
-                val streamFetchId = if (details.id.startsWith("tt")) details.id else resolvedId
+                val streamFetchId = details.id.takeIf { it.isNotBlank() } ?: preferredId
                 // Publish usable details before any watch-history or enrichment work.
                 _state.value = _state.value.copy(
                     meta = details,
