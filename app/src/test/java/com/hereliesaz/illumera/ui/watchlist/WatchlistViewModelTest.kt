@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -54,6 +55,37 @@ class WatchlistViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun stoppedWatchlistSubscriptionDoesNotReplayPreviousProfileRows() = runTest(dispatcher) {
+        val viewModel = WatchlistViewModel(
+            dao = dao,
+            repository = mockk<AddonRepository>(relaxed = true),
+            profileConfigurationManager = profileManager
+        )
+
+        val collector = backgroundScope.launch {
+            viewModel.movieItems.collect {}
+        }
+        advanceUntilIdle()
+        assertEquals(listOf("m1"), viewModel.movieItems.value.map { it.id })
+
+        collector.cancel()
+        advanceTimeBy(5_000L)
+        advanceUntilIdle()
+        assertTrue(viewModel.movieItems.value.isEmpty())
+
+        activeProfileId.value = 2
+        advanceUntilIdle()
+        assertTrue(viewModel.movieItems.value.isEmpty())
+
+        val replacementCollector = backgroundScope.launch {
+            viewModel.movieItems.collect {}
+        }
+        advanceUntilIdle()
+        assertEquals(listOf("m2"), viewModel.movieItems.value.map { it.id })
+        replacementCollector.cancel()
     }
 
     @Test
