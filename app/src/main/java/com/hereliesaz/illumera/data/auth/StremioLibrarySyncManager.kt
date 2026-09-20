@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.remote.StremioAuthService
 import com.hereliesaz.illumera.data.remote.StremioLibraryItem
 import com.hereliesaz.illumera.data.remote.StremioLibraryItemState
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,7 +36,7 @@ class StremioLibrarySyncManager @Inject constructor(
     }
 
     private val syncMutex = Mutex()
-    private var lastSyncAtMs = 0L
+    private val lastSyncAtMsByProfile = mutableMapOf<Int, Long>()
     private val gson = Gson()
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val libraryListType = object : TypeToken<List<StremioLibraryItem>>() {}.type
@@ -46,18 +47,29 @@ class StremioLibrarySyncManager @Inject constructor(
         val authKey = stremioAuthManager.getStoredAuthKey()
             ?: return@withContext Result.success(Unit)
 
-        syncMutex.withLock {
-            val now = System.currentTimeMillis()
-            if (!force && now - lastSyncAtMs < MIN_SYNC_INTERVAL_MS) {
-                return@withContext Result.success(Unit)
+        val startedAt = System.currentTimeMillis()
+        val shouldRun = syncMutex.withLock {
+            val lastSyncAt = lastSyncAtMsByProfile[profileId] ?: 0L
+            if (!force && startedAt - lastSyncAt < MIN_SYNC_INTERVAL_MS) {
+                false
+            } else {
+                lastSyncAtMsByProfile[profileId] = startedAt
+                true
             }
-            lastSyncAtMs = now
         }
+        if (!shouldRun) return@withContext Result.success(Unit)
 
         try {
-            val remoteMtimes = stremioAuthService.datastoreMeta(authKey)
-            val localItems = buildLocalLibraryView()
+            // Shared watch-history tables belong to whichever profile runtime is active.
+            // Capture the initiating profile's local view while ownership is guaranteed,
+            // then release the runtime lock before any network call.
+            val localItems = profileConfigurationManager.withActiveProfileRuntime(profileId) {
+                buildLocalLibraryView()
+            }
             val previousLocal = loadLocalSnapshot(profileId)
+            val remoteMtimes = stremioAuthService.datastoreMeta(authKey)
+
+            ensureProfileStillActive(profileId)
 
             val toPush = mutableListOf<StremioLibraryItem>()
             val idsToPull = mutableListOf<String>()
@@ -89,26 +101,51 @@ class StremioLibrarySyncManager @Inject constructor(
                 if (id !in localItems && id !in locallyDeletedIds) idsToPull += id
             }
 
-            if (toPush.isNotEmpty()) stremioAuthService.datastorePut(authKey, toPush)
-
-            // Never apply a response into another profile's shared runtime tables.
-            if (profileConfigurationManager.getLastActiveProfileId() != profileId) {
-                return@withContext Result.success(Unit)
+            if (toPush.isNotEmpty()) {
+                ensureProfileStillActive(profileId)
+                stremioAuthService.datastorePut(authKey, toPush)
             }
 
-            if (idsToPull.isNotEmpty()) {
-                val remoteItems = stremioAuthService.datastoreGet(authKey, idsToPull.distinct())
+            val remoteItems = if (idsToPull.isNotEmpty()) {
+                ensureProfileStillActive(profileId)
+                stremioAuthService.datastoreGet(authKey, idsToPull.distinct())
+            } else {
+                emptyList()
+            }
+
+            // Network work is finished. Reacquire ownership only for the short local
+            // mutation phase, so profile switching is never blocked by remote latency.
+            profileConfigurationManager.withActiveProfileRuntime(profileId) {
                 for (item in remoteItems) applyRemoteItem(item)
+
+                val refreshedLocal = buildLocalLibraryView()
+                    .map { (id, history) -> history.toLibraryItem(id) }
+                saveLocalSnapshot(profileId, refreshedLocal)
             }
 
-            val refreshedLocal = buildLocalLibraryView()
-                .map { (id, history) -> history.toLibraryItem(id) }
-            saveLocalSnapshot(profileId, refreshedLocal)
             Log.i(TAG, "Library sync: pushed=${toPush.size}, pulled=${idsToPull.distinct().size}, deleted=${locallyDeletedIds.size}")
             Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            releaseThrottleAfterFailure(profileId, startedAt)
+            throw cancelled
         } catch (e: Exception) {
+            releaseThrottleAfterFailure(profileId, startedAt)
             Log.e(TAG, "Library sync failed", e)
             Result.failure(e)
+        }
+    }
+
+    private fun ensureProfileStillActive(profileId: Int) {
+        if (profileConfigurationManager.getLastActiveProfileId() != profileId) {
+            throw CancellationException("Active profile changed during Stremio library sync")
+        }
+    }
+
+    private suspend fun releaseThrottleAfterFailure(profileId: Int, startedAt: Long) {
+        syncMutex.withLock {
+            if (lastSyncAtMsByProfile[profileId] == startedAt) {
+                lastSyncAtMsByProfile.remove(profileId)
+            }
         }
     }
 
