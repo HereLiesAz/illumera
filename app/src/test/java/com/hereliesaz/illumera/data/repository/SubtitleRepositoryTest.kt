@@ -93,6 +93,38 @@ class SubtitleRepositoryTest {
     }
 
     @Test
+    fun sourceAwareDuplicateWinsOverGenericSubtitleIdentity() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val expectedUrl = "https://addon.example/subtitles/movie/tt123/videoHash=hash123.json"
+        coEvery { api.getSubtitles(expectedUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "specific-id", lang = "en", url = "https://cdn.example/same.srt"))
+        )
+        val fallback = listOf(
+            com.hereliesaz.illumera.domain.AddonSubtitle(
+                id = "generic-id",
+                url = "https://cdn.example/same.srt",
+                lang = "en",
+                addonName = "Addon"
+            )
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123")),
+            fallback = fallback
+        )
+
+        assertEquals(1, result.size)
+        assertEquals("specific-id", result.single().id)
+    }
+
+    @Test
     fun selectedStreamWithoutSubtitleHintsReusesFallbackWithoutNetworkQuery() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
