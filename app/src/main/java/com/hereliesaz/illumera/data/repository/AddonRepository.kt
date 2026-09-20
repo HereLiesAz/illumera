@@ -38,11 +38,6 @@ class AddonRepository @Inject constructor(
     @Suppress("SENSELESS_COMPARISON")
     private fun MetaItem?.sanitize(): MetaItem? =
         this?.takeIf { it.id != null && it.name != null && it.type != null }
-            ?.let { meta ->
-                val videos = meta.videos
-                if (videos.isNullOrEmpty()) meta
-                else meta.copy(videos = videos.distinctBy { it.season to it.episode })
-            }
     private val CATALOG_TIMEOUT_MS = 10_000L // 10 seconds per catalog request
     private val STREAM_TIMEOUT_MS = 20_000L  // 20 seconds per stream request (torrent addons need more time)
 
