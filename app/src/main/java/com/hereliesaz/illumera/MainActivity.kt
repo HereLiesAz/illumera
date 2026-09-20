@@ -2077,25 +2077,26 @@ class MainActivity : ComponentActivity() {
                                         val nextStreamId = episodeStreamId(selectedMovieId, nextEpisode)
                                         val nextPlaybackTitle = episodeDisplayTitle(nextEpisode)
 
-                                        uiScope.launch {
-                                            // Show loading feedback immediately
-                                            val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
-                                            val autoSelect = currentProfile?.autoSelectSource == true
-                                            val willAutoResolve = autoplay || autoSelect
+                                        val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
+                                        val autoSelect = currentProfile?.autoSelectSource == true
+                                        val willAutoResolve = autoplay || autoSelect
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
+                                        playerState.isEpisodeSwitchLoading = true
+                                        playerState.pendingEpisodeSwitch = if (!willAutoResolve) {
+                                            PendingEpisodeSwitch(
+                                                playbackId = nextPlaybackId,
+                                                playbackTitle = nextPlaybackTitle,
+                                                streamRequestId = nextStreamId,
+                                                streams = null,
+                                                addonSubs = emptyList(),
+                                                playerCurrentSourceUrl = playerCurrentSourceUrl
+                                            )
+                                        } else {
+                                            null
+                                        }
 
-                                            if (willAutoResolve) {
-                                                playerState.isEpisodeSwitchLoading = true
-                                            } else {
-                                                playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
-                                                    playbackId = nextPlaybackId,
-                                                    playbackTitle = nextPlaybackTitle,
-                                                    streamRequestId = nextStreamId,
-                                                    streams = null,
-                                                    addonSubs = emptyList(),
-                                                    playerCurrentSourceUrl = playerCurrentSourceUrl
-                                                )
-                                            }
-
+                                        playerState.episodeSwitchJob = uiScope.launch {
                                             val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", nextStreamId) } }
                                             val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", nextStreamId) } }
 
@@ -2175,8 +2176,7 @@ class MainActivity : ComponentActivity() {
                                                 return@launch
                                             }
 
-                                            // Auto-resolved: clear loading + switch
-                                            playerState.isEpisodeSwitchLoading = false
+                                            // Auto-resolved: keep the guard active through subtitle refinement.
                                             playerState.pendingEpisodeSwitch = null
 
                                             val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
@@ -2194,6 +2194,7 @@ class MainActivity : ComponentActivity() {
                                                 candidateStreams = streams
                                             )
                                             playerState.currentStream = streamToPlay
+                                            playerState.isEpisodeSwitchLoading = false
 
                                             if (nextUrl.startsWith("magnet:")) {
                                                 selectedPlaybackId = nextPlaybackId
@@ -2245,24 +2246,26 @@ class MainActivity : ComponentActivity() {
                                         val epStreamId = episodeStreamId(selectedMovieId, episode)
                                         val epTitle = episodeDisplayTitle(episode)
 
-                                        uiScope.launch {
-                                            // Show loading feedback immediately
-                                            val autoplay = currentProfile?.autoplayNextEpisode == true
-                                            val autoSelect = currentProfile?.autoSelectSource == true
-                                            val willAutoResolve = autoplay || autoSelect
+                                        val autoplay = currentProfile?.autoplayNextEpisode == true
+                                        val autoSelect = currentProfile?.autoSelectSource == true
+                                        val willAutoResolve = autoplay || autoSelect
+                                        playerState.episodeSwitchJob?.cancel()
+                                        playerState.episodeSwitchGeneration += 1L
+                                        playerState.isEpisodeSwitchLoading = true
+                                        playerState.pendingEpisodeSwitch = if (!willAutoResolve) {
+                                            PendingEpisodeSwitch(
+                                                playbackId = epPlaybackId,
+                                                playbackTitle = epTitle,
+                                                streamRequestId = epStreamId,
+                                                streams = null,
+                                                addonSubs = emptyList(),
+                                                playerCurrentSourceUrl = playerCurrentSourceUrl
+                                            )
+                                        } else {
+                                            null
+                                        }
 
-                                            playerState.isEpisodeSwitchLoading = true
-                                            if (!willAutoResolve) {
-                                                playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
-                                                    playbackId = epPlaybackId,
-                                                    playbackTitle = epTitle,
-                                                    streamRequestId = epStreamId,
-                                                    streams = null,
-                                                    addonSubs = emptyList(),
-                                                    playerCurrentSourceUrl = playerCurrentSourceUrl
-                                                )
-                                            }
-
+                                        playerState.episodeSwitchJob = uiScope.launch {
                                             val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", epStreamId) } }
                                             val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
 
@@ -2339,8 +2342,7 @@ class MainActivity : ComponentActivity() {
                                                 return@launch
                                             }
 
-                                            // Auto-resolved: clear loading + switch
-                                            playerState.isEpisodeSwitchLoading = false
+                                            // Auto-resolved: keep the guard active through subtitle refinement.
                                             playerState.pendingEpisodeSwitch = null
                                             handlePlayerSessionEnd(
                                                 sessionResult = PlayerSessionResult(
@@ -2375,6 +2377,7 @@ class MainActivity : ComponentActivity() {
                                                 candidateStreams = streams
                                             )
                                             playerState.currentStream = streamToPlay
+                                            playerState.isEpisodeSwitchLoading = false
 
                                             if (epUrl.startsWith("magnet:")) {
                                                 selectedPlaybackId = epPlaybackId
