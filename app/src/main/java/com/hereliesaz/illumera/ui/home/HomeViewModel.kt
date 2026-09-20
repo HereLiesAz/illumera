@@ -14,11 +14,13 @@ import com.hereliesaz.illumera.domain.HomeRow
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -39,10 +41,8 @@ class HomeViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
-    private val profileId: Int
-        get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
-
     private var loadJob: kotlinx.coroutines.Job? = null
+    private var observedProfileId: Int? = profileConfigurationManager.activeProfileId.value
     private var lastFocusedKeyMemory: String? = null
     private val rowScrollPositionsMemory = mutableMapOf<String, Pair<Int, Int>>()
     private var verticalScrollPositionMemory: Pair<Int, Int> = Pair(0, 0)
@@ -72,6 +72,29 @@ class HomeViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
+
+    init {
+        viewModelScope.launch {
+            profileConfigurationManager.activeProfileId.collectLatest { activeProfileId ->
+                if (activeProfileId == observedProfileId) return@collectLatest
+                observedProfileId = activeProfileId
+                loadJob?.cancel()
+                loadJob = null
+                pendingRowItems.clear()
+                allFetchedRowIds.clear()
+                loadingMoreRows.clear()
+                metadataRequestsInFlight.clear()
+                tmdbEnrichmentInFlight.clear()
+                tmdbProfileCache = null
+                lastFocusedKeyMemory = null
+                rowScrollPositionsMemory.clear()
+                verticalScrollPositionMemory = Pair(0, 0)
+                hadHistoryWhenPositionSaved = false
+                isRestoringPosition = false
+                _state.value = HomeState(isLoading = false)
+            }
+        }
+    }
 
     fun getRowScrollPositions(): Map<String, Pair<Int, Int>> = rowScrollPositionsMemory
 
@@ -262,7 +285,8 @@ class HomeViewModel @Inject constructor(
 
     fun ensureMetadataFallback(item: MetaItem?) {
         if (item == null || !needsMetadataFallback(item)) return
-        val key = "${item.type}:${item.id}"
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
+        val key = "$ownerProfileId:${item.type}:${item.id}"
 
         if (metadataFallbackCache.containsKey(key)) {
             val cachedFallback = metadataFallbackCache[key]
@@ -274,28 +298,26 @@ class HomeViewModel @Inject constructor(
 
         if (!metadataRequestsInFlight.add(key)) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val meta = repository.resolveMetaDetails(item.type, item.id)
-                    ?: throw Exception("No meta found")
-                val fallback = MetadataFallback(
-                    poster = meta.poster,
-                    background = meta.background,
-                    logo = meta.logo,
-                    description = meta.description,
-                    releaseInfo = meta.releaseInfo,
-                    imdbRating = meta.imdbRating,
-                    runtime = meta.runtime,
-                    genres = meta.genres
-                )
-                metadataFallbackCache[key] = fallback
-                applyMetadataFallbackToState(type = item.type, id = item.id, fallback = fallback, sourceItem = item)
+                profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                    val meta = repository.resolveMetaDetails(item.type, item.id)
+                        ?: throw Exception("No meta found")
+                    val fallback = MetadataFallback(
+                        poster = meta.poster,
+                        background = meta.background,
+                        logo = meta.logo,
+                        description = meta.description,
+                        releaseInfo = meta.releaseInfo,
+                        imdbRating = meta.imdbRating,
+                        runtime = meta.runtime,
+                        genres = meta.genres
+                    )
+                    metadataFallbackCache[key] = fallback
+                    applyMetadataFallbackToState(type = item.type, id = item.id, fallback = fallback, sourceItem = item)
 
-                // Persist resolved images to watch history + series next-up DB
-                launch(Dispatchers.IO) {
-                    // For series, the history stores episode-level IDs (e.g. tt123:1:3)
-                    // but the MetaItem uses the canonical series ID (tt123).
-                    // Look up both the exact ID and all episode entries by prefix.
+                    // Persist resolved images to the same profile runtime that supplied
+                    // the addon metadata. A profile switch waits on this runtime lock.
                     val historyItems = if (item.type == "series") {
                         dao.getHistoryItemsByPrefix(item.id)
                     } else {
@@ -314,14 +336,15 @@ class HomeViewModel @Inject constructor(
                             )
                         }
                     }
-                    // Also update series next-up poster if missing
                     if (!fallback.poster.isNullOrBlank()) {
-                        val nextUp = dao.getSeriesNextUp(profileId, item.id)
+                        val nextUp = dao.getSeriesNextUp(ownerProfileId, item.id)
                         if (nextUp != null && nextUp.poster.isNullOrBlank()) {
                             dao.upsertSeriesNextUp(nextUp.copy(poster = fallback.poster))
                         }
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 metadataFallbackCache[key] = null
             } finally {
@@ -555,6 +578,15 @@ class HomeViewModel @Inject constructor(
 
     fun loadScreen(screenName: String, currentProfile: com.hereliesaz.illumera.data.model.ProfileEntity?) {
         val currentProfileId = currentProfile?.id
+        if (
+            currentProfileId == null ||
+            profileConfigurationManager.activeProfileId.value != currentProfileId
+        ) {
+            loadJob?.cancel()
+            loadJob = null
+            _state.value = HomeState(isLoading = false)
+            return
+        }
         // ... (existing code)
         // Skip reload if this screen is already loaded with data
         if (
@@ -599,7 +631,7 @@ class HomeViewModel @Inject constructor(
                     }
                 }
                 launch {
-                    dao.getActiveSeriesNextUp(profileId).collect { nextUp ->
+                    dao.getActiveSeriesNextUp(currentProfileId).collect { nextUp ->
                         _state.update { it.copy(seriesNextUp = nextUp) }
                     }
                 }
@@ -633,6 +665,7 @@ class HomeViewModel @Inject constructor(
 
                 val initialRows = initialRowsDeferred.await()
                 val hubRows = hubRowsDeferred.await()
+                if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
                 // Fetch HERO row separately (even if hidden in dashboard).
                 val tabEnum = DashboardTab.fromString(screenName)
@@ -714,6 +747,8 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false) }
             }
