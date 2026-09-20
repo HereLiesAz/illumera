@@ -121,7 +121,7 @@ class StremioAddonsViewModel @Inject constructor(
                         .mapIndexed { index, addon -> addon.copy(sortOrder = index) }
 
                     addonRepository.updateAddons(ordered)
-                    profileConfigurationManager.saveRuntimeState(initiatingProfileId)
+                    profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(initiatingProfileId)
                     profileConfigurationManager.resetStartupCapture()
 
                     val summary = buildString {

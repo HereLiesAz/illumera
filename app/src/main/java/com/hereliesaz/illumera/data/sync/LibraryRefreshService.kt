@@ -232,7 +232,7 @@ class LibraryRefreshService : Service() {
         // Persist only after every remote service has had a chance to modify addon,
         // watch-history, and next-up state. The profile runtime lock guarantees this
         // snapshot belongs to the profile that initiated the refresh.
-        profileConfigurationManager.saveRuntimeState(profileId)
+        profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(profileId)
         profileConfigurationManager.resetStartupCapture()
 
         if (failures.isNotEmpty()) {

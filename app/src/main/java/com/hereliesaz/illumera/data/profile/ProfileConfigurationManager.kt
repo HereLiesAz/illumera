@@ -104,7 +104,25 @@ class ProfileConfigurationManager @Inject constructor(
         saveRuntimeState(lastActive)
     }
 
-    suspend fun saveRuntimeState(profileId: Int) {
+    suspend fun saveRuntimeState(profileId: Int) = runtimeMutex.withLock {
+        if (getLastActiveProfileId() != profileId) {
+            throw CancellationException("Active profile changed before runtime save")
+        }
+        saveRuntimeStateLocked(profileId)
+    }
+
+    /**
+     * Persists runtime state from code that already owns [runtimeMutex] through
+     * [withActiveProfileRuntime]. This avoids trying to re-enter the non-reentrant mutex.
+     */
+    internal suspend fun saveRuntimeStateWithinActiveRuntime(profileId: Int) {
+        if (getLastActiveProfileId() != profileId) {
+            throw CancellationException("Active profile changed before runtime save")
+        }
+        saveRuntimeStateLocked(profileId)
+    }
+
+    private suspend fun saveRuntimeStateLocked(profileId: Int) {
         val snapshot = captureRuntimeSnapshot()
         writeSnapshot(profileId, snapshot)
         stremioAuthManager.saveCredentialsForProfile(profileId)
