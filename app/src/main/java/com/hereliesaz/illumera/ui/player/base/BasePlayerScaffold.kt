@@ -3134,6 +3134,18 @@ private fun SubtitleMetaChip(
     }
 }
 
+internal fun PlayerSourceOption.toSourceUiStream(): Stream =
+    addonStream?.copy(sourceSelectionId = id) ?: Stream(
+        name = name,
+        title = title ?: label,
+        description = description,
+        url = url,
+        fileIdx = fileIdx.takeIf { it >= 0 },
+        addonTransportUrl = addonTransportUrl,
+        addonDisplayName = addonDisplayName,
+        sourceSelectionId = id
+    )
+
 @Composable
 private fun BoxScope.PlayerSourceSidebar(
     visible: Boolean,
@@ -3148,17 +3160,7 @@ private fun BoxScope.PlayerSourceSidebar(
     onSelectSource: (String) -> Unit
 ) {
     val sourceStreams = remember(sources) {
-        sources.map { source ->
-            Stream(
-                name = source.name,
-                title = source.title ?: source.label,
-                description = source.description,
-                url = source.url,
-                addonTransportUrl = source.addonTransportUrl,
-                addonDisplayName = source.addonDisplayName,
-                sourceSelectionId = source.id
-            )
-        }
+        sources.map(PlayerSourceOption::toSourceUiStream)
     }
 
     val sidebarState = if (visible) {
@@ -3223,17 +3225,7 @@ private fun BoxScope.EpisodeSwitchSourceSidebar(
     onSelectSource: (String) -> Unit
 ) {
     val sourceStreams = remember(sources) {
-        sources?.map { source ->
-            Stream(
-                name = source.name,
-                title = source.title ?: source.label,
-                description = source.description,
-                url = source.url,
-                addonTransportUrl = source.addonTransportUrl,
-                addonDisplayName = source.addonDisplayName,
-                sourceSelectionId = source.id
-            )
-        }
+        sources?.map(PlayerSourceOption::toSourceUiStream)
     }
 
     val sidebarState = if (visible) {

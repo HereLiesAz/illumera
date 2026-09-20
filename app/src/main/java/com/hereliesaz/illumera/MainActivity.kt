@@ -562,7 +562,8 @@ private fun buildPlayerSourceOption(stream: Stream): PlayerSourceOption? {
         fileName = stream.behaviorHints?.filename ?: "",
         addonTransportUrl = stream.addonTransportUrl,
         addonDisplayName = stream.addonDisplayName,
-        requestHeaders = requestHeaders
+        requestHeaders = requestHeaders,
+        addonStream = stream
     )
 }
 
