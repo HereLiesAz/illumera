@@ -12,6 +12,7 @@ import com.hereliesaz.illumera.domain.HomeRow
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.HubItem
 import com.hereliesaz.illumera.domain.HubShape
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -384,7 +385,15 @@ class AddonRepository @Inject constructor(
             try {
                 val url = "${preferredAddonBaseUrl.trimEnd('/')}/meta/$type/$id.json"
                 val meta = withTimeout(preferredTimeout) { api.getMeta(url) }.meta.sanitize()
-                if (meta != null && meta.id == id) return@withContext meta
+                if (meta != null && meta.id.isNotBlank() && meta.name.isNotBlank()) {
+                    // The catalog item already identifies this addon as its origin. Some
+                    // addons normalize IDs between catalog and meta responses (for example
+                    // tmdb:* -> tt*). Treat that response as authoritative for the preferred
+                    // addon instead of rejecting valid details solely because the ID changed.
+                    return@withContext meta.copy(addonBaseUrl = preferredAddonBaseUrl.trimEnd('/'))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) { /* try fallback */ }
         }
 
@@ -432,14 +441,23 @@ class AddonRepository @Inject constructor(
             try {
                 val url = "${addon.transportUrl}/meta/$candidateType/$id.json"
                 val meta = withTimeout(CATALOG_TIMEOUT_MS) { api.getMeta(url) }.meta.sanitize()
-                if (meta != null && meta.id == id) return@withContext meta
+                if (meta != null && meta.id == id) {
+                    return@withContext meta.copy(addonBaseUrl = addon.transportUrl)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) { /* try next */ }
         }
 
         // Last resort: Cinemeta for standard types
         try {
             val url = "https://v3-cinemeta.strem.io/meta/$type/$id.json"
-            return@withContext withTimeout(CATALOG_TIMEOUT_MS) { api.getMeta(url) }.meta.sanitize()
+            return@withContext withTimeout(CATALOG_TIMEOUT_MS) { api.getMeta(url) }
+                .meta
+                .sanitize()
+                ?.copy(addonBaseUrl = "https://v3-cinemeta.strem.io")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) { null }
     }
 
