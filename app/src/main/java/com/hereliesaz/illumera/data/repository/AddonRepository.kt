@@ -14,6 +14,7 @@ import com.hereliesaz.illumera.domain.HubItem
 import com.hereliesaz.illumera.domain.HubShape
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
@@ -392,7 +393,10 @@ class AddonRepository @Inject constructor(
                     // addon instead of rejecting valid details solely because the ID changed.
                     return@withContext meta.copy(addonBaseUrl = preferredAddonBaseUrl.trimEnd('/'))
                 }
+            } catch (_: TimeoutCancellationException) {
+                // This attempt exceeded its own budget; continue to configured fallbacks.
             } catch (cancelled: CancellationException) {
+                // Parent/job cancellation is control flow and must still abort resolution.
                 throw cancelled
             } catch (_: Exception) { /* try fallback */ }
         }
@@ -444,6 +448,8 @@ class AddonRepository @Inject constructor(
                 if (meta != null && meta.id == id) {
                     return@withContext meta.copy(addonBaseUrl = addon.transportUrl)
                 }
+            } catch (_: TimeoutCancellationException) {
+                // A slow addon must not prevent later candidates from being tried.
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) { /* try next */ }
@@ -456,6 +462,8 @@ class AddonRepository @Inject constructor(
                 .meta
                 .sanitize()
                 ?.copy(addonBaseUrl = "https://v3-cinemeta.strem.io")
+        } catch (_: TimeoutCancellationException) {
+            null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) { null }
