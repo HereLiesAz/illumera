@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -43,11 +44,17 @@ class SearchViewModel @Inject constructor(
 
     private var searchJob: Job? = null
 
-    private val profileId: Int
-        get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
-
     init {
-        loadRecentSearches()
+        viewModelScope.launch {
+            profileConfigurationManager.activeProfileId.collectLatest { profileId ->
+                val recent = if (profileId == null) {
+                    emptyList()
+                } else {
+                    dao.getRecentSearches(profileId)
+                }
+                _state.value = _state.value.copy(recentSearches = recent.map { it.query })
+            }
+        }
     }
 
     // ═══════════════════════════════════════
@@ -87,6 +94,7 @@ class SearchViewModel @Inject constructor(
     }
 
     private suspend fun performSearch(query: String) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value
         _state.value = _state.value.copy(isLoading = true, searchFailed = false)
         try {
             val results = repository.searchMovies(query)
@@ -96,9 +104,15 @@ class SearchViewModel @Inject constructor(
                 results = results, movies = movies,
                 series = series, isLoading = false
             )
-            if (query.trim().length >= MIN_QUERY_LENGTH_TO_REMEMBER) {
-                rememberSearch(query.trim())
+            if (
+                ownerProfileId != null &&
+                ownerProfileId == profileConfigurationManager.activeProfileId.value &&
+                query.trim().length >= MIN_QUERY_LENGTH_TO_REMEMBER
+            ) {
+                rememberSearch(ownerProfileId, query.trim())
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             _state.value = _state.value.copy(isLoading = false, searchFailed = true)
         }
@@ -108,19 +122,15 @@ class SearchViewModel @Inject constructor(
     // RECENT SEARCHES
     // ═══════════════════════════════════════
 
-    private fun loadRecentSearches() {
+    private fun rememberSearch(profileId: Int, query: String) {
         viewModelScope.launch {
-            val recent = dao.getRecentSearches(profileId)
-            _state.value = _state.value.copy(recentSearches = recent.map { it.query })
-        }
-    }
-
-    private fun rememberSearch(query: String) {
-        viewModelScope.launch {
-            val id = profileId
-            dao.upsertRecentSearch(RecentSearchEntity(id, query, System.currentTimeMillis()))
-            dao.trimRecentSearches(id)
-            loadRecentSearches()
+            if (profileConfigurationManager.activeProfileId.value != profileId) return@launch
+            dao.upsertRecentSearch(RecentSearchEntity(profileId, query, System.currentTimeMillis()))
+            dao.trimRecentSearches(profileId)
+            if (profileConfigurationManager.activeProfileId.value == profileId) {
+                val recent = dao.getRecentSearches(profileId)
+                _state.value = _state.value.copy(recentSearches = recent.map { it.query })
+            }
         }
     }
 

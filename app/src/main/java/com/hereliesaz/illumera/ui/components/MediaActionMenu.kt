@@ -29,6 +29,7 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,65 +105,80 @@ class MediaActionsViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
-    private val profileId: Int
-        get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
-
     suspend fun loadState(target: MediaActionTarget): MediaActionState = withContext(Dispatchers.IO) {
-        val resolved = resolveTarget(target)
-        val inWatchlist = dao.isInWatchlist(profileId, resolved.canonicalId)
-        val watched = when (target.type) {
-            "episode" -> episodeWatched(resolved.canonicalId, target.season, target.episode)
-            "series", "tv" -> seriesWatched(resolved.canonicalId, resolved.videos)
-            else -> dao.getHistoryItem(resolved.canonicalId)?.watched == true
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value
+            ?: return@withContext MediaActionState()
+        profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+            val resolved = resolveTarget(target)
+            val inWatchlist = dao.isInWatchlist(ownerProfileId, resolved.canonicalId)
+            val watched = when (target.type) {
+                "episode" -> episodeWatched(resolved.canonicalId, target.season, target.episode)
+                "series", "tv" -> seriesWatched(resolved.canonicalId, resolved.videos)
+                else -> dao.getHistoryItem(resolved.canonicalId)?.watched == true
+            }
+            MediaActionState(
+                inWatchlist = inWatchlist,
+                watched = watched,
+                traktAvailable = resolved.traktAvailable
+            )
         }
-        MediaActionState(
-            inWatchlist = inWatchlist,
-            watched = watched,
-            traktAvailable = resolved.traktAvailable
-        )
     }
 
     fun toggleWatchlist(target: MediaActionTarget) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val resolved = resolveTarget(target)
-            if (dao.isInWatchlist(profileId, resolved.canonicalId)) {
-                dao.removeFromWatchlist(profileId, resolved.canonicalId)
-                if (resolved.traktAvailable) {
-                    traktSyncManager.pushRemove(resolved.canonicalId, resolved.type)
-                }
-            } else {
-                val entity = WatchlistEntity(
-                    profileId = profileId,
-                    id = resolved.canonicalId,
-                    type = resolved.type,
-                    title = resolved.title,
-                    poster = resolved.poster,
-                    addedAt = System.currentTimeMillis()
-                )
-                dao.addToWatchlist(entity)
-                if (resolved.traktAvailable) {
-                    traktSyncManager.pushAdd(entity)
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val resolved = resolveTarget(target)
+                if (dao.isInWatchlist(ownerProfileId, resolved.canonicalId)) {
+                    dao.removeFromWatchlist(ownerProfileId, resolved.canonicalId)
+                    if (resolved.traktAvailable) {
+                        traktSyncManager.pushRemove(resolved.canonicalId, resolved.type)
+                    }
+                } else {
+                    val entity = WatchlistEntity(
+                        profileId = ownerProfileId,
+                        id = resolved.canonicalId,
+                        type = resolved.type,
+                        title = resolved.title,
+                        poster = resolved.poster,
+                        addedAt = System.currentTimeMillis()
+                    )
+                    dao.addToWatchlist(entity)
+                    if (resolved.traktAvailable) {
+                        traktSyncManager.pushAdd(entity)
+                    }
                 }
             }
         }
     }
 
     fun toggleWatched(target: MediaActionTarget, currentlyWatched: Boolean) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val resolved = resolveTarget(target)
-            when (target.type) {
-                "episode" -> toggleEpisodeWatched(target, resolved, currentlyWatched)
-                "series", "tv" -> toggleSeriesWatched(target, resolved, currentlyWatched)
-                else -> toggleMovieWatched(resolved, currentlyWatched)
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val resolved = resolveTarget(target)
+                when (target.type) {
+                    "episode" -> toggleEpisodeWatched(target, resolved, currentlyWatched)
+                    "series", "tv" -> toggleSeriesWatched(
+                        target = target,
+                        resolved = resolved,
+                        currentlyWatched = currentlyWatched,
+                        ownerProfileId = ownerProfileId
+                    )
+                    else -> toggleMovieWatched(resolved, currentlyWatched)
+                }
             }
         }
     }
 
     fun addToTraktLibrary(target: MediaActionTarget) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val resolved = resolveTarget(target)
-            if (resolved.traktAvailable) {
-                traktSyncManager.pushAddToCollection(resolved.canonicalId, resolved.type)
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val resolved = resolveTarget(target)
+                if (resolved.traktAvailable) {
+                    traktSyncManager.pushAddToCollection(resolved.canonicalId, resolved.type)
+                }
             }
         }
     }
@@ -170,9 +186,13 @@ class MediaActionsViewModel @Inject constructor(
     private suspend fun resolveTarget(target: MediaActionTarget): ResolvedMediaTarget {
         val baseType = if (target.type == "episode") "series" else target.type
         val baseId = target.parentSeriesId ?: target.id
-        val resolvedMeta = runCatching {
+        val resolvedMeta = try {
             repository.resolveMetaDetails(baseType, baseId, target.addonBaseUrl)
-        }.getOrNull()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
         val canonicalId = resolvedMeta?.id
             ?.takeIf { it.startsWith("tt") }
             ?: baseId
@@ -257,12 +277,13 @@ class MediaActionsViewModel @Inject constructor(
     private suspend fun toggleSeriesWatched(
         target: MediaActionTarget,
         resolved: ResolvedMediaTarget,
-        currentlyWatched: Boolean
+        currentlyWatched: Boolean,
+        ownerProfileId: Int
     ) {
         val episodes = airedEpisodes(resolved.videos)
         if (currentlyWatched) {
             dao.deleteSeriesHistory("${resolved.canonicalId}:%")
-            dao.deleteSeriesNextUp(profileId, resolved.canonicalId)
+            dao.deleteSeriesNextUp(ownerProfileId, resolved.canonicalId)
             if (resolved.traktAvailable && episodes.isNotEmpty()) {
                 traktSyncManager.pushSeriesEpisodesWatched(
                     resolved.canonicalId,
@@ -300,7 +321,7 @@ class MediaActionsViewModel @Inject constructor(
         )
         dao.upsertSeriesNextUp(
             SeriesNextUpEntity(
-                profileId = profileId,
+                profileId = ownerProfileId,
                 seriesId = resolved.canonicalId,
                 title = resolved.title,
                 poster = resolved.poster,
