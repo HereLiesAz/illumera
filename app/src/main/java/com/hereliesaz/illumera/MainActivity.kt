@@ -105,6 +105,8 @@ import com.hereliesaz.illumera.ui.theme.LumeraTheme
 import com.hereliesaz.illumera.ui.theme.ThemeManager
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +154,21 @@ private class PlayerState {
     var currentStream by mutableStateOf<Stream?>(null)
     var pendingEpisodeSwitch by mutableStateOf<PendingEpisodeSwitch?>(null)
     var isEpisodeSwitchLoading by mutableStateOf(false)
+    var episodeSwitchJob: Job? = null
+    var episodeSwitchGeneration: Long = 0L
+}
+
+private suspend fun <T> requestOrFallback(
+    fallback: T,
+    block: suspend () -> T
+): T {
+    return try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        fallback
+    }
 }
 
 private fun resolveSubtitleUrl(rawUrl: String, addonTransportUrl: String?): String? {
@@ -2079,8 +2096,8 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }
 
-                                            val streamsDeferred = async { try { addonRepository.getStreams("series", nextStreamId) } catch (_: Exception) { emptyList() } }
-                                            val subtitlesDeferred = async { try { subtitleRepository.getSubtitles("series", nextStreamId) } catch (_: Exception) { emptyList() } }
+                                            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", nextStreamId) } }
+                                            val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", nextStreamId) } }
 
                                             val rawStreams = streamsDeferred.await()
                                             val addonSubs = subtitlesDeferred.await()
@@ -2246,8 +2263,8 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }
 
-                                            val streamsDeferred = async { try { addonRepository.getStreams("series", epStreamId) } catch (_: Exception) { emptyList() } }
-                                            val subtitlesDeferred = async { try { subtitleRepository.getSubtitles("series", epStreamId) } catch (_: Exception) { emptyList() } }
+                                            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", epStreamId) } }
+                                            val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
 
                                             val rawStreams2 = streamsDeferred.await()
                                             val addonSubs = subtitlesDeferred.await()
