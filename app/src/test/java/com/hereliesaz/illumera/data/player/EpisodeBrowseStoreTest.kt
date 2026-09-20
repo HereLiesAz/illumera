@@ -71,6 +71,20 @@ class EpisodeBrowseStoreTest {
     }
 
     @Test
+    fun legacyGlobalEpisodeMemoryMigratesOnceToActiveProfile() {
+        val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
+        prefs.edit().putString("series_show", "2:9").commit()
+
+        activeProfileId = 1
+        assertEquals(":2:9", store.getRememberedEpisodeSuffix("show"))
+        assertNull(prefs.getString("series_show", null))
+        assertEquals("2:9", prefs.getString("p1:series_show", null))
+
+        activeProfileId = 2
+        assertNull(store.getRememberedEpisodeSuffix("show"))
+    }
+
+    @Test
     fun rememberedEpisodeIsIsolatedByProfile() {
         activeProfileId = 1
         store.rememberEpisode("show", season = 1, episode = 2)
