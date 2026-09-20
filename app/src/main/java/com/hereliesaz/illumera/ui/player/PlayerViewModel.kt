@@ -8,11 +8,16 @@ import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -32,6 +37,7 @@ enum class PlaybackDurationStatus {
     SOURCE_ERROR
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val dao: AddonDao,
@@ -40,16 +46,21 @@ class PlayerViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
-    private val _watchedThreshold = MutableStateFlow(DEFAULT_WATCHED_THRESHOLD)
-    val watchedThreshold: StateFlow<Double> = _watchedThreshold.asStateFlow()
-
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            val profileId = profileConfigurationManager.getLastActiveProfileId()
-            val threshold = profileId?.let { dao.getProfileById(it)?.watchedThreshold }
-            if (threshold != null) _watchedThreshold.value = threshold / 100.0
+    val watchedThreshold: StateFlow<Double> = profileConfigurationManager.activeProfileId
+        .flatMapLatest { profileId ->
+            if (profileId == null) {
+                flowOf(DEFAULT_WATCHED_THRESHOLD)
+            } else {
+                dao.getProfileFlow(profileId).map { profile ->
+                    profile.watchedThreshold.coerceIn(50, 99) / 100.0
+                }
+            }
         }
-    }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = DEFAULT_WATCHED_THRESHOLD
+        )
 
     fun classifyDuration(mediaType: String, durationMs: Long): PlaybackDurationStatus {
         if (durationMs <= 0L) return PlaybackDurationStatus.NORMAL
@@ -81,7 +92,7 @@ class PlayerViewModel @Inject constructor(
         if (mediaType.isNotBlank() && classifyDuration(mediaType, durationMs) != PlaybackDurationStatus.NORMAL) return false
         val remaining = durationMs - positionMs
         val completionRatio = positionMs.toDouble() / durationMs.toDouble()
-        return completionRatio >= _watchedThreshold.value || remaining <= NEAR_END_MS
+        return completionRatio >= watchedThreshold.value || remaining <= NEAR_END_MS
     }
 
     fun saveProgress(
@@ -93,35 +104,73 @@ class PlayerViewModel @Inject constructor(
         duration: Long?,
         seriesId: String? = null
     ) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            if (id.startsWith("trailer_") || id.startsWith("debrid_")) return@launch
-            if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return@launch
-            val safePosition = position.coerceAtLeast(0L)
-            if (safePosition < 5_000L) return@launch
-
-            val existing = dao.getHistoryItem(id)
-            val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
-            if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) return@launch
-
-            val completed = isCompleted(safePosition, safeDuration, type)
-            val finalPosition = if (completed) safeDuration else safePosition
-
-            val entry = WatchHistoryEntity(
+            val saved = persistProgressForProfile(
+                ownerProfileId = ownerProfileId,
                 id = id,
+                type = type,
                 title = title,
-                poster = poster ?: existing?.poster,
-                background = existing?.background,
-                logo = existing?.logo,
-                seriesId = seriesId ?: existing?.seriesId,
-                position = finalPosition,
-                duration = safeDuration,
-                lastWatched = System.currentTimeMillis(),
-                type = type.ifBlank { "movie" },
-                watched = completed,
-                scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
+                poster = poster,
+                position = position,
+                duration = duration,
+                seriesId = seriesId
             )
-            dao.upsertHistory(entry)
-            stremioLibrarySyncManager.syncLibrary()
+
+            if (
+                saved &&
+                profileConfigurationManager.activeProfileId.value == ownerProfileId
+            ) {
+                stremioLibrarySyncManager.syncLibrary()
+            }
+        }
+    }
+
+    internal suspend fun persistProgressForProfile(
+        ownerProfileId: Int,
+        id: String,
+        type: String,
+        title: String,
+        poster: String?,
+        position: Long,
+        duration: Long?,
+        seriesId: String? = null
+    ): Boolean {
+        if (id.startsWith("trailer_") || id.startsWith("debrid_")) return false
+        if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return false
+        val safePosition = position.coerceAtLeast(0L)
+        if (safePosition < 5_000L) return false
+
+        return try {
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val existing = dao.getHistoryItem(id)
+                val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
+                if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) {
+                    return@withActiveProfileRuntime false
+                }
+
+                val completed = isCompleted(safePosition, safeDuration, type)
+                val finalPosition = if (completed) safeDuration else safePosition
+
+                val entry = WatchHistoryEntity(
+                    id = id,
+                    title = title,
+                    poster = poster ?: existing?.poster,
+                    background = existing?.background,
+                    logo = existing?.logo,
+                    seriesId = seriesId ?: existing?.seriesId,
+                    position = finalPosition,
+                    duration = safeDuration,
+                    lastWatched = System.currentTimeMillis(),
+                    type = type.ifBlank { "movie" },
+                    watched = completed,
+                    scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
+                )
+                dao.upsertHistory(entry)
+                true
+            }
+        } catch (_: CancellationException) {
+            false
         }
     }
 

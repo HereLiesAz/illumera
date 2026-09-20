@@ -543,6 +543,8 @@ class StremioAuthService @Inject constructor() {
                     if (pair.size() >= 2) put(pair[0].asString, pair[1].asLong)
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error")
         }
@@ -564,6 +566,8 @@ class StremioAuthService @Inject constructor() {
             )
             val result = json.getAsJsonArray("result") ?: return@withContext emptyList()
             result.mapNotNull { runCatching { gson.fromJson(it, StremioLibraryItem::class.java) }.getOrNull() }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error")
         }
@@ -577,6 +581,8 @@ class StremioAuthService @Inject constructor() {
                 DATASTORE_PUT_ENDPOINT,
                 gson.toJson(mapOf("authKey" to authKey, "collection" to LIBRARY_COLLECTION, "changes" to changes))
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error")
         }
