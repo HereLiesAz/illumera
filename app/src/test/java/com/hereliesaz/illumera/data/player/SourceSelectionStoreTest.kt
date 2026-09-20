@@ -139,12 +139,20 @@ class SourceSelectionStoreTest {
     }
 
     @Test
-    fun nullActiveProfileSharesDefaultProfileOneScope() {
+    fun noActiveProfileDoesNotReadOrWriteProfileOneSourceMemory() {
         activeProfileId = null
         store.rememberSelection("movie", Stream(name = "[Default]", url = "default"))
+        store.rememberSourceListDisabled("movie", true)
+        store.rememberExcludedSources("movie", setOf("source-a"))
+
+        assertFalse(store.hasRememberedSelection("movie"))
+        assertFalse(store.isSourceListDisabled("movie"))
+        assertTrue(store.getExcludedSources("movie").isEmpty())
 
         activeProfileId = 1
-        assertTrue(store.hasRememberedSelection("movie"))
+        assertFalse(store.hasRememberedSelection("movie"))
+        assertFalse(store.isSourceListDisabled("movie"))
+        assertTrue(store.getExcludedSources("movie").isEmpty())
     }
 
     @Test

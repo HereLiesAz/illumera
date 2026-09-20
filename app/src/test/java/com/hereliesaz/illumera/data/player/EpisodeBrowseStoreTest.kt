@@ -1,6 +1,9 @@
 package com.hereliesaz.illumera.data.player
 
 import android.content.Context
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -13,13 +16,17 @@ import org.robolectric.RuntimeEnvironment
 @RunWith(RobolectricTestRunner::class)
 class EpisodeBrowseStoreTest {
     private lateinit var context: Context
+    private lateinit var profileManager: ProfileConfigurationManager
     private lateinit var store: EpisodeBrowseStore
+    private var activeProfileId: Int? = 1
 
     @Before
     fun setUp() {
         context = RuntimeEnvironment.getApplication()
         context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit().clear().commit()
-        store = EpisodeBrowseStore(context)
+        profileManager = mockk()
+        every { profileManager.getLastActiveProfileId() } answers { activeProfileId }
+        store = EpisodeBrowseStore(context, profileManager)
     }
 
     @After
@@ -58,9 +65,47 @@ class EpisodeBrowseStoreTest {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
         listOf("bad", "1:2:3", "x:2", "1:x").forEach { malformed ->
-            prefs.edit().putString("series_show", malformed).commit()
+            prefs.edit().putString("p1:series_show", malformed).commit()
             assertNull("Expected '$malformed' to be rejected", store.getRememberedEpisodeSuffix("show"))
         }
+    }
+
+    @Test
+    fun legacyGlobalEpisodeMemoryMigratesOnceToActiveProfile() {
+        val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
+        prefs.edit().putString("series_show", "2:9").commit()
+
+        activeProfileId = 1
+        assertEquals(":2:9", store.getRememberedEpisodeSuffix("show"))
+        assertNull(prefs.getString("series_show", null))
+        assertEquals("2:9", prefs.getString("p1:series_show", null))
+
+        activeProfileId = 2
+        assertNull(store.getRememberedEpisodeSuffix("show"))
+    }
+
+    @Test
+    fun rememberedEpisodeIsIsolatedByProfile() {
+        activeProfileId = 1
+        store.rememberEpisode("show", season = 1, episode = 2)
+
+        activeProfileId = 2
+        assertNull(store.getRememberedEpisodeSuffix("show"))
+        store.rememberEpisode("show", season = 3, episode = 4)
+        assertEquals(":3:4", store.getRememberedEpisodeSuffix("show"))
+
+        activeProfileId = 1
+        assertEquals(":1:2", store.getRememberedEpisodeSuffix("show"))
+    }
+
+    @Test
+    fun noActiveProfileDoesNotReadOrWriteEpisodeMemory() {
+        activeProfileId = null
+        store.rememberEpisode("show", season = 5, episode = 6)
+        assertNull(store.getRememberedEpisodeSuffix("show"))
+
+        activeProfileId = 1
+        assertNull(store.getRememberedEpisodeSuffix("show"))
     }
 
     @Test
