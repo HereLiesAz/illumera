@@ -792,6 +792,7 @@ class DetailsViewModel @Inject constructor(
                     autoPlayStream = firstPlayable,
                     addonSubtitles = resolvedSubtitles,
                     availableStreams = streams,
+                    activeStreamMediaType = mediaType,
                     activeStreamRequestId = streamRequestId,
                     activeSourceSelectionId = sourceSelectionId,
                     sourceListDisabled = sourceListDisabled,
