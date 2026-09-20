@@ -125,6 +125,60 @@ class SubtitleRepositoryTest {
     }
 
     @Test
+    fun liveSourceResolutionFetchesFreshGenericAndSourceAwareVariants() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val genericUrl = "https://addon.example/subtitles/movie/tt123.json"
+        val sourceUrl = "https://addon.example/subtitles/movie/tt123/videoHash=hash123.json"
+        coEvery { api.getSubtitles(genericUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "generic", lang = "en", url = "https://cdn.example/generic.srt"))
+        )
+        coEvery { api.getSubtitles(sourceUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "specific", lang = "en", url = "https://cdn.example/specific.srt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123"))
+        )
+
+        assertEquals(
+            setOf("https://cdn.example/generic.srt", "https://cdn.example/specific.srt"),
+            result.map { it.url }.toSet()
+        )
+        coVerify(exactly = 1) { api.getSubtitles(genericUrl) }
+        coVerify(exactly = 1) { api.getSubtitles(sourceUrl) }
+    }
+
+    @Test
+    fun liveSourceWithoutHintsFetchesFreshGenericSubtitles() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        val genericUrl = "https://addon.example/subtitles/movie/tt123.json"
+        coEvery { api.getSubtitles(genericUrl) } returns SubtitleResponse(
+            listOf(StreamSubtitle(id = "generic", lang = "en", url = "https://cdn.example/generic.srt"))
+        )
+
+        val result = SubtitleRepository(api, dao).getSubtitlesForStream(
+            type = "movie",
+            playbackId = "tt123",
+            stream = Stream(title = "1080p")
+        )
+
+        assertEquals(listOf("https://cdn.example/generic.srt"), result.map { it.url })
+        coVerify(exactly = 1) { api.getSubtitles(genericUrl) }
+    }
+
+    @Test
     fun selectedStreamWithoutSubtitleHintsReusesFallbackWithoutNetworkQuery() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
