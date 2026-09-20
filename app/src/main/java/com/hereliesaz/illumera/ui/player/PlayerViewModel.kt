@@ -106,42 +106,16 @@ class PlayerViewModel @Inject constructor(
     ) {
         val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            if (id.startsWith("trailer_") || id.startsWith("debrid_")) return@launch
-            if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return@launch
-            val safePosition = position.coerceAtLeast(0L)
-            if (safePosition < 5_000L) return@launch
-
-            val saved = try {
-                profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
-                    val existing = dao.getHistoryItem(id)
-                    val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
-                    if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) {
-                        return@withActiveProfileRuntime false
-                    }
-
-                    val completed = isCompleted(safePosition, safeDuration, type)
-                    val finalPosition = if (completed) safeDuration else safePosition
-
-                    val entry = WatchHistoryEntity(
-                        id = id,
-                        title = title,
-                        poster = poster ?: existing?.poster,
-                        background = existing?.background,
-                        logo = existing?.logo,
-                        seriesId = seriesId ?: existing?.seriesId,
-                        position = finalPosition,
-                        duration = safeDuration,
-                        lastWatched = System.currentTimeMillis(),
-                        type = type.ifBlank { "movie" },
-                        watched = completed,
-                        scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
-                    )
-                    dao.upsertHistory(entry)
-                    true
-                }
-            } catch (_: CancellationException) {
-                false
-            }
+            val saved = persistProgressForProfile(
+                ownerProfileId = ownerProfileId,
+                id = id,
+                type = type,
+                title = title,
+                poster = poster,
+                position = position,
+                duration = duration,
+                seriesId = seriesId
+            )
 
             if (
                 saved &&
@@ -149,6 +123,54 @@ class PlayerViewModel @Inject constructor(
             ) {
                 stremioLibrarySyncManager.syncLibrary()
             }
+        }
+    }
+
+    internal suspend fun persistProgressForProfile(
+        ownerProfileId: Int,
+        id: String,
+        type: String,
+        title: String,
+        poster: String?,
+        position: Long,
+        duration: Long?,
+        seriesId: String? = null
+    ): Boolean {
+        if (id.startsWith("trailer_") || id.startsWith("debrid_")) return false
+        if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return false
+        val safePosition = position.coerceAtLeast(0L)
+        if (safePosition < 5_000L) return false
+
+        return try {
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val existing = dao.getHistoryItem(id)
+                val safeDuration = (duration ?: existing?.duration ?: safePosition).coerceAtLeast(safePosition)
+                if (classifyDuration(type, safeDuration) != PlaybackDurationStatus.NORMAL) {
+                    return@withActiveProfileRuntime false
+                }
+
+                val completed = isCompleted(safePosition, safeDuration, type)
+                val finalPosition = if (completed) safeDuration else safePosition
+
+                val entry = WatchHistoryEntity(
+                    id = id,
+                    title = title,
+                    poster = poster ?: existing?.poster,
+                    background = existing?.background,
+                    logo = existing?.logo,
+                    seriesId = seriesId ?: existing?.seriesId,
+                    position = finalPosition,
+                    duration = safeDuration,
+                    lastWatched = System.currentTimeMillis(),
+                    type = type.ifBlank { "movie" },
+                    watched = completed,
+                    scrobbled = existing?.scrobbled ?: traktScrobbleManager.isScrobbled(id)
+                )
+                dao.upsertHistory(entry)
+                true
+            }
+        } catch (_: CancellationException) {
+            false
         }
     }
 
