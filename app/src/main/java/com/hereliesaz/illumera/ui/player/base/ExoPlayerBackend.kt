@@ -138,6 +138,7 @@ class ExoPlayerBackend(
     private var sourceSelectionGeneration = 0L
     private var exoPlayer: ExoPlayer? = null
     private var progressJob: Job? = null
+    private var sourceSubtitleResolutionJob: Job? = null
     private var audioSwitchRecoveryJob: Job? = null
     private val resolvedTorrentUrls = mutableMapOf<String, String>()
     private var assHandler: AssHandler? = null
@@ -463,6 +464,8 @@ class ExoPlayerBackend(
 
     override fun load(request: PlayerLoadRequest) {
         if (released) return
+        sourceSubtitleResolutionJob?.cancel()
+        sourceSubtitleResolutionJob = null
         sourceSelectionGeneration++
         loadToken++
         _excludedSourceIds.value = emptySet()
@@ -633,6 +636,8 @@ class ExoPlayerBackend(
         val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
         val resolver = onResolveSourceSubtitles
 
+        sourceSubtitleResolutionJob?.cancel()
+        sourceSubtitleResolutionJob = null
         sourceSelectionGeneration++
         val generation = sourceSelectionGeneration
         _uiState.update { it.copy(errorMessage = null, isBuffering = resolver != null || it.isBuffering) }
@@ -642,7 +647,7 @@ class ExoPlayerBackend(
             return
         }
 
-        scope.launch {
+        sourceSubtitleResolutionJob = scope.launch {
             val resolvedSubtitles = try {
                 resolver(source)
             } catch (e: CancellationException) {
@@ -661,7 +666,6 @@ class ExoPlayerBackend(
 
     private fun selectSourceAfterSubtitleResolution(sourceId: String, source: PlayerSourceOption) {
         if (released) return
-        if (sourceSelectionGeneration <= 0L) return
 
         // Magnet URLs need TorrentService — delegate to the callback.
         if (source.url.startsWith("magnet:")) {
@@ -967,6 +971,8 @@ class ExoPlayerBackend(
         assHandler?.release()
         assHandler = null
 
+        sourceSubtitleResolutionJob?.cancel()
+        sourceSubtitleResolutionJob = null
         scopeJob.cancel()
         stopProgressLoop()
         audioSwitchRecoveryJob = null
