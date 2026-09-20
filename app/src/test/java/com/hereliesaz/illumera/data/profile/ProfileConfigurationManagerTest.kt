@@ -4,9 +4,11 @@ import android.content.Context
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -87,6 +89,40 @@ class ProfileConfigurationManagerTest {
         setLastActiveProfile(8)
 
         manager.withActiveProfileRuntime(7) { "must not run" }
+    }
+
+    @Test
+    fun saveRuntimeStateRejectsStaleProfileBeforeSnapshotting() = runTest {
+        setLastActiveProfile(8)
+
+        try {
+            manager.saveRuntimeState(7)
+            throw AssertionError("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // A stale save must not snapshot the currently loaded profile into profile 7.
+        }
+
+        val staleSnapshot = File(File(context.filesDir, SNAPSHOT_DIR), "profile_7.json")
+        assertFalse(staleSnapshot.exists())
+        assertEquals(8, manager.getLastActiveProfileId())
+    }
+
+    @Test
+    fun runtimeSaveInsideActiveRuntimeLockDoesNotReenterMutex() = runTest {
+        every { dao.getAllAddons() } returns flowOf(emptyList())
+        every { dao.getAllCatalogConfigs() } returns flowOf(emptyList())
+        every { dao.getAllHubRows() } returns flowOf(emptyList())
+        every { dao.getAllHubRowItems() } returns flowOf(emptyList())
+        every { dao.getWatchHistory() } returns flowOf(emptyList())
+        setLastActiveProfile(7)
+
+        manager.withActiveProfileRuntime(7) {
+            manager.saveRuntimeStateWithinActiveRuntime(7)
+        }
+
+        val snapshot = File(File(context.filesDir, SNAPSHOT_DIR), "profile_7.json")
+        assertTrue(snapshot.exists())
+        assertEquals(7, manager.getLastActiveProfileId())
     }
 
     @Test
