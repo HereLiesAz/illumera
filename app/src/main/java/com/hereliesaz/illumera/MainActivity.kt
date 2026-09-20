@@ -136,6 +136,7 @@ private data class PendingSourceSelection(
 private data class PendingEpisodeSwitch(
     val playbackId: String,
     val playbackTitle: String,
+    val streamRequestId: String,
     val streams: List<Stream>?,
     val addonSubs: List<AddonSubtitle>,
     val playerCurrentSourceUrl: String?
@@ -2053,6 +2054,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = null,
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2078,6 +2080,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = emptyList(),
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2115,6 +2118,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2128,6 +2132,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
                                                     playbackTitle = nextPlaybackTitle,
+                                                    streamRequestId = nextStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2139,7 +2144,13 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
                                             playerState.pendingEpisodeSwitch = null
 
-                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, addonSubs)
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = nextStreamId,
+                                                stream = streamToPlay,
+                                                fallback = addonSubs
+                                            )
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
                                             val sourcePayload = buildSourcePayload(streams, streamToPlay)
 
                                             playerState.pendingSourceSelection = PendingSourceSelection(
@@ -2210,6 +2221,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = null,
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2235,6 +2247,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = emptyList(),
                                                     addonSubs = emptyList(),
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2269,6 +2282,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2282,6 +2296,7 @@ class MainActivity : ComponentActivity() {
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = epPlaybackId,
                                                     playbackTitle = epTitle,
+                                                    streamRequestId = epStreamId,
                                                     streams = streams,
                                                     addonSubs = addonSubs,
                                                     playerCurrentSourceUrl = playerCurrentSourceUrl
@@ -2310,7 +2325,13 @@ class MainActivity : ComponentActivity() {
                                                 rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true
                                             )
 
-                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, addonSubs)
+                                            val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
+                                                type = "series",
+                                                playbackId = epStreamId,
+                                                stream = streamToPlay,
+                                                fallback = addonSubs
+                                            )
+                                            val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
                                             val sourcePayload = buildSourcePayload(streams, streamToPlay)
 
                                             playerState.pendingSourceSelection = PendingSourceSelection(
