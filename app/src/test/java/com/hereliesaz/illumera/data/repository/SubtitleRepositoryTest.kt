@@ -13,6 +13,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -176,6 +177,29 @@ class SubtitleRepositoryTest {
 
         assertEquals(listOf("https://cdn.example/generic.srt"), result.map { it.url })
         coVerify(exactly = 1) { api.getSubtitles(genericUrl) }
+    }
+
+    @Test
+    fun sourceAwareSubtitleCancellationPropagatesToCaller() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon()))
+        coEvery { api.getManifest(any()) } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        coEvery { api.getSubtitles(any()) } throws CancellationException("cancel source selection")
+
+        try {
+            SubtitleRepository(api, dao).getSubtitlesForStream(
+                type = "movie",
+                playbackId = "tt123",
+                stream = Stream(behaviorHints = StreamBehaviorHints(videoHash = "hash123")),
+                fallback = emptyList()
+            )
+            throw AssertionError("Expected CancellationException")
+        } catch (_: CancellationException) {
+            // Cancellation must escape so the caller cannot commit stale playback state.
+        }
     }
 
     @Test
