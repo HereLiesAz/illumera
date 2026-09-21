@@ -58,7 +58,7 @@ class ProfileConfigurationManager @Inject constructor(
     val activeProfileId: StateFlow<Int?> = _activeProfileId.asStateFlow()
 
     private val runtimeMutex = Mutex()
-    private var startupRuntimeCaptured = false
+    private val startupRuntimeCaptured = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
      * Runs profile-scoped background work while preventing a profile switch from
@@ -79,7 +79,7 @@ class ProfileConfigurationManager @Inject constructor(
      * state changes (e.g. an addon sync) that happen before the one-time
      * startup capture would otherwise permanently skip re-snapshotting.
      */
-    fun resetStartupCapture() { startupRuntimeCaptured = false }
+    fun resetStartupCapture() { startupRuntimeCaptured.set(false) }
 
     fun markPendingSetup(profileId: Int) {
         val updated = getPendingSetupIds().toMutableSet().apply { add(profileId.toString()) }
@@ -96,8 +96,7 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     suspend fun captureStartupRuntimeIfNeeded() {
-        if (startupRuntimeCaptured) return
-        startupRuntimeCaptured = true
+        if (!startupRuntimeCaptured.compareAndSet(false, true)) return
 
         val lastActive = getLastActiveProfileId() ?: return
         if (needsInitialSetup(lastActive)) return
@@ -394,11 +393,15 @@ class ProfileConfigurationManager @Inject constructor(
     private fun writeSnapshot(profileId: Int, snapshot: ProfileRuntimeSnapshot) {
         val file = snapshotFile(profileId)
         file.parentFile?.mkdirs()
-        file.writeText(gson.toJson(snapshot))
+        val tmpFile = File(file.parentFile, "${file.name}.tmp")
+        tmpFile.writeText(gson.toJson(snapshot))
+        tmpFile.renameTo(file)
     }
 
     private fun readSnapshot(profileId: Int): ProfileRuntimeSnapshot? {
         val file = snapshotFile(profileId)
+        // Clean up any leftover temp file from a previous interrupted write
+        File(file.parentFile, "${file.name}.tmp").takeIf { it.exists() }?.delete()
         if (!file.exists()) return null
         return runCatching {
             gson.fromJson(file.readText(), ProfileRuntimeSnapshot::class.java)

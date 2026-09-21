@@ -50,9 +50,10 @@ class AddonRepository @Inject constructor(
     suspend fun fetchNextCatalogPage(baseUrl: String, skip: Int): List<MetaItem> = withContext(Dispatchers.IO) {
         try {
             val url = if (skip == 0) baseUrl else {
-                baseUrl.replace(".json", "/skip=$skip.json")
+                if (baseUrl.endsWith(".json")) baseUrl.dropLast(5) + "/skip=$skip.json" else baseUrl + "/skip=$skip.json"
             }
             withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize()
+        } catch (e: CancellationException) { throw e
         } catch (e: Exception) { emptyList() }
     }
 
@@ -65,6 +66,7 @@ class AddonRepository @Inject constructor(
                 withTimeout(CATALOG_TIMEOUT_MS) {
                     api.getCatalog("https://v3-cinemeta.strem.io/catalog/movie/top/search=$query.json")
                 }.metas.orEmpty().sanitize()
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) { emptyList() }
         }
 
@@ -73,6 +75,7 @@ class AddonRepository @Inject constructor(
                 withTimeout(CATALOG_TIMEOUT_MS) {
                     api.getCatalog("https://v3-cinemeta.strem.io/catalog/series/top/search=$query.json")
                 }.metas.orEmpty().sanitize()
+            } catch (e: CancellationException) { throw e
             } catch (e: Exception) { emptyList() }
         }
 
@@ -130,7 +133,7 @@ class AddonRepository @Inject constructor(
                 try {
                     val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
                     // Fetch only the first page for fast initial load
-                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (e: Exception) { emptyList() }
+                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
                     if (rawMetas.isNotEmpty()) {
                         val metas = rawMetas.map { it.copy(addonBaseUrl = config.transportUrl) }
                         val typeSuffix = config.catalogType.replaceFirstChar { it.uppercase() }
@@ -153,6 +156,7 @@ class AddonRepository @Inject constructor(
                             supportsSkip = catalogSupportsSkip(addon, config.catalogType, config.catalogId)
                         )
                     } else null
+                } catch (e: CancellationException) { throw e
                 } catch (e: Exception) { null }
             }
         }
@@ -307,7 +311,7 @@ class AddonRepository @Inject constructor(
     }
 
     suspend fun installAddonWithConfig(url: String, home: Boolean, movies: Boolean, series: Boolean) = withContext(Dispatchers.IO) {
-        val manifest = api.getManifest(url)
+        val manifest = withTimeout(30_000L) { api.getManifest(url) }
         // Gson deserializes straight into the fields without honoring Kotlin's default
         // values, so a manifest missing "id"/"name" would otherwise reach the DB as a
         // literal null against a non-null Room column and crash with a raw
@@ -374,15 +378,12 @@ class AddonRepository @Inject constructor(
     suspend fun installAddon(url: String) = installAddonWithConfig(url, true, true, true)
 
     suspend fun renameAddon(transportUrl: String, newName: String) = withContext(Dispatchers.IO) {
-        val addons = dao.getAllAddons().firstOrNull()
-        val target = addons?.find { it.transportUrl == transportUrl }
+        val target = dao.getAddon(transportUrl)
         if (target != null) dao.insertAddon(target.copy(nickname = newName))
     }
 
     suspend fun deleteAddon(transportUrl: String) = withContext(Dispatchers.IO) {
-        dao.deleteCatalogConfigs(transportUrl)
-        dao.deleteHubRowItemsForAddon(transportUrl)
-        dao.deleteAddonByUrl(transportUrl)
+        dao.deleteAddonCascading(transportUrl)
     }
 
     suspend fun fetchManifest(url: String) = withContext(Dispatchers.IO) { api.getManifest(url) }

@@ -538,19 +538,19 @@ class HomeViewModel @Inject constructor(
 
             val updatedRows = current.rows.map { row ->
                 val patched = row.items.map { overwriteMeta(it) }
-                if (rowsChanged) row.copy(items = patched) else row
+                if (patched.zip(row.items).any { (n, o) -> n !== o }) row.copy(items = patched) else row
             }
 
             val updatedMixedRows = current.mixedRows.map { rowItem ->
                 if (rowItem is CategoryRow) {
                     val patched = rowItem.items.map { overwriteMeta(it) }
-                    if (rowsChanged) rowItem.copy(items = patched) else rowItem
+                    if (patched.zip(rowItem.items).any { (n, o) -> n !== o }) rowItem.copy(items = patched) else rowItem
                 } else rowItem
             }
 
             val updatedHeroRow = current.heroRow?.let { hero ->
                 val patched = hero.items.map { overwriteMeta(it) }
-                if (rowsChanged) hero.copy(items = patched) else hero
+                if (patched.zip(hero.items).any { (n, o) -> n !== o }) hero.copy(items = patched) else hero
             }
 
             // Always store enriched preview in enrichedMeta so continue watching

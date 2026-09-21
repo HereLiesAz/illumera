@@ -94,8 +94,13 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
             when (result) {
                 is DebridResult.Success -> when (val data = result.value.unwrap()) {
                     is DebridResult.Success -> {
-                        val url = data.value.asString
-                        if (url != null) return DebridResult.Success(url)
+                        val element = data.value
+                        if (!element.isJsonPrimitive) {
+                            lastFailure = DebridResult.Failure("Unexpected response format")
+                        } else {
+                            val url = element.asString
+                            if (url != null) return DebridResult.Success(url)
+                        }
                     }
                     is DebridResult.Failure -> lastFailure = data
                 }

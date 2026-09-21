@@ -160,6 +160,10 @@ class DebridManager @Inject constructor(
 
     suspend fun getStreamUrl(item: DebridItem): DebridResult<String> {
         val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
+        val connected = _connectedProvider.value
+        if (item.provider != connected) {
+            return DebridResult.Failure("Stream provider ${item.provider} does not match connected provider")
+        }
         return serviceFor(item.provider).getStreamUrl(apiKey, item)
     }
 

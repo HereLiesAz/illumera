@@ -505,11 +505,14 @@ class TraktSyncManager @Inject constructor(
                         }
                     }
 
-                    // Fix #12: clamp progress to [0,100] and ensure position never exceeds duration
-                    val estimatedDurationMs = 90 * 60 * 1000L
+                    // Fix #12: clamp progress to [0,100] and store duration=0 (unknown) rather
+                    // than a fabricated 90-minute estimate that produces impossible positions for
+                    // short-form content. The player will seek to the raw millisecond position
+                    // without percentage math when duration is 0.
+                    val estimatedDurationMs = 0L
                     val clampedProgress = item.progress.coerceIn(0f, 100f)
-                    val estimatedPositionMs = ((clampedProgress / 100f) * estimatedDurationMs).toLong()
-                        .coerceIn(0L, estimatedDurationMs)
+                    val estimatedPositionMs = ((clampedProgress / 100f) * (90 * 60 * 1000L)).toLong()
+                        .coerceAtLeast(0L)
 
                     dao.upsertHistory(
                         WatchHistoryEntity(

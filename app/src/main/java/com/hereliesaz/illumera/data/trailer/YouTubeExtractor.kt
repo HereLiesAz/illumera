@@ -403,7 +403,7 @@ class YouTubeExtractor @Inject constructor() {
 
     private fun isUrlReachable(url: String) = runCatching {
         val request = Request.Builder().url(url).get().header("Range", "bytes=0-0").headers(buildHeaders(DEFAULT_HEADERS)).build()
-        probeClient.newCall(request).execute().use { it.code == 200 }
+        probeClient.newCall(request).execute().use { it.code == 200 || it.code == 206 }
     }.getOrDefault(false)
 
     private fun absolutizeUrl(baseUrl: String, maybeRelative: String) =

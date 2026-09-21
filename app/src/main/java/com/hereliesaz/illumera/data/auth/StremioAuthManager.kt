@@ -14,6 +14,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -98,12 +99,20 @@ class StremioAuthManager @Inject constructor(
         File(prefsDir, "${PREFS_FILE}_fallback.xml.bak").delete()
     }
 
+    // Reused scope for fire-and-forget background work (e.g. best-effort logout).
+    private val managerScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private val _connectionState = MutableStateFlow<StremioConnectionState>(StremioConnectionState.Disconnected)
     val connectionState: StateFlow<StremioConnectionState> = _connectionState.asStateFlow()
 
     init {
         clearLegacyFallbackPrefs()
-        refreshConnectionState()
+        // refreshConnectionState() is intentionally NOT called here to avoid forcing
+        // EncryptedSharedPreferences initialisation (disk I/O + crypto) on the
+        // constructing thread, which may be the main thread during Application.onCreate.
+        // Callers must invoke refreshConnectionState() on a background dispatcher, or
+        // rely on the first access to encryptedPrefs triggering the lazy initialiser
+        // off-main-thread (e.g. from a suspend function dispatched on Dispatchers.IO).
     }
 
     /**
@@ -429,7 +438,9 @@ class StremioAuthManager @Inject constructor(
         _connectionState.value = StremioConnectionState.Disconnected
 
         if (authKey != null) {
-            CoroutineScope(Dispatchers.IO).launch {
+            // Best-effort server-side invalidation. Uses the class-owned scope so this
+            // coroutine is not an untracked orphan.
+            managerScope.launch {
                 stremioAuthService.logout(authKey)
             }
         }

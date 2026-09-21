@@ -52,7 +52,7 @@ class PlayerViewModel @Inject constructor(
                 flowOf(DEFAULT_WATCHED_THRESHOLD)
             } else {
                 dao.getProfileFlow(profileId).map { profile ->
-                    profile.watchedThreshold.coerceIn(50, 99) / 100.0
+                    (profile?.watchedThreshold ?: 85).coerceIn(50, 99) / 100.0
                 }
             }
         }

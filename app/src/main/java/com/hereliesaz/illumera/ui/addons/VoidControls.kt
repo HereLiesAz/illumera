@@ -97,7 +97,7 @@ fun VoidButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    @Suppress("UNUSED_PARAMETER") isPrimary: Boolean = false,
+    isPrimary: Boolean = false,
     isDestructive: Boolean = false,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null
@@ -107,14 +107,20 @@ fun VoidButton(
     val scale by animateFloatAsState(if (isFocused && enabled) 1.05f else 1f, label = "VoidButtonScale")
 
     val activeColor = if (isDestructive) Color.Red else MaterialTheme.colorScheme.primary
-    val bgColor = if (!enabled) Color.White.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.08f)
+    val bgColor = when {
+        !enabled -> Color.White.copy(alpha = 0.05f)
+        isPrimary -> activeColor.copy(alpha = 0.25f)
+        else -> Color.White.copy(alpha = 0.08f)
+    }
     val textColor = when {
         !enabled -> Color.White.copy(alpha = 0.3f)
+        isPrimary -> activeColor
         isFocused -> activeColor
         else -> Color.White
     }
     val borderColor = when {
         !enabled -> Color.White.copy(alpha = 0.1f)
+        isPrimary -> activeColor.copy(alpha = 0.6f)
         isFocused -> activeColor
         else -> Color.White.copy(alpha = 0.2f)
     }

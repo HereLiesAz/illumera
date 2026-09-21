@@ -117,7 +117,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 import java.util.Locale
 import javax.inject.Inject
@@ -930,10 +930,8 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val splashEnabledInProfile = profileConfigurationManager.getLastActiveProfileId()?.let { id ->
-            runBlocking(Dispatchers.IO) { addonDao.getProfileById(id) }
-        }?.splashEnabled ?: true
-        val showSplash = splashEnabledInProfile && safeState?.getBoolean(KEY_SPLASH_SHOWN) != true
+        // Default to showing splash; profile's splashEnabled setting is checked async below
+        val showSplash = safeState?.getBoolean(KEY_SPLASH_SHOWN) != true
         if (!showSplash) _splashFinished.value = true
 
         setContent {
@@ -2750,6 +2748,15 @@ class MainActivity : ComponentActivity() {
         // Attach native splash overlay on top of Compose content — renders immediately
         if (showSplash) {
             attachSplashOverlay()
+            // Async: dismiss splash immediately if the active profile has it disabled
+            lifecycleScope.launch {
+                val splashEnabledInProfile = profileConfigurationManager.getLastActiveProfileId()?.let { id ->
+                    withContext(Dispatchers.IO) { addonDao.getProfileById(id) }
+                }?.splashEnabled ?: true
+                if (!splashEnabledInProfile) {
+                    dismissSplash()
+                }
+            }
         }
     }
 

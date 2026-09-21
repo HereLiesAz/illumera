@@ -495,6 +495,7 @@ class HubBulkUploadServer(
     private fun handleImageUpload(session: IHTTPSession): Response {
         try {
             val id = session.parms["id"] ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
+            if (items.none { it.configUniqueId == id }) return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unknown item id")
 
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
@@ -521,7 +522,9 @@ class HubBulkUploadServer(
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Invalid image format")
                 }
 
-                uploadedPreviews[id] = base64Image
+                if (uploadedPreviews.containsKey(id) || uploadedPreviews.size < items.size) {
+                    uploadedPreviews[id] = base64Image
+                }
                 deletedIds.remove(id)
                 onImageReceived(id, imageBytes)
                 return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
@@ -541,7 +544,12 @@ class HubBulkUploadServer(
         // JPEG
         if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) return true
         // WebP
-        if (bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte()) return true
+        if (bytes.size >= 12 &&
+            bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&  // RI
+            bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&  // FF
+            bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() &&  // WE
+            bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte()   // BP
+        ) return true
         return false
     }
 
@@ -557,6 +565,7 @@ class HubBulkUploadServer(
 
             val id = session.parms["id"]
                 ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
+            if (items.none { it.configUniqueId == id }) return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unknown item id")
             uploadedPreviews.remove(id)
             deletedIds.add(id)
             onImageDeleted?.invoke(id)
@@ -570,7 +579,7 @@ class HubBulkUploadServer(
     private fun servePreview(session: IHTTPSession): Response {
         val id = session.parms["id"]
             ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
-        val base64 = uploadedPreviews[id]
+        val base64 = uploadedPreviews.remove(id)
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "No preview")
         val bytes = Base64.decode(base64, Base64.DEFAULT)
         val stream = java.io.ByteArrayInputStream(bytes)

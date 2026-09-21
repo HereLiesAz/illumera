@@ -181,7 +181,10 @@ class StremioLibrarySyncManager @Inject constructor(
         val existing = dao.getHistoryItem(localId)
         if (existing != null && existing.lastWatched >= mtimeMs) return
 
-        val duration = item.state.duration.coerceAtLeast(item.state.timeOffset).coerceAtLeast(1L)
+        // Store duration as-is (including 0). Divide-by-zero protection belongs in the
+        // display/progress layer, not here — removing the 1L floor avoids corrupting items
+        // that genuinely have no duration recorded.
+        val duration = item.state.duration.coerceAtLeast(item.state.timeOffset)
         dao.upsertHistory(
             WatchHistoryEntity(
                 id = localId,
@@ -227,9 +230,12 @@ class StremioLibrarySyncManager @Inject constructor(
     }.getOrDefault(emptyMap())
 
     private fun saveLocalSnapshot(profileId: Int, items: List<StremioLibraryItem>) {
-        prefs.edit()
+        val success = prefs.edit()
             .putString("$KEY_LOCAL_SNAPSHOT_PREFIX$profileId", gson.toJson(items))
-            .apply()
+            .commit()
+        if (!success) {
+            Log.e(TAG, "saveLocalSnapshot: commit() failed for profile $profileId — snapshot may be stale")
+        }
     }
 
     private fun parseSeriesId(id: String): String? {

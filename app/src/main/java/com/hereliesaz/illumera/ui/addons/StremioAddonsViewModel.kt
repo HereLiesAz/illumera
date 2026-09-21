@@ -142,15 +142,8 @@ class StremioAddonsViewModel @Inject constructor(
                     )
                 }
             } catch (ce: CancellationException) {
-                if (ce.message?.startsWith("Active profile changed") == true) {
-                    _uiState.value = StremioAddonsUiState(
-                        isSyncing = false,
-                        message = "Addon sync stopped because the active profile changed.",
-                        error = "Profile changed during addon sync."
-                    )
-                } else {
-                    throw ce
-                }
+                _uiState.value = StremioAddonsUiState(isSyncing = false)
+                throw ce
             } catch (error: Exception) {
                 _uiState.value = StremioAddonsUiState(
                     isSyncing = false,

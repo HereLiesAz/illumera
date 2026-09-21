@@ -20,6 +20,10 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
 import kotlinx.coroutines.flow.Flow
 import androidx.room.Delete
 
+/** Escapes `%`, `_`, and `\` in a LIKE operand so they are treated as literals. */
+fun escapeLikeParam(value: String): String =
+    value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 @Dao
 interface AddonDao {
 
@@ -66,7 +70,7 @@ interface AddonDao {
     suspend fun getProfileById(id: Int): ProfileEntity?
 
     @Query("SELECT * FROM profiles WHERE id = :id")
-    fun getProfileFlow(id: Int): Flow<ProfileEntity>
+    fun getProfileFlow(id: Int): Flow<ProfileEntity?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProfile(profile: ProfileEntity): Long
@@ -128,27 +132,72 @@ interface AddonDao {
     @Query("SELECT * FROM watch_history WHERE id = :id")
     suspend fun getHistoryItem(id: String): WatchHistoryEntity?
 
-    @Query("SELECT * FROM watch_history WHERE id LIKE :prefix || '%'")
-    suspend fun getHistoryItemsByPrefix(prefix: String): List<WatchHistoryEntity>
+    /**
+     * Returns history items whose id starts with [prefix].
+     * The SQL appends `%` itself — callers must NOT append `%` to [prefix].
+     * Special LIKE characters (`%`, `_`, `\`) in [prefix] are escaped automatically
+     * by the default method; call [getHistoryItemsByPrefixRaw] only with a pre-escaped value.
+     */
+    @Query("SELECT * FROM watch_history WHERE id LIKE :escapedPrefix || '%' ESCAPE '\\'")
+    suspend fun getHistoryItemsByPrefixRaw(escapedPrefix: String): List<WatchHistoryEntity>
 
-    @Query("SELECT * FROM watch_history WHERE type = 'series' AND (seriesId = :seriesId OR id LIKE :episodePrefix)")
-    suspend fun getHistoryItemsForSeries(seriesId: String, episodePrefix: String): List<WatchHistoryEntity>
+    suspend fun getHistoryItemsByPrefix(prefix: String): List<WatchHistoryEntity> =
+        getHistoryItemsByPrefixRaw(escapeLikeParam(prefix))
 
+    /**
+     * Returns all history items for a series.
+     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
+     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
+     * The query uses `ESCAPE '\'`.
+     */
+    @Query("SELECT * FROM watch_history WHERE type = 'series' AND (seriesId = :seriesId OR id LIKE :episodePrefix ESCAPE '\\')")
+    suspend fun getHistoryItemsForSeriesRaw(seriesId: String, episodePrefix: String): List<WatchHistoryEntity>
+
+    suspend fun getHistoryItemsForSeries(seriesId: String, episodePrefix: String): List<WatchHistoryEntity> =
+        getHistoryItemsForSeriesRaw(seriesId, escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
+
+    /**
+     * Returns the most-recently-watched episode history for the given series.
+     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
+     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
+     * The query uses `ESCAPE '\'`.
+     */
     @Query(
         "SELECT * FROM watch_history " +
-            "WHERE type = 'series' AND id LIKE :episodePrefix " +
+            "WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\' " +
             "ORDER BY lastWatched DESC LIMIT 1"
     )
-    suspend fun getLatestSeriesEpisodeHistory(episodePrefix: String): WatchHistoryEntity?
+    suspend fun getLatestSeriesEpisodeHistoryRaw(episodePrefix: String): WatchHistoryEntity?
+
+    suspend fun getLatestSeriesEpisodeHistory(episodePrefix: String): WatchHistoryEntity? =
+        getLatestSeriesEpisodeHistoryRaw(escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
 
     @Query("DELETE FROM watch_history WHERE id = :id")
     suspend fun deleteHistoryItem(id: String)
 
-    @Query("SELECT * FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ORDER BY lastWatched DESC")
-    suspend fun getSeriesEpisodeHistory(episodePrefix: String): List<WatchHistoryEntity>
+    /**
+     * Returns episode history for a series, newest first.
+     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
+     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
+     * The query uses `ESCAPE '\'`.
+     */
+    @Query("SELECT * FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\' ORDER BY lastWatched DESC")
+    suspend fun getSeriesEpisodeHistoryRaw(episodePrefix: String): List<WatchHistoryEntity>
 
-    @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix")
-    suspend fun deleteSeriesHistory(episodePrefix: String)
+    suspend fun getSeriesEpisodeHistory(episodePrefix: String): List<WatchHistoryEntity> =
+        getSeriesEpisodeHistoryRaw(escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
+
+    /**
+     * Deletes all episode history rows for a series.
+     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
+     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
+     * The query uses `ESCAPE '\'`.
+     */
+    @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\'")
+    suspend fun deleteSeriesHistoryRaw(episodePrefix: String)
+
+    suspend fun deleteSeriesHistory(episodePrefix: String) =
+        deleteSeriesHistoryRaw(escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
 
     @Query("SELECT * FROM themes")
     fun getAllThemes(): Flow<List<ThemeEntity>>
@@ -161,6 +210,9 @@ interface AddonDao {
 
     @Delete
     suspend fun deleteTheme(theme: ThemeEntity)
+
+    @Query("UPDATE profiles SET themeId = :defaultThemeId WHERE themeId = :deletedThemeId")
+    suspend fun resetThemeForProfiles(deletedThemeId: String, defaultThemeId: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHubRow(row: HubRowEntity)
@@ -195,11 +247,23 @@ interface AddonDao {
     // configUniqueId is "<transportUrl>/<type>/<id>" (see CatalogConfigEntity.uniqueId) —
     // deleting an addon must also drop any custom Hub row tile built from one of its
     // catalogs, or the tile is left permanently dead with nothing to render.
-    @Query("DELETE FROM hub_row_items WHERE configUniqueId LIKE :transportUrl || '/%'")
-    suspend fun deleteHubRowItemsForAddon(transportUrl: String)
+    // [escapedTransportUrl] must have `%`, `_`, `\` escaped (via [escapeLikeParam]) by the
+    // caller before being passed here; the query appends `/%` and uses `ESCAPE '\'`.
+    @Query("DELETE FROM hub_row_items WHERE configUniqueId LIKE :escapedTransportUrl || '/%' ESCAPE '\\'")
+    suspend fun deleteHubRowItemsForAddon(escapedTransportUrl: String)
 
     @Query("DELETE FROM hub_rows")
     suspend fun clearHubRows()
+
+    // Deleting an addon must atomically remove its catalog configs and hub row tiles
+    // alongside the addon row itself — partial deletion would leave dead catalog configs
+    // or orphaned hub tiles with no way to render them.
+    @Transaction
+    suspend fun deleteAddonCascading(transportUrl: String) {
+        deleteCatalogConfigs(transportUrl)
+        deleteHubRowItemsForAddon(escapeLikeParam(transportUrl))
+        deleteAddonByUrl(transportUrl)
+    }
 
     @Transaction
     suspend fun deleteHubRowWithItems(hubRowId: String) {

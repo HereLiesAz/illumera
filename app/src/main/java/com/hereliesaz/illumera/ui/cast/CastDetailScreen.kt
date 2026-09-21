@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -91,11 +92,19 @@ fun CastDetailScreen(
                 )
             }
             is CastDetailState.Error -> {
-                Text(
-                    text = state.message,
-                    color = textColor.copy(alpha = 0.7f),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.align(Alignment.Center)
-                )
+                ) {
+                    Text(
+                        text = state.message,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.retry() }) {
+                        Text("Retry")
+                    }
+                }
             }
             is CastDetailState.Success -> {
                 val restoreFocusRequester = remember { FocusRequester() }
