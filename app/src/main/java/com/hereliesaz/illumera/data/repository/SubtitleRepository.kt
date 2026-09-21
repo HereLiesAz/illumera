@@ -57,7 +57,9 @@ class SubtitleRepository @Inject constructor(
         playbackId: String,
         videoHash: String? = null,
         videoSize: Long? = null,
-        filename: String? = null
+        filename: String? = null,
+        preferredAddonBaseUrl: String? = null,
+        preferredAddonRequestId: String? = null
     ): List<AddonSubtitle> = withContext(Dispatchers.IO) {
         val request = buildSubtitleRequest(type, playbackId)
         val addons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled } ?: emptyList()
@@ -73,7 +75,9 @@ class SubtitleRepository @Inject constructor(
                     request = request,
                     videoHash = videoHash,
                     videoSize = videoSize,
-                    filename = filename
+                    filename = filename,
+                    preferredAddonBaseUrl = preferredAddonBaseUrl,
+                    preferredAddonRequestId = preferredAddonRequestId
                 )
             }
         }
@@ -112,7 +116,9 @@ class SubtitleRepository @Inject constructor(
                     playbackId = playbackId,
                     videoHash = videoHash,
                     videoSize = videoSize,
-                    filename = filename
+                    filename = filename,
+                    preferredAddonBaseUrl = stream.addonTransportUrl,
+                    preferredAddonRequestId = stream.addonRequestId
                 )
             }.orEmpty()
 
@@ -125,7 +131,14 @@ class SubtitleRepository @Inject constructor(
         // source-aware variants concurrently so correctness does not double the latency.
         return coroutineScope {
             val genericDeferred = async {
-                requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
+                requestOrNull {
+                    getSubtitles(
+                        type = type,
+                        playbackId = playbackId,
+                        preferredAddonBaseUrl = stream.addonTransportUrl,
+                        preferredAddonRequestId = stream.addonRequestId
+                    )
+                }.orEmpty()
             }
             val sourceAwareDeferred = async {
                 requestOrNull {
@@ -134,7 +147,9 @@ class SubtitleRepository @Inject constructor(
                         playbackId = playbackId,
                         videoHash = videoHash,
                         videoSize = videoSize,
-                        filename = filename
+                        filename = filename,
+                        preferredAddonBaseUrl = stream.addonTransportUrl,
+                        preferredAddonRequestId = stream.addonRequestId
                     )
                 }.orEmpty()
             }
@@ -279,11 +294,19 @@ class SubtitleRepository @Inject constructor(
         request: SubtitleRequest,
         videoHash: String?,
         videoSize: Long?,
-        filename: String?
+        filename: String?,
+        preferredAddonBaseUrl: String? = null,
+        preferredAddonRequestId: String? = null
     ): List<AddonSubtitle> {
         val baseUrl = addon.transportUrl.trimEnd('/')
         val pathType = request.contentType
-        val pathId = request.requestId
+        val isPreferred = !preferredAddonBaseUrl.isNullOrBlank() &&
+            baseUrl == preferredAddonBaseUrl.trimEnd('/')
+        val pathId = if (isPreferred && !preferredAddonRequestId.isNullOrBlank()) {
+            preferredAddonRequestId
+        } else {
+            request.requestId
+        }
         val extraParams = buildExtraParams(videoHash, videoSize, filename)
         val subtitleUrl = if (extraParams.isNotEmpty()) {
             "$baseUrl/subtitles/$pathType/$pathId/$extraParams.json"
