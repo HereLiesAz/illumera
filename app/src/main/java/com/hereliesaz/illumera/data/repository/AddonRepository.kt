@@ -247,15 +247,36 @@ class AddonRepository @Inject constructor(
             }
     }
 
-    suspend fun getStreams(type: String, id: String): List<Stream> = withContext(Dispatchers.IO) {
+    suspend fun getStreams(
+        type: String,
+        id: String,
+        preferredAddonBaseUrl: String? = null,
+        preferredAddonRequestId: String? = null
+    ): List<Stream> = withContext(Dispatchers.IO) {
         val addons = dao.getAllAddons().firstOrNull()
             ?.filter { it.isEnabled && it.supportsStream }
             ?: emptyList()
+        val preferredBase = preferredAddonBaseUrl?.trimEnd('/')
 
         val jobs = addons.map { addon ->
             async {
+                val addonBase = addon.transportUrl.trimEnd('/')
+                val isPreferred = preferredBase != null && addonBase == preferredBase
+                val requestId = if (isPreferred && !preferredAddonRequestId.isNullOrBlank()) {
+                    preferredAddonRequestId
+                } else {
+                    id
+                }
+
+                // The origin addon is authoritative for its own catalog/meta IDs. For all
+                // other addons, honor manifest idPrefixes so a tmdb:/kitsu:/custom ID is
+                // not blindly sent to an IMDb-only stream endpoint.
+                if (!isPreferred && !addon.supportsIdPrefix(requestId)) {
+                    return@async emptyList()
+                }
+
                 try {
-                    val url = "${addon.transportUrl}/stream/$type/$id.json"
+                    val url = "$addonBase/stream/$type/$requestId.json"
                     val response = withTimeout(STREAM_TIMEOUT_MS) { api.getStreams(url) }
                     val sourceLabel = addon.nickname ?: addon.name
                     response.streams.orEmpty().map { stream ->
@@ -263,10 +284,16 @@ class AddonRepository @Inject constructor(
                             addonTransportUrl = addon.transportUrl,
                             addonDisplayName = sourceLabel,
                             addonRequestType = type,
-                            addonRequestId = id
+                            addonRequestId = requestId
                         )
                     }
-                } catch (e: Exception) { emptyList<Stream>() }
+                } catch (_: TimeoutCancellationException) {
+                    emptyList()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    emptyList()
+                }
             }
         }
 
@@ -371,34 +398,40 @@ class AddonRepository @Inject constructor(
      * 2. Fall back to all meta addons with type-based priority ordering
      * 3. Last resort: Cinemeta for standard types
      */
+    suspend fun resolvePreferredMetaDetails(
+        type: String,
+        id: String,
+        preferredAddonBaseUrl: String
+    ): MetaItem? = withContext(Dispatchers.IO) {
+        val baseUrl = preferredAddonBaseUrl.trimEnd('/')
+        try {
+            val url = "$baseUrl/meta/$type/$id.json"
+            val meta = withTimeout(5_000L) { api.getMeta(url) }.meta.sanitize()
+            meta
+                ?.takeIf { it.id.isNotBlank() && it.name.isNotBlank() }
+                ?.copy(addonBaseUrl = baseUrl)
+        } catch (_: TimeoutCancellationException) {
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun resolveMetaDetails(
         type: String,
         id: String,
         preferredAddonBaseUrl: String? = null
     ): MetaItem? = withContext(Dispatchers.IO) {
         val allAddons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled } ?: emptyList()
-        val preferredTimeout = 5_000L
-
         // 1) Try preferred addon first (the addon the catalog item came from).
         // Don't check supportsMeta flag — it may be stale from older DB migrations.
         // If the addon can't serve meta, the request fails fast and we fall through.
         if (!preferredAddonBaseUrl.isNullOrBlank()) {
-            try {
-                val url = "${preferredAddonBaseUrl.trimEnd('/')}/meta/$type/$id.json"
-                val meta = withTimeout(preferredTimeout) { api.getMeta(url) }.meta.sanitize()
-                if (meta != null && meta.id.isNotBlank() && meta.name.isNotBlank()) {
-                    // The catalog item already identifies this addon as its origin. Some
-                    // addons normalize IDs between catalog and meta responses (for example
-                    // tmdb:* -> tt*). Treat that response as authoritative for the preferred
-                    // addon instead of rejecting valid details solely because the ID changed.
-                    return@withContext meta.copy(addonBaseUrl = preferredAddonBaseUrl.trimEnd('/'))
-                }
-            } catch (_: TimeoutCancellationException) {
-                // This attempt exceeded its own budget; continue to configured fallbacks.
-            } catch (cancelled: CancellationException) {
-                // Parent/job cancellation is control flow and must still abort resolution.
-                throw cancelled
-            } catch (_: Exception) { /* try fallback */ }
+            resolvePreferredMetaDetails(type, id, preferredAddonBaseUrl)?.let {
+                return@withContext it
+            }
         }
 
         // 2) Priority-based fallback across all meta addons
@@ -467,6 +500,20 @@ class AddonRepository @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) { null }
+    }
+
+    private fun AddonEntity.supportsIdPrefix(id: String): Boolean {
+        val prefixes: List<String> = try {
+            gson.fromJson(idPrefixesJson, Array<String>::class.java)?.toList() ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (prefixes.isEmpty()) return true
+        val normalizedId = id.lowercase()
+        return prefixes.any { prefix ->
+            val normalizedPrefix = prefix.trim().lowercase()
+            normalizedPrefix.isNotEmpty() && normalizedId.startsWith(normalizedPrefix)
+        }
     }
 
     private fun AddonEntity.supportsMetaType(type: String): Boolean {
