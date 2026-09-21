@@ -5,7 +5,6 @@ import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
 import com.hereliesaz.illumera.data.model.stremio.StreamProxyHeaders
 import com.hereliesaz.illumera.data.model.stremio.StreamSubtitle
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlayerSourceOptionTest {
@@ -47,10 +46,17 @@ class PlayerSourceOptionTest {
             addonStream = original
         ).toSourceUiStream()
 
-        // The UI selection id is app metadata; every addon field remains untouched.
+        // The UI selection id and resolved playable URL are app metadata; every
+        // protocol field from the original addon stream remains intact.
         assertEquals("selection-id", projected.sourceSelectionId)
-        assertEquals(original.copy(sourceSelectionId = "selection-id"), projected)
-        assertNull(projected.url)
+        assertEquals(
+            original.copy(
+                url = "magnet:?xt=urn:btih:deadbeef",
+                sourceSelectionId = "selection-id"
+            ),
+            projected
+        )
+        assertEquals("magnet:?xt=urn:btih:deadbeef", projected.url)
         assertEquals("deadbeef", projected.infoHash)
         assertEquals(4, projected.fileIdx)
         assertEquals(original.sources, projected.sources)
