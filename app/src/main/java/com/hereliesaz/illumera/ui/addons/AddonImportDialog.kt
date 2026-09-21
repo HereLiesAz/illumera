@@ -134,9 +134,11 @@ fun AddonImportDialog(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
+                    val firstUninstalledIndex = addonItems.indexOfFirst { !it.isAlreadyInstalled }
+                    val lastUninstalledIndex = addonItems.indexOfLast { !it.isAlreadyInstalled }
                     itemsIndexed(addonItems) { index, addon ->
-                        val isFirstSelectable = index == addonItems.indexOfFirst { !it.isAlreadyInstalled }
-                        val isLastSelectable = index == addonItems.indexOfLast { !it.isAlreadyInstalled }
+                        val isFirstSelectable = index == firstUninstalledIndex
+                        val isLastSelectable = index == lastUninstalledIndex
 
                         AddonImportRow(
                             addon = addon,

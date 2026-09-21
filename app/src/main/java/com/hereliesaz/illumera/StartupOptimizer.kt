@@ -29,16 +29,15 @@ class StartupOptimizer @Inject constructor(
         private const val WARMUP_DECODE_COUNT = 3
     }
     
-    private var isWarmedUp = false
+    private val isWarmedUp = java.util.concurrent.atomic.AtomicBoolean(false)
     private val warmupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
+
     /**
      * Call this early in app startup (onCreate or during splash/profile screen)
      * Warms up image decoding pipeline without blocking UI
      */
     fun warmup() {
-        if (isWarmedUp) return
-        isWarmedUp = true
+        if (!isWarmedUp.compareAndSet(false, true)) return
         
         warmupScope.launch {
             try {

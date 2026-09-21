@@ -77,9 +77,10 @@ class ThemeManager @Inject constructor(
      */
     fun selectTheme(profileId: Int, themeId: String) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
+            val currentId = _currentProfileId.value  // capture before the DB call
             profileMutationCoordinator.update(profileId) { it.copy(themeId = themeId) }
             // Update current theme if this is the active profile
-            if (_currentProfileId.value == profileId) {
+            if (currentId == profileId) {
                 val theme = dao.getThemeById(themeId) ?: DefaultThemes.getById(themeId)
                 _currentTheme.value = theme
             }
@@ -146,6 +147,10 @@ class ThemeManager @Inject constructor(
             val theme = dao.getThemeById(themeId)
             if (theme != null && !theme.isBuiltIn) {
                 dao.deleteTheme(theme)
+                dao.resetThemeForProfiles(theme.id, DefaultThemes.ILLUMERA.id)
+                if (_currentTheme.value.id == theme.id) {
+                    _currentTheme.value = DefaultThemes.ILLUMERA
+                }
             }
         }
     }

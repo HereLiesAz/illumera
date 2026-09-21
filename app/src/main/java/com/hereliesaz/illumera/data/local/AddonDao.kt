@@ -211,6 +211,9 @@ interface AddonDao {
     @Delete
     suspend fun deleteTheme(theme: ThemeEntity)
 
+    @Query("UPDATE profiles SET themeId = :defaultThemeId WHERE themeId = :deletedThemeId")
+    suspend fun resetThemeForProfiles(deletedThemeId: String, defaultThemeId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHubRow(row: HubRowEntity)
 

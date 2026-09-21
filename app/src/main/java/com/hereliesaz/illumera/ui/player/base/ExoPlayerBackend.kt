@@ -230,7 +230,7 @@ class ExoPlayerBackend(
         subtitleFormatHintsByLabelLanguage.clear()
         subtitleFormatHintsByLabel.clear()
     }
-    private val okHttpClient: OkHttpClient by lazy {
+    private val _okHttpClientLazy: Lazy<OkHttpClient> = lazy {
         OkHttpClient.Builder()
             .connectTimeout(8000, TimeUnit.MILLISECONDS)
             .readTimeout(8000, TimeUnit.MILLISECONDS)
@@ -240,7 +240,8 @@ class ExoPlayerBackend(
             .followSslRedirects(true)
             .build()
     }
-    private val torrentOkHttpClientLazy: OkHttpClient by lazy {
+    private val okHttpClient: OkHttpClient by _okHttpClientLazy
+    private val _torrentOkHttpClientLazy: Lazy<OkHttpClient> = lazy {
         OkHttpClient.Builder()
             .connectTimeout(8000, TimeUnit.MILLISECONDS)
             .readTimeout(120_000, TimeUnit.MILLISECONDS)
@@ -248,6 +249,7 @@ class ExoPlayerBackend(
             .retryOnConnectionFailure(true)
             .build()
     }
+    private val torrentOkHttpClientLazy: OkHttpClient by _torrentOkHttpClientLazy
     private var forcedSubtitleTrackId: String? = null
     private var ioAutoRetrySourceId: String? = null
     private var ioAutoRetryCountForCurrentSource: Int = 0
@@ -1013,8 +1015,8 @@ class ExoPlayerBackend(
         subtitleDelayUs.set(0L)
 
         listOf(
-            if (::okHttpClient.isInitialized) okHttpClient else null,
-            if (::torrentOkHttpClientLazy.isInitialized) torrentOkHttpClientLazy else null
+            if (_okHttpClientLazy.isInitialized()) _okHttpClientLazy.value else null,
+            if (_torrentOkHttpClientLazy.isInitialized()) _torrentOkHttpClientLazy.value else null
         ).filterNotNull().forEach { client ->
             Thread {
                 client.connectionPool.evictAll()
