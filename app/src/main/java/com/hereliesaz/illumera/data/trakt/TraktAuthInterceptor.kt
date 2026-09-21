@@ -1,7 +1,11 @@
 package com.hereliesaz.illumera.data.trakt
 
 import com.hereliesaz.illumera.BuildConfig
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Interceptor
 import okhttp3.Response
 import javax.inject.Inject
@@ -12,11 +16,15 @@ class TraktAuthInterceptor @Inject constructor(
     private val traktAuthManager: TraktAuthManager
 ) : Interceptor {
 
-    // Guards refreshAccessToken() so concurrent requests (this interceptor is a
-    // @Singleton shared across every call OkHttp dispatches) single-flight a
-    // refresh instead of racing: a thread that loses the lock re-checks the
-    // current token first and only calls the network refresh if it's still stale.
-    private val refreshLock = Any()
+    // Guards the token-state check so concurrent OkHttp threads single-flight a
+    // refresh. The Mutex is held only during the cheap check; the actual network
+    // call happens outside the lock so we don't block all Trakt API threads for
+    // the duration of a full HTTP round-trip.
+    private val refreshMutex = Mutex()
+
+    // In-flight refresh deferred — shared by all waiters so only one network
+    // call is outstanding at a time.
+    @Volatile private var refreshInFlight: Deferred<String?>? = null
 
     override fun intercept(chain: Interceptor.Chain): Response {
         var token = traktAuthManager.getAccessToken()
@@ -47,18 +55,35 @@ class TraktAuthInterceptor @Inject constructor(
     }
 
     /**
-     * Refreshes the Trakt access token, but only one caller performs the actual
-     * network refresh at a time. A caller that was blocked on the lock re-checks
-     * the token first: if another thread already refreshed past [staleToken]
-     * while it waited, it reuses that result instead of refreshing again.
+     * Refreshes the Trakt access token with minimal lock contention.
+     *
+     * The [refreshMutex] is held only for the cheap check-and-deferred-setup
+     * step, not for the network call itself, so other Trakt API threads are not
+     * stalled for the duration of the HTTP round-trip. A caller that finds
+     * [staleToken] already superseded reuses the new token without going to the
+     * network at all.
      */
-    private fun refreshTokenSynchronized(staleToken: String?): String? = synchronized(refreshLock) {
+    private fun refreshTokenSynchronized(staleToken: String?): String? = runBlocking {
+        // Fast path: check outside any lock first.
         val currentToken = traktAuthManager.getAccessToken()
-        if (currentToken != null && currentToken != staleToken) {
-            currentToken
-        } else {
-            runBlocking { traktAuthManager.refreshAccessToken() }
+        if (currentToken != null && currentToken != staleToken) return@runBlocking currentToken
+
+        // Acquire the mutex only long enough to either reuse an in-flight
+        // deferred or start a new one, then release before awaiting the result.
+        val deferred: Deferred<String?> = refreshMutex.withLock {
+            val recheck = traktAuthManager.getAccessToken()
+            if (recheck != null && recheck != staleToken) {
+                // Another coroutine already finished a refresh — return early.
+                return@runBlocking recheck
+            }
+            refreshInFlight?.takeIf { it.isActive } ?: run {
+                async { traktAuthManager.refreshAccessToken() }
+                    .also { refreshInFlight = it }
+            }
         }
+
+        // Await the network call outside the mutex.
+        deferred.await()
     }
 
     private fun buildRequest(original: okhttp3.Request, token: String?): okhttp3.Request {

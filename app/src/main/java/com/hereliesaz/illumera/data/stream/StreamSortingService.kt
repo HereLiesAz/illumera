@@ -32,8 +32,11 @@ class StreamSortingService @Inject constructor() {
         val preferredSizeBytes = if (preferredSizeMb > 0) preferredSizeMb.toLong() * 1_048_576L else 0L
         val skipSeedless = profile?.sourceSkipSeedless ?: false
 
+        // Pre-compute parsed info once per stream to avoid O(N log N × 3) parse calls.
+        val parsed = streams.associateBy({ it }, { StreamParser.parse(it) })
+
         return streams
-            .map { stream -> stream to StreamParser.parse(stream) }
+            .map { stream -> stream to (parsed[stream] ?: StreamParser.parse(stream)) }
             .filter { (_, info) -> info.quality in enabledQualities }
             .filter { (stream, _) ->
                 if (lowerPhrases.isEmpty()) return@filter true
@@ -59,7 +62,8 @@ class StreamSortingService @Inject constructor() {
                     sortBy = sortBy,
                     secondarySortBy = profile?.sourceSortSecondary,
                     preferredSizeBytes = preferredSizeBytes,
-                    minimumSeeds = minimumSeeds
+                    minimumSeeds = minimumSeeds,
+                    parsed = parsed
                 )
             )
     }
@@ -225,17 +229,18 @@ class StreamSortingService @Inject constructor() {
         sortBy: String,
         secondarySortBy: String?,
         preferredSizeBytes: Long,
-        minimumSeeds: Int
+        minimumSeeds: Int,
+        parsed: Map<Stream, ParsedStreamInfo>
     ): Comparator<Stream> {
         var comparator = compareBy<Stream> { stream ->
             if (preferredSizeBytes <= 0L) 0L
-            else StreamParser.parse(stream).sizeBytes?.let { abs(it - preferredSizeBytes) } ?: Long.MAX_VALUE / 4
+            else parsed[stream]?.sizeBytes?.let { abs(it - preferredSizeBytes) } ?: Long.MAX_VALUE / 4
         }
 
         comparator = comparator.thenBy { stream ->
             if (minimumSeeds <= 0) 0
             else {
-                val seeds = StreamParser.parse(stream).seeds
+                val seeds = parsed[stream]?.seeds
                 when {
                     // Unknown is not seedless; absence of a metric must not be treated as failure.
                     seeds == null -> 0
@@ -261,7 +266,7 @@ class StreamSortingService @Inject constructor() {
         }
 
         orderedKeys.forEach { key ->
-            comparator = comparator.then(sortComparatorFor(key))
+            comparator = comparator.then(sortComparatorFor(key, parsed))
         }
         return comparator
     }
@@ -275,21 +280,21 @@ class StreamSortingService @Inject constructor() {
         else -> "size"
     }
 
-    private fun sortComparatorFor(sort: String): Comparator<Stream> {
+    private fun sortComparatorFor(sort: String, parsed: Map<Stream, ParsedStreamInfo>): Comparator<Stream> {
         return when (sort) {
-            "quality" -> compareByDescending { StreamParser.parse(it).quality.sortOrder }
-            "size" -> compareByDescending { StreamParser.parse(it).sizeBytes ?: 0L }
+            "quality" -> compareByDescending { parsed[it]?.quality?.sortOrder }
+            "size" -> compareByDescending { parsed[it]?.sizeBytes ?: 0L }
             "seeds" -> compareByDescending<Stream> { stream ->
-                val seeds = StreamParser.parse(stream).seeds
+                val seeds = parsed[stream]?.seeds
                 when {
                     seeds == null -> 1
                     seeds > 0 -> 2
                     else -> 0
                 }
             }.thenByDescending { stream ->
-                StreamParser.parse(stream).seeds ?: Int.MIN_VALUE
+                parsed[stream]?.seeds ?: Int.MIN_VALUE
             }
-            else -> compareByDescending { StreamParser.parse(it).quality.sortOrder }
+            else -> compareByDescending { parsed[it]?.quality?.sortOrder }
         }
     }
 

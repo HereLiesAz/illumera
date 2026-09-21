@@ -81,7 +81,6 @@ fun RemotePasteDialog(
     }
 
     Dialog(onDismissRequest = {
-        serverManager.stopServer()
         onDismissRequest()
     }) {
         Box(

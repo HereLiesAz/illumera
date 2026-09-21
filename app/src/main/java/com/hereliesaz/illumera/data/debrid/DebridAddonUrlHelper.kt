@@ -67,6 +67,6 @@ object DebridAddonUrlHelper {
         } else {
             configSegments + newConfigSegment
         }
-        return "${uri.scheme}://${uri.host}/${(newSegments + MANIFEST_SUFFIX).joinToString("/")}"
+        return "${uri.scheme}://${uri.authority}/${(newSegments + MANIFEST_SUFFIX).joinToString("/")}"
     }
 }

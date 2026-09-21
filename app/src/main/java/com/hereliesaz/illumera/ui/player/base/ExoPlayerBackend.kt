@@ -230,7 +230,24 @@ class ExoPlayerBackend(
         subtitleFormatHintsByLabelLanguage.clear()
         subtitleFormatHintsByLabel.clear()
     }
-    private var okHttpClient: OkHttpClient? = null
+    private val okHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(8000, TimeUnit.MILLISECONDS)
+            .readTimeout(8000, TimeUnit.MILLISECONDS)
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+    }
+    private val torrentOkHttpClientLazy: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(8000, TimeUnit.MILLISECONDS)
+            .readTimeout(120_000, TimeUnit.MILLISECONDS)
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
+            .retryOnConnectionFailure(true)
+            .build()
+    }
     private var forcedSubtitleTrackId: String? = null
     private var ioAutoRetrySourceId: String? = null
     private var ioAutoRetryCountForCurrentSource: Int = 0
@@ -724,10 +741,11 @@ class ExoPlayerBackend(
         hasAppliedSubtitleLanguagePref = false
         currentSourceId = sourceId
 
-        subtitleVerticalOffsetPercent = 0
+        val persistedOffset = playbackSettings.subtitleOffset
+        subtitleVerticalOffsetPercent = persistedOffset
         lastCueGroup = null
-        _uiState.update { it.copy(subtitleVerticalOffsetPercent = 0) }
-        playerView?.let { applySubtitleOffset(it, 0) }
+        _uiState.update { it.copy(subtitleVerticalOffsetPercent = persistedOffset) }
+        playerView?.let { applySubtitleOffset(it, persistedOffset) }
 
         prepareSource(
             source = source,
@@ -994,14 +1012,15 @@ class ExoPlayerBackend(
         lastCueGroup = null
         subtitleDelayUs.set(0L)
 
-        listOfNotNull(okHttpClient, torrentOkHttpClient).forEach { client ->
+        listOf(
+            if (::okHttpClient.isInitialized) okHttpClient else null,
+            if (::torrentOkHttpClientLazy.isInitialized) torrentOkHttpClientLazy else null
+        ).filterNotNull().forEach { client ->
             Thread {
                 client.connectionPool.evictAll()
                 client.dispatcher.executorService.shutdown()
             }.start()
         }
-        okHttpClient = null
-        torrentOkHttpClient = null
 
         _audioTracks.value = emptyList()
         _subtitleTracks.value = emptyList()
@@ -1341,27 +1360,8 @@ class ExoPlayerBackend(
             }
     }
 
-    private var torrentOkHttpClient: OkHttpClient? = null
-
     private fun getOrCreateOkHttpClient(isLocalhost: Boolean = false): OkHttpClient {
-        if (isLocalhost) {
-            return torrentOkHttpClient ?: OkHttpClient.Builder()
-                .connectTimeout(8000, TimeUnit.MILLISECONDS)
-                .readTimeout(120_000, TimeUnit.MILLISECONDS)
-                .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
-                .retryOnConnectionFailure(true)
-                .build()
-                .also { torrentOkHttpClient = it }
-        }
-        return okHttpClient ?: OkHttpClient.Builder()
-            .connectTimeout(8000, TimeUnit.MILLISECONDS)
-            .readTimeout(8000, TimeUnit.MILLISECONDS)
-            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
-            .retryOnConnectionFailure(true)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .build()
-            .also { okHttpClient = it }
+        return if (isLocalhost) torrentOkHttpClientLazy else okHttpClient
     }
 
     private fun startProgressLoop() {
@@ -2109,7 +2109,7 @@ class ExoPlayerBackend(
             normalized.endsWith(".ass") || normalized.endsWith(".ssa") -> MimeTypes.TEXT_SSA
             normalized.endsWith(".ttml") || normalized.endsWith(".dfxp") -> MimeTypes.APPLICATION_TTML
             normalized.endsWith(".srt") -> MimeTypes.APPLICATION_SUBRIP
-            else -> MimeTypes.APPLICATION_SUBRIP
+            else -> null  // unknown extension, let ExoPlayer sniff
         }
     }
 

@@ -194,12 +194,13 @@ class StremioAuthService @Inject constructor() {
             .header("Content-Type", "application/json")
             .build()
 
-        val response = client.newCall(request).execute()
-        val responseBody = response.body?.string()
-        if (!response.isSuccessful || responseBody == null) {
-            throw StremioAuthError.NetworkError("Server returned ${response.code}")
+        return client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful || responseBody == null) {
+                throw StremioAuthError.NetworkError("Server returned ${response.code}")
+            }
+            JsonParser.parseString(responseBody).asJsonObject
         }
-        return JsonParser.parseString(responseBody).asJsonObject
     }
 
     /**
@@ -219,11 +220,12 @@ class StremioAuthService @Inject constructor() {
             .build()
 
         try {
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string()
+            val (responseBody, isSuccessful, code) = client.newCall(request).execute().use { response ->
+                Triple(response.body?.string(), response.isSuccessful, response.code)
+            }
 
-            if (!response.isSuccessful || responseBody == null) {
-                throw StremioAuthError.NetworkError("Server returned ${response.code}")
+            if (!isSuccessful || responseBody == null) {
+                throw StremioAuthError.NetworkError("Server returned $code")
             }
 
             val loginResponse = gson.fromJson(responseBody, StremioLoginResponse::class.java)
@@ -361,11 +363,12 @@ class StremioAuthService @Inject constructor() {
             .build()
         
         try {
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string()
-            
-            if (!response.isSuccessful || responseBody == null) {
-                throw StremioAuthError.NetworkError("Failed to fetch addons: ${response.code}")
+            val (responseBody, isSuccessful, code) = client.newCall(request).execute().use { response ->
+                Triple(response.body?.string(), response.isSuccessful, response.code)
+            }
+
+            if (!isSuccessful || responseBody == null) {
+                throw StremioAuthError.NetworkError("Failed to fetch addons: $code")
             }
             
             val collectionResponse = gson.fromJson(responseBody, StremioAddonCollectionResponse::class.java)
@@ -403,9 +406,10 @@ class StremioAuthService @Inject constructor() {
             delay(1000)
             try {
                 val request = Request.Builder().url("$FB_LOGIN_POLL_BASE/$state").get().build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string()
-                if (response.isSuccessful && body != null) {
+                val (body, isSuccessful) = client.newCall(request).execute().use { response ->
+                    response.body?.string() to response.isSuccessful
+                }
+                if (isSuccessful && body != null) {
                     val json = JsonParser.parseString(body).asJsonObject
                     val user = json.getAsJsonObject("user")
                     val email = user?.get("email")?.asString
@@ -612,10 +616,11 @@ class StremioAuthService @Inject constructor() {
         val url = if (transportUrl.endsWith("manifest.json")) transportUrl else "${transportUrl.trimEnd('/')}/manifest.json"
         val request = Request.Builder().url(url).get().build()
         try {
-            val response = client.newCall(request).execute()
-            val body = response.body?.string()
-            if (!response.isSuccessful || body == null) {
-                throw StremioAuthError.NetworkError("Failed to fetch manifest: ${response.code}")
+            val (body, isSuccessful, code) = client.newCall(request).execute().use { response ->
+                Triple(response.body?.string(), response.isSuccessful, response.code)
+            }
+            if (!isSuccessful || body == null) {
+                throw StremioAuthError.NetworkError("Failed to fetch manifest: $code")
             }
             JsonParser.parseString(body).asJsonObject
         } catch (e: StremioAuthError) {

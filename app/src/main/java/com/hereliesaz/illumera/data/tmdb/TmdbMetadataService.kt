@@ -10,8 +10,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.LinkedHashMap
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,11 +24,31 @@ class TmdbMetadataService @Inject constructor(
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
 
-    private val enrichmentCache = ConcurrentHashMap<String, TmdbEnrichment>()
-    private val episodeCache = ConcurrentHashMap<String, Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>()
-    private val personCache = ConcurrentHashMap<String, TmdbPersonDetail>()
-    private val recommendationsCache = ConcurrentHashMap<String, List<TmdbMetaPreview>>()
-    private val collectionCache = ConcurrentHashMap<String, List<TmdbMetaPreview>>()
+    private val enrichmentCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, TmdbEnrichment>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, TmdbEnrichment>) = size > 200
+        }
+    )
+    private val episodeCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>(128, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, Map<Pair<Int, Int>, TmdbEpisodeEnrichment>>) = size > 500
+        }
+    )
+    private val personCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, TmdbPersonDetail>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, TmdbPersonDetail>) = size > 100
+        }
+    )
+    private val recommendationsCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, List<TmdbMetaPreview>>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, List<TmdbMetaPreview>>) = size > 100
+        }
+    )
+    private val collectionCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, List<TmdbMetaPreview>>(32, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, List<TmdbMetaPreview>>) = size > 50
+        }
+    )
 
     /**
      * Fetch full metadata enrichment for a title: details, credits, images, age ratings — all in parallel.

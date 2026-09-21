@@ -28,7 +28,7 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
         RecentSearchEntity::class
     ],
     version = 52,
-    exportSchema = false
+    exportSchema = true // schema JSON written for migration validation; add room.schemaLocation to ksp args in app/build.gradle.kts
 )
 abstract class LumeraDatabase : RoomDatabase() {
     abstract fun addonDao(): AddonDao
