@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,7 +38,8 @@ class OffcloudService @Inject constructor(private val http: DebridHttp) : Debrid
                         val fileName = o.get("fileName")?.asString ?: "Unknown"
                         val server = o.get("server")?.asString
                         val directLink = if (server != null) {
-                            "https://$server.offcloud.com/cloud/download/$requestId/$fileName"
+                            val encodedFileName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
+                            "https://$server.offcloud.com/cloud/download/$requestId/$encodedFileName"
                         } else null
                         DebridItem(
                             id = requestId,

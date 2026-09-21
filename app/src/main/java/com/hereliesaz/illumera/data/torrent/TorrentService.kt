@@ -34,9 +34,15 @@ class TorrentService : Service() {
         private const val FAILURE_STOP_GRACE_MS = 5_000L
         // ~5MB: approximate buffer needed before ExoPlayer renders first frame
         private const val PRELOAD_TARGET_BYTES = 5_242_880f
-        var onStreamReady: ((String) -> Unit)? = null
-        var onStreamError: ((String) -> Unit)? = null
-        var onStreamProgress: ((TorrentProgress?) -> Unit)? = null
+        // NOTE: @Volatile ensures cross-thread visibility for reads/writes to each
+        // callback reference. There is still a TOCTOU race if a stream is switched
+        // while a prior stream's callbacks are mid-invocation (stream A's error handler
+        // may fire after stream B's callbacks are installed). For now, @Volatile is
+        // sufficient to prevent stale-cache reads; a lock or atomic reference swap
+        // would be needed to fully close the switching race.
+        @Volatile var onStreamReady: ((String) -> Unit)? = null
+        @Volatile var onStreamError: ((String) -> Unit)? = null
+        @Volatile var onStreamProgress: ((TorrentProgress?) -> Unit)? = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

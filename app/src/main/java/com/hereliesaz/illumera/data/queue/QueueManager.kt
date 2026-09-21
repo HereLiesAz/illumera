@@ -553,7 +553,7 @@ class QueueManager @Inject constructor(
                     .filter { !it.watched }
                     .filter {
                         (it.type == "movie" && current.preferences.includeMovies) ||
-                            (it.type == "series" && current.preferences.includeEpisodes)
+                            (it.type == "series" && (current.preferences.includeEpisodes || current.preferences.includeWholeShows))
                     }
                     .sortedByDescending { it.lastWatched }
                     .forEach { historyItem ->

@@ -176,6 +176,9 @@ class AppUpdateManager @Inject constructor(
     }
 
     private fun downloadApk(apkUrl: String): File {
+        // Capture once so a concurrent checkForUpdate() updating the @Volatile
+        // field mid-download does not affect checksum verification for this run.
+        val releaseBody = lastReleaseBody
         val request = Request.Builder().url(apkUrl).build()
         val response = okHttpClient.newCall(request).execute()
 
@@ -209,7 +212,7 @@ class AppUpdateManager @Inject constructor(
         }
 
         // Verify checksum if one was provided in the release notes
-        val expectedHash = extractSha256FromBody(lastReleaseBody)
+        val expectedHash = extractSha256FromBody(releaseBody)
         if (expectedHash != null) {
             val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
             if (!actualHash.equals(expectedHash, ignoreCase = true)) {

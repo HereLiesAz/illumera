@@ -60,9 +60,9 @@ class ProfileViewModel @Inject constructor(
     private var setupSocialLoginJob: Job? = null
 
     // WIZARD DATA
-    var tempName = ""
-    var tempAvatarRef = "avatar_1"
-    var tempThemeId = "illumera"
+    @Volatile var tempName = ""
+    @Volatile var tempAvatarRef = "avatar_1"
+    @Volatile var tempThemeId = "illumera"
 
     private var editingProfileId: Int? = null
 

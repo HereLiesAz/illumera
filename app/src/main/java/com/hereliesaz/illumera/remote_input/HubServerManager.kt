@@ -24,6 +24,7 @@ object HubServerManager {
     private const val PORT_START = 8085
     private const val PORT_END = 8095
 
+    @Synchronized
     fun startBulkServer(
         items: List<com.hereliesaz.illumera.data.model.HubRowItemEntity>,
         shape: HubShape,
@@ -61,6 +62,7 @@ object HubServerManager {
     /**
      * Stop the Hub upload server.
      */
+    @Synchronized
     fun stopServer() {
         server?.stop()
         server = null
