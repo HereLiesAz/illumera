@@ -87,6 +87,8 @@ private const val AUDIO_AUTO_RETRY_DELAY_MS = 1_200L
 private const val MAX_IO_AUTO_RETRIES_PER_SOURCE = 1
 private const val MAX_AUDIO_AUTO_RETRIES_PER_SOURCE = 3
 
+internal fun shouldAdvanceSourceForHttpStatus(responseCode: Int): Boolean = responseCode != 416
+
 class ExoPlayerBackend(
     private val appContext: Context,
     private val playbackSettings: PlaybackSettings = PlaybackSettings(),
@@ -332,6 +334,10 @@ class ExoPlayerBackend(
 
         override fun onPlayerError(error: PlaybackException) {
             if (retryFromStartAfter416(error)) return
+            // A non-2xx response means the current media URL itself was rejected. When
+            // ranked fallback is enabled, advance immediately instead of retrying the same
+            // protected/expired URL and showing ERROR_CODE_IO_BAD_HTTP_STATUS again.
+            if (tryNextSourceOnBadHttpStatus(error)) return
             if (attemptAutoRetryFromIoError(error)) return
             // Parsing errors near the end of a stream are common with some sources.
             // Treat them as playback completion instead of showing an error.
@@ -345,7 +351,7 @@ class ExoPlayerBackend(
             if (tryNextSourceOnParsingError(error)) return
             _uiState.update {
                 it.copy(
-                    errorMessage = error.errorCodeName.ifBlank { error.message ?: "Playback error" },
+                    errorMessage = playbackErrorMessage(error),
                     isBuffering = false
                 )
             }
@@ -1517,6 +1523,30 @@ class ExoPlayerBackend(
         return ratio >= 0.80
     }
 
+    private fun tryNextSourceOnBadHttpStatus(error: PlaybackException): Boolean {
+        val httpCause = findHttpResponseError(error) ?: return false
+        if (!shouldAdvanceSourceForHttpStatus(httpCause.responseCode)) return false
+        if (
+            _sourceListDisabled.value ||
+            loadRequest?.sourceAutoFallbackEnabled != true
+        ) return false
+
+        val sources = _sourceOptions.value
+        if (sources.size <= 1) return false
+
+        val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
+        if (currentIdx < 0) return false
+
+        val excluded = _excludedSourceIds.value
+        val nextSource = sources
+            .drop(currentIdx + 1)
+            .firstOrNull { it.id !in excluded }
+            ?: return false
+
+        selectSource(nextSource.id)
+        return true
+    }
+
     private fun tryNextSourceOnParsingError(error: PlaybackException): Boolean {
         val codeName = error.errorCodeName.uppercase(Locale.US)
         if (
@@ -1558,38 +1588,42 @@ class ExoPlayerBackend(
 
     private fun retryFromStartAfter416(error: PlaybackException): Boolean {
         if (hasRetriedCurrentSourceAfter416) return false
-        val httpCause = error.cause as? HttpDataSource.InvalidResponseCodeException ?: return false
+        val httpCause = findHttpResponseError(error) ?: return false
         if (httpCause.responseCode != 416) return false
 
-        hasRetriedCurrentSourceAfter416 = true
-        val player = exoPlayer ?: return false
         val sourceId = currentSourceId ?: return false
         val logicalSource = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return false
         val source = resolvedTorrentUrls[sourceId]?.let { logicalSource.copy(url = it) } ?: logicalSource
+        val shouldAutoPlay = exoPlayer?.playWhenReady ?: true
 
+        hasRetriedCurrentSourceAfter416 = true
+        pendingStartPositionMs = 0L
         _uiState.update { it.copy(errorMessage = null, isBuffering = true) }
 
-        runCatching {
-            val mediaItem = MediaItem.Builder()
-                .setUri(source.url)
-                .build()
-            val mediaSource = createMediaSource(source.url, mediaItem)
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaSource(mediaSource)
-            pendingStartPositionMs = 0L
-            player.seekTo(0L)
-            player.prepare()
-            player.playWhenReady = true
-        }.onFailure { e ->
-            _uiState.update {
-                it.copy(
-                    errorMessage = e.message ?: "Playback error",
-                    isBuffering = false
-                )
-            }
-        }
+        // Reuse the normal prepare path so request headers, subtitles, separate audio,
+        // extractor settings, and source provenance survive the 416 restart.
+        prepareSource(
+            source = source,
+            startPositionMs = 0L,
+            autoPlay = shouldAutoPlay,
+            resetSourceRetryBudget = false
+        )
         return true
+    }
+
+    private fun findHttpResponseError(error: Throwable): HttpDataSource.InvalidResponseCodeException? {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is HttpDataSource.InvalidResponseCodeException) return current
+            current = current.cause
+        }
+        return null
+    }
+
+    private fun playbackErrorMessage(error: PlaybackException): String {
+        val status = findHttpResponseError(error)?.responseCode
+        val code = error.errorCodeName.ifBlank { error.message ?: "Playback error" }
+        return if (status != null) "$code (HTTP $status)" else code
     }
 
     private fun scheduleAudioSwitchRecovery(player: ExoPlayer) {
