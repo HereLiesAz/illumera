@@ -133,6 +133,9 @@ class StreamParserTest {
 
         assertEquals("abc123", youtube.ytId)
         assertEquals("https://example.com/watch", external.externalUrl)
+    }
+
+    @Test
     fun illumeraStreamMetadataNeverLeaksIntoAddonJson() {
         val stream = Stream(
             url = "https://cdn.example/video",
