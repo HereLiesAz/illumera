@@ -197,9 +197,9 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
-    // Robolectric 4.16.1 requests bcprov 1.81. Keep the stable Robolectric
-    // release while resolving its test-only crypto provider to the patched line.
-    testImplementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
+    // Robolectric 4.16.1 requests bcprov 1.81. Pin to latest patched release.
+    testImplementation("org.bouncycastle:bcprov-jdk18on:1.86")
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("androidx.room:room-testing:2.8.4")
