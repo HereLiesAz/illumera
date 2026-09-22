@@ -3135,7 +3135,10 @@ private fun SubtitleMetaChip(
 }
 
 internal fun PlayerSourceOption.toSourceUiStream(): Stream =
-    addonStream?.copy(sourceSelectionId = id) ?: Stream(
+    addonStream?.copy(
+        url = url,
+        sourceSelectionId = id
+    ) ?: Stream(
         name = name,
         title = title ?: label,
         description = description,

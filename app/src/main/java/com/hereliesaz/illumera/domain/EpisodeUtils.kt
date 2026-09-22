@@ -1,22 +1,49 @@
 package com.hereliesaz.illumera.domain
 
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
+import java.net.URLEncoder
 
 /**
- * Tracking ID for watch history. Always uses seriesId:season:episode format
- * so that LIKE prefix queries ("seriesId:%") reliably find episode progress
- * regardless of what format the addon uses for episode.id.
+ * Stable tracking ID for watch history.
+ *
+ * Normal episodes retain the legacy seriesId:season:episode shape. If an addon
+ * exposes multiple distinct video variants for the same season/episode, append
+ * an encoded variant segment before the numeric suffix so each cut keeps its own
+ * progress while prefix queries and season/episode parsers remain compatible.
  */
-fun episodePlaybackId(seriesId: String, episode: MetaVideo): String {
+fun episodePlaybackId(
+    seriesId: String,
+    episode: MetaVideo,
+    siblings: List<MetaVideo>? = null
+): String {
+    val base = "$seriesId:${episode.season}:${episode.episode}"
+    val duplicateCount = siblings.orEmpty().count {
+        it.season == episode.season && it.episode == episode.episode
+    }
+    if (duplicateCount <= 1) return base
+
+    val variantSource = episode.id.trim().takeIf { it.isNotEmpty() }
+        ?: episode.title.trim().takeIf { it.isNotEmpty() }
+        ?: return base
+    val encodedVariant = URLEncoder.encode(variantSource, Charsets.UTF_8.name())
+        .replace("+", "%20")
+    return "$seriesId:variant=$encodedVariant:${episode.season}:${episode.episode}"
+}
+
+/**
+ * Canonical cross-addon stream ID. This is deliberately independent of the
+ * origin addon's private episode.id.
+ */
+fun canonicalEpisodeStreamId(seriesId: String, episode: MetaVideo): String {
     return "$seriesId:${episode.season}:${episode.episode}"
 }
 
 /**
- * Stream fetch ID. Uses the addon's original episode.id for stream endpoint
- * compatibility, falling back to the constructed format if episode.id is empty.
+ * Origin-addon stream fetch ID. Uses the addon's original episode.id for that
+ * addon's endpoint, falling back to the canonical constructed format.
  */
 fun episodeStreamId(seriesId: String, episode: MetaVideo): String {
-    return episode.id.ifBlank { "$seriesId:${episode.season}:${episode.episode}" }
+    return episode.id.ifBlank { canonicalEpisodeStreamId(seriesId, episode) }
 }
 
 fun episodeDisplayTitle(episode: MetaVideo): String {
@@ -51,7 +78,7 @@ fun findNextEpisode(
             .thenBy { it.episode }
     )
     var currentIndex = sorted.indexOfFirst {
-        episodePlaybackId(seriesId, it) == currentPlaybackId
+        episodePlaybackId(seriesId, it, episodes) == currentPlaybackId
     }
     // Fallback: match by season/episode numbers for old-format playback IDs
     if (currentIndex < 0) {
