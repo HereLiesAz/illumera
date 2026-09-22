@@ -1,0 +1,304 @@
+name: Build and Release APK + Play AAB
+
+# Builds a sideload-capable GitHub APK and a separate Google Play AAB.
+# The Play build omits REQUEST_INSTALL_PACKAGES and disables the self-updater;
+# Google Play owns updates for that distribution channel.
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "ci/README.md"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      STREMIO_MEDIA_REF: 95781597c8e3c30d6232e77bdadecc38ad35aa17
+      STREMIO_AAR_CACHE_VERSION: v2
+
+    steps:
+      - name: Checkout illumera
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: illumera
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require publishing credentials
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          KEYSTORE_RAW: ${{ secrets.KEYSTORE_RAW }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in PLAY_SERVICE_ACCOUNT_JSON KEYSTORE_RAW KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }
+          done
+
+      - name: Restore Stremio playback AAR cache
+        id: stremio-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: stremio-aars
+          key: stremio-media-${{ runner.os }}-${{ env.STREMIO_MEDIA_REF }}-${{ env.STREMIO_AAR_CACHE_VERSION }}
+
+      - name: Checkout Stremio Media3 fork
+        if: steps.stremio-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Stremio/media
+          ref: ${{ env.STREMIO_MEDIA_REF }}
+          path: stremio-media
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: platform-tools
+
+      - name: Build Stremio playback modules
+        if: steps.stremio-cache.outputs.cache-hit != 'true'
+        working-directory: illumera
+        run: |
+          chmod +x ci/build-stremio-media.sh
+          ./ci/build-stremio-media.sh ../stremio-media ../stremio-aars
+
+      # Only this trusted main-branch release job may populate the shared AAR
+      # cache. Pull-request CI is restore-only, preventing cache poisoning.
+      - name: Save trusted Stremio playback AAR cache
+        if: steps.stremio-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: stremio-aars
+          key: stremio-media-${{ runner.os }}-${{ env.STREMIO_MEDIA_REF }}-${{ env.STREMIO_AAR_CACHE_VERSION }}
+
+      - name: Install Stremio playback modules
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          for aar in \
+            lib-exoplayer-release.aar \
+            lib-decoder-av1-release.aar \
+            lib-decoder-ffmpeg-release.aar \
+            lib-decoder-iamf-release.aar \
+            lib-decoder-mpegh-release.aar; do
+            test -s "../stremio-aars/$aar" || { echo "Missing Stremio playback artifact: $aar" >&2; exit 1; }
+            cp "../stremio-aars/$aar" "playbackcore/libs/$aar"
+          done
+
+      - name: Grant execute permission for gradlew
+        working-directory: illumera
+        run: chmod +x gradlew
+
+      - name: Resolve version
+        id: version
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          BASE=$(grep -oP 'versionName\s*=.*?:\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          test -n "$BASE" || { echo "Could not resolve base versionName" >&2; exit 1; }
+          MAJOR_MINOR=$(printf '%s\n' "$BASE" | grep -oP '^\d+\.\d+')
+          test -n "$MAJOR_MINOR" || { echo "Invalid base versionName: $BASE" >&2; exit 1; }
+          NAME="${MAJOR_MINOR}.${{ github.run_number }}"
+          printf 'name=%s\n' "$NAME" >> "$GITHUB_OUTPUT"
+          printf 'tag=v%s\n' "$NAME" >> "$GITHUB_OUTPUT"
+          printf 'code=%s\n' '${{ github.run_number }}' >> "$GITHUB_OUTPUT"
+
+      - name: Decode release keystore
+        working-directory: illumera
+        env:
+          KEYSTORE_RAW: ${{ secrets.KEYSTORE_RAW }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEYSTORE_RAW" | base64 --decode > release.keystore
+          test -s release.keystore || { echo "Decoded release keystore is empty" >&2; exit 1; }
+
+      - name: Test, lint, and build signed artifacts
+        working-directory: illumera
+        env:
+          RELEASE_STORE_FILE: release.keystore
+          RELEASE_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ACRA_URL: ${{ secrets.ACRA_URL }}
+          ACRA_TOKEN: ${{ secrets.ACRA_TOKEN }}
+        run: |
+          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundlePlay --no-daemon --stacktrace \
+            -PversionNameOverride="${{ steps.version.outputs.name }}" \
+            -PversionCodeOverride="${{ steps.version.outputs.code }}"
+
+      - name: Remove release keystore
+        if: always()
+        working-directory: illumera
+        run: rm -f release.keystore
+
+      - name: Prepare release artifacts
+        id: artifacts
+        working-directory: illumera
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name "*.apk" | head -1)
+          AAB=$(find app/build/outputs/bundle/play -maxdepth 1 -name "*.aab" | head -1)
+          test -n "$APK" || { echo "No release APK produced" >&2; exit 1; }
+          test -n "$AAB" || { echo "No Play AAB produced" >&2; exit 1; }
+          test -s "$APK" || { echo "Release APK is empty" >&2; exit 1; }
+          test -s "$AAB" || { echo "Play AAB is empty" >&2; exit 1; }
+          APK_NAME="illumera-${{ steps.version.outputs.name }}.apk"
+          cp "$APK" "$APK_NAME"
+          printf 'apk=illumera/%s\n' "$APK_NAME" >> "$GITHUB_OUTPUT"
+          printf 'aab=%s\n' "$AAB" >> "$GITHUB_OUTPUT"
+
+      - name: Compute APK SHA-256
+        id: checksum
+        env:
+          APK_PATH: ${{ steps.artifacts.outputs.apk }}
+        run: |
+          set -euo pipefail
+          HASH=$(sha256sum "$APK_PATH" | awk '{print $1}')
+          test -n "$HASH" || { echo "Could not compute APK checksum" >&2; exit 1; }
+          printf 'hash=%s\n' "$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Publish AAB to Google Play Internal testing
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.hereliesaz.illumera
+          releaseFiles: illumera/${{ steps.artifacts.outputs.aab }}
+          tracks: internal
+          status: completed
+
+      - name: Stage same version as Alpha draft
+        working-directory: illumera
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PACKAGE_NAME: com.hereliesaz.illumera
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet google-auth requests
+          python - <<'PY'
+          import json
+          import os
+          import requests
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import Request
+
+          package = os.environ["PACKAGE_NAME"]
+          version_code = os.environ["VERSION_CODE"]
+          version_name = os.environ["VERSION_NAME"]
+          credentials = service_account.Credentials.from_service_account_info(
+              json.loads(os.environ["PLAY_SERVICE_ACCOUNT_JSON"]),
+              scopes=["https://www.googleapis.com/auth/androidpublisher"],
+          )
+          credentials.refresh(Request())
+          headers = {
+              "Authorization": f"Bearer {credentials.token}",
+              "Content-Type": "application/json",
+          }
+          base = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}"
+
+          response = requests.post(f"{base}/edits", headers=headers, json={})
+          response.raise_for_status()
+          edit_id = response.json()["id"]
+          track_url = f"{base}/edits/{edit_id}/tracks/alpha"
+
+          response = requests.get(track_url, headers=headers)
+          track = {"track": "alpha", "releases": []} if response.status_code == 404 else response.json()
+          if response.status_code != 404:
+              response.raise_for_status()
+
+          releases = [
+              release for release in track.get("releases", [])
+              if release.get("status") != "draft"
+              and version_code not in [str(code) for code in release.get("versionCodes", [])]
+          ]
+          releases.append({
+              "name": f"illumera {version_name}",
+              "versionCodes": [version_code],
+              "status": "draft",
+          })
+
+          response = requests.put(track_url, headers=headers, json={"track": "alpha", "releases": releases})
+          response.raise_for_status()
+          response = requests.post(f"{base}/edits/{edit_id}:commit", headers=headers, json={})
+          response.raise_for_status()
+          PY
+
+      # Commit messages are untrusted text. Write them to a file instead of
+      # passing a heredoc through GITHUB_OUTPUT, where delimiter injection
+      # could create arbitrary step outputs.
+      - name: Generate release notes
+        working-directory: illumera
+        env:
+          APK_SHA256: ${{ steps.checksum.outputs.hash }}
+        run: |
+          set -euo pipefail
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          {
+            echo '## Changes'
+            if [ -n "$PREV_TAG" ]; then
+              git log "$PREV_TAG..HEAD" --pretty='format:- %s' --no-merges
+            else
+              echo '- Initial release'
+            fi
+            echo
+            echo
+            echo '---'
+            printf 'SHA-256: %s\n' "$APK_SHA256"
+          } > release-notes.md
+
+      - name: Create release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if TAG_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" 2>/dev/null); then
+            TAG_SHA=$(jq -r '.object.sha' <<<"$TAG_JSON")
+            test "$TAG_SHA" = "$RELEASE_SHA" || {
+              echo "Tag $RELEASE_TAG already points to $TAG_SHA, expected $RELEASE_SHA" >&2
+              exit 1
+            }
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${RELEASE_TAG}" \
+              -f sha="$RELEASE_SHA" >/dev/null
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: illumera ${{ steps.version.outputs.name }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: ${{ steps.artifacts.outputs.apk }}
+          body_path: illumera/release-notes.md
