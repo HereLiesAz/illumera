@@ -142,7 +142,12 @@ class StremioAddonsViewModel @Inject constructor(
                     )
                 }
             } catch (ce: CancellationException) {
-                _uiState.value = StremioAddonsUiState(isSyncing = false)
+                val profileChanged = ce.message?.contains("Active profile changed", ignoreCase = true) == true
+                _uiState.value = StremioAddonsUiState(
+                    isSyncing = false,
+                    message = if (profileChanged) "Profile changed before Stremio sync could complete." else null,
+                    error = if (profileChanged) "Profile changed before Stremio sync could complete." else null
+                )
                 throw ce
             } catch (error: Exception) {
                 _uiState.value = StremioAddonsUiState(
