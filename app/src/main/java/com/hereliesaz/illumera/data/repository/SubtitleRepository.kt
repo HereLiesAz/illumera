@@ -61,12 +61,21 @@ class SubtitleRepository @Inject constructor(
         preferredAddonBaseUrl: String? = null,
         preferredAddonRequestId: String? = null
     ): List<AddonSubtitle> = withContext(Dispatchers.IO) {
-        val request = buildSubtitleRequest(type, playbackId)
+        val canonicalRequest = buildSubtitleRequest(type, playbackId)
+        val preferredBase = preferredAddonBaseUrl?.trimEnd('/')
         val addons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled } ?: emptyList()
         if (addons.isEmpty()) return@withContext emptyList()
 
         val jobs = addons.map { addon ->
             async {
+                val isPreferred = preferredBase != null &&
+                    addon.transportUrl.trimEnd('/') == preferredBase
+                val request = if (isPreferred && !preferredAddonRequestId.isNullOrBlank()) {
+                    buildSubtitleRequest(type, preferredAddonRequestId)
+                } else {
+                    canonicalRequest
+                }
+
                 if (!shouldQueryAddonForSubtitles(addon, request.contentType, request.baseId)) {
                     return@async emptyList()
                 }
@@ -106,7 +115,14 @@ class SubtitleRepository @Inject constructor(
 
         if (videoHash == null && videoSize == null && filename == null) {
             return fallback?.let(::distinctSubtitles)
-                ?: requestOrNull { getSubtitles(type, playbackId) }.orEmpty()
+                ?: requestOrNull {
+                    getSubtitles(
+                        type = type,
+                        playbackId = playbackId,
+                        preferredAddonBaseUrl = stream.addonTransportUrl,
+                        preferredAddonRequestId = stream.addonRequestId
+                    )
+                }.orEmpty()
         }
 
         if (fallback != null) {
