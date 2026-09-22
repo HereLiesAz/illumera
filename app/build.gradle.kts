@@ -125,6 +125,7 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
         unitTests.all {
             it.jvmArgs(
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
