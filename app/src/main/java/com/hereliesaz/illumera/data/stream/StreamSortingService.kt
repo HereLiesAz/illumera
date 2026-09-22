@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.data.stream
 
 import com.hereliesaz.illumera.data.model.ProfileEntity
+import com.hereliesaz.illumera.data.model.ParsedStreamInfo
 import com.hereliesaz.illumera.data.model.StreamQuality
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.ui.player.base.normalizeLanguageToIso2
