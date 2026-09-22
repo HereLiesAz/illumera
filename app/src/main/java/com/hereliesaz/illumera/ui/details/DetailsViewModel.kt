@@ -182,9 +182,13 @@ class DetailsViewModel @Inject constructor(
                 val preferredId = if (!addonBaseUrl.isNullOrBlank()) id else canonicalFallbackId
 
                 val details = repository.resolveMetaDetails(type, preferredId, addonBaseUrl)
-                    ?: if (preferredId != canonicalFallbackId) {
-                        repository.resolveMetaDetails(type, canonicalFallbackId, null)
-                    } else null
+                    ?: (
+                        if (preferredId != canonicalFallbackId) {
+                            repository.resolveMetaDetails(type, canonicalFallbackId, null)
+                        } else {
+                            null
+                        }
+                    )
                     ?: throw Exception("No meta found")
                 if (requestVersion != loadRequestVersion) return@launch
                 loadedContentKey = requestKey
