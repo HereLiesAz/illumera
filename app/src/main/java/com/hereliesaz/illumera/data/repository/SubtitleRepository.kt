@@ -85,8 +85,8 @@ class SubtitleRepository @Inject constructor(
                     videoHash = videoHash,
                     videoSize = videoSize,
                     filename = filename,
-                    preferredAddonBaseUrl = stream.addonTransportUrl,
-                    preferredAddonRequestId = stream.addonRequestId
+                    preferredAddonBaseUrl = preferredAddonBaseUrl,
+                    preferredAddonRequestId = preferredAddonRequestId
                 )
             }
         }
@@ -163,7 +163,9 @@ class SubtitleRepository @Inject constructor(
                         playbackId = playbackId,
                         videoHash = videoHash,
                         videoSize = videoSize,
-                        filename = filename
+                        filename = filename,
+                        preferredAddonBaseUrl = stream.addonTransportUrl,
+                        preferredAddonRequestId = stream.addonRequestId
                     )
                 }.orEmpty()
             }
@@ -308,11 +310,19 @@ class SubtitleRepository @Inject constructor(
         request: SubtitleRequest,
         videoHash: String?,
         videoSize: Long?,
-        filename: String?
+        filename: String?,
+        preferredAddonBaseUrl: String? = null,
+        preferredAddonRequestId: String? = null
     ): List<AddonSubtitle> {
         val baseUrl = addon.transportUrl.trimEnd('/')
         val pathType = request.contentType
-        val pathId = request.requestId
+        val isPreferred = !preferredAddonBaseUrl.isNullOrBlank() &&
+            baseUrl == preferredAddonBaseUrl.trimEnd('/')
+        val pathId = if (isPreferred && !preferredAddonRequestId.isNullOrBlank()) {
+            preferredAddonRequestId
+        } else {
+            request.requestId
+        }
         val extraParams = buildExtraParams(videoHash, videoSize, filename)
         val subtitleUrl = if (extraParams.isNotEmpty()) {
             "$baseUrl/subtitles/$pathType/$pathId/$extraParams.json"
