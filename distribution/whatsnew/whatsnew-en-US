@@ -1,3 +1,4 @@
 Stremio sync handles profile switches and cancellations reliably.
 Watchlist resets cleanly when you unsubscribe.
 Stream details and parsing fixes.
+First release built by the shared HereLiesAz release pipeline.
