@@ -48,7 +48,7 @@ class StremioAddonsViewModelTest {
         coEvery { profileManager.withActiveProfileRuntime<Unit>(7, any()) } coAnswers {
             secondArg<suspend () -> Unit>().invoke()
         }
-        coEvery { profileManager.saveRuntimeState(7) } returns Unit
+        coEvery { profileManager.saveRuntimeStateWithinActiveRuntime(7) } returns Unit
         every { profileManager.resetStartupCapture() } returns Unit
         coEvery { addonRepository.updateAddons(any()) } returns Unit
         coEvery { addonRepository.installAddon(any()) } returns Unit
@@ -93,7 +93,7 @@ class StremioAddonsViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { authManager.fetchAddons() }
-        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
+        coVerify(exactly = 1) { profileManager.saveRuntimeStateWithinActiveRuntime(7) }
         assertFalse(viewModel.uiState.value.isSyncing)
     }
 
@@ -130,7 +130,7 @@ class StremioAddonsViewModelTest {
             orderedSlot.captured.map { it.transportUrl }
         )
         assertEquals(listOf(0, 1, 2), orderedSlot.captured.map { it.sortOrder })
-        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
+        coVerify(exactly = 1) { profileManager.saveRuntimeStateWithinActiveRuntime(7) }
         assertTrue(viewModel.uiState.value.error == null)
         assertTrue(viewModel.uiState.value.message?.contains("Synced 2 Stremio addons") == true)
     }
@@ -148,7 +148,7 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 0) { addonRepository.getAddons() }
         coVerify(exactly = 0) { addonRepository.installAddon(any()) }
         coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
-        coVerify(exactly = 0) { profileManager.saveRuntimeState(any()) }
+        coVerify(exactly = 0) { profileManager.saveRuntimeStateWithinActiveRuntime(any()) }
     }
 
     @Test
@@ -166,7 +166,7 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 0) { addonRepository.installAddon(any()) }
         coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
         coVerify(exactly = 0) { addonRepository.updateAddons(any()) }
-        coVerify(exactly = 0) { profileManager.saveRuntimeState(any()) }
+        coVerify(exactly = 0) { profileManager.saveRuntimeStateWithinActiveRuntime(any()) }
     }
 
     @Test
@@ -195,7 +195,7 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 1) { addonRepository.installAddon("https://good.example/manifest.json") }
         coVerify(exactly = 1) { addonRepository.installAddon("https://broken.example/manifest.json") }
         coVerify(exactly = 1) { addonRepository.deleteAddon("https://old.example") }
-        coVerify(exactly = 1) { profileManager.saveRuntimeState(7) }
+        coVerify(exactly = 1) { profileManager.saveRuntimeStateWithinActiveRuntime(7) }
         assertTrue(viewModel.uiState.value.error?.contains("Some addons") == true)
         assertTrue(viewModel.uiState.value.message?.contains("1 could not be reconciled") == true)
     }
