@@ -48,7 +48,7 @@ class WatchlistViewModel @Inject constructor(
             else dao.getWatchlistByType(profileId, "movie")
                 .map { list -> list.map { it.toMetaItem() } }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 0L, replayExpirationMillis = 0L), emptyList())
 
     val seriesItems: StateFlow<List<MetaItem>> = profileConfigurationManager.activeProfileId
         .flatMapLatest { profileId ->
@@ -56,7 +56,7 @@ class WatchlistViewModel @Inject constructor(
             else dao.getWatchlistByType(profileId, "series")
                 .map { list -> list.map { it.toMetaItem() } }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L, replayExpirationMillis = 0L), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(stopTimeoutMillis = 0L, replayExpirationMillis = 0L), emptyList())
 
     /**
      * Resolve poster from addons for items missing one (e.g., pulled from Trakt).
