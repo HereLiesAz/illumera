@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -83,6 +84,9 @@ class WatchlistViewModelTest {
         val replacementCollector = backgroundScope.launch {
             viewModel.movieItems.collect {}
         }
+        // advanceUntilIdle() returns once only backgroundScope work is queued, and the
+        // stopped share leaves nothing else scheduled, so start the collector explicitly.
+        runCurrent()
         advanceUntilIdle()
         assertEquals(listOf("m2"), viewModel.movieItems.value.map { it.id })
         replacementCollector.cancel()
