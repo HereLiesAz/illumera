@@ -1,3 +1,2 @@
-Stremio sync handles profile switches and cancellations reliably.
-Watchlist resets cleanly when you unsubscribe.
-Stream details and parsing fixes.
+Loading now shows what is happening behind the scenes, step by step.
+Crashes, freezes and errors are reported automatically so they get fixed faster (GitHub build; can be turned off in Settings).
