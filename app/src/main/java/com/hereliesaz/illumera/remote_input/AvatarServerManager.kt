@@ -41,7 +41,7 @@ class AvatarServerManager {
                 // Port in use, try next
                 continue
             } catch (e: Exception) {
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("AvatarServerManager", "Port binding failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w("AvatarServerManager", "Port binding failed", e)
                 continue
             }
         }

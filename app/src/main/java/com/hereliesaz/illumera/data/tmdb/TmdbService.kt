@@ -55,7 +55,7 @@ class TmdbService @Inject constructor(
                 found.id
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error looking up TMDB ID for $imdbId: ${e.message}")
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Error looking up TMDB ID for $imdbId: ${e.message}")
             null
         }
     }
@@ -83,7 +83,7 @@ class TmdbService @Inject constructor(
                 imdbId
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error looking up IMDB ID for $tmdbId: ${e.message}")
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Error looking up IMDB ID for $tmdbId: ${e.message}")
             null
         }
     }

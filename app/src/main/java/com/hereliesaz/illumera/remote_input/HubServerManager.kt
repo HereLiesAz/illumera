@@ -52,7 +52,7 @@ object HubServerManager {
             } catch (e: java.net.BindException) {
                 continue // Port in use, try next
             } catch (e: Exception) {
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("HubServerManager", "Server start failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w("HubServerManager", "Server start failed", e)
                 continue
             }
         }

@@ -127,7 +127,7 @@ class LibraryRefreshService : Service() {
                     Log.i(TAG, "Library refresh cancelled")
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "Library refresh failed", e)
+                    com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Library refresh failed", e)
                     updateNotification("Library refresh finished with errors")
                 } finally {
                     stopForegroundCompat()

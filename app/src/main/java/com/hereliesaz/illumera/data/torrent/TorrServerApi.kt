@@ -82,7 +82,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                     response.isSuccessful
                 }
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "Failed to apply TorrServer settings", e)
+                com.hereliesaz.illumera.crash.AppErrors.w("LumeraTorrent", "Failed to apply TorrServer settings", e)
                 false
             }
         }

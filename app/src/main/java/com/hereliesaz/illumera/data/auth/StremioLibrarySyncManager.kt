@@ -130,7 +130,7 @@ class StremioLibrarySyncManager @Inject constructor(
             throw cancelled
         } catch (e: Exception) {
             releaseThrottleAfterFailure(profileId, startedAt)
-            Log.e(TAG, "Library sync failed", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Library sync failed", e)
             Result.failure(e)
         }
     }
@@ -234,7 +234,7 @@ class StremioLibrarySyncManager @Inject constructor(
             .putString("$KEY_LOCAL_SNAPSHOT_PREFIX$profileId", gson.toJson(items))
             .commit()
         if (!success) {
-            Log.e(TAG, "saveLocalSnapshot: commit() failed for profile $profileId — snapshot may be stale")
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "saveLocalSnapshot: commit() failed for profile $profileId — snapshot may be stale")
         }
     }
 

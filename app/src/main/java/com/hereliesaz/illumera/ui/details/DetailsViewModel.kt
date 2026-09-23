@@ -264,7 +264,7 @@ class DetailsViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (requestVersion != loadRequestVersion) return@launch
                 if (_state.value.contentKey == requestKey && _state.value.meta != null) {
-                    Log.w("DetailsViewModel", "Optional detail work failed", e)
+                    com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Optional detail work failed", e)
                     return@launch
                 }
                 loadedContentKey = null
@@ -319,7 +319,7 @@ class DetailsViewModel @Inject constructor(
                 throw ce
             } catch (e: Exception) {
                 if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
-                    Log.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
+                    com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
                     _state.value = _state.value.copy(
                         resumePlaybackId = null,
                         isResumeStateReady = true,

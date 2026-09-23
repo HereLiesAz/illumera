@@ -233,7 +233,7 @@ class TraktAuthManager @Inject constructor(
 
                 pollForToken(body, profileId)
             } catch (e: Exception) {
-                Log.e(TAG, "Device auth failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Device auth failed", e)
                 _authState.value = DeviceAuthState.Error(e.message ?: "Unknown error")
             }
         }
@@ -330,7 +330,7 @@ class TraktAuthManager @Inject constructor(
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Token refresh error", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Token refresh error", e)
             null
         }
     }

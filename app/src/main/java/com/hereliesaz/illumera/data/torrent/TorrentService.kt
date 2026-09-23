@@ -54,7 +54,7 @@ class TorrentService : Service() {
             startForegroundService()
             startDownload(magnetLink, fileIdx, fileName)
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.e(TAG, "Critical error starting service: ${e.message}")
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Critical error starting service: ${e.message}")
             scope.launch(Dispatchers.Main) {
                 onStreamError?.invoke(e.message ?: "Failed to start torrent engine")
             }
@@ -172,7 +172,7 @@ class TorrentService : Service() {
                 if (BuildConfig.DEBUG) Log.d(TAG, "Download coroutine cancelled")
                 throw e
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.e(TAG, "Error in download: ${e.message}", e)
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Error in download: ${e.message}", e)
                 // Install the cleanup guard before callbacks can synchronously enqueue
                 // a replacement attempt. startDownload() then cancels this job, and the
                 // attempt ID prevents an old same-magnet failure from stopping a newer run.

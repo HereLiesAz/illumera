@@ -500,7 +500,7 @@ class AvatarUploadServer(
 
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("AvatarUploadServer", "Error handling upload", e)
+            com.hereliesaz.illumera.crash.AppErrors.w("AvatarUploadServer", "Error handling upload", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error processing request")
         }
     }

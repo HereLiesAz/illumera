@@ -66,7 +66,7 @@ class ServerManager {
                 // Port in use, try next
                 continue
             } catch (e: Exception) {
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("ServerManager", "Port binding failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w("ServerManager", "Port binding failed", e)
                 continue
             }
         }

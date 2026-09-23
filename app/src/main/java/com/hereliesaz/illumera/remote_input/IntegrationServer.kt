@@ -290,7 +290,7 @@ class IntegrationServer(
             return jsonResponse(true, null)
 
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) Log.e(TAG, "Error handling login", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Error handling login", e)
             return jsonResponse(false, "Server error")
         }
     }

@@ -532,7 +532,7 @@ class HubBulkUploadServer(
 
             return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No image data")
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("HubBulkUploadServer", "Error processing upload", e)
+            com.hereliesaz.illumera.crash.AppErrors.w("HubBulkUploadServer", "Error processing upload", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error processing request")
         }
     }
@@ -571,7 +571,7 @@ class HubBulkUploadServer(
             onImageDeleted?.invoke(id)
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("HubBulkUploadServer", "Error processing delete", e)
+            com.hereliesaz.illumera.crash.AppErrors.w("HubBulkUploadServer", "Error processing delete", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error")
         }
     }

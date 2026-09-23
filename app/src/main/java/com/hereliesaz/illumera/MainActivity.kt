@@ -1724,7 +1724,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                         TorrentService.onStreamError = { error ->
                                             torrentProgress = null
-                                            if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                            com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Stream error: $error")
                                         }
                                         TorrentService.onStreamProgress = { progress ->
                                             torrentProgress = progress
@@ -2008,7 +2008,7 @@ class MainActivity : ComponentActivity() {
                                         selectedVideoUrl = localUrl
                                     }
                                     TorrentService.onStreamError = { error ->
-                                        if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Ranked fallback source error: $error")
+                                        com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Ranked fallback source error: $error")
                                         // TorrentProgress(sourceError=true) is the one signal that
                                         // advances the ranked list; do not advance again here.
                                     }
@@ -2224,7 +2224,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 TorrentService.onStreamError = { error ->
                                                     torrentProgress = null
-                                                    if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                                    com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Stream error: $error")
                                                 }
                                                 TorrentService.onStreamProgress = { progress ->
                                                     torrentProgress = progress
@@ -2407,7 +2407,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 TorrentService.onStreamError = { error ->
                                                     torrentProgress = null
-                                                    if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                                    com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Stream error: $error")
                                                 }
                                                 TorrentService.onStreamProgress = { progress ->
                                                     torrentProgress = progress
@@ -2501,7 +2501,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 TorrentService.onStreamError = { error ->
                                                     torrentProgress = null
-                                                    if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Stream error: $error")
+                                                    com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Stream error: $error")
                                                 }
                                                 TorrentService.onStreamProgress = { progress ->
                                                     torrentProgress = progress
@@ -2557,7 +2557,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     TorrentService.onStreamError = { error ->
                                         torrentProgress = null
-                                        if (BuildConfig.DEBUG) Log.e("LumeraTorrent", "Source switch error: $error")
+                                        com.hereliesaz.illumera.crash.AppErrors.e("LumeraTorrent", "Source switch error: $error")
                                         onError(error)
                                     }
                                     TorrentService.onStreamProgress = { progress ->
