@@ -27,7 +27,7 @@ object NetworkUtils {
                 }
             }
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("NetworkUtils", "Failed to get local IP", e)
+            com.hereliesaz.illumera.crash.AppErrors.w("NetworkUtils", "Failed to get local IP", e)
         }
         return null
     }

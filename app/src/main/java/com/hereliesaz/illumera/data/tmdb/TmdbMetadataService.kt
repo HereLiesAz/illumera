@@ -230,7 +230,7 @@ class TmdbMetadataService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch TMDB enrichment: ${e.message}", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Failed to fetch TMDB enrichment: ${e.message}", e)
             null
         }
     }
@@ -453,7 +453,7 @@ class TmdbMetadataService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch person detail: ${e.message}", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Failed to fetch person detail: ${e.message}", e)
             null
         }
     }
@@ -595,7 +595,7 @@ class TmdbMetadataService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch $kind detail $entityId: ${e.message}", e)
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Failed to fetch $kind detail $entityId: ${e.message}", e)
             null
         }
     }

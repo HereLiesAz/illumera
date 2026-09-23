@@ -247,7 +247,7 @@ class LinkServer(
 
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
         } catch (e: Exception) {
-            if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("LinkServer", "Error handling submission", e)
+            com.hereliesaz.illumera.crash.AppErrors.w("LinkServer", "Error handling submission", e)
             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Error processing request")
         }
     }

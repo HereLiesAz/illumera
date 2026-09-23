@@ -100,7 +100,7 @@ class TorrServerEngine @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "Error stopping TorrServer", e)
+            com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Error stopping TorrServer", e)
             process?.destroyForcibly()
         } finally {
             process = null

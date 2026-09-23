@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import com.hereliesaz.illumera.crash.CrashReporting
 import dagger.hilt.android.HiltAndroidApp
 import org.acra.ReportField
 import org.acra.config.httpSender
@@ -25,6 +26,7 @@ class LumeraApplication : Application(), ImageLoaderFactory {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
 
+        if (!CrashReporting.isAvailable()) return
         if (BuildConfig.ACRA_URL.isBlank() || BuildConfig.ACRA_TOKEN.isBlank()) return
 
         initAcra {
@@ -46,7 +48,8 @@ class LumeraApplication : Application(), ImageLoaderFactory {
                 ReportField.USER_APP_START_DATE,
                 ReportField.USER_CRASH_DATE,
                 ReportField.TOTAL_MEM_SIZE,
-                ReportField.AVAILABLE_MEM_SIZE
+                ReportField.AVAILABLE_MEM_SIZE,
+                ReportField.CUSTOM_DATA
             )
 
             httpSender {
@@ -64,6 +67,7 @@ class LumeraApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        CrashReporting.startAnrReporting(this)
         startupOptimizer.warmup()
     }
 

@@ -68,7 +68,7 @@ fun AvatarUploadDialog(
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             } catch (e: Exception) {
                 if (com.hereliesaz.illumera.BuildConfig.DEBUG) {
-                    android.util.Log.w("AvatarUploadDialog", "Photo picker read error", e)
+                    com.hereliesaz.illumera.crash.AppErrors.w("AvatarUploadDialog", "Photo picker read error", e)
                 }
                 null
             }
@@ -259,7 +259,7 @@ private fun saveAvatarImage(context: Context, imageBytes: ByteArray): String? {
         // Return the path with custom: prefix
         "custom:${file.absolutePath}"
     } catch (e: Exception) {
-        if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("AvatarUploadDialog", "Image save error", e)
+        com.hereliesaz.illumera.crash.AppErrors.w("AvatarUploadDialog", "Image save error", e)
         null
     }
 }

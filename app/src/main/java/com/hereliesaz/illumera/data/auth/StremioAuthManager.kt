@@ -53,12 +53,12 @@ class StremioAuthManager @Inject constructor(
         try {
             createEncryptedPrefs()
         } catch (e: Exception) {
-            Log.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
+            com.hereliesaz.illumera.crash.AppErrors.e("StremioAuthManager", "EncryptedSharedPreferences corrupted, resetting", e)
             clearCorruptedPrefs()
             try {
                 createEncryptedPrefs()
             } catch (e2: Exception) {
-                Log.e("StremioAuthManager", "Secure credential storage unavailable", e2)
+                com.hereliesaz.illumera.crash.AppErrors.e("StremioAuthManager", "Secure credential storage unavailable", e2)
                 null
             }
         }
@@ -89,7 +89,7 @@ class StremioAuthManager @Inject constructor(
             keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
             keyStore.deleteEntry("_androidx_security_master_key")
         } catch (e: Exception) {
-            Log.e("StremioAuthManager", "Failed to clear master key", e)
+            com.hereliesaz.illumera.crash.AppErrors.e("StremioAuthManager", "Failed to clear master key", e)
         }
     }
 

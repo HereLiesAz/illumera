@@ -86,7 +86,7 @@ object TorrentTrackerCache {
                     }
                 }
             } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.w(TAG, "Tracker refresh failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Tracker refresh failed", e)
             }
         }
     }

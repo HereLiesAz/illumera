@@ -1,5 +1,11 @@
 package com.hereliesaz.illumera.ui.settings
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
+import com.hereliesaz.illumera.crash.CrashReporting
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import com.hereliesaz.illumera.ui.details.FilterDropdown
 import androidx.compose.foundation.layout.widthIn
@@ -257,6 +263,33 @@ fun PersonalizationSettings(
             onCheckedChange = { viewModel.updateMenuWatchlistEnabled(currentProfile.id, it) },
             onBack = onGoBack
         )
+
+        if (CrashReporting.isAvailable()) {
+            val context = LocalContext.current
+            var crashReportsEnabled by remember { mutableStateOf(CrashReporting.isEnabled(context)) }
+
+            Spacer(Modifier.height(15.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Spacer(Modifier.height(15.dp))
+
+            Text(
+                "Diagnostics",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+                color = Color.White.copy(0.7f),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            SettingToggleRow(
+                label = "Send crash reports",
+                subtitle = "Automatically report crashes and freezes to illumera's GitHub issues",
+                isChecked = crashReportsEnabled,
+                onCheckedChange = {
+                    CrashReporting.setEnabled(context, it)
+                    crashReportsEnabled = it
+                },
+                onBack = onGoBack
+            )
+        }
     }
 }
 

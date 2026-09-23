@@ -291,7 +291,7 @@ fun HubCategoryManagerDialog(
                         currentItems = mutable
                     }
                 } catch (e: Exception) {
-                    if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("HubCategoryManagerDialog", "Image upload error", e)
+                    com.hereliesaz.illumera.crash.AppErrors.w("HubCategoryManagerDialog", "Image upload error", e)
                 }
             },
             onImageDeleted = { configId ->

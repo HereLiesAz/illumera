@@ -62,7 +62,7 @@ class TraktScrobbleManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "start failed for $playbackId", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "start failed for $playbackId", e)
             }
         }
     }
@@ -86,7 +86,7 @@ class TraktScrobbleManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "pause failed for $playbackId", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "pause failed for $playbackId", e)
             }
         }
     }
@@ -108,7 +108,7 @@ class TraktScrobbleManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "stop failed for $playbackId", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "stop failed for $playbackId", e)
             }
         }
     }

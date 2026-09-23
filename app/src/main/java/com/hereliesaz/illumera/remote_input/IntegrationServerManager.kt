@@ -43,7 +43,7 @@ class IntegrationServerManager {
             } catch (e: BindException) {
                 continue
             } catch (e: Exception) {
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) android.util.Log.w("IntegrationServerManager", "Port binding failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w("IntegrationServerManager", "Port binding failed", e)
                 continue
             }
         }

@@ -23,8 +23,11 @@ fun buildConfigString(value: String): String =
         .replace("\r", "\\r")
         .replace("\n", "\\n") + "\""
 
+// Crash/ANR reports go to the HereLiesAz/workflows gateway, which files them as issues
+// on this repo. The token ships in a public APK; it only filters stray traffic.
 val acraUrl = localOrEnv("acra.url", "ACRA_URL")
-val acraToken = localOrEnv("acra.token", "ACRA_TOKEN")
+    .ifBlank { "https://workflows.hereliesaz.workers.dev/crash-report/illumera" }
+val acraToken = localOrEnv("acra.token", "ACRA_TOKEN").ifBlank { "illumera-crash-reports-v1" }
 val tmdbApiKey = localOrEnv("tmdb.api_key", "TMDB_API_KEY")
 val traktClientId = localOrEnv("TRAKT_CLIENT_ID", "TRAKT_CLIENT_ID")
 val traktClientSecret = localOrEnv("TRAKT_CLIENT_SECRET", "TRAKT_CLIENT_SECRET")
@@ -55,6 +58,9 @@ android {
         buildConfigField("String", "GITHUB_OWNER", buildConfigString("HereLiesAz"))
         buildConfigField("String", "GITHUB_REPO", buildConfigString("illumera"))
         buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
+        // Automatic crash/ANR reporting. On by default for the GitHub (release) build
+        // until illumera reaches stable production; the user can opt out in Settings.
+        buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "false")
 
         buildConfigField("String", "ACRA_URL", buildConfigString(acraUrl))
         buildConfigField("String", "ACRA_TOKEN", buildConfigString(acraToken))
@@ -88,6 +94,7 @@ android {
             resValue("string", "app_name", "illumera Test")
         }
         release {
+            buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "true")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -102,6 +109,7 @@ android {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
             buildConfigField("boolean", "ENABLE_SELF_UPDATE", "false")
+            buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "false")
         }
     }
 

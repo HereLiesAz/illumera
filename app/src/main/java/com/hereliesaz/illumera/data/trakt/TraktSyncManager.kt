@@ -101,7 +101,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Activity check failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Activity check failed", e)
                 false
             }
         }
@@ -125,7 +125,7 @@ class TraktSyncManager @Inject constructor(
                     } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                        Log.w(TAG, "Initial push failed", e)
+                        com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Initial push failed", e)
                     }
                 }
             }
@@ -193,7 +193,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.e(TAG, "Watchlist sync failed: ${e.message}", e)
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Watchlist sync failed: ${e.message}", e)
                 Result.failure(e)
             }
         }
@@ -210,7 +210,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push watchlist add to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push watchlist add to Trakt", e)
             }
         }
     }
@@ -232,7 +232,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push watchlist remove to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push watchlist remove to Trakt", e)
             }
         }
     }
@@ -252,7 +252,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to add item to Trakt collection", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to add item to Trakt collection", e)
             }
         }
     }
@@ -290,7 +290,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to update series history on Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to update series history on Trakt", e)
             }
         }
     }
@@ -310,7 +310,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push movie watched to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push movie watched to Trakt", e)
             }
         }
     }
@@ -328,7 +328,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push movie unwatched to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push movie unwatched to Trakt", e)
             }
         }
     }
@@ -353,7 +353,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push episode watched to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push episode watched to Trakt", e)
             }
         }
     }
@@ -378,7 +378,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to push episode unwatched to Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push episode unwatched to Trakt", e)
             }
         }
     }
@@ -534,7 +534,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.e(TAG, "Playback progress sync failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Playback progress sync failed", e)
             }
         }
     }
@@ -661,7 +661,7 @@ class TraktSyncManager @Inject constructor(
                     } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                        Log.w(TAG, "Failed to fetch progress for $traktSlug", e)
+                        com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to fetch progress for $traktSlug", e)
                     }
                 }
 
@@ -689,7 +689,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.e(TAG, "Series next-up sync failed", e)
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Series next-up sync failed", e)
             }
         }
     }
@@ -823,7 +823,7 @@ class TraktSyncManager @Inject constructor(
         } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch watched history", e)
+            com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to fetch watched history", e)
             return null
         }
         return WatchedData(movieIds, episodeMap)
@@ -868,7 +868,7 @@ class TraktSyncManager @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to delete playback from Trakt", e)
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to delete playback from Trakt", e)
             } finally {
                 pendingDeletes.remove(normalizedId)
                 pendingDeletes.remove(localId)
