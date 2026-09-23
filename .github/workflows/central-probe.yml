@@ -1,5 +1,5 @@
 # Temporary probe: verifies the HereLiesAz/workflows Worker can still dispatch the
-# central gateway through its OIDC /dispatch path. Remove after verification.
+# central gateway through its OIDC /dispatch path (re-run after Worker fix). Remove after verification.
 name: Central gateway probe
 on:
   push:
