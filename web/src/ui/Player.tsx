@@ -2,6 +2,7 @@ import type Hls from 'hls.js'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { addonStore } from '../core/addons'
 import { library } from '../core/library'
+import { stremio } from '../core/stremio'
 import { settings } from '../core/settings'
 import { sortStreams, toIso2 } from '../core/sorting'
 import type { Stream, Subtitle } from '../core/types'
@@ -90,6 +91,8 @@ export function Player() {
     const v = video.current
     if (!v || !session || !isFinite(v.duration) || tooShort(mediaType, v.duration)) return
     library.update(session.meta, session.videoId, v.currentTime, v.duration, session.video?.season, session.video?.episode)
+    // Throttled to once a minute inside.
+    stremio.syncLibrary().catch(() => undefined)
   }
 
   // Load the current stream.

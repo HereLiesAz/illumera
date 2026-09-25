@@ -32,10 +32,11 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 
 ## Step 2: Web, Stremio account
 
-- [ ] Sign in with email and password against `api.strem.io`, with the session kept in storage.
-- [ ] Import and export the addon collection (`addonCollectionGet` / `addonCollectionSet`).
-- [ ] Two-way Continue Watching sync through the `datastoreMeta` / `datastoreGet` / `datastorePut` library API, as in Android's `StremioLibrarySyncManager`.
-- [ ] Reset sync: forget the account link and local addon changes, then resync from scratch (matching the Android reset).
+- [x] Sign in with email and password against `api.strem.io`, with the session kept in storage (`web/src/core/stremio.ts`, Settings → Stremio account).
+- [x] Get addons from the account (`addonCollectionGet`, which replaces local addons in the account's order) and send them back (`addonCollectionSet`).
+- [x] Two-way Continue Watching sync through the `datastoreMeta` / `datastoreGet` / `datastorePut` library API, with Android's merge rules: the newer side wins, and a title removed locally since the last sync is sent as a deletion. It runs on sign-in, at launch, and at most once a minute while watching.
+- [x] Reset sync: sign out, forget the sync baseline and go back to the default addons, matching the Android reset.
+- [ ] Facebook and Apple sign-in, through Stremio's hosted handoff (`login-fb` / `login-apple`, as on Android).
 
 ## Step 3: Web, torrents through the Stremio Service
 
