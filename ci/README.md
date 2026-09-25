@@ -102,8 +102,6 @@ defaults `ACRA_URL` and `ACRA_TOKEN` to that address and the app's key, which
 ships in the APK and is only a spam filter. `acra.url`/`acra.token` in
 `local.properties`, or `ACRA_URL`/`ACRA_TOKEN` secrets, override them.
 
-`../cloudflare-worker/` is the standalone relay this replaced; it isn't deployed.
-
 ## Automated PR review (Glee)
 
 Two independent workflows run the same adversarial "glee" review (an
