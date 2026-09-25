@@ -124,6 +124,12 @@ fun IntegrationsScreen(
                 is IntegrationsEvent.ExternalUrlReady -> {
                     externalLink = ExternalLinkOperation(event.title, event.url)
                 }
+                is IntegrationsEvent.WutchConnected -> {
+                    Toast.makeText(context, "Connected to wutch.tv as ${event.username}", Toast.LENGTH_SHORT).show()
+                }
+                is IntegrationsEvent.WutchError -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -149,6 +155,7 @@ fun IntegrationsScreen(
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
     var showDebridDialog by remember { mutableStateOf(false) }
+    var showWutchDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -208,6 +215,17 @@ fun IntegrationsScreen(
             subtitle = if (state.traktConnected) "Connected" else "Not Connected",
             isConnected = state.traktConnected,
             onClick = { showTraktDialog = true },
+            modifier = goBackModifier
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // wutch.tv: a free tracker; its API needs only the user's own account
+        IntegrationItem(
+            title = "wutch.tv",
+            subtitle = state.wutchUsername ?: "Not Connected",
+            isConnected = state.wutchUsername != null,
+            onClick = { showWutchDialog = true },
             modifier = goBackModifier
         )
 
@@ -381,6 +399,17 @@ fun IntegrationsScreen(
             onDisconnect = { viewModel.disconnectDebrid() },
             onDismiss = { showDebridDialog = false },
             deviceFormFactor = deviceFormFactor
+        )
+    }
+
+    if (showWutchDialog) {
+        WutchDialog(
+            username = state.wutchUsername,
+            isBusy = state.wutchBusy,
+            onConnect = { email, password, apiKey -> viewModel.connectWutch(email, password, apiKey) },
+            onSync = { viewModel.syncWutch() },
+            onDisconnect = { viewModel.disconnectWutch() },
+            onDismiss = { showWutchDialog = false }
         )
     }
 }
@@ -1978,6 +2007,157 @@ private fun IntegrationButton(
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
             color = textColor
         )
+    }
+}
+
+// =============================================================================
+// WUTCH.TV DIALOG
+// =============================================================================
+
+/**
+ * Sign in to wutch.tv with email and password (the app then makes its own API key and
+ * keeps only that), or paste a key from wutch.tv → Settings → Integrations.
+ */
+@Composable
+private fun WutchDialog(
+    username: String?,
+    isBusy: Boolean,
+    onConnect: (email: String, password: String, apiKey: String?) -> Unit,
+    onSync: () -> Unit,
+    onDisconnect: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var useKey by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val accentColor = MaterialTheme.colorScheme.primary
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    val maxDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
+    val canConnect = !isBusy && if (useKey) apiKey.isNotBlank() else email.isNotBlank() && password.isNotBlank()
+    val connect = { if (canConnect) onConnect(email, password, apiKey.takeIf { useKey }) }
+
+    LaunchedEffect(username, useKey) {
+        delay(150)
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .width(rememberDialogWidth(460))
+                    .heightIn(max = maxDialogHeight)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.background)
+                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .imePadding()
+                    .padding(24.dp)
+            ) {
+                Column(modifier = Modifier.verticalScroll(scrollState)) {
+                    Text(
+                        "wutch.tv",
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    Text(
+                        "A free watch tracker. Your watchlist, what you're part-way through and your next episodes come in; progress, finished titles and watchlist changes go back.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Spacer(Modifier.height(20.dp))
+
+                    if (username != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Signed in as $username", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                        }
+                        Spacer(Modifier.height(24.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                            IntegrationButton(
+                                text = if (isBusy) "Syncing..." else "Sync now",
+                                onClick = onSync,
+                                enabled = !isBusy,
+                                isPrimary = true,
+                                modifier = Modifier.width(130.dp),
+                                focusRequester = focusRequester
+                            )
+                            IntegrationButton(text = "Disconnect", onClick = onDisconnect, isDestructive = true, modifier = Modifier.width(130.dp))
+                            IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
+                        }
+                    } else {
+                        if (useKey) {
+                            Text("API key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text(
+                                "Make one on wutch.tv under Settings → Integrations.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                            )
+                            IntegrationTextField(
+                                value = apiKey,
+                                onValueChange = { apiKey = it },
+                                placeholder = "Paste your wutch.tv API key",
+                                isPassword = true,
+                                focusRequester = focusRequester,
+                                onDone = connect
+                            )
+                        } else {
+                            IntegrationTextField(
+                                value = email,
+                                onValueChange = { email = it },
+                                placeholder = "Email",
+                                keyboardType = KeyboardType.Email,
+                                focusRequester = focusRequester
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            IntegrationTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                placeholder = "Password",
+                                isPassword = true,
+                                keyboardType = KeyboardType.Password,
+                                onDone = connect
+                            )
+                            Text(
+                                "Your password isn't saved: illumera makes a wutch.tv API key for itself and keeps only that.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IntegrationButton(
+                                text = if (useKey) "Use password" else "Use API key",
+                                onClick = { useKey = !useKey },
+                                enabled = !isBusy,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IntegrationButton(
+                                text = if (isBusy) "Connecting..." else "Connect",
+                                onClick = connect,
+                                enabled = canConnect,
+                                isPrimary = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+                            IntegrationButton(text = "Sign up", onClick = { openExternalUrl(context, "https://wutch.tv") }, modifier = Modifier.width(120.dp))
+                            IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

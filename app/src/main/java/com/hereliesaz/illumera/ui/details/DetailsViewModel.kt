@@ -25,6 +25,7 @@ import com.hereliesaz.illumera.domain.AddonSubtitle
 import com.hereliesaz.illumera.domain.episodeStreamId
 import com.hereliesaz.illumera.domain.hasAired
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.hereliesaz.illumera.data.model.SeriesNextUpEntity
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
@@ -63,7 +64,8 @@ class DetailsViewModel @Inject constructor(
     private val streamSortingService: StreamSortingService,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
-    private val traktSyncManager: TraktSyncManager
+    private val traktSyncManager: TraktSyncManager,
+    private val wutchManager: WutchManager
 ) : ViewModel() {
 
     /** Per-episode watch progress for the episodes sidebar. */
@@ -616,6 +618,7 @@ class DetailsViewModel @Inject constructor(
                     )
                 )
                 traktSyncManager.pushMovieWatched(itemId)
+                wutchManager.onMarkedWatched(itemId)
             }
             _state.value = _state.value.copy(
                 isMovieWatched = !isCurrentlyWatched,
@@ -661,6 +664,7 @@ class DetailsViewModel @Inject constructor(
                     )
                 )
                 traktSyncManager.pushEpisodeWatched(streamId, episode.season, episode.episode)
+                wutchManager.onMarkedWatched(streamId, episode.season, episode.episode)
             }
 
             // Refresh the progress map and next-up entry
@@ -1050,6 +1054,7 @@ class DetailsViewModel @Inject constructor(
             if (dao.isInWatchlist(profileId, itemId)) {
                 dao.removeFromWatchlist(profileId, itemId)
                 traktSyncManager.pushRemove(itemId, meta.type)
+                wutchManager.onWatchlistChanged(itemId, added = false)
             } else {
                 val entity = WatchlistEntity(
                     profileId = profileId,
@@ -1061,6 +1066,7 @@ class DetailsViewModel @Inject constructor(
                 )
                 dao.addToWatchlist(entity)
                 traktSyncManager.pushAdd(entity)
+                wutchManager.onWatchlistChanged(itemId, added = true)
             }
         }
     }

@@ -29,6 +29,7 @@ import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +104,7 @@ class MediaActionsViewModel @Inject constructor(
     private val dao: AddonDao,
     private val repository: AddonRepository,
     private val traktSyncManager: TraktSyncManager,
+    private val wutchManager: WutchManager,
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
@@ -134,6 +136,7 @@ class MediaActionsViewModel @Inject constructor(
                     dao.removeFromWatchlist(ownerProfileId, resolved.canonicalId)
                     if (resolved.traktAvailable) {
                         traktSyncManager.pushRemove(resolved.canonicalId, resolved.type)
+                        wutchManager.onWatchlistChanged(resolved.canonicalId, added = false)
                     }
                 } else {
                     val entity = WatchlistEntity(
@@ -147,6 +150,7 @@ class MediaActionsViewModel @Inject constructor(
                     dao.addToWatchlist(entity)
                     if (resolved.traktAvailable) {
                         traktSyncManager.pushAdd(entity)
+                        wutchManager.onWatchlistChanged(resolved.canonicalId, added = true)
                     }
                 }
             }
@@ -236,7 +240,10 @@ class MediaActionsViewModel @Inject constructor(
                 scrobbled = resolved.traktAvailable
             )
         )
-        if (resolved.traktAvailable) traktSyncManager.pushMovieWatched(resolved.canonicalId)
+        if (resolved.traktAvailable) {
+            traktSyncManager.pushMovieWatched(resolved.canonicalId)
+            wutchManager.onMarkedWatched(resolved.canonicalId)
+        }
     }
 
     private suspend fun toggleEpisodeWatched(
@@ -272,6 +279,7 @@ class MediaActionsViewModel @Inject constructor(
         )
         if (resolved.traktAvailable) {
             traktSyncManager.pushEpisodeWatched(resolved.canonicalId, season, episode)
+            wutchManager.onMarkedWatched(resolved.canonicalId, season, episode)
         }
     }
 

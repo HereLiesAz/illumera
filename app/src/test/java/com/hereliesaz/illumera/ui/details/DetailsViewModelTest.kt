@@ -15,6 +15,7 @@ import com.hereliesaz.illumera.data.stream.StreamSortingService
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
 import com.hereliesaz.illumera.data.tmdb.TmdbService
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import com.hereliesaz.illumera.domain.AddonSubtitle
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -179,6 +180,7 @@ class DetailsViewModelTest {
         streamSortingService = StreamSortingService(),
         tmdbService = mockk<TmdbService>(relaxed = true),
         tmdbMetadataService = mockk<TmdbMetadataService>(relaxed = true),
-        traktSyncManager = mockk<TraktSyncManager>(relaxed = true)
+        traktSyncManager = mockk<TraktSyncManager>(relaxed = true),
+        wutchManager = mockk<WutchManager>(relaxed = true)
     )
 }
