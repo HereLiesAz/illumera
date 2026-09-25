@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LibraryAdd
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -403,6 +404,10 @@ fun MediaCardActionMenu(
         else -> "Add to watchlist"
     }
     val watchedLabel = if (state?.watched == true) "Mark unwatched" else "Mark watched"
+    // Soundtracks are keyed by IMDb id; an episode uses its series id plus season/episode.
+    val soundtrackImdbId = (if (target.type == "episode") target.parentSeriesId else target.id)
+        ?.substringBefore(':')?.takeIf { it.matches(Regex("tt\\d+")) }
+    var showSoundtrack by remember(target.key) { mutableStateOf(false) }
 
     DropdownMenu(
         expanded = expanded,
@@ -437,6 +442,16 @@ fun MediaCardActionMenu(
                 onDismissRequest()
             }
         )
+        if (soundtrackImdbId != null) {
+            DropdownMenuItem(
+                text = { Text("Soundtrack") },
+                leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                onClick = {
+                    showSoundtrack = true
+                    onDismissRequest()
+                }
+            )
+        }
         DropdownMenuItem(
             text = { Text("Add to Trakt library") },
             leadingIcon = { Icon(Icons.Default.LibraryAdd, contentDescription = null) },
@@ -445,6 +460,17 @@ fun MediaCardActionMenu(
                 viewModel.addToTraktLibrary(target)
                 onDismissRequest()
             }
+        )
+    }
+
+    if (showSoundtrack && soundtrackImdbId != null) {
+        val isEpisode = target.type == "episode"
+        com.hereliesaz.illumera.ui.soundtrack.SoundtrackDialog(
+            type = if (isEpisode) "series" else target.type,
+            imdbId = soundtrackImdbId,
+            season = if (isEpisode) target.season else null,
+            episode = if (isEpisode) target.episode else null,
+            onDismiss = { showSoundtrack = false }
         )
     }
 }

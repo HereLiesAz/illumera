@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
@@ -164,6 +165,16 @@ fun DetailsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var showClearProgressDialog by remember { mutableStateOf(false) }
+    // Soundtrack: movies list their songs; series list every episode's, grouped.
+    val soundtrackImdbId = streamId.substringBefore(':').takeIf { it.matches(Regex("tt\\d+")) }
+    var showSoundtrack by remember { mutableStateOf(false) }
+    if (showSoundtrack && soundtrackImdbId != null) {
+        com.hereliesaz.illumera.ui.soundtrack.SoundtrackDialog(
+            type = if (type == "movie") "movie" else "series",
+            imdbId = soundtrackImdbId,
+            onDismiss = { showSoundtrack = false }
+        )
+    }
     var pendingPlaybackId by remember(type, id) { mutableStateOf(id) }
     var pendingPlaybackType by remember(type, id) { mutableStateOf(type) }
     var pendingPlaybackTitle by remember(type, id) { mutableStateOf("") }
@@ -679,6 +690,14 @@ fun DetailsScreen(
                             )
                         }
 
+                        if (soundtrackImdbId != null) {
+                            ExpandableIconButton(
+                                label = "Soundtrack",
+                                icon = Icons.Default.MusicNote,
+                                onClick = { showSoundtrack = true }
+                            )
+                        }
+
                         ExpandableIconButton(
                             label = if (isInWatchlist) "Watchlisted" else "Add to watchlist",
                             icon = if (isInWatchlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -738,6 +757,14 @@ fun DetailsScreen(
                                 label = "Trailer",
                                 icon = Icons.Default.Videocam,
                                 onClick = { onTrailerClick(movieTrailer.key, movieTrailer.name) }
+                            )
+                        }
+
+                        if (soundtrackImdbId != null) {
+                            ExpandableIconButton(
+                                label = "Soundtrack",
+                                icon = Icons.Default.MusicNote,
+                                onClick = { showSoundtrack = true }
                             )
                         }
 
