@@ -215,6 +215,8 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("androidx.room:room-testing:2.8.4")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.5.0")
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
