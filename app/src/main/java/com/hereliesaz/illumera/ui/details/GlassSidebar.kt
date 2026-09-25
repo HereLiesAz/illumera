@@ -149,7 +149,7 @@ fun GlassSidebar(
     // Locates which season/index an episode id (or a ":$season:$episode" suffix) falls
     // at within this series' videos. Returns null if not found.
     fun locateEpisode(videos: List<MetaVideo>, episodeId: String): Pair<Int, Int>? {
-        val seasonMap = videos.filter { it.season > 0 }.groupBy { it.season }
+        val seasonMap = episodesBySeason(videos)
         for ((season, eps) in seasonMap) {
             val idx = eps.indexOfFirst { ep ->
                 ep.id == episodeId || episodeId.endsWith(":${ep.season}:${ep.episode}")
@@ -234,6 +234,17 @@ fun GlassSidebar(
 
 // --- CONTENT: SEASONS/EPISODES ---
 
+/**
+ * Episodes grouped by season, in season order. Addons sometimes list the same episode
+ * twice; the list keys each row by season, episode and id, and a repeated key crashes
+ * it, so repeats are dropped (first one wins).
+ */
+internal fun episodesBySeason(videos: List<MetaVideo>): java.util.SortedMap<Int, List<MetaVideo>> =
+    videos.filter { it.season > 0 }
+        .distinctBy { Triple(it.season, it.episode, it.id) }
+        .groupBy { it.season }
+        .toSortedMap()
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun EpisodesContent(
@@ -252,7 +263,7 @@ fun EpisodesContent(
     onSeasonChange: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val seasons = remember(videos) { videos.filter { it.season > 0 }.groupBy { it.season }.toSortedMap() }
+    val seasons = remember(videos) { episodesBySeason(videos) }
     var selectedSeason by remember(savedSeason) { mutableIntStateOf(savedSeason ?: seasons.keys.minOrNull() ?: 1) }
     val episodes = seasons[selectedSeason] ?: emptyList()
 

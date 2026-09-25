@@ -39,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -720,11 +721,14 @@ class DetailsViewModel @Inject constructor(
             } else {
                 profile?.sourceEpisodeTargetSizeMb ?: 750
             }
-            streamSortingService.sortAndFilter(
-                rawStreams, enabledQualities, excludePhrases, addonSortOrders,
-                profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0,
-                excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5, profile
-            )
+            // Parsing and matching every stream is CPU work; off the main thread it can't freeze input.
+            withContext(Dispatchers.Default) {
+                streamSortingService.sortAndFilter(
+                    rawStreams, enabledQualities, excludePhrases, addonSortOrders,
+                    profile?.sourceSortPrimary ?: "quality", profile?.sourceMaxSizeGb ?: 0,
+                    excludedFormats, preferredSizeMb, profile?.sourceMinimumSeeds ?: 5, profile
+                )
+            }
         } else rawStreams
     }
 
