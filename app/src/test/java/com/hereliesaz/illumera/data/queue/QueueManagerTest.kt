@@ -195,6 +195,16 @@ class QueueManagerTest {
     }
 
     @Test
+    fun advanceUsesUpAShowOnceOneOfItsEpisodesFinishes() {
+        manager.setEnabled(true)
+        manager.add(QueueItem(id = "tt1", type = "series", title = "Show"))
+        manager.add(QueueItem(id = "tt10", type = "series", title = "Other show"))
+
+        assertEquals("tt10", manager.advanceAfterPlayback("tt1:1:3")?.id)
+        assertEquals(listOf("tt10"), manager.state.value.manualItems.map { it.id })
+    }
+
+    @Test
     fun cancelledSuggestionRefreshPropagatesAndClearsRefreshingState() = runTest {
         val traktApi = mockk<TraktSyncApiService>(relaxed = true)
         coEvery { traktApi.getMovieRecommendations(any()) } throws
