@@ -1,4 +1,4 @@
-import { Stored } from './storage'
+import { Secret } from './secrets'
 import type { Addon, CatalogManifest, Manifest, Meta, Resource, Stream, Subtitle } from './types'
 
 /** Addon client and installed-addon store. Behavior mirrors Android's AddonRepository. */
@@ -77,7 +77,8 @@ function validMeta(m: Partial<Meta> | undefined): m is Meta {
 }
 
 export class AddonStore {
-  readonly addons = new Stored<Addon[]>('addons', [])
+  // Encrypted like credentials: addon URLs often carry keys (a debrid key in Torrentio's).
+  readonly addons = new Secret<Addon[]>('addons', [])
 
   list(): Addon[] { return this.addons.get() }
   enabled(): Addon[] { return this.list().filter((a) => a.enabled) }

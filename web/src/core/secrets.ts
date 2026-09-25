@@ -1,8 +1,8 @@
 import { activeProfileId, profilePrefix } from './storage'
 
 /**
- * Credentials (Stremio auth key, Trakt tokens, debrid key) are never written to storage in
- * clear text. They are encrypted with AES-GCM under a key that WebCrypto creates as
+ * Credentials (Stremio auth key, Trakt tokens, debrid key) and the addon list, whose URLs
+ * often embed keys, are never written to storage in clear text. They are encrypted with AES-GCM under a key that WebCrypto creates as
  * non-extractable and IndexedDB keeps as an opaque CryptoKey: page scripts can use it but
  * never read it, and copying localStorage alone yields nothing usable.
  *
@@ -130,4 +130,4 @@ export class Secret<T> {
 }
 
 /** The credential names, for loadSecrets. */
-export const SECRET_NAMES = ['stremio-account', 'trakt', 'debrid']
+export const SECRET_NAMES = ['stremio-account', 'trakt', 'debrid', 'addons']
