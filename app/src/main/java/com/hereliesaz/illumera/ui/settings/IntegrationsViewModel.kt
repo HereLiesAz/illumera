@@ -18,6 +18,7 @@ import com.hereliesaz.illumera.data.sync.LibraryRefreshService
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -48,6 +49,8 @@ sealed class IntegrationsEvent {
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
     data class DebridError(val message: String) : IntegrationsEvent()
     data class ExternalUrlReady(val title: String, val url: String) : IntegrationsEvent()
+    data class WutchConnected(val username: String) : IntegrationsEvent()
+    data class WutchError(val message: String) : IntegrationsEvent()
 }
 
 /** State machine for the "Login with Facebook" flow — mirrors Trakt's DeviceAuthState. */
@@ -77,7 +80,9 @@ data class IntegrationsUiState(
     val traktAuthState: DeviceAuthState = DeviceAuthState.Idle,
     val debridProvider: DebridProvider? = null,
     val debridUsername: String? = null,
-    val debridConnecting: Boolean = false
+    val debridConnecting: Boolean = false,
+    val wutchUsername: String? = null,
+    val wutchBusy: Boolean = false
 )
 
 @HiltViewModel
@@ -91,7 +96,8 @@ class IntegrationsViewModel @Inject constructor(
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
     private val debridManager: DebridManager,
-    private val stremioLibrarySyncManager: StremioLibrarySyncManager
+    private val stremioLibrarySyncManager: StremioLibrarySyncManager,
+    private val wutchManager: WutchManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IntegrationsUiState())
@@ -123,6 +129,12 @@ class IntegrationsViewModel @Inject constructor(
                 if (authState is DeviceAuthState.Success) {
                     traktSyncManager.initialSync()
                 }
+            }
+        }
+        viewModelScope.launch {
+            wutchManager.refreshConnectionState()
+            wutchManager.username.collect { username ->
+                _uiState.value = _uiState.value.copy(wutchUsername = username)
             }
         }
         // Observe Debrid connection state
@@ -552,5 +564,41 @@ class IntegrationsViewModel @Inject constructor(
 
     fun disconnectDebrid() {
         debridManager.disconnect()
+    }
+
+    // ── wutch.tv ──
+
+    /** Signs in with email and password, or with [apiKey] when given, then imports. */
+    fun connectWutch(email: String, password: String, apiKey: String?) {
+        if (_uiState.value.wutchBusy) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(wutchBusy = true)
+            try {
+                val username = if (!apiKey.isNullOrBlank()) wutchManager.signInWithKey(apiKey)
+                else wutchManager.signIn(email, password)
+                wutchManager.importAll()
+                _events.send(IntegrationsEvent.WutchConnected(username))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                _events.send(IntegrationsEvent.WutchError(e.message ?: "Couldn't sign in to wutch.tv."))
+            } finally {
+                _uiState.value = _uiState.value.copy(wutchBusy = false)
+            }
+        }
+    }
+
+    fun syncWutch() {
+        if (_uiState.value.wutchBusy) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(wutchBusy = true)
+            wutchManager.importAll()
+                .onFailure { _events.send(IntegrationsEvent.WutchError(it.message ?: "wutch.tv sync failed.")) }
+            _uiState.value = _uiState.value.copy(wutchBusy = false)
+        }
+    }
+
+    fun disconnectWutch() {
+        viewModelScope.launch { wutchManager.disconnect() }
     }
 }

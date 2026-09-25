@@ -68,12 +68,13 @@ apps requires Trakt VIP" and gives no free path to a client ID/secret) — this
 used to be free when this integration was originally built, and isn't
 something this repo can work around. If VIP is worth it: register an app at
 https://trakt.tv/oauth/applications (redirect URI `urn:ietf:wg:oauth:2.0:oob`)
-and add these as **Actions secrets** on the `HereLiesAz/illumera` repo:
+and add these as **Actions secrets** on the `HereLiesAz/workflows` repo, where
+the release build runs (`.github/workflows/release.yml` here only tracks it):
 - `TRAKT_CLIENT_ID`
 - `TRAKT_CLIENT_SECRET`
 
-`.github/workflows/release.yml` picks them up automatically on the next push
-to `main`.
+The next release build picks them up. In its "Build signed AAB" step log, a set
+secret shows as `***` and a missing one as blank.
 
 **Free alternative** (no illumera-side credentials needed): Trakt's *watchlist,
 history, and recommendations as catalogs* — as opposed to illumera actively
@@ -85,6 +86,12 @@ Integrations → Stremio) and use "Add New Addons" to import it like any other
 addon. This does not give illumera two-way scrobbling/sync (that specifically
 requires the VIP-gated client ID above), only the catalog rows.
 
+## wutch.tv
+
+Needs nothing here. wutch.tv's API takes the user's own account: signing in with
+email and password makes a personal API key, which is all the app keeps
+(`data/wutch/`). API reference: https://docs.wutch.tv/api.
+
 ## Crash report relay (ACRA)
 
 Same story as Trakt: `app/build.gradle.kts` reads `acra.url`/`acra.token`
@@ -93,7 +100,7 @@ from `local.properties` for local dev and falls back to `ACRA_URL`/
 builds in empty and the app's crash reporter (`LumeraApplication.kt`, via ACRA)
 silently has nowhere to send reports.
 
-Add these as **Actions secrets** on the `HereLiesAz/illumera` repo:
+Add these as **Actions secrets** on the `HereLiesAz/workflows` repo (as for Trakt):
 - `ACRA_URL` — the crash-report worker's URL (e.g. `https://lumera-crash-reporter.<subdomain>.workers.dev/crash-report`)
 - `ACRA_TOKEN` — the shared `AUTH_TOKEN` the worker was deployed with
 

@@ -36,7 +36,8 @@ see `StremioAuthManager`/`StremioAuthService`/`StremioLibrarySyncManager`),
 `debrid` (a `DebridManager` fronting
 per-provider implementations: Real-Debrid, AllDebrid, Premiumize, TorBox,
 Offcloud, Debrid-Link, EasyDebrid), `tmdb` (metadata enrichment), `trakt`
-(auth, library sync, scrobbling), `torrent` (a TorrServer client),
+(auth, library sync, scrobbling), `wutch` (wutch.tv: sign-in with a personal
+API key, watchlist and progress import, progress and watchlist write-back), `torrent` (a TorrServer client),
 `player` (persisted per-playback audio/subtitle/source selection),
 `profile` (active-profile/session state), `stream` (stream parsing and
 quality sorting), `trailer` (YouTube trailer extraction), `soundtrack`

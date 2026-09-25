@@ -23,6 +23,7 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,7 @@ class LibraryRefreshService : Service() {
     @Inject lateinit var profileConfigurationManager: ProfileConfigurationManager
     @Inject lateinit var traktAuthManager: TraktAuthManager
     @Inject lateinit var traktSyncManager: TraktSyncManager
+    @Inject lateinit var wutchManager: WutchManager
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + serviceJob)
@@ -226,6 +228,15 @@ class LibraryRefreshService : Service() {
                 .onFailure {
                     failures += "Trakt history: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Trakt history sync failed", it)
+                }
+        }
+
+        if (wutchManager.isConnected()) {
+            updateNotification("Syncing wutch.tv…")
+            wutchManager.importAll()
+                .onFailure {
+                    failures += "wutch.tv: ${it.message ?: "sync failed"}"
+                    Log.w(TAG, "wutch.tv import failed", it)
                 }
         }
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +43,7 @@ enum class PlaybackDurationStatus {
 class PlayerViewModel @Inject constructor(
     private val dao: AddonDao,
     private val traktScrobbleManager: TraktScrobbleManager,
+    private val wutchManager: WutchManager,
     private val stremioLibrarySyncManager: StremioLibrarySyncManager,
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
@@ -185,6 +187,7 @@ class PlayerViewModel @Inject constructor(
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
         viewModelScope.launch(Dispatchers.IO) {
             traktScrobbleManager.scrobblePause(id, type, positionMs, durationMs, force = force)
+            wutchManager.onPlayback(id, positionMs, finished = false)
         }
     }
 
@@ -192,6 +195,7 @@ class PlayerViewModel @Inject constructor(
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             traktScrobbleManager.scrobbleStop(id, type, positionMs, durationMs)
+            wutchManager.onPlayback(id, positionMs, finished = isCompleted(positionMs, durationMs, type))
         }
     }
 

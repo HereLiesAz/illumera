@@ -9,6 +9,7 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.trakt.TraktAuthManager
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,7 +27,8 @@ class MainViewModel @Inject constructor(
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
     private val debridManager: DebridManager,
-    private val queueManager: QueueManager
+    private val queueManager: QueueManager,
+    private val wutchManager: WutchManager
 ) : ViewModel() {
 
     private val _activeProfile = MutableStateFlow<ProfileEntity?>(null)
@@ -66,6 +68,10 @@ class MainViewModel @Inject constructor(
             traktAuthManager.refreshConnectionState()
             traktSyncManager.resetActivityState()
             startTraktPeriodicSync()
+
+            // wutch.tv: bring its watchlist, part-watched titles and next episodes in
+            wutchManager.refreshConnectionState()
+            if (wutchManager.isConnected()) launch(Dispatchers.IO) { wutchManager.importAll() }
 
             // Refresh Debrid connection for this profile
             debridManager.refreshConnectionState()

@@ -5,6 +5,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
+import com.hereliesaz.illumera.data.wutch.WutchManager
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -59,6 +60,7 @@ class PlayerViewModelTest {
         val viewModel = PlayerViewModel(
             dao = dao,
             traktScrobbleManager = mockk<TraktScrobbleManager>(relaxed = true),
+            wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
             profileConfigurationManager = profileManager
         )
@@ -87,6 +89,7 @@ class PlayerViewModelTest {
         val viewModel = PlayerViewModel(
             dao = dao,
             traktScrobbleManager = trakt,
+            wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
             profileConfigurationManager = profileManager
         )
@@ -114,6 +117,7 @@ class PlayerViewModelTest {
         val viewModel = PlayerViewModel(
             dao = dao,
             traktScrobbleManager = mockk<TraktScrobbleManager>(relaxed = true),
+            wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
             profileConfigurationManager = profileManager
         )
