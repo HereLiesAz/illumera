@@ -1,11 +1,16 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
+# Dependabot runs security updates only (open-pull-requests-limit: 0 turns off
+# version-update PRs). Ignore rules here also apply to security updates.
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "cargo"
+    directory: "/desktop/src-tauri"
     schedule:
-      interval: "weekly" 
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      # Tauri 2 (latest, via webkit2gtk 2.0) is pinned to the gtk-rs 0.18 line, so
+      # glib can't reach the patched 0.20 until Tauri moves. The advisory
+      # (VariantStrIter) is in an API this app never calls.
+      - dependency-name: "glib"

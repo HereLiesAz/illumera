@@ -11,5 +11,8 @@
   "devDependencies": {
     "@rokucommunity/brs": "^0.47.6",
     "brighterscript": "^0.73.5"
+  },
+  "overrides": {
+    "source-map-resolve": "0.5.0"
   }
 }
