@@ -22,6 +22,10 @@ The browser version of illumera, which also becomes the Samsung (Tizen) and LG (
 
 `core/parser.ts` and `core/sorting.ts` mirror Android's `StreamParser` and `StreamSortingService`. Change them together, and update [docs/ADDONS.md](../docs/ADDONS.md).
 
+## Credentials
+
+The Stremio auth key, Trakt tokens and debrid key are never stored in clear text (`src/core/secrets.ts`). They're encrypted with AES-GCM under a non-extractable WebCrypto key that IndexedDB keeps. Where WebCrypto or IndexedDB isn't available, they last only for the session. Credentials saved in clear text by earlier builds are migrated on first load.
+
 ## Commands
 
 ~~~

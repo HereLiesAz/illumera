@@ -1,8 +1,8 @@
-import { Stored } from './storage'
+import { Secret } from './secrets'
 
 /**
  * A debrid provider's API key, filled into the install URL of addons whose URL format is
- * known (Torrentio), as Android's DebridAddonUrlHelper does. Kept in this browser's storage.
+ * known (Torrentio), as Android's DebridAddonUrlHelper does. Encrypted at rest (secrets.ts).
  */
 
 export const PROVIDERS = {
@@ -17,7 +17,7 @@ export const PROVIDERS = {
 
 export type Provider = keyof typeof PROVIDERS
 
-export const debridKey = new Stored<{ provider: Provider; apiKey: string } | null>('debrid', null)
+export const debridKey = new Secret<{ provider: Provider; apiKey: string } | null>('debrid', null)
 
 /** Torrentio's own debrid keys, to spot a URL that is already configured. */
 const TORRENTIO_KEYS = ['realdebrid', 'alldebrid', 'premiumize', 'debridlink', 'easydebrid', 'offcloud', 'torbox', 'putio']

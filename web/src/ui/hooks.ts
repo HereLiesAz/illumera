@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'preact/hooks'
-import type { Stored } from '../core/storage'
 
 /** Current value of a Stored, re-rendering on change. */
-export function useStored<T>(stored: Stored<T>): T {
+export function useStored<T>(stored: { get(): T; subscribe(listener: (value: T) => void): () => void }): T {
   const [value, setValue] = useState(stored.get())
   useEffect(() => stored.subscribe(setValue), [stored])
   return value

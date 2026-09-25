@@ -2,6 +2,7 @@ import { render } from 'preact'
 import { App } from './app'
 import { installSpatialNavigation } from './ui/spatial'
 import { setUpPlatform } from './platform'
+import { loadSecrets, SECRET_NAMES } from './core/secrets'
 import './styles.css'
 
 /** Flexbox gap needs Chromium 84; styles.css falls back to margins without it. */
@@ -19,4 +20,5 @@ function detectFlexGap(): boolean {
 if (!detectFlexGap()) document.documentElement.classList.add('no-flex-gap')
 setUpPlatform()
 installSpatialNavigation()
-render(<App />, document.getElementById('app')!)
+// Credentials are decrypted before anything reads them.
+loadSecrets(SECRET_NAMES).catch(() => undefined).then(() => render(<App />, document.getElementById('app')!))

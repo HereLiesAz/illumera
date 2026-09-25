@@ -1,5 +1,5 @@
 import { API_BASE } from './api'
-import { Stored } from './storage'
+import { Secret } from './secrets'
 
 /**
  * Trakt: device-code sign-in (token exchange through the app's /api, which holds the
@@ -13,7 +13,7 @@ const PAUSE_THROTTLE_MS = 15_000
 export interface Tokens { accessToken: string; refreshToken: string; expiresAt: number }
 export interface DeviceCode { deviceCode: string; userCode: string; verificationUrl: string; interval: number; expiresAt: number }
 
-export const traktTokens = new Stored<Tokens | null>('trakt', null)
+export const traktTokens = new Secret<Tokens | null>('trakt', null)
 let clientId: string | undefined
 let lastPauseAt = 0
 

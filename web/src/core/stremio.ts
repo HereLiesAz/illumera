@@ -1,5 +1,6 @@
 import { addonStore, transportUrl } from './addons'
 import { library, type Progress } from './library'
+import { Secret } from './secrets'
 import { Stored } from './storage'
 import type { Manifest } from './types'
 
@@ -117,7 +118,7 @@ export function planLibrarySync(
 }
 
 export class StremioAccount {
-  readonly account = new Stored<Account | null>('stremio-account', null)
+  readonly account = new Secret<Account | null>('stremio-account', null)
   /** The library as last synced; the baseline for spotting local deletions. */
   readonly baseline = new Stored<Record<string, LibraryItem>>('stremio-library-baseline', {})
   private lastSyncAt = 0
