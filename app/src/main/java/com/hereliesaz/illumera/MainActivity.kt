@@ -983,7 +983,18 @@ class MainActivity : ComponentActivity() {
             var selectedPlaybackPoster by rememberSaveable { mutableStateOf("") }
             var previousView by rememberSaveable { mutableStateOf("menu") }
             var queueAutoPlayId by rememberSaveable { mutableStateOf<String?>(null) }
+            // Autoplay has two owners. Playback the queue started on its own follows the
+            // queue's mode: a whole-show item plays straight through, an episode item plays
+            // once and hands back to the queue. Anything the viewer starts themselves
+            // follows Settings → Autoplay Next Episode, whatever the queue is set to.
+            // queueStartPending marks the next play as the queue's; queuePlaybackActive
+            // says the current one is.
             var queueWholeShowActive by rememberSaveable { mutableStateOf(false) }
+            var queueStartPending by rememberSaveable { mutableStateOf(false) }
+            var queuePlaybackActive by rememberSaveable { mutableStateOf(false) }
+            LaunchedEffect(activeView) {
+                if (activeView != "details" && activeView != "player") queueStartPending = false
+            }
             val playerState = remember { PlayerState() }
 
             // Debrid library items (Watchlist's cloud storage section) are pre-resolved
@@ -993,6 +1004,9 @@ class MainActivity : ComponentActivity() {
             // playerPreference (internal/ask/external) as every other playback path.
             val onPlayResolvedStream: (id: String, url: String, title: String) -> Unit = { id, url, title ->
                 stopService(Intent(this@MainActivity, TorrentService::class.java))
+                queueStartPending = false
+                queuePlaybackActive = false
+                queueWholeShowActive = false
                 playerState.currentEpisodeList = emptyList()
                 playerState.currentStream = Stream(url = url, title = title)
                 playerState.selectedPlayerSubtitles = emptyList()
@@ -1716,6 +1730,9 @@ class MainActivity : ComponentActivity() {
                                     selectedMovieTitle = resolvedSeriesTitle
                                 }
                                 if (logo.isNotBlank()) selectedMovieLogo = logo
+                                queuePlaybackActive = queueStartPending
+                                if (!queuePlaybackActive) queueWholeShowActive = false
+                                queueStartPending = false
                                 playerState.currentEpisodeList = episodes
                                 playerState.currentStream = stream
                                 val subtitlePayload = buildSubtitlePayload(stream, addonSubtitles)
@@ -1933,9 +1950,13 @@ class MainActivity : ComponentActivity() {
                             // Compute next episode
                             // Addons type shows as "series", "tv" or "anime"; any of them with an episode list has a next episode.
                             val isSeries = selectedPlaybackType.lowercase() in SERIES_PLAYBACK_TYPES
-                            val shouldAutoplay = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive) && isSeries
-                            val nextEpisode = remember(selectedPlaybackId, selectedMovieId, playerState.currentEpisodeList, isSeries) {
-                                if (isSeries && playerState.currentEpisodeList.isNotEmpty()) {
+                            val autoplayNext = if (queuePlaybackActive) queueWholeShowActive
+                                else currentProfile?.autoplayNextEpisode == true
+                            // A queued single episode plays once: no next episode, so its end
+                            // leaves the player and the queue moves on.
+                            val queueSingleEpisode = queuePlaybackActive && !queueWholeShowActive
+                            val nextEpisode = remember(selectedPlaybackId, selectedMovieId, playerState.currentEpisodeList, isSeries, queueSingleEpisode) {
+                                if (isSeries && !queueSingleEpisode && playerState.currentEpisodeList.isNotEmpty()) {
                                     findNextEpisode(selectedMovieId, selectedPlaybackId, playerState.currentEpisodeList)
                                 } else null
                             }
@@ -1952,8 +1973,7 @@ class MainActivity : ComponentActivity() {
 
                             // Fetch skip intro/outro segments from IntroDB
                             val skipIntroEnabled = currentProfile?.skipIntro == true
-                            val autoplayEnabled = currentProfile?.autoplayNextEpisode == true
-                            val needIntroDB = skipIntroEnabled || autoplayEnabled
+                            val needIntroDB = skipIntroEnabled || autoplayNext
                             var skipSegmentInfo by remember { mutableStateOf<SkipSegmentInfo?>(null) }
                             LaunchedEffect(selectedPlaybackId, needIntroDB, skipIntroEnabled) {
                                 skipSegmentInfo = null
@@ -2078,7 +2098,7 @@ class MainActivity : ComponentActivity() {
                                     mapDV7ToHevc = currentProfile?.mapDV7ToHevc ?: false,
                                     decoderPriority = currentProfile?.decoderPriority ?: 1,
                                     frameRateMatching = currentProfile?.frameRateMatching ?: false,
-                                    autoplayNextEpisode = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive),
+                                    autoplayNextEpisode = autoplayNext,
                                     autoSelectSource = currentProfile?.autoSelectSource ?: false,
                                     autoplayThresholdMode = currentProfile?.autoplayThresholdMode ?: "percentage",
                                     autoplayThresholdPercent = currentProfile?.autoplayThresholdPercent ?: 95,
@@ -2122,7 +2142,7 @@ class MainActivity : ComponentActivity() {
                                         val nextStreamId = episodeStreamId(selectedMovieId, nextEpisode)
                                         val nextPlaybackTitle = episodeDisplayTitle(nextEpisode)
 
-                                        val autoplay = currentProfile?.autoplayNextEpisode == true || queueWholeShowActive
+                                        val autoplay = autoplayNext
                                         val autoSelect = currentProfile?.autoSelectSource == true
                                         val willAutoResolve = autoplay || autoSelect
                                         playerState.episodeSwitchJob?.cancel()
@@ -2293,6 +2313,9 @@ class MainActivity : ComponentActivity() {
                                         val epStreamId = episodeStreamId(selectedMovieId, episode)
                                         val epTitle = episodeDisplayTitle(episode)
 
+                                        // Picking an episode by hand is the viewer's choice, not the queue's.
+                                        queuePlaybackActive = false
+                                        queueWholeShowActive = false
                                         val autoplay = currentProfile?.autoplayNextEpisode == true
                                         val autoSelect = currentProfile?.autoSelectSource == true
                                         val willAutoResolve = autoplay || autoSelect
@@ -2664,11 +2687,13 @@ class MainActivity : ComponentActivity() {
                                             selectedPlaybackPoster = next.poster ?: ""
                                             queueAutoPlayId = next.id
                                             queueWholeShowActive = next.wholeShow
+                                            queueStartPending = true
                                             previousView = "menu"
                                             activeView = "details"
                                             uiScope.launch { queueManager.ensureSuggestions() }
                                         } else {
                                             queueWholeShowActive = false
+                                            queuePlaybackActive = false
                                             activeView = "details"
                                         }
                                     } else {

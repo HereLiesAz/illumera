@@ -298,10 +298,13 @@ class QueueManager @Inject constructor(
         val current = _state.value
         if (!current.preferences.enabled) return null
 
+        // A show item is used up once an episode of it finishes and playback returns
+        // here; otherwise the same show would be picked again.
         fun matches(item: QueueItem): Boolean =
             item.id == playbackId ||
                 (item.type == "episode" && item.season != null && item.episode != null &&
-                    playbackId.endsWith(":${item.season}:${item.episode}"))
+                    playbackId.endsWith(":${item.season}:${item.episode}")) ||
+                (item.type == "series" && playbackId.startsWith("${item.seriesId ?: item.id}:"))
 
         val manual = current.manualItems.toMutableList()
         val manualIndex = manual.indexOfFirst(::matches)
