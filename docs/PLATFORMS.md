@@ -63,10 +63,12 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 
 ## Step 5: Desktop
 
-- [ ] Wrap `web/` in Tauri for Windows, macOS and Linux.
-- [ ] Bundle or detect the Stremio Service for torrents.
-- [ ] Native playback (mpv or libVLC) for codecs browsers lack, such as MKV with HEVC, DTS or TrueHD.
-- [ ] Releases through the central release workflow.
+- [x] **App:** `desktop/` is a Tauri app that wraps `web/` for Windows, macOS and Linux.
+- [x] **Torrents without Stremio Service:** TorrServer (the engine Android uses, GPL-3.0) is bundled as a sidecar. It starts with the app on `127.0.0.1:8090`, and the web app finds it on its own. `npm run fetch-torrserver` downloads the pinned release for the build target.
+- [x] **Releases:** `.github/workflows/desktop-release.yml` builds the desktop installers and the TV packages on pushes that touch `web/` or `desktop/`, then publishes one GitHub release. It's centralized as Multi-Platform App Release (HereLiesAz/workflows).
+- [ ] Code signing: an Apple Developer ID (with notarization) for macOS, and an Authenticode certificate for Windows.
+- [ ] Intel Macs. The macOS build is Apple silicon only (`macos-latest`).
+- [ ] Native playback (mpv or libVLC) for codecs the system webview lacks. Linux's WebKitGTK plays the fewest.
 
 ## Step 6: Samsung and LG TVs
 
