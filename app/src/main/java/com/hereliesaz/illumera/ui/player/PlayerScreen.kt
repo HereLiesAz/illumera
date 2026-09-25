@@ -74,6 +74,9 @@ fun PlayerScreen(
     onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null,
     onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
+    playbackStatus: String? = null,
+    /** Called when a stream draws its first frame, so a [playbackStatus] can be cleared. */
+    onFirstFrameRendered: () -> Unit = {},
     autoFallbackEnabled: Boolean = false,
     onSuspectSource: ((PlaybackDurationStatus) -> Unit)? = null,
     viewModel: PlayerViewModel = hiltViewModel()
@@ -114,6 +117,10 @@ fun PlayerScreen(
             playbackController.pause()
             onSuspectSource?.invoke(status)
         }
+    }
+
+    LaunchedEffect(uiState.hasRenderedFirstFrame) {
+        if (uiState.hasRenderedFirstFrame) onFirstFrameRendered()
     }
 
     val shouldKeepScreenOn = uiState.playWhenReady || uiState.isPlaying || uiState.isBuffering
@@ -340,6 +347,7 @@ fun PlayerScreen(
             onEpisodeSwitchSourceSelected = onEpisodeSwitchSourceSelected,
             onEpisodeSwitchDismissed = onEpisodeSwitchDismissed,
             torrentProgress = torrentProgress,
+            playbackStatus = playbackStatus,
             isTrailer = movieId.startsWith("trailer_")
         )
     }

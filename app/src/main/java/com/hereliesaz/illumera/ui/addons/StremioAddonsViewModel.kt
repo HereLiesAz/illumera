@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
+internal const val CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
 
 data class StremioAddonsUiState(
     val isSyncing: Boolean = false,

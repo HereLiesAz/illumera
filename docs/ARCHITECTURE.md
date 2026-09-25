@@ -53,6 +53,13 @@ soft to IMDb alone. `Tunefind.merge` keeps Tunefind's order, fills missing
 artists from IMDb and appends IMDb-only songs. `ui/soundtrack/` shows IMDb
 first and swaps in the merged list when Tunefind answers.
 
+**Reset Stremio sync** (Integrations → Stremio, signed in or not) undoes sync on the
+active profile so it can be set up again from scratch: it clears the profile's Stremio
+credentials, forgets the library-sync baseline (`StremioLibrarySyncManager.clearSyncState`,
+so the next sign-in merges both sides instead of pushing local gaps as deletions), and
+removes every addon except Cinemeta. Local watch progress and the Stremio account itself
+are left alone.
+
 A Facebook-created Stremio account's login response carries its FB photo as
 `user.avatar`; on a successful `auth` login this is applied to the active
 profile's avatar automatically (`ProfileAssets.urlAvatarRef` wraps it as a

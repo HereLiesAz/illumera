@@ -29,17 +29,22 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
+import com.hereliesaz.illumera.ui.addons.CINEMETA_TRANSPORT_URL
+import com.hereliesaz.illumera.ui.addons.normalizeTransportUrl
 
 sealed class IntegrationsEvent {
     object LoginSuccess : IntegrationsEvent()
     data class LoginError(val message: String) : IntegrationsEvent()
     data class SyncComplete(val count: Int) : IntegrationsEvent()
     object Disconnected : IntegrationsEvent()
+    data class StremioSyncReset(val removedAddons: Int) : IntegrationsEvent()
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
     data class DebridError(val message: String) : IntegrationsEvent()
     data class ExternalUrlReady(val title: String, val url: String) : IntegrationsEvent()
@@ -85,7 +90,8 @@ class IntegrationsViewModel @Inject constructor(
     private val dao: AddonDao,
     private val traktAuthManager: TraktAuthManager,
     private val traktSyncManager: TraktSyncManager,
-    private val debridManager: DebridManager
+    private val debridManager: DebridManager,
+    private val stremioLibrarySyncManager: StremioLibrarySyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IntegrationsUiState())
@@ -470,6 +476,45 @@ class IntegrationsViewModel @Inject constructor(
         stremioAuthManager.disconnect()
         viewModelScope.launch {
             _events.send(IntegrationsEvent.Disconnected)
+        }
+    }
+
+    /**
+     * Undoes Stremio sync on this profile so it can be set up again from scratch: signs out,
+     * forgets the library-sync baseline (so a fresh sign-in merges instead of pushing
+     * deletions), and removes every addon except Cinemeta. Local watch progress stays.
+     */
+    fun resetStremioSync() {
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return
+        if (_uiState.value.isLoading) return
+        _uiState.value = _uiState.value.copy(isLoading = true)
+        viewModelScope.launch {
+            var removed = 0
+            try {
+                profileConfigurationManager.withActiveProfileRuntime(profileId) {
+                    stremioAuthManager.clearCredentialsForProfile(profileId)
+                    stremioAuthManager.disconnect()
+                    stremioLibrarySyncManager.clearSyncState(profileId)
+                    val addons = addonRepository.getAddons().first()
+                    addons.filter { normalizeTransportUrl(it.transportUrl) != CINEMETA_TRANSPORT_URL }.forEach { addon ->
+                        addonRepository.deleteAddon(addon.transportUrl)
+                        removed++
+                    }
+                    if (addons.none { normalizeTransportUrl(it.transportUrl) == CINEMETA_TRANSPORT_URL }) {
+                        runCatching { addonRepository.installAddon("$CINEMETA_TRANSPORT_URL/manifest.json") }
+                    }
+                    profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(profileId)
+                    profileConfigurationManager.resetStartupCapture()
+                }
+                _events.send(IntegrationsEvent.StremioSyncReset(removed))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w("Integrations", "Stremio sync reset failed", e)
+                _events.send(IntegrationsEvent.LoginError("Couldn't reset Stremio sync: ${e.message ?: "unknown error"}"))
+            } finally {
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            }
         }
     }
 

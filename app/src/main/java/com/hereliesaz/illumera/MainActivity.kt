@@ -965,6 +965,8 @@ class MainActivity : ComponentActivity() {
             var selectedVideoUrl by rememberSaveable { mutableStateOf("") }
             var selectedTrailerAudioUrl by rememberSaveable { mutableStateOf("") }
             var torrentProgress by remember { mutableStateOf<TorrentProgress?>(null) }
+            // What the app is doing around playback (fallback, debrid wait); cleared on the next first frame.
+            var playbackStatus by remember { mutableStateOf<String?>(null) }
             var selectedMovieTitle by rememberSaveable { mutableStateOf("") }
             var selectedMoviePoster by rememberSaveable { mutableStateOf("") }
             var selectedMovieBackground by rememberSaveable { mutableStateOf("") }
@@ -1734,7 +1736,7 @@ class MainActivity : ComponentActivity() {
                                         playerState.selectedPlayerSubtitles = subtitlePayload
                                         playerState.selectedPlayerSources = sourcePayload
                                         selectedVideoUrl = ""
-                                        torrentProgress = TorrentProgress("Connecting to peers...")
+                                        torrentProgress = TorrentProgress("Starting torrent")
                                         activeView = "player"
                                         TorrentService.onStreamReady = { localUrl ->
                                             torrentProgress = null
@@ -1986,13 +1988,17 @@ class MainActivity : ComponentActivity() {
                                 else candidates.drop(currentIndex + 1)
                                     .firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() }
                                 if (nextStream == null) {
+                                    playbackStatus = null
                                     playerState.pendingSourceSelection = null
                                     activeView = "details"
                                     return@nextSource
                                 }
+                                val nextPosition = candidates.indexOf(nextStream) + 1
+                                playbackStatus = "That source didn't play · trying source $nextPosition of ${candidates.size}"
 
                                 val nextUrl = resolvePlayableSourceUrl(nextStream)
                                 if (nextUrl == null) {
+                                    playbackStatus = null
                                     activeView = "details"
                                     return@nextSource
                                 }
@@ -2007,6 +2013,7 @@ class MainActivity : ComponentActivity() {
                                 val requestType = nextStream.addonRequestType
                                 val requestId = nextStream.addonRequestId
                                 if (!requestType.isNullOrBlank() && !requestId.isNullOrBlank()) {
+                                    playbackStatus = "Finding subtitles for source $nextPosition"
                                     val addonSubs = subtitleRepository.getSubtitlesForStream(
                                         type = requestType,
                                         playbackId = requestId,
@@ -2017,10 +2024,11 @@ class MainActivity : ComponentActivity() {
                                         addonSubs
                                     )
                                 }
+                                playbackStatus = "Opening source $nextPosition of ${candidates.size}"
 
                                 if (nextUrl.startsWith("magnet:")) {
                                     selectedVideoUrl = ""
-                                    torrentProgress = TorrentProgress("Trying next source…")
+                                    torrentProgress = TorrentProgress("Starting torrent")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null
                                         selectedVideoUrl = localUrl
@@ -2235,7 +2243,7 @@ class MainActivity : ComponentActivity() {
                                                 selectedPlaybackTitle = nextPlaybackTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2418,7 +2426,7 @@ class MainActivity : ComponentActivity() {
                                                 selectedPlaybackTitle = epTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2512,7 +2520,7 @@ class MainActivity : ComponentActivity() {
                                                 selectedPlaybackTitle = pending.playbackTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2568,7 +2576,7 @@ class MainActivity : ComponentActivity() {
                                     playerState.pendingSourceSelection?.candidateStreams
                                         ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
                                         ?.let { playerState.currentStream = it }
-                                    torrentProgress = TorrentProgress("Connecting to peers...")
+                                    torrentProgress = TorrentProgress("Starting torrent")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null
                                         onReady(localUrl)
@@ -2589,17 +2597,22 @@ class MainActivity : ComponentActivity() {
                                     startService(intent)
                                 },
                                 torrentProgress = torrentProgress,
+                                playbackStatus = playbackStatus,
+                                onFirstFrameRendered = { playbackStatus = null },
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status ->
                                     uiScope.launch {
                                         val currentStream = playerState.currentStream
                                         if (status == PlaybackDurationStatus.DEBRID_DOWNLOADING && currentStream != null) {
+                                            val maxWait = currentProfile?.sourceDebridMaxWaitSeconds ?: 120
+                                            playbackStatus = "Your debrid service is still downloading this · waiting up to ${maxWait}s"
                                             val readyUrl = debridManager.awaitPlayableSource(
                                                 infoHash = currentStream.infoHash,
                                                 fileName = currentStream.behaviorHints?.filename,
-                                                maxWaitSeconds = currentProfile?.sourceDebridMaxWaitSeconds ?: 120
+                                                maxWaitSeconds = maxWait
                                             )
                                             if (!readyUrl.isNullOrBlank()) {
+                                                playbackStatus = "Download finished · opening the video"
                                                 selectedVideoUrl = readyUrl
                                                 playerState.currentStream = currentStream.copy(url = readyUrl)
                                                 return@launch
@@ -2610,6 +2623,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onBack = { sessionResult ->
                                     torrentProgress = null
+                                    playbackStatus = null
                                     handlePlayerSessionEnd(
                                         sessionResult = sessionResult,
                                         selectedPlaybackId = selectedPlaybackId,
