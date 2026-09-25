@@ -1,7 +1,11 @@
-# Serves the built web app (dist/) as static assets on Cloudflare Workers.
+# The web app on Cloudflare Workers: dist/ as static assets, worker/index.ts for /api.
 name = "illumera-web"
+main = "worker/index.ts"
 compatibility_date = "2026-09-01"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+# /api must reach the Worker, not fall back to index.html.
+run_worker_first = ["/api/*"]

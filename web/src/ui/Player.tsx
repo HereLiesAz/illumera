@@ -9,7 +9,9 @@ import type { Stream, Subtitle } from '../core/types'
 import { episodeId, getSession, isPlayable, nextEpisode, setSession, type PlaybackSession } from '../player/session'
 import { loadVttUrl } from '../player/subtitles'
 import { torrentUrl } from '../core/streamingServer'
+import { loadSegments, type Segments } from '../core/intro'
 import { Center, Icon } from './components'
+import { SoundtrackPanel } from './SoundtrackPanel'
 import { focusFirst, onBack } from './spatial'
 
 const HIDE_AFTER_MS = 4000
@@ -58,8 +60,10 @@ export function Player() {
   const [toast, setToast] = useState<string>()
   const [subs, setSubs] = useState<Subtitle[]>([])
   const [activeSub, setActiveSub] = useState<number>(-1)
-  const [menu, setMenu] = useState<'subs' | 'sources' | undefined>()
+  const [menu, setMenu] = useState<'subs' | 'sources' | 'songs' | undefined>()
   const hideTimer = useRef<number>()
+  const [segments, setSegments] = useState<Segments | null>(null)
+  const skippedIntro = useRef(false)
 
   const stream = session?.streams[session.index]
   const meta = session?.meta
@@ -187,6 +191,26 @@ export function Player() {
     return () => { if (url) URL.revokeObjectURL(url) }
   }, [activeSub, subs])
 
+  // Intro and outro times for this episode (IntroDB).
+  useEffect(() => {
+    setSegments(null)
+    skippedIntro.current = false
+    if (!session?.video) return
+    let live = true
+    loadSegments(session.meta.id, session.video.season, session.video.episode).then((s) => live && setSegments(s))
+    return () => { live = false }
+  }, [session?.videoId])
+
+  const inIntro = !!segments && segments.introStart !== undefined && segments.introEnd !== undefined &&
+    time >= segments.introStart && time < segments.introEnd - 1
+  useEffect(() => {
+    if (inIntro && settings.get().autoSkipIntro && !skippedIntro.current && video.current && segments?.introEnd) {
+      skippedIntro.current = true
+      video.current.currentTime = segments.introEnd
+      say('Skipped the intro.')
+    }
+  }, [inIntro])
+
   // Save progress now and then, and on the way out.
   useEffect(() => {
     const timer = setInterval(save, SAVE_EVERY_MS)
@@ -247,7 +271,8 @@ export function Player() {
 
   const v = video.current
   const upNext = session.video && nextEpisode(session.meta, session.video)
-  const nearEnd = isFinite(duration) && duration - time < 60
+  // The credits start where IntroDB says the outro does; otherwise, the last minute.
+  const nearEnd = segments?.outroStart !== undefined ? time >= segments.outroStart : isFinite(duration) && duration - time < 60
   const title = session.video ? `${session.meta.name} · S${session.video.season} · E${session.video.episode}  ${session.video.title ?? session.video.name ?? ''}` : session.meta.name
 
   return (
@@ -259,6 +284,9 @@ export function Player() {
         onEnded={() => { save(); if (settings.get().autoplayNext && upNext) playNext() }}
         onError={() => fallback('This source failed to play.')} />
       {toast && <div class="toast">{toast}</div>}
+      {inIntro && !settings.get().autoSkipIntro && (
+        <button class="btn primary skip" onClick={() => { if (video.current && segments?.introEnd) video.current.currentTime = segments.introEnd }}>Skip intro</button>
+      )}
       <div class={`controls${shown || menu ? '' : ' hidden'}`}>
         <div class="title">{title}</div>
         <div class="muted" style={{ fontSize: '0.85rem' }}>[{stream.addonName}] {stream.name}</div>
@@ -296,13 +324,17 @@ export function Player() {
           <button class="btn" onClick={() => { if (v) v.currentTime += 10 }}><Icon name="fwd10" /></button>
           <button class="btn" onClick={() => setMenu(menu === 'subs' ? undefined : 'subs')}><Icon name="subtitles" /> {activeSub >= 0 ? (subs[activeSub]?.lang ?? 'On') : 'Off'}</button>
           <button class="btn" onClick={() => setMenu(menu === 'sources' ? undefined : 'sources')}><Icon name="list" /> Sources</button>
+          {/^tt\d+$/.test(session.meta.id) && <button class="btn" onClick={() => setMenu(menu === 'songs' ? undefined : 'songs')} aria-label="Soundtrack"><Icon name="music" /></button>}
           {upNext && (nearEnd || !playing) && <button class="btn primary" onClick={playNext}><Icon name="next" /> Next episode</button>}
           <button class="btn" onClick={() => toggleFullscreen(root.current)} aria-label="Full screen"><Icon name="fullscreen" /></button>
           <button class="btn" onClick={() => history.back()} aria-label="Close"><Icon name="close" /></button>
           <span class="time">{clock(time)} / {clock(duration)}</span>
         </div>
       </div>
-      {menu && (
+      {menu === 'songs' && (
+        <SoundtrackPanel type={mediaType} imdbId={session.meta.id} season={session.video?.season} episode={session.video?.episode} onClose={() => setMenu(undefined)} />
+      )}
+      {menu && menu !== 'songs' && (
         <div class="panel" data-nav-scope="player-menu">
           <div class="list">
             {menu === 'subs' && [

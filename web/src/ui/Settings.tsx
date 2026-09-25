@@ -38,6 +38,7 @@ export function Settings() {
       <div class="actions">
         <Toggle label="Autoplay next episode" on={s.autoplayNext} onChange={(v) => settings.update({ autoplayNext: v })} />
         <Toggle label="Try the next source on failure" on={s.autoFallback} onChange={(v) => settings.update({ autoFallback: v })} />
+        <Toggle label="Skip intros automatically" on={s.autoSkipIntro} onChange={(v) => settings.update({ autoSkipIntro: v })} />
       </div>
       <label class="hstack">
         <span style={{ minWidth: '14rem' }}>Subtitles on by default</span>

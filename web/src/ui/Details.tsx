@@ -7,6 +7,7 @@ import { settings } from '../core/settings'
 import type { Meta, MetaVideo, Stream } from '../core/types'
 import { episodeId, isPlayable, setSession } from '../player/session'
 import { Center, Icon } from './components'
+import { SoundtrackPanel } from './SoundtrackPanel'
 import { useAsync } from './hooks'
 import { navigate } from './router'
 import { focusFirst, onBack } from './spatial'
@@ -86,6 +87,7 @@ export function Details({ type, id, addon }: { type: string; id: string; addon?:
   const { value: meta, loading } = useAsync(() => addonStore.meta(type, id, addon), [type, id, addon])
   const [season, setSeason] = useState<number | undefined>()
   const [picked, setPicked] = useState<{ video?: MetaVideo } | undefined>()
+  const [showSongs, setShowSongs] = useState(false)
   const root = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (meta) focusFirst(root.current) }, [meta])
@@ -113,6 +115,7 @@ export function Details({ type, id, addon }: { type: string; id: string; addon?:
         <div class="actions">
           {!isSeries && <button class="btn primary" onClick={() => setPicked({})}><Icon name="play" /> {progress ? 'Resume' : 'Play'}</button>}
           {resumeVideo && <button class="btn primary" onClick={() => setPicked({ video: resumeVideo })}><Icon name="play" /> Resume S{resumeVideo.season} · E{resumeVideo.episode}</button>}
+          {/^tt\d+$/.test(meta.id) && <button class="btn" onClick={() => setShowSongs(true)}><Icon name="music" /> Soundtrack</button>}
         </div>
         {isSeries && (
           <div>
@@ -137,6 +140,7 @@ export function Details({ type, id, addon }: { type: string; id: string; addon?:
           </div>
         )}
       </div>
+      {showSongs && <SoundtrackPanel type={meta.type} imdbId={meta.id} onClose={() => { setShowSongs(false); setTimeout(() => focusFirst(root.current), 0) }} />}
       {picked && <Sources meta={meta} video={picked.video} onClose={() => { setPicked(undefined); setTimeout(() => focusFirst(root.current), 0) }} />}
     </div>
   )

@@ -8,9 +8,11 @@ export interface Settings {
   autoplayNext: boolean
   /** On a playback error, try the next ranked source. */
   autoFallback: boolean
+  /** Jump past intros IntroDB knows about, instead of only offering a Skip button. */
+  autoSkipIntro: boolean
 }
 
-const DEFAULTS: Settings = { sort: DEFAULT_SORT_PREFS, subtitleLanguage: '', autoplayNext: true, autoFallback: true }
+const DEFAULTS: Settings = { sort: DEFAULT_SORT_PREFS, subtitleLanguage: '', autoplayNext: true, autoFallback: true, autoSkipIntro: false }
 
 class SettingsStore {
   readonly value = new Stored<Settings>('settings', DEFAULTS)

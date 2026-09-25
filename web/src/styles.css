@@ -109,6 +109,7 @@ h2 { font-weight: 400; font-size: 1.2rem; margin: 2rem 0 0.8rem; color: var(--mu
 .seek i { position: absolute; inset: 0 auto 0 0; background: var(--gradient); border-radius: 0.2rem; }
 .controls .buttons { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 .controls .time { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.skip { position: absolute; right: 3rem; bottom: 10rem; z-index: 2; }
 .toast { position: absolute; top: 2rem; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.9); padding: 0.7rem 1.2rem; border-radius: 2rem; }
 
 /* Flexbox gap arrived in Chromium 84; older TVs (webOS 5, Tizen 5.5–6) get margins instead.
