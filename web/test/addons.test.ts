@@ -75,3 +75,19 @@ describe('AddonStore', () => {
     expect((await store.meta('movie', 'tt1'))?.name).toBe('Right')
   })
 })
+
+import { withDebridKey } from '../src/core/debrid'
+
+describe('withDebridKey (mirrors Android DebridAddonUrlHelper)', () => {
+  const rd = { provider: 'realdebrid' as const, apiKey: 'KEY' }
+  it('adds the key to a Torrentio manifest, keeping existing config', () => {
+    expect(withDebridKey('https://torrentio.strem.fun/manifest.json', rd)).toBe('https://torrentio.strem.fun/realdebrid=KEY/manifest.json')
+    expect(withDebridKey('stremio://torrentio.strem.fun/sort=size|qualityfilter=cam/manifest.json', rd))
+      .toBe('https://torrentio.strem.fun/sort=size|qualityfilter=cam|realdebrid=KEY/manifest.json')
+  })
+  it('leaves configured, foreign and keyless URLs alone', () => {
+    expect(withDebridKey('https://torrentio.strem.fun/torbox=X/manifest.json', rd)).toBe('https://torrentio.strem.fun/torbox=X/manifest.json')
+    expect(withDebridKey('https://other.test/manifest.json', rd)).toBe('https://other.test/manifest.json')
+    expect(withDebridKey('https://torrentio.strem.fun/manifest.json', null)).toBe('https://torrentio.strem.fun/manifest.json')
+  })
+})

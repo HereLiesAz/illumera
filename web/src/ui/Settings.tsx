@@ -5,6 +5,7 @@ import { LANGUAGE_ALIASES } from '../core/sorting'
 import { useStored } from './hooks'
 import { StremioAccountSection } from './StremioAccount'
 import { StreamingServerSection } from './StreamingServer'
+import { DebridSection } from './DebridSection'
 
 const QUALITIES: Quality[] = ['4k', '1080p', '720p', 'sd', 'cam', 'unknown']
 
@@ -34,6 +35,7 @@ export function Settings() {
       <h1>Settings</h1>
       <StremioAccountSection />
       <StreamingServerSection />
+      <DebridSection />
       <h2>Playback</h2>
       <div class="actions">
         <Toggle label="Autoplay next episode" on={s.autoplayNext} onChange={(v) => settings.update({ autoplayNext: v })} />

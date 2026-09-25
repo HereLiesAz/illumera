@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks'
 import { addonStore, supports } from '../core/addons'
+import { withDebridKey } from '../core/debrid'
 import { Icon } from './components'
 import { useStored } from './hooks'
 
@@ -13,7 +14,8 @@ export function Addons() {
     if (!url.trim() || busy) return
     setBusy(true)
     try {
-      const addon = await addonStore.install(url)
+      // A connected debrid key is filled into addons whose URL format is known (Torrentio).
+      const addon = await addonStore.install(withDebridKey(url))
       setMessage({ text: `Installed ${addon.manifest.name}.` })
       setUrl('')
     } catch (e) {
