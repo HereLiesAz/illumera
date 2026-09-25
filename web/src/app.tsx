@@ -1,6 +1,7 @@
 import { useEffect } from 'preact/hooks'
 import { addonStore } from './core/addons'
 import { stremio } from './core/stremio'
+import { probeServer } from './core/streamingServer'
 import { Addons } from './ui/Addons'
 import { Icon } from './ui/components'
 import { Details } from './ui/Details'
@@ -22,6 +23,7 @@ export function App() {
   useEffect(() => {
     addonStore.ensureDefaults()
     stremio.syncLibrary(true).catch(() => undefined)
+    probeServer()
   }, [])
 
   if (route.name === 'player') return <Player />

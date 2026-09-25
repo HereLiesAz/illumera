@@ -8,6 +8,7 @@ import { sortStreams, toIso2 } from '../core/sorting'
 import type { Stream, Subtitle } from '../core/types'
 import { episodeId, getSession, isPlayable, nextEpisode, setSession, type PlaybackSession } from '../player/session'
 import { loadVttUrl } from '../player/subtitles'
+import { torrentUrl } from '../core/streamingServer'
 import { Center, Icon } from './components'
 import { focusFirst, onBack } from './spatial'
 
@@ -79,6 +80,16 @@ export function Player() {
     setLocal(next)
   }
 
+  /** Replaces the current source with a resolved copy (a torrent's file URL). */
+  const switchStream = (resolved: Stream) => {
+    if (!session) return
+    const streams = session.streams.slice()
+    streams[session.index] = resolved
+    const next = { ...session, streams }
+    setSession(next)
+    setLocal(next)
+  }
+
   const fallback = (reason: string) => {
     if (!session || !settings.get().autoFallback) { say(reason); return }
     const i = nextPlayable(session.streams, session.index + 1)
@@ -95,13 +106,21 @@ export function Player() {
     stremio.syncLibrary().catch(() => undefined)
   }
 
-  // Load the current stream.
+  // Load the current stream; a torrent is first added to the streaming server for its file URL.
   useEffect(() => {
     const v = video.current
-    if (!v || !stream?.url) return
+    if (!v || !stream || (!stream.url && !stream.infoHash)) return
     let cancelled = false
     hls.current?.destroy()
     hls.current = null
+    if (!stream.url) {
+      say('Adding the torrent to the streaming server…')
+      torrentUrl(stream).then(
+        (url) => { if (!cancelled && session) switchStream({ ...stream, url }) },
+        (e) => { if (!cancelled) fallback(e instanceof Error ? e.message : 'This torrent couldn’t be opened.') },
+      )
+      return () => { cancelled = true }
+    }
     const url = stream.url
     const headers = stream.behaviorHints?.proxyHeaders?.request
     if (isHls(url) && !v.canPlayType('application/vnd.apple.mpegurl')) {
@@ -128,7 +147,7 @@ export function Player() {
     }
     v.addEventListener('loadedmetadata', onMeta, { once: true })
     return () => { cancelled = true; v.removeEventListener('loadedmetadata', onMeta) }
-  }, [stream?.url])
+  }, [stream?.url, stream?.infoHash])
 
   // Subtitles: the stream's own, then every subtitle addon's (with this file's hints).
   useEffect(() => {

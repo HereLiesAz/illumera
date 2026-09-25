@@ -40,9 +40,14 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 
 ## Step 3: Web, torrents through the Stremio Service
 
-- [ ] Detect a streaming server at `http://127.0.0.1:11470`, or at an address the user enters.
-- [ ] Play `infoHash` streams through it: create the torrent, pick the file by `behaviorHints.filename`, then `fileIdx`, then the largest video (Android's order), and pass on `tracker:` sources.
-- [ ] Use its transcoding for codecs the browser can't play.
+- [x] Detect a streaming server at `http://127.0.0.1:11470`, or at an address entered in Settings → Torrents (`web/src/core/streamingServer.ts`). An https page can reach loopback but not a LAN server over http, so a LAN address works only from the TV and desktop packages.
+- [x] Play `infoHash` streams through it:
+  - `POST /{hash}/create` with the stream's `tracker:`/`dht:` sources
+  - pick the file by `behaviorHints.filename`, then `fileIdx`, then the server's guess, then the largest video (Android's order)
+  - play `/{hash}/{index}`
+  - a failure falls back to the next source
+- [ ] Check against a real Stremio Service. So far it's tested against a fake server; the `create` request and response follow stremio-web.
+- [ ] Use its transcoding (HLS) for codecs the browser can't play.
 
 ## Step 4: Web, profiles, Trakt, debrid
 

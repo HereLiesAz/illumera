@@ -34,7 +34,7 @@ npm run build    # typecheck and build to dist/
 
 ## What browsers can't do
 
-- **Torrents:** `infoHash` sources need a streaming server (step 3 of the plan).
+- **Torrents:** `infoHash` sources play only through Stremio's streaming server (Stremio Service or the Stremio desktop app) on this computer; see Settings → Torrents.
 - **Codecs:** MKV with HEVC, AC3, DTS or TrueHD may not play. A failing source falls back to the next one.
 - **Request headers:** `proxyHeaders` are sent only for HLS, and never the headers browsers forbid (such as User-Agent and Referer).
 - **Mixed content:** public `http://` URLs are upgraded to `https://`.

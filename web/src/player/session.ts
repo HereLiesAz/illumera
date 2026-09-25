@@ -1,3 +1,4 @@
+import { serverOnline } from '../core/streamingServer'
 import type { Meta, MetaVideo, Stream } from '../core/types'
 
 /** What the player needs, handed over from the details screen. Lost on reload by design. */
@@ -18,9 +19,10 @@ let current: PlaybackSession | undefined
 export function setSession(session: PlaybackSession): void { current = session }
 export function getSession(): PlaybackSession | undefined { return current }
 
-/** Streams the web player can open: http(s) URLs. Torrents need a streaming server. */
+/** Streams the web player can open: http(s) URLs, and torrents while a streaming server answers. */
 export function isPlayable(stream: Stream): boolean {
-  return !!stream.url && /^https?:/i.test(stream.url)
+  if (stream.url) return /^https?:/i.test(stream.url)
+  return !!stream.infoHash && serverOnline.get() === true
 }
 
 /** Episode id per the protocol: the video's id, else series:season:episode. */
