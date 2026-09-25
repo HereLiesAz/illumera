@@ -38,9 +38,10 @@ export class Library {
   }
 
   /** Unfinished titles, newest first. */
+  /** Movies and series only, one per title (progress is keyed by the title's meta id). */
   continueWatching(): Progress[] {
     return Object.keys(this.progress.get()).map((k) => this.progress.get()[k])
-      .filter((p) => p.time > 30 && p.time / p.duration < WATCHED_FRACTION)
+      .filter((p) => (p.type === 'movie' || p.type === 'series') && p.time > 30 && p.time / p.duration < WATCHED_FRACTION)
       .sort((a, b) => b.updatedAt - a.updatedAt)
   }
 }

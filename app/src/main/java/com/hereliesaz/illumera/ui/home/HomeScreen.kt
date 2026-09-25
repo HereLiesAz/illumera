@@ -785,7 +785,13 @@ private fun resolveCinematicPreviewItem(
     return row.items.firstOrNull { it.id == itemToken }
 }
 
-private fun buildContinueWatchingItems(
+/**
+ * Continue Watching holds only movies and series, one card per title. Episodes are saved
+ * under their own ids and, depending on the catalog, typed "series", "tv" or "episode";
+ * they all collapse into their series, shown at its most recently watched episode.
+ * Any other type (channels, live TV, trailers) is left out.
+ */
+internal fun buildContinueWatchingItems(
     history: List<WatchHistoryEntity>,
     seriesNextUp: List<com.hereliesaz.illumera.data.model.SeriesNextUpEntity> = emptyList()
 ): List<MetaItem> {
@@ -795,61 +801,55 @@ private fun buildContinueWatchingItems(
     // 1. In-progress items (partially watched, not completed)
     val inProgress = history.filter { !it.watched }
 
-    val seriesByCanonicalId = mutableMapOf<String, MutableList<WatchHistoryEntity>>()
-    val movieById = mutableMapOf<String, WatchHistoryEntity>()
+    val seriesByCanonicalId = linkedMapOf<String, MutableList<WatchHistoryEntity>>()
+    val movieById = linkedMapOf<String, WatchHistoryEntity>()
 
     inProgress.forEach { entry ->
-        if (entry.type == "series") {
-            val canonicalId = canonicalSeriesId(entry.id)
-            seriesByCanonicalId.getOrPut(canonicalId) { mutableListOf() }.add(entry)
-        } else {
-            movieById.putIfAbsent(entry.id, entry)
+        when {
+            isSeriesEntry(entry) ->
+                seriesByCanonicalId.getOrPut(seriesKey(entry)) { mutableListOf() }.add(entry)
+            entry.type.equals("movie", ignoreCase = true) -> {
+                val current = movieById[entry.id]
+                if (current == null || entry.lastWatched > current.lastWatched) movieById[entry.id] = entry
+            }
         }
     }
 
-    val chosenSeries = mutableMapOf<String, WatchHistoryEntity>()
     seriesByCanonicalId.forEach { (canonicalId, entries) ->
-        val preferred = entries.firstOrNull { isEpisodePlaybackId(it.id) } ?: entries.firstOrNull()
-        if (preferred != null) {
-            chosenSeries[canonicalId] = preferred
-        }
+        // The latest episode wins; a bare series entry only when no episode was saved.
+        val chosen = entries.filter { isEpisodePlaybackId(it.id) }.maxByOrNull { it.lastWatched }
+            ?: entries.maxByOrNull { it.lastWatched }
+            ?: return@forEach
+        seriesIdsIncluded.add(canonicalId)
+        result.add(chosen.lastWatched to MetaItem(
+            id = canonicalId,
+            type = "series",
+            name = chosen.title,
+            poster = chosen.poster ?: entries.firstNotNullOfOrNull { it.poster },
+            background = chosen.background ?: entries.firstNotNullOfOrNull { it.background },
+            logo = chosen.logo ?: entries.firstNotNullOfOrNull { it.logo },
+            progress = chosen.progress()
+        ))
     }
 
-    inProgress.forEach { entry ->
-        if (entry.type == "series") {
-            val canonicalId = canonicalSeriesId(entry.id)
-            val chosen = chosenSeries[canonicalId] ?: return@forEach
-            if (chosen.id != entry.id) return@forEach
-            seriesIdsIncluded.add(canonicalId)
-            result.add(chosen.lastWatched to MetaItem(
-                id = canonicalId,
-                type = entry.type,
-                name = entry.title,
-                poster = entry.poster,
-                background = chosen.background,
-                logo = chosen.logo,
-                progress = chosen.progress()
-            ))
-        } else {
-            val chosen = movieById[entry.id] ?: return@forEach
-            if (chosen.id != entry.id) return@forEach
-            result.add(entry.lastWatched to MetaItem(
-                id = entry.id,
-                type = entry.type,
-                name = entry.title,
-                poster = entry.poster,
-                background = entry.background,
-                logo = entry.logo,
-                progress = entry.progress()
-            ))
-        }
+    movieById.values.forEach { entry ->
+        result.add(entry.lastWatched to MetaItem(
+            id = entry.id,
+            type = "movie",
+            name = entry.title,
+            poster = entry.poster,
+            background = entry.background,
+            logo = entry.logo,
+            progress = entry.progress()
+        ))
     }
 
     // 2. Next-up entries: series where all in-progress episodes are watched,
     //    but there's a next episode available. Only include if the episode has aired.
     val today = java.time.LocalDate.now().toString() // "2026-04-06"
     for (nextUp in seriesNextUp) {
-        if (nextUp.seriesId in seriesIdsIncluded) continue // already shown as in-progress
+        // Already shown as in-progress, or a duplicate next-up row
+        if (!seriesIdsIncluded.add(nextUp.seriesId)) continue
 
         // Check if the next episode has aired (null = assume aired)
         val released = nextUp.nextReleased
@@ -873,6 +873,20 @@ private fun buildContinueWatchingItems(
     // Sort all items by most recent activity
     return result.sortedByDescending { it.first }.map { it.second }
 }
+
+/**
+ * "series" and "episode" are always series. "tv" (and a mistyped "movie") count only when the
+ * entry is an episode of something else; a live channel saved as "tv" is not a series.
+ */
+private fun isSeriesEntry(entry: WatchHistoryEntity): Boolean = when (entry.type.lowercase()) {
+    "series", "episode" -> true
+    "tv", "movie" -> !entry.seriesId.isNullOrBlank() && entry.seriesId != entry.id
+    else -> false
+}
+
+/** The series an entry belongs to: its saved series id, else derived from an "id:season:episode" id. */
+private fun seriesKey(entry: WatchHistoryEntity): String =
+    entry.seriesId?.takeIf { it.isNotBlank() } ?: canonicalSeriesId(entry.id)
 
 private fun canonicalSeriesId(playbackId: String): String {
     if (!isEpisodePlaybackId(playbackId)) return playbackId
