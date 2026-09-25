@@ -25,6 +25,20 @@ describe('web worker', () => {
     expect((await handle(new Request('https://w.test/api/nope'), env)).status).toBe(404)
     expect(await (await handle(new Request('https://w.test/#/home'), env)).text()).toBe('asset')
   })
+
+  it('sends Trakt a User-Agent, which its Cloudflare front requires', async () => {
+    let sent: RequestInit | undefined
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://api.trakt.tv/oauth/device/code')
+      sent = init
+      return new Response(JSON.stringify({ user_code: 'ABCD' }))
+    })
+    const res = await handle(new Request('https://w.test/api/trakt/device/code', { method: 'POST' }),
+      { ...env, TRAKT_CLIENT_ID: 'id', TRAKT_CLIENT_SECRET: 'secret' })
+    expect(res.status).toBe(200)
+    expect((sent?.headers as Record<string, string>)['user-agent']).toMatch(/^illumera-web\//)
+    expect(JSON.parse(String(sent?.body))).toEqual({ client_id: 'id' })
+  })
 })
 
 describe('soundtrack', () => {
