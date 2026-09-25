@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home: a menu (Search, Addons, Settings), then Continue Watching and every catalog row. -->
+<component name="HomeView" extends="View">
+  <children>
+    <Poster uri="pkg:/images/logo.png" translation="[96,48]" width="56" height="56" />
+    <ButtonGroup id="menu" translation="[190,44]" layoutDirection="horiz" itemSpacings="[16]" minWidth="200" />
+    <RowList id="rows" translation="[96,150]"
+      itemComponentName="PosterItem"
+      numRows="3" rowItemSize="[[220,380]]" rowItemSpacing="[[24,0]]"
+      itemSize="[1760,440]" itemSpacing="[0,24]"
+      rowLabelOffset="[[0,12]]" showRowLabel="true" rowLabelColor="0x8A8A8AFF"
+      focusBitmapBlendColor="0xFA3E58FF" rowFocusAnimationStyle="floatingFocus" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="HomeView.brs" />
+</component>

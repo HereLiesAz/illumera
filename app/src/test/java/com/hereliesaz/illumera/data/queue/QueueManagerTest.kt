@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.data.queue
 
 import android.content.Context
 import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
@@ -209,6 +210,23 @@ class QueueManagerTest {
         }
 
         assertFalse(queue.state.value.isRefreshingSuggestions)
+    }
+
+    @Test
+    fun onlyUnseenSuggestionsDropsFinishedTitlesButKeepsUnfinishedOnes() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        coEvery { addonDao.getAllWatchHistoryOnce() } returns listOf(
+            WatchHistoryEntity(id = "tt-finished", title = "Finished", poster = null, position = 100, duration = 100, lastWatched = 3, type = "movie", watched = true),
+            WatchHistoryEntity(id = "tt-started", title = "Started", poster = null, position = 10, duration = 100, lastWatched = 2, type = "movie"),
+            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, position = 10, duration = 100, lastWatched = 1, type = "series"),
+        )
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+        queue.setOnlyUnseenSuggestions(true)
+
+        queue.refreshSuggestions()
+
+        assertEquals(setOf("tt-started", "tt-show:1:2"), queue.state.value.suggestions.map { it.id }.toSet())
     }
 
     @Test

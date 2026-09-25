@@ -111,13 +111,14 @@ class TorrentService : Service() {
         downloadJob = scope.launch {
             if (previousMagnet != null && previousMagnet != preparedMagnet) {
                 if (BuildConfig.DEBUG) Log.d(TAG, "Dropping previous torrent")
+                deliver { onStreamProgress?.invoke(TorrentProgress(status = "Releasing the previous torrent")) }
                 api.dropTorrent(previousMagnet)
             }
             try {
                 // Phase 1: Start TorrServer process
                 if (BuildConfig.DEBUG) Log.d(TAG, "Starting TorrServer engine...")
                 deliver {
-                    onStreamProgress?.invoke(TorrentProgress(status = "Starting engine..."))
+                    onStreamProgress?.invoke(TorrentProgress(status = "Starting the torrent engine"))
                 }
                 engine.start()
 
@@ -139,18 +140,24 @@ class TorrentService : Service() {
                 // Phase 2: Add torrent
                 if (BuildConfig.DEBUG) Log.d(TAG, "Adding magnet: ${preparedMagnet.take(120)}...")
                 deliver {
-                    onStreamProgress?.invoke(TorrentProgress(status = "Fetching metadata..."))
+                    onStreamProgress?.invoke(TorrentProgress(status = "Adding the torrent"))
                 }
                 api.addTorrent(preparedMagnet)
 
-                // Phase 3: Resolve correct video file, then start streaming
+                // Phase 3: Resolve correct video file, then start streaming.
+                // resolveFileIndex waits for the file list, which needs metadata from peers.
+                deliver {
+                    onStreamProgress?.invoke(TorrentProgress(status = "Fetching the file list from peers"))
+                }
                 val targetFileIndex = resolveFileIndex(preparedMagnet, fileIdx, fileName)
                 if (BuildConfig.DEBUG) Log.d(TAG, "Streaming file index: $targetFileIndex")
 
+                deliver {
+                    onStreamProgress?.invoke(TorrentProgress(status = "Opening the video file"))
+                }
                 val streamUrl = api.getStreamUrl(preparedMagnet, targetFileIndex)
                 updateNotification("Streaming...")
                 deliver {
-                    onStreamProgress?.invoke(TorrentProgress(status = "Starting playback..."))
                     onStreamReady?.invoke(streamUrl)
                 }
 

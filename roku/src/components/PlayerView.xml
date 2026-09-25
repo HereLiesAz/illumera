@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Playback with the system controls. Falls back down the ranked sources on errors and
+     placeholder clips; torrents go through the streaming server set in Settings. -->
+<component name="PlayerView" extends="View">
+  <children>
+    <Video id="video" width="1920" height="1080" enableUI="true" />
+    <Label id="message" translation="[0,1000]" width="1920" horizAlign="center" color="0xF2F2F2FF" font="font:SmallSystemFont" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="PlayerView.brs" />
+</component>

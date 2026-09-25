@@ -123,6 +123,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 private const val DOUBLE_BACK_EXIT_WINDOW_MS = 400L
+private val SERIES_PLAYBACK_TYPES = setOf("series", "tv", "anime", "episode")
 private const val SOURCE_SELECTION_COMMIT_MIN_POSITION_MS = 5_000L
 private const val SOURCE_SELECTION_FAILURE_RESET_MAX_POSITION_MS = 1_000L
 
@@ -965,6 +966,8 @@ class MainActivity : ComponentActivity() {
             var selectedVideoUrl by rememberSaveable { mutableStateOf("") }
             var selectedTrailerAudioUrl by rememberSaveable { mutableStateOf("") }
             var torrentProgress by remember { mutableStateOf<TorrentProgress?>(null) }
+            // What the app is doing around playback (fallback, debrid wait); cleared on the next first frame.
+            var playbackStatus by remember { mutableStateOf<String?>(null) }
             var selectedMovieTitle by rememberSaveable { mutableStateOf("") }
             var selectedMoviePoster by rememberSaveable { mutableStateOf("") }
             var selectedMovieBackground by rememberSaveable { mutableStateOf("") }
@@ -1734,7 +1737,7 @@ class MainActivity : ComponentActivity() {
                                         playerState.selectedPlayerSubtitles = subtitlePayload
                                         playerState.selectedPlayerSources = sourcePayload
                                         selectedVideoUrl = ""
-                                        torrentProgress = TorrentProgress("Connecting to peers...")
+                                        torrentProgress = TorrentProgress("Starting torrent")
                                         activeView = "player"
                                         TorrentService.onStreamReady = { localUrl ->
                                             torrentProgress = null
@@ -1928,7 +1931,8 @@ class MainActivity : ComponentActivity() {
                             }
 
                             // Compute next episode
-                            val isSeries = selectedPlaybackType.equals("series", ignoreCase = true)
+                            // Addons type shows as "series", "tv" or "anime"; any of them with an episode list has a next episode.
+                            val isSeries = selectedPlaybackType.lowercase() in SERIES_PLAYBACK_TYPES
                             val shouldAutoplay = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive) && isSeries
                             val nextEpisode = remember(selectedPlaybackId, selectedMovieId, playerState.currentEpisodeList, isSeries) {
                                 if (isSeries && playerState.currentEpisodeList.isNotEmpty()) {
@@ -1986,13 +1990,17 @@ class MainActivity : ComponentActivity() {
                                 else candidates.drop(currentIndex + 1)
                                     .firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() }
                                 if (nextStream == null) {
+                                    playbackStatus = null
                                     playerState.pendingSourceSelection = null
                                     activeView = "details"
                                     return@nextSource
                                 }
+                                val nextPosition = candidates.indexOf(nextStream) + 1
+                                playbackStatus = "That source didn't play · trying source $nextPosition of ${candidates.size}"
 
                                 val nextUrl = resolvePlayableSourceUrl(nextStream)
                                 if (nextUrl == null) {
+                                    playbackStatus = null
                                     activeView = "details"
                                     return@nextSource
                                 }
@@ -2007,6 +2015,7 @@ class MainActivity : ComponentActivity() {
                                 val requestType = nextStream.addonRequestType
                                 val requestId = nextStream.addonRequestId
                                 if (!requestType.isNullOrBlank() && !requestId.isNullOrBlank()) {
+                                    playbackStatus = "Finding subtitles for source $nextPosition"
                                     val addonSubs = subtitleRepository.getSubtitlesForStream(
                                         type = requestType,
                                         playbackId = requestId,
@@ -2017,10 +2026,11 @@ class MainActivity : ComponentActivity() {
                                         addonSubs
                                     )
                                 }
+                                playbackStatus = "Opening source $nextPosition of ${candidates.size}"
 
                                 if (nextUrl.startsWith("magnet:")) {
                                     selectedVideoUrl = ""
-                                    torrentProgress = TorrentProgress("Trying next source…")
+                                    torrentProgress = TorrentProgress("Starting torrent")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null
                                         selectedVideoUrl = localUrl
@@ -2087,6 +2097,8 @@ class MainActivity : ComponentActivity() {
                                 nextEpisodeInfo = if (nextEpisode != null) nextEpisodeInfo else null,
                                 onAutoplayNextEpisode = if (nextEpisode != null) {
                                     { playerCurrentSourceUrl ->
+                                        // Read before the session end below consumes it.
+                                        val watchedCandidates = playerState.pendingSourceSelection?.candidateStreams
                                         // Mark current episode as completed
                                         handlePlayerSessionEnd(
                                             sessionResult = PlayerSessionResult(
@@ -2159,7 +2171,7 @@ class MainActivity : ComponentActivity() {
 
                                             // Resolve the actual stream the user was watching (may differ from initial if they switched sources)
                                             val actualStream = if (playerCurrentSourceUrl != null) {
-                                                playerState.pendingSourceSelection?.candidateStreams?.firstOrNull { candidate ->
+                                                watchedCandidates?.firstOrNull { candidate ->
                                                     resolvePlayableSourceUrl(candidate) == playerCurrentSourceUrl
                                                 } ?: playerState.currentStream
                                             } else playerState.currentStream
@@ -2177,10 +2189,10 @@ class MainActivity : ComponentActivity() {
                                             // Priority 2: Remembered source
                                             val rememberSource = currentProfile?.rememberSourceSelection ?: true
                                             val preferred = if (rememberSource) sourceSelectionStore.findPreferredStream(nextPlaybackId, streams) else null
-                                            // Priority 3: First playable (only when autoSelectSource is on)
+                                            // Priority 3: First playable (autoplay or autoSelectSource)
                                             val streamToPlay = bingeMatch
                                                 ?: preferred
-                                                ?: if (autoSelect) streams.firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() } else null
+                                                ?: if (autoplay || autoSelect) streams.firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() } else null
 
                                             if (streamToPlay == null) {
                                                 playerState.isEpisodeSwitchLoading = false
@@ -2230,12 +2242,14 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (nextUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = nextPlaybackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = nextPlaybackTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2413,12 +2427,14 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (epUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = epPlaybackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = epTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2507,12 +2523,14 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (sourceUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = pending.playbackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = pending.playbackTitle
                                                 playerState.selectedPlayerSubtitles = subtitlePayload
                                                 playerState.selectedPlayerSources = sourcePayload
-                                                torrentProgress = TorrentProgress("Connecting to peers...")
+                                                torrentProgress = TorrentProgress("Starting torrent")
                                                 TorrentService.onStreamReady = { localUrl ->
                                                     torrentProgress = null
                                                     selectedVideoUrl = localUrl
@@ -2568,7 +2586,7 @@ class MainActivity : ComponentActivity() {
                                     playerState.pendingSourceSelection?.candidateStreams
                                         ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
                                         ?.let { playerState.currentStream = it }
-                                    torrentProgress = TorrentProgress("Connecting to peers...")
+                                    torrentProgress = TorrentProgress("Starting torrent")
                                     TorrentService.onStreamReady = { localUrl ->
                                         torrentProgress = null
                                         onReady(localUrl)
@@ -2589,17 +2607,22 @@ class MainActivity : ComponentActivity() {
                                     startService(intent)
                                 },
                                 torrentProgress = torrentProgress,
+                                playbackStatus = playbackStatus,
+                                onFirstFrameRendered = { playbackStatus = null },
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status ->
                                     uiScope.launch {
                                         val currentStream = playerState.currentStream
                                         if (status == PlaybackDurationStatus.DEBRID_DOWNLOADING && currentStream != null) {
+                                            val maxWait = currentProfile?.sourceDebridMaxWaitSeconds ?: 120
+                                            playbackStatus = "Your debrid service is still downloading this · waiting up to ${maxWait}s"
                                             val readyUrl = debridManager.awaitPlayableSource(
                                                 infoHash = currentStream.infoHash,
                                                 fileName = currentStream.behaviorHints?.filename,
-                                                maxWaitSeconds = currentProfile?.sourceDebridMaxWaitSeconds ?: 120
+                                                maxWaitSeconds = maxWait
                                             )
                                             if (!readyUrl.isNullOrBlank()) {
+                                                playbackStatus = "Download finished · opening the video"
                                                 selectedVideoUrl = readyUrl
                                                 playerState.currentStream = currentStream.copy(url = readyUrl)
                                                 return@launch
@@ -2610,6 +2633,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onBack = { sessionResult ->
                                     torrentProgress = null
+                                    playbackStatus = null
                                     handlePlayerSessionEnd(
                                         sessionResult = sessionResult,
                                         selectedPlaybackId = selectedPlaybackId,

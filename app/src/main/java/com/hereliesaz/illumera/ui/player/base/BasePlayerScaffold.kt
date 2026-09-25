@@ -188,6 +188,8 @@ fun BasePlayerScaffold(
     onEpisodeSwitchSourceSelected: ((sourceUrl: String) -> Unit)? = null,
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
+    /** What the app is doing around playback (source fallback, debrid wait); keeps the loading overlay up. */
+    playbackStatus: String? = null,
     isTrailer: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -274,8 +276,9 @@ fun BasePlayerScaffold(
         if (duration <= 0L) false
         else {
             // Priority 1: Outro timestamp from IntroDB
-            val outroStart = skipSegmentInfo?.outroStartMs
-            if (outroStart != null && outroStart > 0) {
+            // An outro at or past this file's end belongs to a different cut; use the threshold.
+            val outroStart = skipSegmentInfo?.outroStartMs?.takeIf { it in 1 until duration }
+            if (outroStart != null) {
                 position >= outroStart
             } else if (autoplayThresholdMode == "introdb") {
                 // Only IntroDB mode — no fallback threshold
@@ -341,9 +344,12 @@ fun BasePlayerScaffold(
         }
     }
 
-    // Auto-trigger on STATE_ENDED if overlay is showing
+    // The episode ended: autoplay goes on even if the countdown never started (IntroDB-only
+    // mode without an outro, unknown duration), as long as the viewer didn't cancel it.
     LaunchedEffect(uiState.isEnded) {
-        if (uiState.isEnded && countdownActive && !autoplayCancelled && !autoplayFired) {
+        if (uiState.isEnded && autoplayEnabled && nextEpisodeInfo != null && !hasError &&
+            !autoplayCancelled && !autoplayFired
+        ) {
             autoplayFired = true
             onAutoplayNextEpisode?.invoke(currentSourceUrl)
         }
@@ -404,7 +410,7 @@ fun BasePlayerScaffold(
     val displayPositionMs = pendingPreviewSeekPosition ?: uiState.positionMs
     val isPlaybackIntended = uiState.playWhenReady
     val showLoadingOverlay = uiState.errorMessage.isNullOrBlank() &&
-        (uiState.isBuffering || !uiState.hasRenderedFirstFrame)
+        (uiState.isBuffering || !uiState.hasRenderedFirstFrame || playbackStatus != null)
     val canShowPauseOverlay = !isPlaybackIntended &&
         !uiState.isBuffering &&
         uiState.isReady &&
@@ -804,7 +810,8 @@ fun BasePlayerScaffold(
                     torrentProgress = torrentProgress,
                     isReady = uiState.isReady,
                     hasRenderedFirstFrame = uiState.hasRenderedFirstFrame,
-                    isBuffering = uiState.isBuffering
+                    isBuffering = uiState.isBuffering,
+                    statusMessage = playbackStatus
                 )
             )
         }

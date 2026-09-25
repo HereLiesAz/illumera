@@ -1,0 +1,19 @@
+[package]
+name = "illumera-desktop"
+version = "0.1.0"
+description = "illumera for Windows, macOS and Linux"
+edition = "2021"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

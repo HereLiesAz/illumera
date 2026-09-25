@@ -217,12 +217,12 @@ data class TorrentStats(
     val preloadedBytes: Long = 0L
 ) {
     fun statusText(): String = when (stat) {
-        0 -> "Connecting to peers..."
-        1 -> "Fetching metadata..."
-        2 -> "Buffering..."
-        3 -> "Streaming"
-        4 -> "Stopped"
-        else -> "Connecting..."
+        0 -> "Connecting to peers"
+        1 -> "Fetching metadata from peers"
+        2 -> "Buffering from peers"
+        3 -> "Streaming from peers"
+        4 -> "Torrent stopped"
+        else -> "Connecting"
     }
 }
 

@@ -4,7 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -21,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
@@ -49,6 +52,8 @@ internal data class LoadingSnapshot(
     val isReady: Boolean = false,
     val hasRenderedFirstFrame: Boolean = false,
     val isBuffering: Boolean = false,
+    /** What the app is doing outside the player: source fallback, debrid wait. */
+    val statusMessage: String? = null,
 )
 
 internal fun LoadingSnapshot(
@@ -56,6 +61,7 @@ internal fun LoadingSnapshot(
     isReady: Boolean,
     hasRenderedFirstFrame: Boolean,
     isBuffering: Boolean,
+    statusMessage: String? = null,
 ) = LoadingSnapshot(
     torrentStatus = torrentProgress?.status,
     peers = torrentProgress?.peers ?: 0,
@@ -65,6 +71,7 @@ internal fun LoadingSnapshot(
     isReady = isReady,
     hasRenderedFirstFrame = hasRenderedFirstFrame,
     isBuffering = isBuffering,
+    statusMessage = statusMessage,
 )
 
 /**
@@ -73,11 +80,16 @@ internal fun LoadingSnapshot(
  */
 internal fun loadingStepsBetween(previous: LoadingSnapshot?, current: LoadingSnapshot): List<String> {
     val steps = mutableListOf<String>()
+    val message = current.statusMessage?.let(::summarizeStatus)
+    if (message != null && message != previous?.statusMessage?.let(::summarizeStatus)) steps += message
+
     if (previous == null) {
-        steps += when {
-            current.hasRenderedFirstFrame -> "Rebuffering"
-            current.isTorrent -> "Preparing torrent"
-            else -> "Opening stream"
+        // A torrent or app status already says what is happening; don't precede it with a generic line.
+        when {
+            current.hasRenderedFirstFrame && current.isBuffering -> steps += "Rebuffering"
+            current.torrentStatus != null || message != null -> Unit
+            current.isTorrent -> steps += "Preparing torrent"
+            !current.hasRenderedFirstFrame -> steps += "Opening stream"
         }
     }
 
@@ -96,6 +108,8 @@ internal fun loadingStepsBetween(previous: LoadingSnapshot?, current: LoadingSna
     listOf(25, 50, 75).lastOrNull { it in (before + 1)..now }?.let { steps += "Preloaded $it%" }
 
     if (previous != null) {
+        // The torrent engine handed over its local stream; the player takes it from here.
+        if (previous.isTorrent && !current.isTorrent && !current.hasRenderedFirstFrame) steps += "Opening the video stream"
         if (current.isReady && !previous.isReady && !current.hasRenderedFirstFrame) steps += "Preparing video"
         if (current.hasRenderedFirstFrame && current.isBuffering && !previous.isBuffering) steps += "Rebuffering"
     }
@@ -142,11 +156,15 @@ internal fun LoadingStepFeed(snapshot: LoadingSnapshot, modifier: Modifier = Mod
         }
     }
 
-    val rowHeight = 34.dp
+    val rowHeight = 24.dp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     Box(
-        modifier = modifier.width(460.dp).height(rowHeight * VISIBLE_ROWS),
-        contentAlignment = Alignment.BottomStart
+        // Lift the feed so the newest (bottom) row, not the box, sits at the center.
+        modifier = modifier
+            .offset(y = -rowHeight * (VISIBLE_ROWS - 1) / 2)
+            .width(460.dp)
+            .height(rowHeight * VISIBLE_ROWS),
+        contentAlignment = Alignment.BottomCenter
     ) {
         lines.forEachIndexed { index, line ->
             // 0 = bottom (newest) row, counting upward.
@@ -157,18 +175,22 @@ internal fun LoadingStepFeed(snapshot: LoadingSnapshot, modifier: Modifier = Mod
                     position.animateTo(slot, tween(MOVE_DURATION_MS, easing = FastOutSlowInEasing))
                 }
                 val p = position.value
+                // The newest line is the current step; older ones recede.
+                val recency = 1f - (p.coerceIn(0f, VISIBLE_ROWS - 1f) / (VISIBLE_ROWS - 1)) * 0.65f
                 val alpha = when {
                     p < 0f -> 1f + p
-                    p > VISIBLE_ROWS - 1 -> (VISIBLE_ROWS - p).coerceIn(0f, 1f)
-                    else -> 1f
+                    p > VISIBLE_ROWS - 1 -> (VISIBLE_ROWS - p).coerceIn(0f, 1f) * recency
+                    else -> recency
                 }
                 Text(
                     text = line.text,
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
+                        .fillMaxWidth()
                         .height(rowHeight)
                         .graphicsLayer {
                             translationY = -p * rowHeightPx

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A title: backdrop, facts, description; Play for a movie, seasons and episodes for a series. -->
+<component name="DetailsView" extends="View">
+  <children>
+    <Poster id="backdrop" width="1920" height="1080" opacity="0.3" loadDisplayMode="scaleToZoom" />
+    <Rectangle width="1920" height="1080" color="0x000000A0" />
+    <Label id="title" translation="[96,80]" width="1300" font="font:LargeBoldSystemFont" color="0xF2F2F2FF" />
+    <Label id="facts" translation="[96,150]" width="1300" color="0x8A8A8AFF" font="font:SmallSystemFont" />
+    <Label id="description" translation="[96,195]" width="1100" height="150" wrap="true" maxLines="4" color="0xCFCFCFFF" font="font:SmallSystemFont" />
+    <Button id="play" translation="[96,370]" text="Play" visible="false" minWidth="220" />
+    <LabelList id="seasons" translation="[96,370]" itemSize="[260,54]" visible="false" focusBitmapBlendColor="0xFA3E58FF" />
+    <LabelList id="episodes" translation="[400,370]" itemSize="[1400,54]" numRows="12" visible="false" focusBitmapBlendColor="0xFA3E58FF" />
+    <Label id="status" translation="[96,370]" color="0x8A8A8AFF" text="Loading…" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="DetailsView.brs" />
+</component>

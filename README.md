@@ -158,6 +158,9 @@ illumera/
 
 ## Documentation
 
+A web version (also the future Samsung/LG TV and desktop app) is in
+[`web/`](web/README.md); the platform plan is [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
+
 Deeper reference docs — architecture, the release pipeline (including the
 custom Media3/ExoPlayer build), theming, and branding — live in
 [`docs/`](docs/README.md).

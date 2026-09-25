@@ -1,0 +1,14 @@
+{
+  "id": "com.hereliesaz.illumera",
+  "version": "0.1.0",
+  "vendor": "HereLiesAz",
+  "type": "web",
+  "main": "index.html",
+  "title": "illumera",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#000000",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "requiredACG": []
+}

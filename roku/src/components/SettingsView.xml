@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings: the streaming server that plays torrent sources. -->
+<component name="SettingsView" extends="View">
+  <children>
+    <Label text="Settings" translation="[96,48]" font="font:LargeBoldSystemFont" color="0xF2F2F2FF" />
+    <Label id="about" translation="[96,120]" width="1500" wrap="true" color="0x8A8A8AFF" font="font:SmallSystemFont"
+      text="Roku can't download torrents. A streaming server on your network can: TorrServer (port 8090) or Stremio Service (port 11470), for example on the computer running the illumera desktop app. Enter its address to play torrent sources." />
+    <LabelList id="list" translation="[96,260]" itemSize="[1200,60]" focusBitmapBlendColor="0xFA3E58FF" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="SettingsView.brs" />
+</component>

@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Sync
@@ -86,6 +87,7 @@ fun IntegrationsScreen(
     var showConnectDialog by remember { mutableStateOf(false) }
     var showManagementDialog by remember { mutableStateOf(false) }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
+    var showResetSyncConfirm by remember { mutableStateOf(false) }
     var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
 
     // Handle events
@@ -104,6 +106,14 @@ fun IntegrationsScreen(
                 }
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
+                }
+                is IntegrationsEvent.StremioSyncReset -> {
+                    showConnectDialog = false
+                    Toast.makeText(
+                        context,
+                        "Stremio sync reset. Removed ${event.removedAddons} addon(s). Sign in to sync again.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
                 is IntegrationsEvent.DebridConnected -> {
                     Toast.makeText(context, "Connected to ${event.provider.displayName}", Toast.LENGTH_SHORT).show()
@@ -234,6 +244,7 @@ fun IntegrationsScreen(
             },
             onLoginWithFacebook = { viewModel.startFacebookLogin() },
             onLoginWithApple = { viewModel.startAppleLogin() },
+            onResetSync = { showResetSyncConfirm = true },
             deviceFormFactor = deviceFormFactor
         )
     }
@@ -280,6 +291,10 @@ fun IntegrationsScreen(
             onDisconnect = {
                 showManagementDialog = false
                 showDisconnectConfirm = true
+            },
+            onResetSync = {
+                showManagementDialog = false
+                showResetSyncConfirm = true
             }
         )
     }
@@ -300,6 +315,22 @@ fun IntegrationsScreen(
             onConfirm = {
                 showDisconnectConfirm = false
                 viewModel.disconnect()
+            }
+        )
+    }
+
+    if (showResetSyncConfirm) {
+        DisconnectConfirmDialog(
+            title = "Reset Stremio sync?",
+            message = "This profile is signed out of Stremio, every addon except Cinemeta is removed, " +
+                "and the sync history is forgotten. Your Stremio account itself isn't changed. " +
+                "Sign in again to set up addons and Continue Watching from your account. " +
+                "Local watch progress is kept.",
+            confirmText = "Reset",
+            onDismiss = { showResetSyncConfirm = false },
+            onConfirm = {
+                showResetSyncConfirm = false
+                viewModel.resetStremioSync()
             }
         )
     }
@@ -434,6 +465,7 @@ private fun ConnectStremioDialog(
     onRegister: (email: String, password: String, marketing: Boolean) -> Unit,
     onLoginWithFacebook: () -> Unit = {},
     onLoginWithApple: () -> Unit = {},
+    onResetSync: () -> Unit = {},
     deviceFormFactor: DeviceFormFactor
 ) {
     if (facebookLoginState is FacebookLoginState.WaitingForUser || facebookLoginState is FacebookLoginState.Error) {
@@ -629,6 +661,14 @@ private fun ConnectStremioDialog(
                                 onClick = { showPasswordReset = true },
                                 enabled = !isLoading,
                                 modifier = Modifier.width(170.dp)
+                            )
+                            // Also reachable signed out: a past sign-in leaves addons and a sync baseline behind.
+                            IntegrationButton(
+                                text = "Reset sync",
+                                onClick = onResetSync,
+                                enabled = !isLoading,
+                                isDestructive = true,
+                                modifier = Modifier.width(140.dp)
                             )
                         }
                     }
@@ -1190,7 +1230,8 @@ private fun StremioManagementDialog(
     onSubscribeCalendar: () -> Unit,
     onChangePassword: () -> Unit,
     onDeleteAccount: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onResetSync: () -> Unit
 ) {
     val syncFocusRequester = remember { FocusRequester() }
 
@@ -1291,6 +1332,16 @@ private fun StremioManagementDialog(
                     title = "Delete Stremio Account",
                     subtitle = "Open Stremio's official account deletion instructions",
                     onClick = onDeleteAccount,
+                    isDestructive = true
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.RestartAlt,
+                    title = "Reset Stremio Sync",
+                    subtitle = "Sign out, remove synced addons and forget sync history, then start over",
+                    onClick = onResetSync,
                     isDestructive = true
                 )
 
@@ -1455,7 +1506,10 @@ private fun StremioExternalLinkDialog(
 @Composable
 private fun DisconnectConfirmDialog(
     onDismiss: () -> Unit,
-    onConfirm: () -> Unit
+    onConfirm: () -> Unit,
+    title: String = "Log out of Stremio?",
+    message: String = "This profile will be signed out of Stremio. Installed addons remain, but account sync stops until you sign in again.",
+    confirmText: String = "Log Out"
 ) {
     val confirmFocusRequester = remember { FocusRequester() }
 
@@ -1475,7 +1529,7 @@ private fun DisconnectConfirmDialog(
         ) {
             Column {
                 Text(
-                    "Log out of Stremio?",
+                    title,
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = Color.White
                 )
@@ -1483,7 +1537,7 @@ private fun DisconnectConfirmDialog(
                 Spacer(Modifier.height(12.dp))
 
                 Text(
-                    "This profile will be signed out of Stremio. Installed addons remain, but account sync stops until you sign in again.",
+                    message,
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -1501,7 +1555,7 @@ private fun DisconnectConfirmDialog(
                     )
 
                     IntegrationButton(
-                        text = "Log Out",
+                        text = confirmText,
                         onClick = onConfirm,
                         isDestructive = true,
                         modifier = Modifier.weight(1f),

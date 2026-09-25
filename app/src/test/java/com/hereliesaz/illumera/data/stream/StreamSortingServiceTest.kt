@@ -296,4 +296,45 @@ class StreamSortingServiceTest {
         assertEquals(listOf("seeded", "unknown", "zero"), result.mapNotNull { it.url })
     }
 
+
+    @Test
+    fun preferredAudioLanguage_ranksDeclaringSourcesFirstWithoutRemovingOthers() {
+        val streams = listOf(
+            Stream(name = "2160p", title = "Show.S01E01.2160p.WEB", url = "undeclared-4k"),
+            Stream(name = "1080p", title = "Show.S01E01.1080p.WEB\n🇮🇹 / 🇬🇧", url = "flag-italian"),
+            Stream(name = "720p", title = "Show.S01E01.720p.ITALIAN.WEB", url = "italian-720"),
+            Stream(name = "1080p", title = "Show.S01E01.1080p.FRENCH.WEB", url = "french"),
+        )
+
+        val result = filter(
+            streams,
+            ProfileEntity(name = "Test", preferredAudioLanguage = "it", preferredAudioLanguageSecondary = "fr")
+        )
+
+        assertEquals(listOf("flag-italian", "italian-720", "french", "undeclared-4k"), result.mapNotNull { it.url })
+    }
+
+    @Test
+    fun preferredSubtitleLanguage_breaksTiesWithinTheSameAudioRank() {
+        val streams = listOf(
+            Stream(title = "1080p", url = "plain"),
+            Stream(title = "1080p", url = "spanish-subs", subtitles = listOf(StreamSubtitle(url = "s", lang = "spa"))),
+        )
+
+        val result = filter(streams, ProfileEntity(name = "Test", preferredSubtitleLanguage = "es"))
+
+        assertEquals(listOf("spanish-subs", "plain"), result.mapNotNull { it.url })
+    }
+
+    @Test
+    fun noPreferredLanguage_leavesTheRankingAlone() {
+        val streams = listOf(
+            Stream(title = "720p ITALIAN", url = "italian-720"),
+            Stream(title = "2160p", url = "4k"),
+        )
+
+        val result = filter(streams, ProfileEntity(name = "Test"))
+
+        assertEquals(listOf("4k", "italian-720"), result.mapNotNull { it.url })
+    }
 }

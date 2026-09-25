@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Base for screens: `params` in, `navigate` out, `resumed` when shown again after Back. -->
+<component name="View" extends="Group">
+  <interface>
+    <field id="params" type="assocarray" onChange="onParams" />
+    <field id="navigate" type="assocarray" />
+    <field id="resumed" type="boolean" alwaysNotify="true" onChange="onResumed" />
+  </interface>
+  <script type="text/brightscript" uri="View.brs" />
+</component>

@@ -1,0 +1,25 @@
+{
+  "name": "illumera-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "package:webos": "node scripts/package-tv.mjs webos",
+    "package:tizen": "node scripts/package-tv.mjs tizen"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.3",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2",
+    "wrangler": "^4.140.0"
+  }
+}

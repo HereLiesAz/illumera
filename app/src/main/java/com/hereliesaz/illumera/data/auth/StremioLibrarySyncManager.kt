@@ -223,6 +223,17 @@ class StremioLibrarySyncManager @Inject constructor(
         )
     }
 
+    /**
+     * Forgets the sync baseline for a profile, so the next sync after signing in again
+     * merges both sides instead of reading missing items as deletions to push.
+     */
+    suspend fun clearSyncState(profileId: Int) = syncMutex.withLock {
+        lastSyncAtMsByProfile.remove(profileId)
+        withContext(Dispatchers.IO) {
+            prefs.edit().remove("$KEY_LOCAL_SNAPSHOT_PREFIX$profileId").commit()
+        }
+    }
+
     private fun loadLocalSnapshot(profileId: Int): Map<String, StremioLibraryItem> = runCatching {
         val json = prefs.getString("$KEY_LOCAL_SNAPSHOT_PREFIX$profileId", "[]")
         val items = gson.fromJson<List<StremioLibraryItem>>(json, libraryListType).orEmpty()

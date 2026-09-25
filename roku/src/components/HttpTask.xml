@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Network work off the render thread. Set `request` and observe `response`:
+       { kind: "json", url }                    GET and parse JSON
+       { kind: "install", url }                 fetch an addon manifest and install it
+       { kind: "torrent", stream }              TorrServer: add the torrent, return the file URL
+     The response echoes `tag` so one observer can serve several requests. -->
+<component name="HttpTask" extends="Task">
+  <interface>
+    <field id="request" type="assocarray" />
+    <field id="response" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="HttpTask.brs" />
+</component>

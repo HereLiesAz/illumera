@@ -16,6 +16,8 @@ built internally and how to work on it safely.
 - [**ADDONS.md**](ADDONS.md) — for addon developers: what illumera reads
   beyond the Stremio protocol, how stream titles are parsed and ranked, and
   what isn't supported, so one addon serves both apps well.
+- [**PLATFORMS.md**](PLATFORMS.md) — the plan and to-do list for web, desktop,
+  Samsung/LG TVs and Roku. The web app lives in [`web/`](../web/README.md), the desktop app in [`desktop/`](../desktop/README.md) and the Roku channel in [`roku/`](../roku/README.md).
 - [**THEMING.md**](THEMING.md) — the built-in/custom theme system and how
   to add a new built-in theme.
 - [**BRANDING.md**](BRANDING.md) — the logo assets, color palette, and
