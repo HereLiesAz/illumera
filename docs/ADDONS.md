@@ -185,6 +185,7 @@ For steps 2–4 the returned `meta.id` must equal the requested ID. `idPrefixes`
 
 - Every addon with a `stream` resource whose top-level `idPrefixes` match is asked. Matching is a case-insensitive prefix, and an empty list matches everything. Object-form `types` and `idPrefixes` inside `resources` are not read for streams or meta. **Declare `idPrefixes` at the top level**, even for IDs your own catalog produced.
 - Episode stream IDs are `video.id`, falling back to `{seriesId}:{season}:{episode}`. Next-episode requests always use type `series`.
+- A stream with `externalUrl` and no `url` or `infoHash` opens in the device's browser when picked from a details screen. Many TV devices have no browser; illumera then shows the link instead. These streams are never auto-selected.
 
 ### Subtitles
 
@@ -213,7 +214,7 @@ Don't serve real content that short as a movie or episode stream.
 
 Don't rely on these in illumera:
 
-- Stream `externalUrl` and `ytId`. Such streams are listed but can't be played.
+- Stream `ytId`. Such streams are listed but can't be played.
 - Meta `trailers`, `trailerStreams`, `links`, `posterShape`, `behaviorHints.defaultVideoId`, `videos[].streams` and `videos[].available`.
 - Addon search catalogs. Search uses Cinemeta.
 - Catalog extras other than `skip` (no `genre`); catalogs with required extras are requested without them.
@@ -232,4 +233,4 @@ Don't rely on these in illumera:
 - [ ] Set `behaviorHints.videoSize`, or write sizes as `GB`/`MB`, not `GiB`/`MiB`.
 - [ ] Set `behaviorHints.filename` and `videoHash` for torrent file choice and subtitle matching.
 - [ ] Keep `bingeGroup` stable across a season.
-- [ ] Give playable `url` or `infoHash` streams; `externalUrl` and `ytId` do nothing here.
+- [ ] Give playable `url` or `infoHash` streams; `ytId` does nothing here, and `externalUrl` only opens a browser.

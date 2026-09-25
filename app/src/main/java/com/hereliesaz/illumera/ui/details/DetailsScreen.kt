@@ -84,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.util.openExternalLink
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -111,6 +112,7 @@ import androidx.compose.foundation.shape.CircleShape
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
@@ -142,6 +144,7 @@ fun DetailsScreen(
     viewModel: DetailsViewModel = hiltViewModel(key = "details_${type}_${id}")
 ) {
     LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
+    val context = LocalContext.current
 
     val state by viewModel.state.collectAsState()
     val movie = state.meta
@@ -1003,8 +1006,12 @@ fun DetailsScreen(
                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
             },
             onSourceSelected = { stream ->
+                val externalUrl = stream.externalUrl
                 if (!resolvePlayableUrl(stream).isNullOrEmpty()) {
                     viewModel.selectStreamForPlayback(stream)
+                } else if (!externalUrl.isNullOrBlank()) {
+                    // Link-only entries (e.g. a song list) open in the browser, as in Stremio.
+                    context.openExternalLink(externalUrl)
                 }
             }
         )
