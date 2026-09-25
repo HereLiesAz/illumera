@@ -2,6 +2,8 @@
 name = "illumera-web"
 main = "worker/index.ts"
 compatibility_date = "2026-09-01"
+# TRAKT_CLIENT_ID is set in the Cloudflare dashboard; keep it across deploys.
+keep_vars = true
 
 [assets]
 directory = "./dist"

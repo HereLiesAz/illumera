@@ -123,6 +123,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 private const val DOUBLE_BACK_EXIT_WINDOW_MS = 400L
+private val SERIES_PLAYBACK_TYPES = setOf("series", "tv", "anime", "episode")
 private const val SOURCE_SELECTION_COMMIT_MIN_POSITION_MS = 5_000L
 private const val SOURCE_SELECTION_FAILURE_RESET_MAX_POSITION_MS = 1_000L
 
@@ -1930,7 +1931,8 @@ class MainActivity : ComponentActivity() {
                             }
 
                             // Compute next episode
-                            val isSeries = selectedPlaybackType.equals("series", ignoreCase = true)
+                            // Addons type shows as "series", "tv" or "anime"; any of them with an episode list has a next episode.
+                            val isSeries = selectedPlaybackType.lowercase() in SERIES_PLAYBACK_TYPES
                             val shouldAutoplay = (currentProfile?.autoplayNextEpisode == true || queueWholeShowActive) && isSeries
                             val nextEpisode = remember(selectedPlaybackId, selectedMovieId, playerState.currentEpisodeList, isSeries) {
                                 if (isSeries && playerState.currentEpisodeList.isNotEmpty()) {
@@ -2095,6 +2097,8 @@ class MainActivity : ComponentActivity() {
                                 nextEpisodeInfo = if (nextEpisode != null) nextEpisodeInfo else null,
                                 onAutoplayNextEpisode = if (nextEpisode != null) {
                                     { playerCurrentSourceUrl ->
+                                        // Read before the session end below consumes it.
+                                        val watchedCandidates = playerState.pendingSourceSelection?.candidateStreams
                                         // Mark current episode as completed
                                         handlePlayerSessionEnd(
                                             sessionResult = PlayerSessionResult(
@@ -2167,7 +2171,7 @@ class MainActivity : ComponentActivity() {
 
                                             // Resolve the actual stream the user was watching (may differ from initial if they switched sources)
                                             val actualStream = if (playerCurrentSourceUrl != null) {
-                                                playerState.pendingSourceSelection?.candidateStreams?.firstOrNull { candidate ->
+                                                watchedCandidates?.firstOrNull { candidate ->
                                                     resolvePlayableSourceUrl(candidate) == playerCurrentSourceUrl
                                                 } ?: playerState.currentStream
                                             } else playerState.currentStream
@@ -2185,10 +2189,10 @@ class MainActivity : ComponentActivity() {
                                             // Priority 2: Remembered source
                                             val rememberSource = currentProfile?.rememberSourceSelection ?: true
                                             val preferred = if (rememberSource) sourceSelectionStore.findPreferredStream(nextPlaybackId, streams) else null
-                                            // Priority 3: First playable (only when autoSelectSource is on)
+                                            // Priority 3: First playable (autoplay or autoSelectSource)
                                             val streamToPlay = bingeMatch
                                                 ?: preferred
-                                                ?: if (autoSelect) streams.firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() } else null
+                                                ?: if (autoplay || autoSelect) streams.firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() } else null
 
                                             if (streamToPlay == null) {
                                                 playerState.isEpisodeSwitchLoading = false
@@ -2238,6 +2242,8 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (nextUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = nextPlaybackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = nextPlaybackTitle
@@ -2421,6 +2427,8 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (epUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = epPlaybackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = epTitle
@@ -2515,6 +2523,8 @@ class MainActivity : ComponentActivity() {
                                             playerState.isEpisodeSwitchLoading = false
 
                                             if (sourceUrl.startsWith("magnet:")) {
+                                                // Drop the previous episode's URL so it doesn't replay under the new title.
+                                                selectedVideoUrl = ""
                                                 selectedPlaybackId = pending.playbackId
                                                 selectedPlaybackType = "series"
                                                 selectedPlaybackTitle = pending.playbackTitle

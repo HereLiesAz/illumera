@@ -392,11 +392,10 @@ class QueueManager @Inject constructor(
 
             val excludedIds = mutableSetOf<String>()
 
-            if (current.preferences.onlyUnseenSuggestions) {
-                excludedIds += history.map { normalizeId(it.id) }
-            } else {
-                excludedIds += history.filter { it.watched }.map { normalizeId(it.id) }
-            }
+            // Seen means finished. Started-but-unfinished titles stay eligible in both modes;
+            // excluding them too emptied the row whenever Trakt had nothing to add.
+            // "Only unseen" is stricter through the Trakt watched lookup below.
+            excludedIds += history.filter { it.watched }.map { normalizeId(it.id) }
             excludedIds += current.manualItems.map { normalizeId(it.seriesId ?: it.id) }
 
             val useTrakt = QueueSuggestionSource.TRAKT in current.preferences.suggestionSources
@@ -546,9 +545,7 @@ class QueueManager @Inject constructor(
                 }
             }
 
-            if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources &&
-                !current.preferences.onlyUnseenSuggestions
-            ) {
+            if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources) {
                 history.asSequence()
                     .filter { !it.watched }
                     .filter {

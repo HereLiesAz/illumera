@@ -58,16 +58,58 @@ class StreamSortingService @Inject constructor() {
             }
             .map { (stream, _) -> stream }
             .sortedWith(
-                buildComparator(
+                languagePreferenceComparator(profile).then(buildComparator(
                     addonSortOrders = addonSortOrders,
                     sortBy = sortBy,
                     secondarySortBy = profile?.sourceSortSecondary,
                     preferredSizeBytes = preferredSizeBytes,
                     minimumSeeds = minimumSeeds,
                     parsed = parsed
-                )
+                ))
             )
     }
+
+    /**
+     * Preferred languages rank sources; they never remove any (the Force settings do that).
+     * Sources declaring the primary audio language come first, then the secondary; within
+     * those, the primary then secondary subtitle language. Undeclared sources keep their
+     * place after them, ordered by the rest of the ranking.
+     */
+    private fun languagePreferenceComparator(profile: ProfileEntity?): Comparator<Stream> {
+        val audio = preferredLanguages(profile?.preferredAudioLanguage, profile?.preferredAudioLanguageSecondary)
+        val subtitles = preferredLanguages(profile?.preferredSubtitleLanguage, profile?.preferredSubtitleLanguageSecondary)
+        if (audio.isEmpty() && subtitles.isEmpty()) return Comparator { _, _ -> 0 }
+        val ranks = java.util.IdentityHashMap<Stream, Int>()
+        return compareBy { stream ->
+            ranks.getOrPut(stream) {
+                val audioRank = audio.indexOfFirst { declaresAudioLanguage(stream, it) }.let { if (it < 0) audio.size else it }
+                val subtitleRank = subtitles.indexOfFirst { declaresSubtitleLanguage(stream, it) }.let { if (it < 0) subtitles.size else it }
+                audioRank * (subtitles.size + 1) + subtitleRank
+            }
+        }
+    }
+
+    private fun preferredLanguages(primary: String?, secondary: String?): List<String> =
+        listOf(primary, secondary)
+            .map { normalizeLanguageTag(it) }
+            .filter { it.isNotEmpty() && it != "#off" }
+            .distinct()
+
+    /**
+     * Looser than the Force filter: a language word anywhere in the source text counts (as
+     * "ITALIAN" in a release name), as do flag emoji. A word from the content's own title
+     * appears in every source for it, so it can't change their order.
+     */
+    private fun declaresAudioLanguage(stream: Stream, language: String): Boolean {
+        if (matchesAudioLanguage(stream, listOf(language))) return true
+        val text = StreamParser.combinedText(stream)
+        if (containsLanguageAlias(text, language)) return true
+        val flags = LANGUAGE_FLAGS[normalizeLanguageTag(language).substringBefore('-')] ?: return false
+        return flags.any { text.contains(it) }
+    }
+
+    private fun declaresSubtitleLanguage(stream: Stream, language: String): Boolean =
+        matchesSubtitleLanguage(stream, listOf(language))
 
     private fun matchesAudioLanguageRequirement(stream: Stream, profile: ProfileEntity?): Boolean {
         val languages = requiredLanguages(
@@ -75,7 +117,10 @@ class StreamSortingService @Inject constructor() {
             primary = profile?.preferredAudioLanguage.orEmpty(),
             secondary = profile?.preferredAudioLanguageSecondary.orEmpty()
         )
-        if (languages.isEmpty()) return true
+        return languages.isEmpty() || matchesAudioLanguage(stream, languages)
+    }
+
+    private fun matchesAudioLanguage(stream: Stream, languages: List<String>): Boolean {
 
         val authoritativeFields = listOfNotNull(
             stream.behaviorHints?.filename?.takeIf { it.isNotBlank() },
@@ -98,8 +143,10 @@ class StreamSortingService @Inject constructor() {
             primary = profile?.preferredSubtitleLanguage.orEmpty(),
             secondary = profile?.preferredSubtitleLanguageSecondary.orEmpty()
         )
-        if (languages.isEmpty()) return true
+        return languages.isEmpty() || matchesSubtitleLanguage(stream, languages)
+    }
 
+    private fun matchesSubtitleLanguage(stream: Stream, languages: List<String>): Boolean {
         val advertisedSubtitles = stream.subtitles.orEmpty()
         if (advertisedSubtitles.any { subtitle ->
                 languages.any { language ->
@@ -305,6 +352,45 @@ class StreamSortingService @Inject constructor() {
         private val AUDIO_CUE_REGEX = Regex("(?i)\\b(audio|dub(?:bed)?|dual)\\b")
         private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|subbed|cc|captions?)\\b")
         private val LANGUAGE_PATTERNS = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+        /** Flags addons such as Torrentio print to declare a source's audio languages. */
+        private val LANGUAGE_FLAGS = mapOf(
+            "en" to listOf("🇬🇧", "🇺🇸"),
+            "es" to listOf("🇪🇸", "🇲🇽"),
+            "fr" to listOf("🇫🇷"),
+            "de" to listOf("🇩🇪"),
+            "it" to listOf("🇮🇹"),
+            "pt" to listOf("🇵🇹", "🇧🇷"),
+            "ru" to listOf("🇷🇺"),
+            "ja" to listOf("🇯🇵"),
+            "ko" to listOf("🇰🇷"),
+            "zh" to listOf("🇨🇳", "🇹🇼"),
+            "ar" to listOf("🇸🇦"),
+            "hi" to listOf("🇮🇳"),
+            "tr" to listOf("🇹🇷"),
+            "pl" to listOf("🇵🇱"),
+            "nl" to listOf("🇳🇱"),
+            "sv" to listOf("🇸🇪"),
+            "no" to listOf("🇳🇴"),
+            "da" to listOf("🇩🇰"),
+            "fi" to listOf("🇫🇮"),
+            "cs" to listOf("🇨🇿"),
+            "hu" to listOf("🇭🇺"),
+            "ro" to listOf("🇷🇴"),
+            "th" to listOf("🇹🇭"),
+            "vi" to listOf("🇻🇳"),
+            "id" to listOf("🇮🇩"),
+            "uk" to listOf("🇺🇦"),
+            "el" to listOf("🇬🇷"),
+            "he" to listOf("🇮🇱"),
+            "ms" to listOf("🇲🇾"),
+            "hr" to listOf("🇭🇷"),
+            "bg" to listOf("🇧🇬"),
+            "sk" to listOf("🇸🇰"),
+            "sr" to listOf("🇷🇸"),
+            "tl" to listOf("🇵🇭"),
+            "fa" to listOf("🇮🇷"),
+        )
 
         private val LANGUAGE_ALIASES = mapOf(
             "en" to setOf("english", "eng"),

@@ -5,12 +5,14 @@ import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.hereliesaz.illumera.BuildConfig
+import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.trakt.TraktDeviceCodeResponse
 import com.hereliesaz.illumera.data.model.trakt.TraktTokenResponse
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.remote.TraktApiService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,7 +43,9 @@ class TraktAuthManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val traktApi: TraktApiService,
     private val profileConfigurationManager: ProfileConfigurationManager,
-    private val profileMutationCoordinator: ProfileMutationCoordinator
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
+    private val dao: AddonDao,
+    private val watchlistPendingStore: TraktWatchlistPendingStore
 ) {
     companion object {
         private const val TAG = "TraktAuthManager"
@@ -115,6 +119,23 @@ class TraktAuthManager @Inject constructor(
         migrateGlobalTokensToProfile()
         needsRefresh = false
         _isConnected.value = getAccessToken() != null
+    }
+
+    /**
+     * Signing in merges the local watchlist into Trakt's. Saving the tokens starts a sync at
+     * once, and that sync deletes local items Trakt lacks, so every local item is queued as a
+     * pending add first: the sync pushes them instead of deleting them.
+     */
+    private suspend fun markLocalWatchlistForMerge(profileId: Int) {
+        try {
+            dao.getWatchlistOnce(profileId)
+                .filter { it.id.startsWith("tt") }
+                .forEach { watchlistPendingStore.mark(profileId, it.id, it.type, TraktWatchlistPendingStore.Op.ADD) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Couldn't queue the local watchlist for Trakt", e)
+        }
     }
 
     // ── Token Storage (per-profile) ──
@@ -266,6 +287,7 @@ class TraktAuthManager @Inject constructor(
                     200 -> {
                         val tokenBody = response.body()
                         if (tokenBody != null) {
+                            markLocalWatchlistForMerge(profileId)
                             if (!saveTokens(tokenBody, profileId)) {
                                 _authState.value = DeviceAuthState.Idle
                                 return

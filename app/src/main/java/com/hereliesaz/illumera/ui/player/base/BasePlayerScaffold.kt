@@ -276,8 +276,9 @@ fun BasePlayerScaffold(
         if (duration <= 0L) false
         else {
             // Priority 1: Outro timestamp from IntroDB
-            val outroStart = skipSegmentInfo?.outroStartMs
-            if (outroStart != null && outroStart > 0) {
+            // An outro at or past this file's end belongs to a different cut; use the threshold.
+            val outroStart = skipSegmentInfo?.outroStartMs?.takeIf { it in 1 until duration }
+            if (outroStart != null) {
                 position >= outroStart
             } else if (autoplayThresholdMode == "introdb") {
                 // Only IntroDB mode — no fallback threshold
@@ -343,9 +344,12 @@ fun BasePlayerScaffold(
         }
     }
 
-    // Auto-trigger on STATE_ENDED if overlay is showing
+    // The episode ended: autoplay goes on even if the countdown never started (IntroDB-only
+    // mode without an outro, unknown duration), as long as the viewer didn't cancel it.
     LaunchedEffect(uiState.isEnded) {
-        if (uiState.isEnded && countdownActive && !autoplayCancelled && !autoplayFired) {
+        if (uiState.isEnded && autoplayEnabled && nextEpisodeInfo != null && !hasError &&
+            !autoplayCancelled && !autoplayFired
+        ) {
             autoplayFired = true
             onAutoplayNextEpisode?.invoke(currentSourceUrl)
         }
