@@ -232,6 +232,9 @@ class TraktAuthManager @Inject constructor(
                 )
 
                 pollForToken(body, profileId)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                // Superseded by a newer attempt; it owns the auth state now.
+                throw cancelled
             } catch (e: Exception) {
                 com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Device auth failed", e)
                 _authState.value = DeviceAuthState.Error(e.message ?: "Unknown error")
@@ -282,6 +285,8 @@ class TraktAuthManager @Inject constructor(
                     418 -> { _authState.value = DeviceAuthState.Error("Authorization denied"); return }
                     429 -> { interval += 1000L }
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.w(TAG, "Poll attempt failed: ${e.message}")
             }

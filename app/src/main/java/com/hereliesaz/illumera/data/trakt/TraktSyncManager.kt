@@ -28,7 +28,8 @@ class TraktSyncManager @Inject constructor(
     private val traktSyncApi: TraktSyncApiService,
     private val traktAuthManager: TraktAuthManager,
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val pendingStore: TraktWatchlistPendingStore
 ) {
     companion object {
         private const val TAG = "TraktSyncManager"
@@ -145,6 +146,14 @@ class TraktSyncManager @Inject constructor(
                     return@withContext Result.failure(Exception("Not connected to Trakt"))
                 }
 
+                // 0. Retry local changes Trakt hasn't confirmed, then keep the ones that
+                //    still failed out of the diff below so it doesn't undo them.
+                val activeProfile = profileId
+                retryPendingPushes(activeProfile)
+                val pending = pendingStore.pending(activeProfile)
+                val pendingAdds = pending.filter { it.op == TraktWatchlistPendingStore.Op.ADD }.map { it.id }.toSet()
+                val pendingRemoves = pending.filter { it.op == TraktWatchlistPendingStore.Op.REMOVE }.map { it.id }.toSet()
+
                 // 1. Fetch Trakt watchlist
                 val traktItems = fetchAllTraktWatchlist()
                     ?: return@withContext Result.failure(Exception("Failed to fetch Trakt watchlist"))
@@ -170,7 +179,7 @@ class TraktSyncManager @Inject constructor(
                         "show" -> item.show?.ids?.imdb
                         else -> null
                     }
-                    imdbId != null && imdbId !in localImdbIds
+                    imdbId != null && imdbId !in localImdbIds && imdbId !in pendingRemoves
                 }
                 if (toPull.isNotEmpty()) {
                     pullFromTrakt(toPull)
@@ -178,11 +187,11 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 // 5. Remove local items no longer on Trakt (deleted externally).
-                // Local adds are pushed instantly via pushAdd(), so anything
-                // local but missing from Trakt was removed on Trakt's side.
+                // Local adds are pushed via pushAdd(); anything local, missing from
+                // Trakt and not still pending was removed on Trakt's side.
                 // Only consider items with IMDb-format IDs — items without them
                 // can't be matched against Trakt's response. (Fix: audit #7)
-                val toRemove = localItems.filter { it.id.startsWith("tt") && it.id !in traktImdbIds }
+                val toRemove = localItems.filter { it.id.startsWith("tt") && it.id !in traktImdbIds && it.id !in pendingAdds }
                 for (item in toRemove) {
                     dao.removeFromWatchlist(profileId, item.id)
                     Log.d(TAG, "Removed ${item.title} (deleted on Trakt)")
@@ -204,9 +213,11 @@ class TraktSyncManager @Inject constructor(
      */
     suspend fun pushAdd(item: WatchlistEntity) {
         if (traktAuthManager.getAccessToken() == null) return
+        val activeProfile = profileId
         withContext(Dispatchers.IO) {
+            pendingStore.mark(activeProfile, item.id, item.type, TraktWatchlistPendingStore.Op.ADD)
             try {
-                pushToTrakt(listOf(item))
+                if (pushToTrakt(listOf(item))) pendingStore.clear(activeProfile, item.id)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
@@ -220,15 +231,11 @@ class TraktSyncManager @Inject constructor(
      */
     suspend fun pushRemove(itemId: String, type: String) {
         if (traktAuthManager.getAccessToken() == null) return
+        val activeProfile = profileId
         withContext(Dispatchers.IO) {
+            pendingStore.mark(activeProfile, itemId, type, TraktWatchlistPendingStore.Op.REMOVE)
             try {
-                val item = listOf(TraktSyncItem(ids = TraktIds(imdb = itemId)))
-                val body = if (type == "movie") TraktSyncRequest(movies = item)
-                           else TraktSyncRequest(shows = item)
-                val response = traktSyncApi.removeFromWatchlist(body)
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Trakt watchlist remove failed: ${response.code()}")
-                }
+                if (removeFromTrakt(itemId, type)) pendingStore.clear(activeProfile, itemId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
@@ -743,7 +750,37 @@ class TraktSyncManager @Inject constructor(
         return allItems
     }
 
-    private suspend fun pushToTrakt(items: List<WatchlistEntity>) {
+    /** Re-sends watchlist changes Trakt hasn't confirmed; clears each one it accepts. */
+    private suspend fun retryPendingPushes(activeProfile: Int) {
+        for (change in pendingStore.pending(activeProfile)) {
+            val accepted = try {
+                when (change.op) {
+                    TraktWatchlistPendingStore.Op.ADD ->
+                        pushToTrakt(listOf(WatchlistEntity(activeProfile, change.id, change.type, title = "", poster = null, addedAt = 0L)))
+                    TraktWatchlistPendingStore.Op.REMOVE -> removeFromTrakt(change.id, change.type)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Retrying watchlist change failed", e)
+                false
+            }
+            if (accepted) pendingStore.clear(activeProfile, change.id)
+        }
+    }
+
+    /** Returns whether Trakt accepted the removal. */
+    private suspend fun removeFromTrakt(itemId: String, type: String): Boolean {
+        val item = listOf(TraktSyncItem(ids = TraktIds(imdb = itemId)))
+        val body = if (type == "movie") TraktSyncRequest(movies = item)
+                   else TraktSyncRequest(shows = item)
+        val response = traktSyncApi.removeFromWatchlist(body)
+        if (!response.isSuccessful) Log.w(TAG, "Trakt watchlist remove failed: ${response.code()}")
+        return response.isSuccessful
+    }
+
+    /** Returns whether Trakt accepted the items (true when there was nothing to send). */
+    private suspend fun pushToTrakt(items: List<WatchlistEntity>): Boolean {
         val movies = items.filter { it.type == "movie" }
             .map { TraktSyncItem(ids = TraktIds(imdb = it.id)) }
         val shows = items.filter { it.type == "series" }
@@ -761,7 +798,9 @@ class TraktSyncManager @Inject constructor(
             if (!response.isSuccessful) {
                 Log.w(TAG, "Trakt watchlist push failed: ${response.code()} - ${response.errorBody()?.string()}")
             }
+            return response.isSuccessful
         }
+        return true
     }
 
     /**

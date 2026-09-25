@@ -34,15 +34,18 @@ class TorrentService : Service() {
         private const val FAILURE_STOP_GRACE_MS = 5_000L
         // ~5MB: approximate buffer needed before ExoPlayer renders first frame
         private const val PRELOAD_TARGET_BYTES = 5_242_880f
-        // NOTE: @Volatile ensures cross-thread visibility for reads/writes to each
-        // callback reference. There is still a TOCTOU race if a stream is switched
-        // while a prior stream's callbacks are mid-invocation (stream A's error handler
-        // may fire after stream B's callbacks are installed). For now, @Volatile is
-        // sufficient to prevent stale-cache reads; a lock or atomic reference swap
-        // would be needed to fully close the switching race.
+        // Callbacks belong to whichever screen set them last. Every assignment bumps
+        // [callbackGeneration]; an attempt records the generation it started under and
+        // delivers only while both it and that generation are current, so a slower
+        // earlier source can never hand its stream to a newer screen.
+        @Volatile private var callbackGeneration = 0L
+
         @Volatile var onStreamReady: ((String) -> Unit)? = null
+            set(value) { field = value; callbackGeneration++ }
         @Volatile var onStreamError: ((String) -> Unit)? = null
+            set(value) { field = value; callbackGeneration++ }
         @Volatile var onStreamProgress: ((TorrentProgress?) -> Unit)? = null
+            set(value) { field = value; callbackGeneration++ }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,6 +98,11 @@ class TorrentService : Service() {
         val preparedMagnet = TorrentMagnetSanitizer.prepare(this, magnet)
         val attemptId = System.nanoTime()
         currentAttemptId = attemptId
+        val generation = callbackGeneration
+        // Runs [block] on the main thread only if this attempt still owns the callbacks.
+        suspend fun deliver(block: () -> Unit) = withContext(Dispatchers.Main) {
+            if (attemptId == currentAttemptId && generation == callbackGeneration) block()
+        }
 
         // Drop previous torrent to free TorrServer's RAM cache
         val previousMagnet = currentMagnet
@@ -108,7 +116,7 @@ class TorrentService : Service() {
             try {
                 // Phase 1: Start TorrServer process
                 if (BuildConfig.DEBUG) Log.d(TAG, "Starting TorrServer engine...")
-                withContext(Dispatchers.Main) {
+                deliver {
                     onStreamProgress?.invoke(TorrentProgress(status = "Starting engine..."))
                 }
                 engine.start()
@@ -130,7 +138,7 @@ class TorrentService : Service() {
 
                 // Phase 2: Add torrent
                 if (BuildConfig.DEBUG) Log.d(TAG, "Adding magnet: ${preparedMagnet.take(120)}...")
-                withContext(Dispatchers.Main) {
+                deliver {
                     onStreamProgress?.invoke(TorrentProgress(status = "Fetching metadata..."))
                 }
                 api.addTorrent(preparedMagnet)
@@ -141,7 +149,7 @@ class TorrentService : Service() {
 
                 val streamUrl = api.getStreamUrl(preparedMagnet, targetFileIndex)
                 updateNotification("Streaming...")
-                withContext(Dispatchers.Main) {
+                deliver {
                     onStreamProgress?.invoke(TorrentProgress(status = "Starting playback..."))
                     onStreamReady?.invoke(streamUrl)
                 }
@@ -155,7 +163,7 @@ class TorrentService : Service() {
                         val progress = if (stats.preloadedBytes in 1 until PRELOAD_TARGET_BYTES.toLong()) {
                             stats.preloadedBytes.toFloat() / PRELOAD_TARGET_BYTES
                         } else null
-                        withContext(Dispatchers.Main) {
+                        deliver {
                             onStreamProgress?.invoke(
                                 TorrentProgress(
                                     status = stats.statusText(),
@@ -183,7 +191,7 @@ class TorrentService : Service() {
                         withContext(Dispatchers.Main) { stopSelf() }
                     }
                 }
-                withContext(Dispatchers.Main) {
+                deliver {
                     val message = "Torrent error: ${e.message}"
                     onStreamError?.invoke(message)
                     // This is the single ranked-fallback signal. Callbacks may surface the

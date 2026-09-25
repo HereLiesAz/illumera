@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.remote
 import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import okhttp3.MediaType.Companion.toMediaType
+import com.hereliesaz.illumera.data.net.guardCleartext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -159,7 +160,7 @@ sealed class StremioAuthError : Exception() {
 @Singleton
 class StremioAuthService @Inject constructor() {
 
-    private val client = OkHttpClient.Builder().build()
+    private val client = OkHttpClient.Builder().guardCleartext().build()
     private val gson = Gson()
     private val jsonMediaType = "application/json".toMediaType()
     

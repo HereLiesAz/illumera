@@ -33,7 +33,10 @@ import com.hereliesaz.illumera.remote_input.ServerInfo
 import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
 import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 import com.hereliesaz.illumera.ui.util.rememberIsTvDevice
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
@@ -50,6 +53,7 @@ fun AvatarUploadDialog(
     onAvatarReceived: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val pickerScope = rememberCoroutineScope()
     val isTv = rememberIsTvDevice()
     var serverInfo by remember { mutableStateOf<ServerInfo?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -64,20 +68,25 @@ fun AvatarUploadDialog(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            val imageBytes = try {
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            } catch (e: Exception) {
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) {
-                    com.hereliesaz.illumera.crash.AppErrors.w("AvatarUploadDialog", "Photo picker read error", e)
+            // Reading and saving a multi-MB photo would block remote input; do it off the main thread.
+            pickerScope.launch {
+                val avatarPath = withContext(Dispatchers.IO) {
+                    val imageBytes = try {
+                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    } catch (e: Exception) {
+                        if (com.hereliesaz.illumera.BuildConfig.DEBUG) {
+                            com.hereliesaz.illumera.crash.AppErrors.w("AvatarUploadDialog", "Photo picker read error", e)
+                        }
+                        null
+                    }
+                    imageBytes?.let { saveAvatarImage(context, it) }
                 }
-                null
-            }
-            val avatarPath = imageBytes?.let { saveAvatarImage(context, it) }
-            if (avatarPath != null) {
-                onAvatarReceived(avatarPath)
-                onDismissRequest()
-            } else {
-                error = "Could not read the selected photo."
+                if (avatarPath != null) {
+                    onAvatarReceived(avatarPath)
+                    onDismissRequest()
+                } else {
+                    error = "Could not read the selected photo."
+                }
             }
         }
     }

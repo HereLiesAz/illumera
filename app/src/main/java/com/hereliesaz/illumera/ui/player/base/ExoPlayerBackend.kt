@@ -35,6 +35,7 @@ import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import okhttp3.ConnectionPool
+import com.hereliesaz.illumera.data.net.guardCleartext
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
@@ -244,7 +245,7 @@ class ExoPlayerBackend(
             .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
             .retryOnConnectionFailure(true)
             .followRedirects(true)
-            .followSslRedirects(true)
+            .guardCleartext()
             .build()
     }
     private val okHttpClient: OkHttpClient by _okHttpClientLazy

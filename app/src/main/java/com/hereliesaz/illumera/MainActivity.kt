@@ -908,6 +908,22 @@ class MainActivity : ComponentActivity() {
         splashOverlay = container
     }
 
+    // Torrent streaming and library refresh run as foreground services; on Android 13+
+    // their progress notifications only show once this permission is granted.
+    private val notificationPermission =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+
+    /** Asks for the notification permission once; the system remembers a refusal. */
+    private fun requestNotificationPermissionOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val permission = android.Manifest.permission.POST_NOTIFICATIONS
+        if (checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("permissions", MODE_PRIVATE)
+        if (prefs.getBoolean("notifications_asked", false)) return
+        prefs.edit().putBoolean("notifications_asked", true).apply()
+        notificationPermission.launch(permission)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Sanitize saved state: R8 can obfuscate Parcelable class names, causing
         // BadParcelableException on process-death restore. Clear the bundle if corrupt.
@@ -929,6 +945,8 @@ class MainActivity : ComponentActivity() {
             finish()
             return
         }
+
+        requestNotificationPermissionOnce()
 
         // Default to showing splash; profile's splashEnabled setting is checked async below
         val showSplash = safeState?.getBoolean(KEY_SPLASH_SHOWN) != true

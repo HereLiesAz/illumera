@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext traffic globally because Stremio addons
-         use arbitrary HTTP URLs that cannot be whitelisted. -->
+    <!-- Cleartext stays allowed at the platform level because addons and TorrServer on
+         this device or the local network use plain HTTP, and a platform rule can't
+         express "private addresses only". Public hosts are forced onto HTTPS in code
+         by data/net/CleartextGuard for every client that carries addon, debrid or
+         stream URLs. -->
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
