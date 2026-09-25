@@ -7,7 +7,7 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 - **Web** is a separate TypeScript app in [`web/`](../web/README.md): Preact on Vite. It targets Chromium 68, the engine in LG webOS 5 and Samsung Tizen 5.5 (2020 TVs), so one build serves the browser and both TV platforms.
 - **Android** stays Kotlin. Behavior shared by both apps (stream parsing, ranking, addon requests) is written twice and kept in step, with [ADDONS.md](ADDONS.md) as the spec. A change to one side's parser or ranking needs the matching change on the other, with its tests.
 - **Desktop** wraps the web build (Tauri, falling back to Electron if a feature needs it) and adds what browsers can't do: native codecs and a bundled streaming server.
-- **Roku** can't run web code (it uses BrightScript and SceneGraph), so it's a separate app that reuses only the addon protocol and the ranking rules.
+- **Roku** can't run web code (it uses BrightScript and SceneGraph), so it's a separate app in [`roku/`](../roku/README.md) that reuses the addon protocol and ports the parser and ranking.
 
 ## Step 1: Web, core browse and play
 
@@ -86,5 +86,9 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 
 ## Step 7: Roku
 
-- [ ] A BrightScript/SceneGraph app with the addon client, ranking and a player.
-- [ ] Roku Channel Store submission.
+- [x] **App:** a BrightScript/SceneGraph channel in `roku/`. It has home, search, details, sources, the player, addons and settings. The parser and ranking are ported from Android and `web/`, and unit-tested in the brs interpreter. The whole channel is validated by BrighterScript.
+- [x] **Torrents:** played through a streaming server on the network (TorrServer or Stremio Service), set in Settings.
+- [x] **Releases:** built into the desktop and TV release (`npm run package` produces a sideloadable zip).
+- [ ] Test on a Roku device.
+- [ ] Stremio account, Trakt, debrid, profiles and language filters, as on the web.
+- [ ] Roku Channel Store submission. This needs a package signed on a Roku (Utilities → Packager).

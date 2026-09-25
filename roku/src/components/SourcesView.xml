@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sources from every stream addon that accepts the id, ranked as on Android and the web. -->
+<component name="SourcesView" extends="View">
+  <children>
+    <Label id="heading" translation="[96,60]" width="1700" font="font:MediumBoldSystemFont" color="0xF2F2F2FF" />
+    <Label id="status" translation="[96,110]" width="1700" color="0x8A8A8AFF" font="font:SmallSystemFont" />
+    <LabelList id="list" translation="[96,160]" itemSize="[1720,64]" numRows="13" focusBitmapBlendColor="0xFA3E58FF" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="pkg:/source/Parser.brs" />
+  <script type="text/brightscript" uri="pkg:/source/Sorting.brs" />
+  <script type="text/brightscript" uri="SourcesView.brs" />
+</component>

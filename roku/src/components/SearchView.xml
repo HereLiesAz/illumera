@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Search Cinemeta for movies and series. -->
+<component name="SearchView" extends="View">
+  <children>
+    <Label text="Search" translation="[96,48]" font="font:LargeBoldSystemFont" color="0xF2F2F2FF" />
+    <MiniKeyboard id="keyboard" translation="[96,130]" />
+    <RowList id="results" translation="[700,130]"
+      itemComponentName="PosterItem" numRows="2" rowItemSize="[[220,380]]" rowItemSpacing="[[24,0]]"
+      itemSize="[1160,440]" itemSpacing="[0,24]" showRowLabel="true" rowLabelColor="0x8A8A8AFF"
+      rowLabelOffset="[[0,12]]" focusBitmapBlendColor="0xFA3E58FF" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="SearchView.brs" />
+</component>

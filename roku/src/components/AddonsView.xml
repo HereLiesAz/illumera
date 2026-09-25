@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Installed addons in ranking order. OK on an addon offers move, disable and remove. -->
+<component name="AddonsView" extends="View">
+  <children>
+    <Label text="Addons" translation="[96,48]" font="font:LargeBoldSystemFont" color="0xF2F2F2FF" />
+    <Label text="The order here is the order sources rank in." translation="[96,110]" color="0x8A8A8AFF" font="font:SmallSystemFont" />
+    <LabelList id="list" translation="[96,160]" itemSize="[1200,60]" numRows="14" focusBitmapBlendColor="0xFA3E58FF" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+  <script type="text/brightscript" uri="AddonsView.brs" />
+</component>

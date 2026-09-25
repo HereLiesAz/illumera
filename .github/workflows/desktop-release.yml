@@ -1,12 +1,14 @@
 name: Desktop and TV Release
-# Builds the desktop app (desktop/, Tauri + TorrServer) for Windows, macOS and Linux, and the
-# LG webOS and Samsung Tizen packages (web/), and publishes them as one GitHub release.
+# Builds the desktop app (desktop/, Tauri + TorrServer) for Windows, macOS and Linux, the
+# LG webOS and Samsung Tizen packages (web/) and the Roku channel (roku/), and publishes
+# them as one GitHub release.
 on:
   push:
     branches: [main]
     paths:
       - "web/**"
       - "desktop/**"
+      - "roku/**"
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,7 +24,7 @@ jobs:
           - os: windows-latest
             build: cd desktop; npm ci; npm run fetch-torrserver; npx tauri build --bundles nsis
           - os: ubuntu-latest
-            build: cd web && npm ci && npm run package:webos && npm run package:tizen
+            build: cd web && npm ci && npm run package:webos && npm run package:tizen && cd ../roku && npm ci && npm test && npm run package
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

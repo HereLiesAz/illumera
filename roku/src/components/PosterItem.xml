@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A catalog card: poster and title. -->
+<component name="PosterItem" extends="Group">
+  <interface>
+    <field id="itemContent" type="node" onChange="onContent" />
+    <field id="focusPercent" type="float" onChange="onFocus" />
+  </interface>
+  <children>
+    <Poster id="poster" width="220" height="330" loadDisplayMode="scaleToFill" />
+    <Rectangle id="bar" translation="[0,326]" width="0" height="4" color="0xFA3E58FF" />
+    <Label id="title" translation="[0,338]" width="220" height="30" font="font:SmallestSystemFont" color="0x8A8A8AFF" horizAlign="left" />
+  </children>
+  <script type="text/brightscript" uri="PosterItem.brs" />
+</component>

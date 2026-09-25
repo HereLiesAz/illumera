@@ -1,0 +1,15 @@
+{
+  "name": "illumera-roku",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "lint": "bsc --project bsconfig.json",
+    "test": "node scripts/test.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@rokucommunity/brs": "^0.47.6",
+    "brighterscript": "^0.73.5"
+  }
+}
