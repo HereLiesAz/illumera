@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package:webos": "node scripts/package-tv.mjs webos",
+    "package:tizen": "node scripts/package-tv.mjs tizen"
   },
   "dependencies": {
     "hls.js": "^1.7.3",

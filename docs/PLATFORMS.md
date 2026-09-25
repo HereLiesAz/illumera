@@ -70,8 +70,15 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 
 ## Step 6: Samsung and LG TVs
 
-- [ ] Package `web/` as a Tizen `.wgt` app and a webOS `.ipk` app, using the TV remote keys already handled.
-- [ ] Register remote keys (media keys and color keys) through each platform's API.
+- [x] **TV build:** `vite build --mode tv` produces one classic script (IIFE, hls.js inlined), because TV apps load from `file://` and Chromium won't run module scripts there. It calls the hosted Worker's `/api`.
+- [x] **LG webOS:** `npm run package:webos` produces `com.hereliesaz.illumera_<version>_all.ipk` (`web/tv/webos/appinfo.json`, with `disableBackHistoryAPI` so the Back key reaches the app). To install on a TV in developer mode: `ares-install`.
+- [x] **Samsung Tizen:** `npm run package:tizen` produces an unsigned `.wgt` (`web/tv/tizen/config.xml`, Tizen 5.5+).
+- [x] Remote keys:
+  - media keys are registered on Tizen
+  - Back on the root screen exits the app, through each platform's API
+- [ ] Sign the `.wgt` with a Samsung certificate (Tizen Studio: `tizen package -t wgt -s <profile>`). This needs a Samsung account and certificate.
+- [ ] Test on real TVs. So far the TV build is tested in headless Chromium from `file://`.
+- [ ] Build the packages in CI and attach them to releases.
 - [ ] Store submissions: Samsung Seller Office, LG Seller Lounge.
 
 ## Step 7: Roku

@@ -16,6 +16,8 @@ The browser version of illumera, which also becomes the Samsung (Tizen) and LG (
 | `src/player/` | Playback session, subtitle conversion |
 | `src/ui/` | Screens, router, spatial navigation |
 | `worker/` | The Worker's `/api` (IntroDB proxy, Trakt token exchange) |
+| `tv/` | TV app manifests and icons (webOS `appinfo.json`, Tizen `config.xml`) |
+| `scripts/package-tv.mjs` | Builds and packages the TV apps |
 | `test/` | Vitest tests |
 
 `core/parser.ts` and `core/sorting.ts` mirror Android's `StreamParser` and `StreamSortingService`. Change them together, and update [docs/ADDONS.md](../docs/ADDONS.md).
@@ -27,6 +29,8 @@ npm ci
 npm run dev      # local server
 npm test         # unit tests
 npm run build    # typecheck and build to dist/
+npm run package:webos   # LG TV app → packages/*.ipk
+npm run package:tizen   # Samsung TV app → packages/*-unsigned.wgt (sign before installing)
 ~~~
 
 ## Deploy

@@ -7,6 +7,8 @@
  * data-nav-scope="…" confines arrow navigation while it is open (dialogs, the player).
  */
 
+import { exitApp } from '../platform'
+
 type Dir = 'left' | 'right' | 'up' | 'down'
 
 const KEYS: Record<string, Dir> = {
@@ -88,7 +90,12 @@ export function installSpatialNavigation(): void {
     const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
     if (BACK_KEY_CODES.indexOf(e.keyCode) >= 0 && !(typing && e.keyCode === 8)) {
       for (const h of backHandlers) if (h()) { e.preventDefault(); return }
-      if (e.keyCode !== 8 && history.length > 1) { e.preventDefault(); history.back() }
+      if (e.keyCode === 8) return
+      e.preventDefault()
+      // At the root screen, Back leaves the app on a TV.
+      const atRoot = !location.hash || location.hash === '#/' || location.hash === '#'
+      if (atRoot) exitApp()
+      else history.back()
       return
     }
     // Enter on a non-native focusable (a card) clicks it, as Enter does on a button.
