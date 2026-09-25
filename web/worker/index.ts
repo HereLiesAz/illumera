@@ -21,6 +21,8 @@ interface Env {
 }
 
 const TRAKT = 'https://api.trakt.tv'
+/** Trakt sits behind Cloudflare, which answers requests without a User-Agent with a 403 page. */
+const USER_AGENT = 'illumera-web/1.0 (+https://github.com/HereLiesAz/illumera)'
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' }
 const NOT_CONFIGURED = 'Trakt isn’t configured on this server.'
 
@@ -43,7 +45,9 @@ async function introSegments(url: URL): Promise<Response> {
   const season = url.searchParams.get('season') ?? ''
   const episode = url.searchParams.get('episode') ?? ''
   if (!/^tt\d+$/.test(imdb) || !/^\d+$/.test(season) || !/^\d+$/.test(episode)) return json({ error: 'imdb_id, season and episode are required' }, 400)
-  const upstream = await fetch(`https://api.introdb.app/segments?imdb_id=${imdb}&season=${season}&episode=${episode}`)
+  const upstream = await fetch(`https://api.introdb.app/segments?imdb_id=${imdb}&season=${season}&episode=${episode}`, {
+    headers: { 'user-agent': USER_AGENT },
+  })
   if (!upstream.ok) return json({ error: `IntroDB returned ${upstream.status}` }, upstream.status === 404 ? 404 : 502)
   // Segments rarely change; a day of caching spares IntroDB.
   return json(await upstream.json(), 200, { 'cache-control': 'public, max-age=86400' })
@@ -51,7 +55,11 @@ async function introSegments(url: URL): Promise<Response> {
 
 async function trakt(url: URL, request: Request, env: Env): Promise<Response | null> {
   const post = (path: string, body: Record<string, unknown>) =>
-    fetch(`${TRAKT}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(relay)
+    fetch(`${TRAKT}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': USER_AGENT },
+      body: JSON.stringify(body),
+    }).then(relay)
 
   if (url.pathname === '/api/trakt/config' && request.method === 'GET') {
     return env.TRAKT_CLIENT_ID ? json({ clientId: env.TRAKT_CLIENT_ID }) : json({ error: NOT_CONFIGURED }, 503)
