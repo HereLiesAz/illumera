@@ -205,10 +205,11 @@ class StreamSortingService @Inject constructor() {
         }.filterTo(linkedSetOf()) { it.isNotBlank() }
     }
 
-    private fun languageMatches(text: String, alias: String): Sequence<MatchResult> {
-        val escaped = Regex.escape(alias)
-        return Regex("(?i)(?<![\\p{L}\\p{N}])$escaped(?![\\p{L}\\p{N}])").findAll(text)
-    }
+    private fun languageMatches(text: String, alias: String): Sequence<MatchResult> =
+        LANGUAGE_PATTERNS.getOrPut(alias) {
+            // Compiling per stream per alias froze the UI on large source lists (ANRs).
+            Regex("(?i)(?<![\\p{L}\\p{N}])${Regex.escape(alias)}(?![\\p{L}\\p{N}])")
+        }.findAll(text)
 
     private fun nearestCueDistance(text: String, languageRange: IntRange, cueRegex: Regex): Int? {
         val radius = 32
@@ -303,6 +304,7 @@ class StreamSortingService @Inject constructor() {
         private val SORT_KEYS = listOf("quality", "size", "seeds")
         private val AUDIO_CUE_REGEX = Regex("(?i)\\b(audio|dub(?:bed)?|dual)\\b")
         private val SUBTITLE_CUE_REGEX = Regex("(?i)\\b(sub(?:title)?s?|subbed|cc|captions?)\\b")
+        private val LANGUAGE_PATTERNS = java.util.concurrent.ConcurrentHashMap<String, Regex>()
 
         private val LANGUAGE_ALIASES = mapOf(
             "en" to setOf("english", "eng"),
