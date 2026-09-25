@@ -67,6 +67,8 @@ android {
         buildConfigField("String", "TMDB_API_KEY", buildConfigString(tmdbApiKey))
         buildConfigField("String", "TRAKT_CLIENT_ID", buildConfigString(traktClientId))
         buildConfigField("String", "TRAKT_CLIENT_SECRET", buildConfigString(traktClientSecret))
+        // Soundtrack addon (HereLiesAz/stremio-soundtrack) serving per-title song lists.
+        buildConfigField("String", "SOUNDTRACK_ADDON_URL", buildConfigString("https://stremio-soundtrack.hereliesaz.workers.dev"))
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

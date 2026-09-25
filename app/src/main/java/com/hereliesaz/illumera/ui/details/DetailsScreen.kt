@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
@@ -83,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.util.openExternalLink
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -110,6 +112,7 @@ import androidx.compose.foundation.shape.CircleShape
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.ui.home.DpadRepeatGate
@@ -141,6 +144,7 @@ fun DetailsScreen(
     viewModel: DetailsViewModel = hiltViewModel(key = "details_${type}_${id}")
 ) {
     LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
+    val context = LocalContext.current
 
     val state by viewModel.state.collectAsState()
     val movie = state.meta
@@ -164,6 +168,16 @@ fun DetailsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var showClearProgressDialog by remember { mutableStateOf(false) }
+    // Soundtrack: movies list their songs; series list every episode's, grouped.
+    val soundtrackImdbId = streamId.substringBefore(':').takeIf { it.matches(Regex("tt\\d+")) }
+    var showSoundtrack by remember { mutableStateOf(false) }
+    if (showSoundtrack && soundtrackImdbId != null) {
+        com.hereliesaz.illumera.ui.soundtrack.SoundtrackDialog(
+            type = if (type == "movie") "movie" else "series",
+            imdbId = soundtrackImdbId,
+            onDismiss = { showSoundtrack = false }
+        )
+    }
     var pendingPlaybackId by remember(type, id) { mutableStateOf(id) }
     var pendingPlaybackType by remember(type, id) { mutableStateOf(type) }
     var pendingPlaybackTitle by remember(type, id) { mutableStateOf("") }
@@ -679,6 +693,14 @@ fun DetailsScreen(
                             )
                         }
 
+                        if (soundtrackImdbId != null) {
+                            ExpandableIconButton(
+                                label = "Soundtrack",
+                                icon = Icons.Default.MusicNote,
+                                onClick = { showSoundtrack = true }
+                            )
+                        }
+
                         ExpandableIconButton(
                             label = if (isInWatchlist) "Watchlisted" else "Add to watchlist",
                             icon = if (isInWatchlist) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -738,6 +760,14 @@ fun DetailsScreen(
                                 label = "Trailer",
                                 icon = Icons.Default.Videocam,
                                 onClick = { onTrailerClick(movieTrailer.key, movieTrailer.name) }
+                            )
+                        }
+
+                        if (soundtrackImdbId != null) {
+                            ExpandableIconButton(
+                                label = "Soundtrack",
+                                icon = Icons.Default.MusicNote,
+                                onClick = { showSoundtrack = true }
                             )
                         }
 
@@ -976,8 +1006,12 @@ fun DetailsScreen(
                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
             },
             onSourceSelected = { stream ->
+                val externalUrl = stream.externalUrl
                 if (!resolvePlayableUrl(stream).isNullOrEmpty()) {
                     viewModel.selectStreamForPlayback(stream)
+                } else if (!externalUrl.isNullOrBlank()) {
+                    // Link-only entries (e.g. a song list) open in the browser, as in Stremio.
+                    context.openExternalLink(externalUrl)
                 }
             }
         )

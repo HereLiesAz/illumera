@@ -32,6 +32,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Connect a Stremio account with email/password or Facebook login (QR handoff — no typing a password on the remote)
 - Two-way sync with your Stremio account: pull your addon collection, push it back, and sync Continue Watching progress
 - Automatic catalog loading from all enabled addons
+- Addon developers: see [`docs/ADDONS.md`](docs/ADDONS.md) for what illumera reads beyond the Stremio protocol
 
 ### Custom Hub Rows
 - Create your own hub rows: themed collections of category cards displayed on the home screen

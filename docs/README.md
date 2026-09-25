@@ -13,6 +13,9 @@ built internally and how to work on it safely.
   `gradle/libs.versions.toml`, or `.github/workflows/release.yml`** — a
   mismatch there causes a crash that only reproduces when starting
   playback, which has shipped to users before.
+- [**ADDONS.md**](ADDONS.md) — for addon developers: what illumera reads
+  beyond the Stremio protocol, how stream titles are parsed and ranked, and
+  what isn't supported, so one addon serves both apps well.
 - [**THEMING.md**](THEMING.md) — the built-in/custom theme system and how
   to add a new built-in theme.
 - [**BRANDING.md**](BRANDING.md) — the logo assets, color palette, and

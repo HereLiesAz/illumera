@@ -48,6 +48,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -209,6 +210,28 @@ fun BasePlayerScaffold(
     var activePanel by remember { mutableStateOf(PlayerPanel.NONE) }
     var showControls by remember { mutableStateOf(true) }
     var showSeekOverlay by remember { mutableStateOf(false) }
+    // Soundtrack of what's playing: "tt…" for a movie, "tt…:season:episode" for an episode.
+    val soundtrackTarget = remember(currentPlaybackId, mediaType, isTrailer) {
+        val parts = currentPlaybackId?.split(':').orEmpty()
+        val imdbId = parts.firstOrNull()?.takeIf { !isTrailer && it.matches(Regex("tt\\d+")) }
+        when {
+            imdbId == null -> null
+            mediaType == "movie" -> Triple(imdbId, null, null)
+            else -> Triple(imdbId, parts.getOrNull(1)?.toIntOrNull(), parts.getOrNull(2)?.toIntOrNull())
+        }
+    }
+    var showSoundtrack by remember { mutableStateOf(false) }
+    if (showSoundtrack && soundtrackTarget != null) {
+        // Songs of this episode (or movie) in order of appearance. The top slot is for
+        // the song playing now once recognition exists (see stremio-soundtrack RECOGNITION.md).
+        com.hereliesaz.illumera.ui.soundtrack.SoundtrackDialog(
+            type = if (mediaType == "movie") "movie" else "series",
+            imdbId = soundtrackTarget.first,
+            season = soundtrackTarget.second,
+            episode = soundtrackTarget.third,
+            onDismiss = { showSoundtrack = false }
+        )
+    }
     var showPauseOverlay by remember { mutableStateOf(false) }
     var showSubtitleOffsetBar by remember { mutableStateOf(false) }
     var showSubtitleSizeBar by remember { mutableStateOf(false) }
@@ -875,6 +898,11 @@ fun BasePlayerScaffold(
                     playbackController.setResizeMode(nextMode)
                     showControlsTemporarily()
                 },
+                showSoundtrackControl = soundtrackTarget != null,
+                onShowSoundtrack = {
+                    markInteraction()
+                    showSoundtrack = true
+                },
                 showEpisodesControl = episodes.isNotEmpty() && onEpisodeSelected != null,
                 onShowEpisodesPanel = {
                     markInteraction()
@@ -1364,6 +1392,8 @@ private fun PlayerControlsOverlay(
     onToggleResizeMode: () -> Unit,
     showEpisodesControl: Boolean = false,
     onShowEpisodesPanel: () -> Unit = {},
+    showSoundtrackControl: Boolean = false,
+    onShowSoundtrack: () -> Unit = {},
     onResetHideTimer: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1474,6 +1504,17 @@ private fun PlayerControlsOverlay(
                             icon = Icons.Default.VideoLibrary,
                             contentDescription = "Episodes",
                             onClick = onShowEpisodesPanel,
+                            onFocused = onResetHideTimer,
+                            buttonSize = 44.dp,
+                            iconSize = 18.dp
+                        )
+                    }
+
+                    if (showSoundtrackControl) {
+                        ControlButton(
+                            icon = Icons.Default.MusicNote,
+                            contentDescription = "Soundtrack",
+                            onClick = onShowSoundtrack,
                             onFocused = onResetHideTimer,
                             buttonSize = 44.dp,
                             iconSize = 18.dp
