@@ -154,7 +154,7 @@ class StremioAuthManager @Inject constructor(
     suspend fun getDataExportUrl(): Result<String> = withContext(Dispatchers.IO) {
         val authKey = getStoredAuthKey()
             ?: return@withContext Result.failure(StremioAuthError.UnknownError("Not connected to Stremio"))
-        runCatching { stremioAuthService.requestDataExport(authKey) }
+        runCatching { stremioAuthService.requestDataExport(authKey) }.rethrowCancellation()
     }
 
     suspend fun getCalendarUrl(): Result<String> = withContext(Dispatchers.IO) {
@@ -165,8 +165,12 @@ class StremioAuthManager @Inject constructor(
             val userId = user.id?.takeIf { it.isNotBlank() }
                 ?: throw StremioAuthError.UnknownError("Stremio account id is unavailable")
             "https://www.strem.io/calendar/${android.net.Uri.encode(userId)}.ics"
-        }
+        }.rethrowCancellation()
     }
+
+    /** runCatching also catches cancellation; let it propagate instead of becoming a failure. */
+    private fun <T> Result<T>.rethrowCancellation(): Result<T> =
+        onFailure { if (it is CancellationException) throw it }
 
     private fun profileScopedAuthKey(profileId: Int): String = "${KEY_AUTH_KEY}_profile_$profileId"
     private fun profileScopedEmail(profileId: Int): String = "${KEY_EMAIL}_profile_$profileId"
@@ -323,6 +327,8 @@ class StremioAuthManager @Inject constructor(
                 disconnect()
             }
             Result.failure(e)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(StremioAuthError.NetworkError(e.message ?: "Network error"))
         }
@@ -418,6 +424,8 @@ class StremioAuthManager @Inject constructor(
             Result.success(Unit)
         } catch (e: StremioAuthError) {
             Result.failure(e)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(StremioAuthError.UnknownError(e.message ?: "Unknown error"))
         }

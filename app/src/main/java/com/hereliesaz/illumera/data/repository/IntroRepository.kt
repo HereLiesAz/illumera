@@ -5,7 +5,6 @@ import com.hereliesaz.illumera.data.remote.IntroDbService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,7 +12,7 @@ import javax.inject.Singleton
 class IntroRepository @Inject constructor(
     private val api: IntroDbService
 ) {
-    private val cache = ConcurrentHashMap<String, IntroDbSegmentsResponse>()
+    private val cache = com.hereliesaz.illumera.data.cache.boundedCache<String, IntroDbSegmentsResponse>(200)
 
     suspend fun getSegments(
         imdbId: String,

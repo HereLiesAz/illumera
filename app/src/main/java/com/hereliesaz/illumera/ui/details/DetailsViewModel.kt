@@ -862,6 +862,8 @@ class DetailsViewModel @Inject constructor(
                         sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = openSources.selectedStreamId)
                     )
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // Keep showing the cached results if a silent refresh fails.
             }
@@ -936,6 +938,9 @@ class DetailsViewModel @Inject constructor(
                     type, id, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, rawStreams, addonSubtitles
                 )
+            } catch (cancelled: CancellationException) {
+                // A newer loadStreams() replaced this one; it owns the state now.
+                throw cancelled
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoadingStreams = false,

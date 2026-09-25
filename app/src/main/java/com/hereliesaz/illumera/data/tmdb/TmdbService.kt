@@ -7,7 +7,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,8 +16,8 @@ private const val TAG = "TmdbService"
 class TmdbService @Inject constructor(
     private val tmdbApi: TmdbApiService
 ) {
-    private val imdbToTmdbCache = ConcurrentHashMap<String, Int>()
-    private val tmdbToImdbCache = ConcurrentHashMap<Int, String>()
+    private val imdbToTmdbCache = com.hereliesaz.illumera.data.cache.boundedCache<String, Int>(2_000)
+    private val tmdbToImdbCache = com.hereliesaz.illumera.data.cache.boundedCache<Int, String>(2_000)
     private val cacheMutex = Mutex()
 
     fun apiKey(): String = BuildConfig.TMDB_API_KEY
