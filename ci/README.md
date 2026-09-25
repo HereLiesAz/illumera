@@ -94,19 +94,15 @@ email and password makes a personal API key, which is all the app keeps
 
 ## Crash report relay (ACRA)
 
-Same story as Trakt: `app/build.gradle.kts` reads `acra.url`/`acra.token`
-from `local.properties` for local dev and falls back to `ACRA_URL`/
-`ACRA_TOKEN` environment variables for CI. Without either, `BuildConfig.ACRA_URL`
-builds in empty and the app's crash reporter (`LumeraApplication.kt`, via ACRA)
-silently has nowhere to send reports.
+Nothing to set up. Crashes and ANRs go to the HereLiesAz/workflows gateway
+(`https://workflows.hereliesaz.workers.dev/crash-report/illumera`), which files
+each as a GitHub issue on this repo, deduplicated by crash signature, using its
+own GitHub App (`worker/src/crash-report.js` there). `app/build.gradle.kts`
+defaults `ACRA_URL` and `ACRA_TOKEN` to that address and the app's key, which
+ships in the APK and is only a spam filter. `acra.url`/`acra.token` in
+`local.properties`, or `ACRA_URL`/`ACRA_TOKEN` secrets, override them.
 
-Add these as **Actions secrets** on the `HereLiesAz/workflows` repo (as for Trakt):
-- `ACRA_URL` — the crash-report worker's URL (e.g. `https://lumera-crash-reporter.<subdomain>.workers.dev/crash-report`)
-- `ACRA_TOKEN` — the shared `AUTH_TOKEN` the worker was deployed with
-
-See `../cloudflare-worker/README.md` to deploy the worker itself — it relays
-each report to a GitHub issue on this repo (deduplicated by crash signature),
-with no GitHub sign-in required on-device.
+`../cloudflare-worker/` is the standalone relay this replaced; it isn't deployed.
 
 ## Automated PR review (Glee)
 
