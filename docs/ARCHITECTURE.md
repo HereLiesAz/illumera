@@ -39,8 +39,19 @@ Offcloud, Debrid-Link, EasyDebrid), `tmdb` (metadata enrichment), `trakt`
 (auth, library sync, scrobbling), `torrent` (a TorrServer client),
 `player` (persisted per-playback audio/subtitle/source selection),
 `profile` (active-profile/session state), `stream` (stream parsing and
-quality sorting), `trailer` (YouTube trailer extraction), `update` (see
-below).
+quality sorting), `trailer` (YouTube trailer extraction), `soundtrack`
+(song lists; see below), `update` (see below).
+
+**Soundtracks** (`data/soundtrack/`): `SoundtrackRepository` reads IMDb
+credits from the Soundtrack addon (`BuildConfig.SOUNDTRACK_ADDON_URL`,
+HereLiesAz/stremio-soundtrack). For a movie or single episode,
+`TunefindSource` then reads Tunefind's public pages on the device through
+`PageScriptRunner` — an off-screen WebView (`WebViewPageScriptRunner`) that
+loads a page and polls a script until the rendered songs appear. Tunefind
+has no usable API, so page structure is unverified and every step fails
+soft to IMDb alone. `Tunefind.merge` keeps Tunefind's order, fills missing
+artists from IMDb and appends IMDb-only songs. `ui/soundtrack/` shows IMDb
+first and swaps in the merged list when Tunefind answers.
 
 A Facebook-created Stremio account's login response carries its FB photo as
 `user.avatar`; on a successful `auth` login this is applied to the active
@@ -101,6 +112,8 @@ malformed catalog entries, and applies per-request timeouts (10s catalog,
 (Retrofit). `ui/addons/AddonsScreen` manages install/uninstall/reorder;
 addons can be added by manifest URL, by QR-paired remote paste from a
 phone, or synced from a connected Stremio account (and pushed back to it).
+What illumera reads beyond the protocol, for addon authors, is in
+[ADDONS.md](ADDONS.md).
 
 ## Auto-update
 
