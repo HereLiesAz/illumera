@@ -18,9 +18,10 @@ const CREATE_TIMEOUT_MS = 30_000
 
 export interface TorrentFile { name?: string; path?: string; length?: number }
 
-export const serverUrl = new Stored<string>('streaming-server', DEFAULT_SERVER)
+// The server belongs to the device, not a profile.
+export const serverUrl = new Stored<string>('streaming-server', DEFAULT_SERVER, true)
 /** Whether the last probe reached a server; null until the first probe. */
-export const serverOnline = new Stored<boolean | null>('streaming-server-online', null)
+export const serverOnline = new Stored<boolean | null>('streaming-server-online', null, true)
 
 function base(): string { return serverUrl.get().trim().replace(/\/+$/, '') }
 

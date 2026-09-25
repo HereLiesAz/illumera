@@ -36,6 +36,7 @@ img { display: block; }
 .nav .logo { width: 2.6rem; height: 2.6rem; margin-bottom: 1.5rem; }
 .nav a { width: 3.2rem; height: 3.2rem; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
 .nav a.active { color: var(--text); background: var(--surface-2); }
+.nav a.profile { font-weight: 600; color: var(--text); border: 1px solid var(--line); }
 .nav svg { width: 1.5rem; height: 1.5rem; fill: currentColor; }
 .content { flex: 1; margin-left: var(--nav); padding: 2rem 2.5rem 4rem 1rem; min-width: 0; }
 

@@ -6,6 +6,7 @@ export type Route =
   | { name: 'search'; query: string }
   | { name: 'addons' }
   | { name: 'settings' }
+  | { name: 'profiles' }
   | { name: 'details'; type: string; id: string; addon?: string }
   | { name: 'player' }
 
@@ -17,6 +18,7 @@ export function parseRoute(hash: string): Route {
     case 'search': return { name: 'search', query: params.get('q') ?? '' }
     case 'addons': return { name: 'addons' }
     case 'settings': return { name: 'settings' }
+    case 'profiles': return { name: 'profiles' }
     case 'player': return { name: 'player' }
     case 'details':
       if (parts[1] && parts[2]) return { name: 'details', type: parts[1], id: parts[2], addon: params.get('addon') ?? undefined }

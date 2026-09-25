@@ -9,6 +9,8 @@ import { Home } from './ui/Home'
 import { Player } from './ui/Player'
 import { href, useRoute, type Route } from './ui/router'
 import { Search } from './ui/Search'
+import { Profiles, shouldPickProfile } from './ui/Profiles'
+import { activeProfile } from './core/profiles'
 import { Settings } from './ui/Settings'
 
 const NAV: Array<{ route: Route; icon: 'home' | 'search' | 'addons' | 'settings'; label: string }> = [
@@ -27,10 +29,15 @@ export function App() {
   }, [])
 
   if (route.name === 'player') return <Player />
+  // Several profiles: ask who's watching once per session.
+  const picking = route.name === 'profiles' || (route.name === 'home' && shouldPickProfile())
   return (
     <div class="shell">
       <nav class="nav">
         <img class="logo" src="./logo.svg" alt="illumera" />
+        <a href="#/profiles" class={`profile${picking ? ' active' : ''}`} aria-label="Profiles" title={activeProfile().name}>
+          {activeProfile().name.slice(0, 1).toUpperCase()}
+        </a>
         {NAV.map((n) => (
           <a key={n.label} href={href(n.route)} class={route.name === n.route.name ? 'active' : ''} aria-label={n.label} title={n.label}>
             <Icon name={n.icon} />
@@ -38,7 +45,8 @@ export function App() {
         ))}
       </nav>
       <main class="content">
-        {route.name === 'home' && <Home />}
+        {picking && <Profiles />}
+        {route.name === 'home' && !picking && <Home />}
         {route.name === 'search' && <Search query={route.query} />}
         {route.name === 'addons' && <Addons />}
         {route.name === 'settings' && <Settings />}

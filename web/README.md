@@ -15,6 +15,7 @@ The browser version of illumera, which also becomes the Samsung (Tizen) and LG (
 | `src/core/` | Addon client, stream parser and ranking (ported from Android), settings, progress, storage |
 | `src/player/` | Playback session, subtitle conversion |
 | `src/ui/` | Screens, router, spatial navigation |
+| `worker/` | The Worker's `/api` (IntroDB proxy, Trakt token exchange) |
 | `test/` | Vitest tests |
 
 `core/parser.ts` and `core/sorting.ts` mirror Android's `StreamParser` and `StreamSortingService`. Change them together, and update [docs/ADDONS.md](../docs/ADDONS.md).
@@ -30,7 +31,13 @@ npm run build    # typecheck and build to dist/
 
 ## Deploy
 
-`wrangler.toml` serves `dist/` as a Cloudflare Worker with static assets (`illumera-web`).
+`wrangler.toml` deploys the `illumera-web` Worker. It serves `dist/` as static assets, and `worker/index.ts` answers `/api`:
+- an IntroDB proxy
+- the Trakt token exchange
+
+Trakt needs a `TRAKT_CLIENT_ID` variable and a `TRAKT_CLIENT_SECRET` secret on the Worker. Pushes to `main` that touch `web/` deploy through the central workflows (`.github/workflows/web-deploy.yml`).
+
+TV and desktop packages run from `file://`, so they call the hosted Worker's `/api` (`src/core/api.ts`).
 
 ## What browsers can't do
 
