@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="illumeraGradient" x1="185" y1="160" x2="330" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF2E7A"/>
+      <stop offset="55%" stop-color="#FA3E58"/>
+      <stop offset="100%" stop-color="#FF7A1E"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" fill="#000000"/>
+  <path fill="url(#illumeraGradient)" d="M185,186 L185,374 Q185,390 198.96,382.17 L376.04,282.83 Q390,275 375.76,267.7 L199.2,177.3 Q185,170 185,186 Z"/>
+  <path fill="#000000" fill-opacity="0.22" d="M185,345 L198.96,382.17 L300,340 Z"/>
+</svg>

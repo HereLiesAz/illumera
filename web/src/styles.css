@@ -1,0 +1,117 @@
+/* Dark, monochrome; the brand gradient only marks focus and progress. */
+:root {
+  --bg: #000;
+  --surface: #0e0e0e;
+  --surface-2: #181818;
+  --text: #f2f2f2;
+  --muted: #8a8a8a;
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #fa3e58;
+  --gradient: linear-gradient(135deg, #ff2e7a, #fa3e58 55%, #ff7a1e);
+  --radius: 0.6rem;
+  --nav: 5rem;
+}
+
+* { box-sizing: border-box; }
+html { font-size: clamp(14px, 1.05vw, 24px); background: var(--bg); color: var(--text); }
+body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; }
+button, input, select { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+img { display: block; }
+
+/* Focus: the one bright thing on screen. */
+:focus { outline: none; }
+:focus-visible, .focusable:focus, button:focus, a:focus, input:focus, select:focus {
+  outline: 0.18rem solid var(--accent);
+  outline-offset: 0.18rem;
+}
+
+.shell { display: flex; min-height: 100vh; }
+.nav {
+  position: fixed; inset: 0 auto 0 0; width: var(--nav); z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 1.5rem 0;
+  background: linear-gradient(90deg, #000 60%, transparent);
+}
+.nav .logo { width: 2.6rem; height: 2.6rem; margin-bottom: 1.5rem; }
+.nav a { width: 3.2rem; height: 3.2rem; border-radius: 50%; display: grid; place-items: center; color: var(--muted); }
+.nav a.active { color: var(--text); background: var(--surface-2); }
+.nav svg { width: 1.5rem; height: 1.5rem; fill: currentColor; }
+.content { flex: 1; margin-left: var(--nav); padding: 2rem 2.5rem 4rem 1rem; min-width: 0; }
+
+h1 { font-weight: 300; font-size: 2.4rem; margin: 0 0 1rem; }
+h2 { font-weight: 400; font-size: 1.2rem; margin: 2rem 0 0.8rem; color: var(--muted); }
+.muted { color: var(--muted); }
+.error { color: #ff8a8a; }
+.center { display: grid; place-items: center; min-height: 40vh; color: var(--muted); }
+
+.row { display: flex; gap: 1rem; overflow-x: auto; overflow-y: hidden; padding: 0.4rem 0.3rem 1rem; scrollbar-width: none; }
+.row::-webkit-scrollbar { display: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 1.4rem 1rem; }
+
+.card { flex: 0 0 9rem; width: 9rem; border-radius: var(--radius); }
+.card .poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius); background: var(--surface-2); object-fit: cover; }
+.card .label { font-size: 0.85rem; margin-top: 0.4rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card:focus .label { color: var(--text); }
+.card .bar { height: 0.2rem; background: var(--line); border-radius: 0.1rem; margin-top: 0.3rem; }
+.card .bar i { display: block; height: 100%; background: var(--gradient); border-radius: 0.1rem; }
+@supports not (aspect-ratio: 1) { .card .poster { height: 13.5rem; } .item .thumb { height: 4.5rem; } }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.3rem; border-radius: 2rem;
+  background: var(--surface-2); color: var(--text); white-space: nowrap;
+}
+.btn.primary { background: var(--text); color: #000; }
+.btn.small { padding: 0.4rem 0.9rem; font-size: 0.85rem; }
+.btn svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
+.btn[disabled] { opacity: 0.4; }
+
+.field { width: 100%; max-width: 40rem; padding: 0.8rem 1.1rem; border-radius: 2rem; border: 1px solid var(--line); background: var(--surface); }
+
+/* Details */
+.backdrop { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center top; opacity: 0.35; }
+.backdrop::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #000 30%, transparent), linear-gradient(0deg, #000 5%, transparent 60%); }
+.details { max-width: 60rem; padding-top: 8vh; }
+.details .title-logo { max-width: 26rem; max-height: 8rem; margin-bottom: 1rem; }
+.details .facts { display: flex; gap: 1rem; color: var(--muted); margin-bottom: 1rem; flex-wrap: wrap; }
+.details p { line-height: 1.5; max-width: 45rem; color: #cfcfcf; }
+.actions { display: flex; gap: 0.8rem; flex-wrap: wrap; margin: 1.5rem 0; }
+
+.list { display: flex; flex-direction: column; gap: 0.4rem; }
+.item {
+  display: flex; gap: 1rem; align-items: center; text-align: left; width: 100%;
+  padding: 0.7rem 0.9rem; border-radius: var(--radius); background: var(--surface);
+}
+.item:focus { background: var(--surface-2); }
+.item .thumb { width: 8rem; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0.3rem; background: var(--surface-2); flex: none; }
+.item .main { flex: 1; min-width: 0; }
+.item .sub { color: var(--muted); font-size: 0.85rem; white-space: pre-line; }
+.tag { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 1rem; border: 1px solid var(--line); color: var(--muted); }
+
+.panel { position: fixed; inset: 0 0 0 auto; width: min(38rem, 100%); z-index: 20; background: #050505; border-left: 1px solid var(--line); padding: 2rem; overflow-y: auto; }
+
+/* Player */
+.player { position: fixed; inset: 0; background: #000; z-index: 30; }
+.player video { width: 100%; height: 100%; }
+.player video::cue { background: rgba(0, 0, 0, 0.6); font-size: 2.2rem; }
+.controls {
+  position: absolute; inset: auto 0 0 0; padding: 2rem 3rem 2.5rem;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.9), transparent); transition: opacity 0.3s;
+}
+.controls.hidden { opacity: 0; pointer-events: none; }
+.controls .title { font-size: 1.3rem; margin-bottom: 0.8rem; }
+.seek { width: 100%; height: 0.35rem; background: rgba(255, 255, 255, 0.2); border-radius: 0.2rem; margin: 0.8rem 0; position: relative; }
+.seek i { position: absolute; inset: 0 auto 0 0; background: var(--gradient); border-radius: 0.2rem; }
+.controls .buttons { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.controls .time { color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.toast { position: absolute; top: 2rem; left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.9); padding: 0.7rem 1.2rem; border-radius: 2rem; }
+
+@media (max-width: 700px) {
+  :root { --nav: 0rem; }
+  .nav { inset: auto 0 0 0; width: auto; height: 4rem; flex-direction: row; justify-content: space-around; padding: 0; background: #000; border-top: 1px solid var(--line); }
+  .nav .logo { display: none; }
+  .content { padding: 1rem 1rem 6rem; }
+  .card { flex-basis: 7rem; width: 7rem; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); }
+  .controls { padding: 1rem; }
+}
