@@ -47,4 +47,11 @@ class SoundtrackRepositoryTest {
         assertNull(repo.load("movie", "kitsu:1"))
         assertNull(repository("", code = 404).load("movie", "tt1"))
     }
+
+    @Test
+    fun `keeps the title when no songs are listed`() = runTest {
+        val soundtrack = repository("""{"title":"Quiet","groups":[]}""").load("movie", "tt5")!!
+        assertEquals("Quiet", soundtrack.title)
+        assertEquals(0, soundtrack.groups.size)
+    }
 }

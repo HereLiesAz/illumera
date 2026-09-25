@@ -120,7 +120,16 @@ fun SoundtrackDialog(
                     }
                 }
             }
-            Text("Song data from IMDb.", color = Color.White.copy(0.3f), style = MaterialTheme.typography.labelSmall)
+            val loaded = state as? SoundtrackViewModel.State.Loaded
+            Text(
+                when {
+                    loaded?.fromTunefind == true -> "Song data from Tunefind and IMDb."
+                    loaded?.checking == true -> "Song data from IMDb · checking Tunefind…"
+                    else -> "Song data from IMDb."
+                },
+                color = Color.White.copy(0.3f),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
     }
 }

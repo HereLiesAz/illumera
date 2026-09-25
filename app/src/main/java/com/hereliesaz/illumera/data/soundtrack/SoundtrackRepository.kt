@@ -33,7 +33,10 @@ class SoundtrackRepository @Inject constructor(private val client: OkHttpClient)
     private val gson = Gson()
     private val cache = boundedCache<String, Soundtrack>(100)
 
-    /** Null when the title has no IMDb id, no listed songs, or the addon is unreachable. */
+    /**
+     * Null when the title has no IMDb id or the addon is unreachable. Groups without songs
+     * are dropped; the title is kept even when none remain, for lookups in other sources.
+     */
     suspend fun load(type: String, imdbId: String, season: Int? = null, episode: Int? = null): Soundtrack? {
         if (!imdbId.matches(Regex("tt\\d+"))) return null
         val kind = if (type == "movie") "movie" else "series"
@@ -46,7 +49,7 @@ class SoundtrackRepository @Inject constructor(private val client: OkHttpClient)
                 if (!response.isSuccessful) return@withContext null
                 val parsed = gson.fromJson(response.body.charStream(), Soundtrack::class.java)
                 parsed?.copy(groups = parsed.groups.filter { it.songs.isNotEmpty() })
-                    ?.takeIf { it.groups.isNotEmpty() }
+                    ?.takeIf { it.groups.isNotEmpty() || it.title != null }
                     ?.also { cache[key] = it }
             }
         }
