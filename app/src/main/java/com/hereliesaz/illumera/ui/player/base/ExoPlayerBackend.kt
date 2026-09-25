@@ -473,6 +473,9 @@ class ExoPlayerBackend(
                         // ASS subtitle overlay as sibling ON TOP of PlayerView
                         if (playbackSettings.assRendererEnabled) {
                             val overlay = assHandler?.overlayView ?: SubtitleOverlayView(context)
+                            // The handler's overlay outlives this view tree; when the player view
+                            // is rebuilt it is still attached to the old frame (crash #140).
+                            (overlay.parent as? android.view.ViewGroup)?.removeView(overlay)
                             addView(overlay, android.widget.FrameLayout.LayoutParams(
                                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT
