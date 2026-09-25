@@ -10,6 +10,7 @@ import { episodeId, getSession, isPlayable, nextEpisode, setSession, type Playba
 import { loadVttUrl } from '../player/subtitles'
 import { torrentUrl } from '../core/streamingServer'
 import { loadSegments, type Segments } from '../core/intro'
+import { scrobble } from '../core/trakt'
 import { Center, Icon } from './components'
 import { SoundtrackPanel } from './SoundtrackPanel'
 import { focusFirst, onBack } from './spatial'
@@ -100,6 +101,13 @@ export function Player() {
     if (i < 0) { say(`${reason} No more sources to try.`); return }
     say(`${reason} Trying the next source.`)
     switchTo(i, false)
+  }
+
+  /** Trakt scrobble for the current video at the current position. */
+  const tell = (action: 'start' | 'pause' | 'stop') => {
+    const v = video.current
+    if (!v || !session || !isFinite(v.duration) || tooShort(mediaType, v.duration)) return
+    scrobble(action, mediaType, session.videoId, (v.currentTime / v.duration) * 100)
   }
 
   const save = () => {
@@ -214,7 +222,7 @@ export function Player() {
   // Save progress now and then, and on the way out.
   useEffect(() => {
     const timer = setInterval(save, SAVE_EVERY_MS)
-    return () => { clearInterval(timer); save() }
+    return () => { clearInterval(timer); save(); tell('stop') }
   }, [session?.videoId])
 
   // Start on the play button, not the seek bar above it.
@@ -278,7 +286,7 @@ export function Player() {
   return (
     <div class="player" ref={root} data-nav-scope="player" onMouseMove={wake} onClick={wake}>
       <video ref={video} playsInline
-        onPlay={() => setPlaying(true)} onPause={() => { setPlaying(false); setShown(true); save() }}
+        onPlay={() => { setPlaying(true); tell('start') }} onPause={() => { setPlaying(false); setShown(true); save(); tell('pause') }}
         onTimeUpdate={(e) => setTime((e.target as HTMLVideoElement).currentTime)}
         onDurationChange={(e) => setDuration((e.target as HTMLVideoElement).duration)}
         onEnded={() => { save(); if (settings.get().autoplayNext && upNext) playNext() }}
