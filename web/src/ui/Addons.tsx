@@ -25,7 +25,7 @@ export function Addons() {
   return (
     <div>
       <h1>Addons</h1>
-      <form onSubmit={(e) => { e.preventDefault(); install() }} style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
+      <form onSubmit={(e) => { e.preventDefault(); install() }} class="hstack">
         <input class="field" placeholder="Addon URL (…/manifest.json or stremio://…)" value={url}
           onInput={(e) => setUrl((e.target as HTMLInputElement).value)} />
         <button class="btn primary" type="submit" disabled={busy}>{busy ? 'Installing…' : 'Install'}</button>

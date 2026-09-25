@@ -25,11 +25,10 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
   - [x] TV media keys
 - [x] D-pad navigation, including the Back keys for Tizen (10009) and webOS (461).
 - [x] Link-only (`externalUrl`) sources open in a new tab.
-- [ ] Deploy as a Cloudflare Worker with static assets (`web/wrangler.toml`) through the central workflows: add `web/` to the `cloudflare-worker-deploy` profile.
-- [ ] Run `web/` tests in CI.
-- [ ] Stop `web/`-only pushes from starting an Android release: add `web/**` to the release workflow's ignored paths in the central workflows repo.
-- [ ] Flexbox `gap` needs Chromium 84; add margin fallbacks for older TVs.
-- [ ] A full-screen button and a scrubbable seek bar (for mouse and touch).
+- [x] Deploy as a Cloudflare Worker with static assets (`web/wrangler.toml`): `.github/workflows/web-deploy.yml` runs the tests, builds and deploys on pushes touching `web/`, centralized as `cloudflare-worker-deploy` with a `web` purpose profile.
+- [x] Run `web/` tests in CI, as part of each deploy.
+- [x] Flexbox `gap` needs Chromium 84; older TVs get margin fallbacks (`.no-flex-gap`, detected at startup).
+- [x] A full-screen button and a seek bar you can click, drag, or step with the remote's left/right.
 
 ## Step 2: Web, Stremio account
 

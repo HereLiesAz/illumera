@@ -68,7 +68,7 @@ function Sources({ meta, video, onClose }: { meta: Meta; video?: MetaVideo; onCl
                 <div>{s.description ?? s.title ?? s.name}</div>
                 <div class="sub">[{s.addonName}] {s.name}</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-end' }}>
+              <div class="vstack-end">
                 {info.quality !== 'unknown' && <span class="tag">{info.quality}</span>}
                 {info.sizeBytes && <span class="tag">{formatSize(info.sizeBytes)}</span>}
               </div>

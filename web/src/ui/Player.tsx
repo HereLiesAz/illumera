@@ -19,6 +19,18 @@ function clock(s: number): string {
   return (h ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + ':' + String(sec).padStart(2, '0')
 }
 
+/** Full screen, with the webkit prefix Chromium used before version 71. */
+function toggleFullscreen(el: HTMLElement | null): void {
+  const d = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void }
+  if (d.fullscreenElement || d.webkitFullscreenElement) {
+    (d.exitFullscreen?.bind(d) ?? d.webkitExitFullscreen?.bind(d))?.()
+    return
+  }
+  const e = el as (HTMLElement & { webkitRequestFullscreen?: () => void }) | null
+  if (e?.requestFullscreen) e.requestFullscreen().catch(() => undefined)
+  else e?.webkitRequestFullscreen?.()
+}
+
 function isHls(url: string): boolean { return /\.m3u8(\?|$)|\/hls|\/playlist/i.test(url) }
 
 /** Shorter than this, a "movie" or "episode" is a placeholder clip, not the real thing. */
@@ -159,7 +171,8 @@ export function Player() {
     return () => { clearInterval(timer); save() }
   }, [session?.videoId])
 
-  useEffect(() => { focusFirst(root.current); wake() }, [])
+  // Start on the play button, not the seek bar above it.
+  useEffect(() => { focusFirst(root.current?.querySelector('.buttons') ?? null); wake() }, [])
   useEffect(() => {
     const unBack = onBack(() => {
       if (menu) { setMenu(undefined); return true }
@@ -227,7 +240,34 @@ export function Player() {
       <div class={`controls${shown || menu ? '' : ' hidden'}`}>
         <div class="title">{title}</div>
         <div class="muted" style={{ fontSize: '0.85rem' }}>[{stream.addonName}] {stream.name}</div>
-        <div class="seek"><i style={{ width: `${isFinite(duration) && duration ? (time / duration) * 100 : 0}%` }} /></div>
+        {/* Click or drag to seek; with the remote, focus it and press left/right. */}
+        <div class="seek" tabIndex={0} role="slider" aria-label="Seek" aria-valuemin={0}
+          aria-valuemax={isFinite(duration) ? Math.round(duration) : 0} aria-valuenow={Math.round(time)}
+          onPointerDown={(e) => {
+            const bar = e.currentTarget as HTMLDivElement
+            const seekTo = (x: number) => {
+              const r = bar.getBoundingClientRect()
+              if (v && isFinite(v.duration)) v.currentTime = Math.min(1, Math.max(0, (x - r.left) / r.width)) * v.duration
+            }
+            seekTo(e.clientX)
+            bar.setPointerCapture(e.pointerId)
+            const move = (m: PointerEvent) => seekTo(m.clientX)
+            const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up) }
+            bar.addEventListener('pointermove', move)
+            bar.addEventListener('pointerup', up)
+          }}
+          onKeyDown={(e) => {
+            if (!v) return
+            const step = e.keyCode === 37 ? -10 : e.keyCode === 39 ? 10 : 0
+            if (!step) return
+            // Handled here so spatial navigation doesn't move focus off the bar.
+            e.preventDefault()
+            e.stopPropagation()
+            wake()
+            v.currentTime = Math.max(0, v.currentTime + step)
+          }}>
+          <i style={{ width: `${isFinite(duration) && duration ? (time / duration) * 100 : 0}%` }} />
+        </div>
         <div class="buttons">
           <button class="btn" onClick={() => (v?.paused ? v.play() : v?.pause())}><Icon name={playing ? 'pause' : 'play'} /></button>
           <button class="btn" onClick={() => { if (v) v.currentTime -= 10 }}><Icon name="back10" /></button>
@@ -235,7 +275,8 @@ export function Player() {
           <button class="btn" onClick={() => setMenu(menu === 'subs' ? undefined : 'subs')}><Icon name="subtitles" /> {activeSub >= 0 ? (subs[activeSub]?.lang ?? 'On') : 'Off'}</button>
           <button class="btn" onClick={() => setMenu(menu === 'sources' ? undefined : 'sources')}><Icon name="list" /> Sources</button>
           {upNext && (nearEnd || !playing) && <button class="btn primary" onClick={playNext}><Icon name="next" /> Next episode</button>}
-          <button class="btn" onClick={() => history.back()}><Icon name="close" /></button>
+          <button class="btn" onClick={() => toggleFullscreen(root.current)} aria-label="Full screen"><Icon name="fullscreen" /></button>
+          <button class="btn" onClick={() => history.back()} aria-label="Close"><Icon name="close" /></button>
           <span class="time">{clock(time)} / {clock(duration)}</span>
         </div>
       </div>
