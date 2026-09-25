@@ -43,7 +43,7 @@ npm run package:tizen   # Samsung TV app → packages/*-unsigned.wgt (sign befor
 - an IntroDB proxy
 - the Trakt token exchange
 
-Trakt needs a `TRAKT_CLIENT_ID` variable and a `TRAKT_CLIENT_SECRET` secret on the Worker. Pushes to `main` that touch `web/` deploy through the central workflows (`.github/workflows/web-deploy.yml`).
+Pushes to `main` that touch `web/` deploy through the central workflows (`.github/workflows/web-deploy.yml`). Each deploy also sets the Worker's `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` secrets from the HereLiesAz/workflows secrets of the same names (the web profile's `worker_secrets`), the same Trakt app the Android build uses.
 
 TV and desktop packages run from `file://`, so they call the hosted Worker's `/api` (`src/core/api.ts`).
 

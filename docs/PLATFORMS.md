@@ -55,7 +55,7 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 - [x] **Trakt**
   - device-code sign-in; the token exchange and refresh go through the web Worker, which holds the client secret
   - scrobbling start, pause and stop, as Android's `TraktScrobbleManager`
-  - **Needs:** a `TRAKT_CLIENT_ID` variable and a `TRAKT_CLIENT_SECRET` secret on the `illumera-web` Worker.
+  - the Worker gets `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` on every deploy, from the HereLiesAz/workflows secrets the Android build also uses
 - [ ] Trakt watchlist and history sync (Android's `TraktSyncManager`). The web app has no watchlist yet.
 - [x] **Debrid:** a saved provider key is filled into Torrentio installs (Android's `DebridAddonUrlHelper`).
 - [x] **IntroDB:** a Skip intro button, or automatic skipping as a setting; Next episode appears from the outro. The requests go through the web Worker, because IntroDB only allows its own site.
