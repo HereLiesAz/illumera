@@ -341,6 +341,7 @@ fun BasePlayerScaffold(
         if (countdownActive && !autoplayCancelled && !autoplayFired) {
             autoplayFired = true
             onAutoplayNextEpisode?.invoke(currentSourceUrl)
+                ?: com.hereliesaz.illumera.crash.AppErrors.e("Autoplay", "Countdown reached zero with no next-episode handler")
         }
     }
 

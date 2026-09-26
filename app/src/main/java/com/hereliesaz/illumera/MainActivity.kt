@@ -125,6 +125,8 @@ import javax.inject.Inject
 private const val DOUBLE_BACK_EXIT_WINDOW_MS = 400L
 private val SERIES_PLAYBACK_TYPES = setOf("series", "tv", "anime", "episode")
 private const val SOURCE_SELECTION_COMMIT_MIN_POSITION_MS = 5_000L
+// A next-episode hand-off that hasn't started playback by then is reported and falls back to the source list.
+private const val AUTOPLAY_STALL_MS = 45_000L
 private const val SOURCE_SELECTION_FAILURE_RESET_MAX_POSITION_MS = 1_000L
 
 private data class PlayerSubtitlePayload(
@@ -2161,22 +2163,60 @@ class MainActivity : ComponentActivity() {
                                             null
                                         }
 
+                                        // Each step names itself on screen (the loading feed) and in the
+                                        // stall report, so a hand-off that stops says where it stopped.
+                                        val switchGeneration = playerState.episodeSwitchGeneration
+                                        var switchStep = "finding sources"
+                                        var fetchedStreams: List<com.hereliesaz.illumera.data.model.stremio.Stream>? = null
+                                        if (willAutoResolve) playbackStatus = "Next episode · finding sources for $nextPlaybackTitle"
+                                        fun showSourceList() {
+                                            playbackStatus = null
+                                            playerState.isEpisodeSwitchLoading = false
+                                            playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
+                                                playbackId = nextPlaybackId,
+                                                playbackTitle = nextPlaybackTitle,
+                                                streamRequestId = nextStreamId,
+                                                streams = fetchedStreams.orEmpty(),
+                                                addonSubs = emptyList(),
+                                                playerCurrentSourceUrl = playerCurrentSourceUrl
+                                            )
+                                        }
+                                        if (willAutoResolve) uiScope.launch {
+                                            delay(AUTOPLAY_STALL_MS)
+                                            val stillSwitching = playerState.episodeSwitchGeneration == switchGeneration &&
+                                                selectedPlaybackId != nextPlaybackId && playerState.pendingEpisodeSwitch == null
+                                            if (stillSwitching) {
+                                                com.hereliesaz.illumera.crash.AppErrors.e(
+                                                    "Autoplay",
+                                                    "Next episode didn't start within ${AUTOPLAY_STALL_MS / 1000}s; stopped at: $switchStep"
+                                                )
+                                                playerState.episodeSwitchJob?.cancel()
+                                                showSourceList()
+                                            }
+                                        }
+
                                         playerState.episodeSwitchJob = uiScope.launch {
+                                          try {
                                             val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", nextStreamId) } }
                                             val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", nextStreamId) } }
 
                                             val rawStreams = streamsDeferred.await()
                                             val addonSubs = subtitlesDeferred.await()
+                                            switchStep = "ranking ${rawStreams.size} sources"
 
-                                            val streams = if (currentProfile?.sourceSortingEnabled == true) {
+                                            // Off the main thread: ranking a long list froze the UI on TV boxes.
+                                            val streams = if (currentProfile?.sourceSortingEnabled == true) withContext(Dispatchers.Default) {
                                                 val enabledQ = StreamSortingService.parseEnabledQualities(currentProfile?.sourceEnabledQualities ?: "4k,1080p,720p,unknown")
                                                 val excludeP = StreamSortingService.parseExcludePhrases(currentProfile?.sourceExcludePhrases ?: "")
                                                 val addonOrders = addonRepository.getAddonSortOrders()
                                                 val excludedF = StreamSortingService.parseExcludedFormats(currentProfile?.sourceExcludedFormats ?: "")
                                                 streamSortingService.sortAndFilter(rawStreams, enabledQ, excludeP, addonOrders, currentProfile?.sourceSortPrimary ?: "quality", currentProfile?.sourceMaxSizeGb ?: 0, excludedF, currentProfile?.sourceEpisodeTargetSizeMb ?: 750, currentProfile?.sourceMinimumSeeds ?: 5, currentProfile)
                                             } else rawStreams
+                                            fetchedStreams = streams
+                                            switchStep = "choosing from ${streams.size} sources"
 
                                             if (streams.isEmpty()) {
+                                                playbackStatus = null
                                                 playerState.isEpisodeSwitchLoading = false
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
@@ -2215,6 +2255,7 @@ class MainActivity : ComponentActivity() {
                                                 ?: if (autoplay || autoSelect) streams.firstOrNull { !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank() } else null
 
                                             if (streamToPlay == null) {
+                                                playbackStatus = null
                                                 playerState.isEpisodeSwitchLoading = false
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
@@ -2229,6 +2270,7 @@ class MainActivity : ComponentActivity() {
 
                                             val nextUrl = resolvePlayableSourceUrl(streamToPlay)
                                             if (nextUrl == null) {
+                                                playbackStatus = null
                                                 playerState.isEpisodeSwitchLoading = false
                                                 playerState.pendingEpisodeSwitch = PendingEpisodeSwitch(
                                                     playbackId = nextPlaybackId,
@@ -2243,6 +2285,8 @@ class MainActivity : ComponentActivity() {
 
                                             // Auto-resolved: keep the guard active through subtitle refinement.
                                             playerState.pendingEpisodeSwitch = null
+                                            switchStep = "finding subtitles (${if (nextUrl.startsWith("magnet:")) "torrent" else "direct link"})"
+                                            playbackStatus = "Next episode · finding subtitles"
 
                                             val sourceAwareSubs = subtitleRepository.getSubtitlesForStream(
                                                 type = "series",
@@ -2250,6 +2294,8 @@ class MainActivity : ComponentActivity() {
                                                 stream = streamToPlay,
                                                 fallback = addonSubs
                                             )
+                                            switchStep = "opening the source"
+                                            playbackStatus = "Next episode · opening $nextPlaybackTitle"
                                             val subtitlePayload = buildSubtitlePayload(streamToPlay, sourceAwareSubs)
                                             val sourcePayload = buildSourcePayload(streams, streamToPlay)
 
@@ -2297,6 +2343,12 @@ class MainActivity : ComponentActivity() {
                                                 selectedVideoUrl = nextUrl
                                                 // PlayerScreen will recompose due to movieId/videoUrl key change
                                             }
+                                          } catch (cancelled: CancellationException) {
+                                            throw cancelled
+                                          } catch (e: Exception) {
+                                            com.hereliesaz.illumera.crash.AppErrors.e("Autoplay", "Next-episode hand-off failed while $switchStep", e)
+                                            showSourceList()
+                                          }
                                         }
                                     }
                                 } else null,
