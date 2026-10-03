@@ -111,6 +111,8 @@ android {
         }
         release {
             buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "true")
+            // Bundles native debug symbols into the AAB so Play symbolicates native crashes/ANRs.
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
