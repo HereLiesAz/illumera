@@ -146,9 +146,11 @@ class MediaActionsViewModel @Inject constructor(
             profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
                 val resolved = resolveTarget(target)
                 if (dao.isInWatchlist(ownerProfileId, resolved.canonicalId)) {
-                    dao.removeFromWatchlist(ownerProfileId, resolved.canonicalId)
+                    traktSyncManager.removeFromWatchlist(
+                        ownerProfileId, resolved.canonicalId, resolved.type,
+                        syncToTrakt = resolved.traktAvailable
+                    )
                     if (resolved.traktAvailable) {
-                        traktSyncManager.pushRemove(resolved.canonicalId, resolved.type)
                         wutchManager.onWatchlistChanged(resolved.canonicalId, added = false)
                     }
                 } else {
@@ -160,9 +162,8 @@ class MediaActionsViewModel @Inject constructor(
                         poster = resolved.poster,
                         addedAt = System.currentTimeMillis()
                     )
-                    dao.addToWatchlist(entity)
+                    traktSyncManager.addToWatchlist(entity, syncToTrakt = resolved.traktAvailable)
                     if (resolved.traktAvailable) {
-                        traktSyncManager.pushAdd(entity)
                         wutchManager.onWatchlistChanged(resolved.canonicalId, added = true)
                     }
                 }

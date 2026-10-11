@@ -278,6 +278,68 @@ class TraktSyncManager @Inject constructor(
     }
 
     /**
+     * Adds [item] to the local watchlist and, when [syncToTrakt] and Trakt is connected,
+     * pushes it to Trakt. The pending mark and the DAO write happen together under
+     * [syncMutex], so a concurrent [syncWatchlist] never sees the local row without its
+     * pending entry (and deletes it). The network push runs after the lock is released.
+     */
+    suspend fun addToWatchlist(item: WatchlistEntity, syncToTrakt: Boolean = true) {
+        val push = withContext(Dispatchers.IO) {
+            syncMutex.withLock {
+                val connected = syncToTrakt && traktAuthManager.getAccessToken() != null
+                if (connected) {
+                    pendingStore.mark(item.profileId, item.id, item.type, TraktWatchlistPendingStore.Op.ADD)
+                }
+                dao.addToWatchlist(item)
+                connected
+            }
+        }
+        if (!push) return
+        withContext(Dispatchers.IO) {
+            try {
+                if (pushToTrakt(listOf(item))) pendingStore.clear(item.profileId, item.id)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push watchlist add to Trakt", e)
+            }
+        }
+    }
+
+    /**
+     * Removes [itemId] from [ownerProfileId]'s local watchlist and, when [syncToTrakt] and
+     * Trakt is connected, from Trakt. Same locking as [addToWatchlist], so a sync can't
+     * re-pull the item between the local delete and the pending mark.
+     */
+    suspend fun removeFromWatchlist(
+        ownerProfileId: Int,
+        itemId: String,
+        type: String,
+        syncToTrakt: Boolean = true
+    ) {
+        val push = withContext(Dispatchers.IO) {
+            syncMutex.withLock {
+                val connected = syncToTrakt && traktAuthManager.getAccessToken() != null
+                if (connected) {
+                    pendingStore.mark(ownerProfileId, itemId, type, TraktWatchlistPendingStore.Op.REMOVE)
+                }
+                dao.removeFromWatchlist(ownerProfileId, itemId)
+                connected
+            }
+        }
+        if (!push) return
+        withContext(Dispatchers.IO) {
+            try {
+                if (removeFromTrakt(itemId, type)) pendingStore.clear(ownerProfileId, itemId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Failed to push watchlist remove to Trakt", e)
+            }
+        }
+    }
+
+    /**
      * Push a single item to Trakt watchlist (called when user adds locally).
      */
     suspend fun pushAdd(item: WatchlistEntity) {
