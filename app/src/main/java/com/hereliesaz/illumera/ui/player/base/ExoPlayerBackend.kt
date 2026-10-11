@@ -241,6 +241,13 @@ class ExoPlayerBackend(
     private var wantsSubtitles = false
     private var externalSubtitleLabelKeys: Map<String, String?> = emptyMap()
 
+    // A late-arriving external subtitle shown without rebuilding the source (OutOfBandSubtitle).
+    private var outOfBandSubtitleId: String? = null
+    private var outOfBandSubtitle: OutOfBandSubtitle? = null
+    private var outOfBandJob: Job? = null
+    private var outOfBandShownCues: List<androidx.media3.common.text.Cue> = emptyList()
+    private val outOfBandCache = mutableMapOf<String, OutOfBandSubtitle>()
+
     private fun replaceExternalSubtitles(subtitles: List<PlayerSubtitleSource>) {
         val normalized = subtitles.mapIndexed { index, subtitle ->
             val normalizedId = subtitle.id.trim().ifBlank { "ext_$index" }
@@ -312,6 +319,7 @@ class ExoPlayerBackend(
         private const val MAX_SUBTITLE_SIZE_PERCENT = 200
         private const val MIN_SUBTITLE_DELAY_MS = -10_000L
         private const val MAX_SUBTITLE_DELAY_MS = 10_000L
+        private const val OUT_OF_BAND_SUBTITLE_TICK_MS = 50L
     }
 
     private data class TrackLocator(
@@ -388,6 +396,11 @@ class ExoPlayerBackend(
         }
 
         override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+            if (outOfBandSubtitleId != null) {
+                // PlayerView applies the player's cues too; put ours back after it.
+                playerView?.subtitleView?.let { sv -> sv.post { if (outOfBandSubtitleId != null) sv.setCues(outOfBandShownCues) } }
+                return
+            }
             lastCueGroup = cueGroup
             applyTransformedCues()
         }
@@ -763,21 +776,67 @@ class ExoPlayerBackend(
         if (added.isEmpty()) return
         replaceExternalSubtitles(request.subtitles + added)
         exoPlayer?.let { refreshTrackOptions(it.currentTracks) }
-        if (wantsSubtitles) {
-            val current = _uiState.value.selectedSubtitleTrackId
-                ?.takeIf { it != SUBTITLE_OFF_ID }
-            reloadCurrentSourceForSubtitles(current ?: loadRequest?.preferredSubtitleTrackId)
+        // Subtitles are wanted but none is showing (the remembered or forced-language track
+        // wasn't available yet): pick it from the new arrivals. Shown out of band, no reload.
+        val current = _uiState.value.selectedSubtitleTrackId
+        if (wantsSubtitles && (current == null || current == SUBTITLE_OFF_ID)) {
+            val remembered = normalizeSubtitleSelectionId(
+                _uiState.value.subtitleChoiceToRemember ?: request.preferredSubtitleTrackId
+            )
+            val options = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_ID }
+            val target = resolveForcedTrack(options, forcedSubtitleLanguages(), remembered) { tracks, language ->
+                findSubtitleTrackByLanguage(tracks, language)
+            } ?: remembered?.takeIf { id -> options.any { it.id == id } }
+            if (target != null) selectSubtitleTrack(target)
         }
     }
 
-    /** Rebuild the playing source at its current position so newly added subtitles load. */
-    private fun reloadCurrentSourceForSubtitles(subtitleSelection: String?) {
-        val id = currentSourceId ?: return
-        val option = _sourceOptions.value.firstOrNull { it.id == id } ?: return
-        // Reuse what is actually playing (a resolved torrent is a local URL, not the magnet).
-        val playingUrl = exoPlayer?.currentMediaItem?.localConfiguration?.uri?.toString()
-        switchToSource(id, option.copy(url = playingUrl ?: resolvedTorrentUrls[id] ?: option.url))
-        pendingSubtitleTrackId = normalizeSubtitleSelectionId(subtitleSelection)
+    private fun stopOutOfBandSubtitle() {
+        outOfBandJob?.cancel()
+        outOfBandJob = null
+        if (outOfBandSubtitleId == null) return
+        outOfBandSubtitleId = null
+        outOfBandSubtitle = null
+        outOfBandShownCues = emptyList()
+        playerView?.subtitleView?.setCues(emptyList())
+    }
+
+    /** Fetch, parse and draw [id] over the video, tracking playback position and subtitle delay. */
+    private fun startOutOfBandSubtitle(id: String, source: PlayerSubtitleSource) {
+        stopOutOfBandSubtitle()
+        outOfBandSubtitleId = id
+        if (playbackSettings.assRendererEnabled) assHandler?.clearOverlay()
+        playerView?.subtitleView?.visibility = android.view.View.VISIBLE
+        outOfBandJob = scope.launch {
+            val parsed = outOfBandCache[source.url] ?: withContext(Dispatchers.IO) {
+                runCatching {
+                    okHttpClient.newCall(okhttp3.Request.Builder().url(source.url).build()).execute().use { response ->
+                        if (!response.isSuccessful) return@use null
+                        response.body?.bytes()?.let { OutOfBandSubtitle.parse(it, inferSubtitleMimeType(source.url)) }
+                    }
+                }.getOrNull()
+            }?.also { outOfBandCache[source.url] = it }
+            if (outOfBandSubtitleId != id) return@launch
+            if (parsed == null) {
+                outOfBandSubtitleId = null
+                _uiState.update { it.copy(selectedSubtitleTrackId = SUBTITLE_OFF_ID) }
+                exoPlayer?.let { refreshTrackOptions(it.currentTracks) }
+                return@launch
+            }
+            outOfBandSubtitle = parsed
+            while (outOfBandSubtitleId == id) {
+                val player = exoPlayer ?: break
+                val positionUs = player.currentPosition * 1000L - subtitleDelayUs.get()
+                val cues = parsed.cuesAt(positionUs)
+                if (cues != outOfBandShownCues) {
+                    outOfBandShownCues = cues
+                    lastCueGroup = androidx.media3.common.text.CueGroup(cues, positionUs.coerceAtLeast(0L))
+                    playerView?.subtitleView?.setCues(cues)
+                    applyTransformedCues()
+                }
+                delay(OUT_OF_BAND_SUBTITLE_TICK_MS)
+            }
+        }
     }
 
     private fun selectSourceAfterSubtitleResolution(sourceId: String, source: PlayerSourceOption) {
@@ -841,6 +900,7 @@ class ExoPlayerBackend(
         hasAppliedAudioLanguagePref = false
         hasAppliedSubtitleLanguagePref = false
         currentSourceId = sourceId
+        stopOutOfBandSubtitle()
 
         val persistedOffset = playbackSettings.subtitleOffset
         subtitleVerticalOffsetPercent = persistedOffset
@@ -888,6 +948,7 @@ class ExoPlayerBackend(
         val player = exoPlayer ?: return
         val id = normalizeSubtitleSelectionId(trackId) ?: SUBTITLE_OFF_ID
         _uiState.update { it.copy(subtitleChoiceToRemember = null) }
+        stopOutOfBandSubtitle()
         val builder = player.trackSelectionParameters.buildUpon()
         builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
 
@@ -933,11 +994,17 @@ class ExoPlayerBackend(
             return
         }
 
-        // A subtitle that arrived after this source was built: rebuild so it can load.
-        if (id in externalSubtitleSources.keys && id !in loadedExternalSubtitleIds) {
-            forcedSubtitleTrackId = id
+        // A subtitle that arrived after this source was built: the player can't load it without
+        // a rebuild, so it is drawn out of band and the player's own text track is turned off.
+        val lateSubtitle = externalSubtitleSources[id]
+        if (lateSubtitle != null && id !in loadedExternalSubtitleIds) {
+            forcedSubtitleTrackId = null
+            pendingSubtitleTrackId = null
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            player.trackSelectionParameters = builder.build()
             _uiState.update { it.copy(selectedSubtitleTrackId = id) }
-            reloadCurrentSourceForSubtitles(id)
+            refreshTrackOptions(player.currentTracks)
+            startOutOfBandSubtitle(id, lateSubtitle)
             return
         }
 
@@ -1108,6 +1175,8 @@ class ExoPlayerBackend(
 
         sourceSubtitleResolutionJob?.cancel()
         sourceSubtitleResolutionJob = null
+        stopOutOfBandSubtitle()
+        outOfBandCache.clear()
         scopeJob.cancel()
         stopProgressLoop()
         audioSwitchRecoveryJob = null
