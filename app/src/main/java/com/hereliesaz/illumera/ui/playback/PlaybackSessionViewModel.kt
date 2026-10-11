@@ -758,7 +758,8 @@ class PlaybackSessionViewModel @Inject constructor(
             ?: return
         if (stream === currentStream) return
         currentStream = stream
-        if (!sourceUrl.startsWith("magnet:") && torrentProgress != null) stopTorrent()
+        // Unconditional: a streaming torrent has already cleared its progress.
+        if (!sourceUrl.startsWith("magnet:")) stopTorrent()
     }
 
     fun onFirstFrame() {

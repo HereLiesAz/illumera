@@ -153,6 +153,18 @@ class TorrentStreamControllerTest {
     }
 
     @Test
+    fun `a stream ready after stop is dropped`() {
+        val vm = session()
+        vm.startTorrent("magnet:a", -1, "")
+        val late = callbacks.ready!!
+        vm.stopTorrent()
+        vm.selectedVideoUrl = "https://cdn/direct.mkv"
+        late("http://local/a")
+        assertEquals("https://cdn/direct.mkv", vm.selectedVideoUrl)
+        assertNull(vm.torrentProgress)
+    }
+
+    @Test
     fun `saved fields survive process death, transient ones do not`() {
         val handle = SavedStateHandle()
         val vm = session(handle)
