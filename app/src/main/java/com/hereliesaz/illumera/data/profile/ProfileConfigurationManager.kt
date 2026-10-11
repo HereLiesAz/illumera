@@ -260,7 +260,8 @@ class ProfileConfigurationManager @Inject constructor(
                 isTrusted = false,
                 isEnabled = true,
                 nickname = null,
-                catalogsJson = gson.toJson(catalogs)
+                catalogsJson = gson.toJson(catalogs),
+                supportsStream = manifest.supportsResource("stream")
             )
 
             configs += catalogs.mapIndexed { index, catalog ->
@@ -358,7 +359,9 @@ class ProfileConfigurationManager @Inject constructor(
             isTrusted = false,
             isEnabled = true,
             nickname = null,
-            catalogsJson = gson.toJson(catalogs)
+            catalogsJson = gson.toJson(catalogs),
+            // Cinemeta is metadata only; asking it for streams always 404s.
+            supportsStream = manifest?.supportsResource("stream") ?: false
         )
 
         val configs = catalogs.mapIndexed { index, catalog ->

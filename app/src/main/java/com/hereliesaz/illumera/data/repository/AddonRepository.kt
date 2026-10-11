@@ -300,6 +300,14 @@ class AddonRepository @Inject constructor(
                     emptyList()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (e: retrofit2.HttpException) {
+                    // 404 is an addon saying it has no streams for this id (or no stream
+                    // resource at all: rows stored before supportsStream was read default
+                    // to true). Not an error; anything else still reports.
+                    if (e.code() != 404) {
+                        AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
+                    }
+                    emptyList()
                 } catch (e: Exception) {
                     AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
                     emptyList()
@@ -328,20 +336,8 @@ class AddonRepository @Inject constructor(
         }
         val transportUrl = url.removeSuffix("/manifest.json").trimEnd('/')
         val catalogsJson = gson.toJson(manifest.catalogs.orEmpty())
-        val supportsMeta = manifest.resources?.any { element ->
-            when {
-                element.isJsonPrimitive -> element.asString == "meta"
-                element.isJsonObject -> element.asJsonObject.get("name")?.asString == "meta"
-                else -> false
-            }
-        } ?: false
-        val supportsStream = manifest.resources?.any { element ->
-            when {
-                element.isJsonPrimitive -> element.asString == "stream"
-                element.isJsonObject -> element.asJsonObject.get("name")?.asString == "stream"
-                else -> false
-            }
-        } ?: false
+        val supportsMeta = manifest.supportsResource("meta")
+        val supportsStream = manifest.supportsResource("stream")
 
         // Re-installing an already-installed addon (e.g. re-pasting the same manifest
         // URL) must not silently discard a nickname or per-catalog customizations the
