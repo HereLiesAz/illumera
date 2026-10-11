@@ -4,10 +4,12 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
+import com.hereliesaz.illumera.data.model.HistoryTombstoneEntity
 import com.hereliesaz.illumera.data.model.HubRowEntity
 import com.hereliesaz.illumera.data.model.HubRowItemEntity
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.RecentSearchEntity
+import com.hereliesaz.illumera.data.model.RuntimeOwnerEntity
 import com.hereliesaz.illumera.data.model.ThemeEntity
 import com.hereliesaz.illumera.data.model.SeriesNextUpEntity
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
@@ -25,9 +27,11 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
         HubRowItemEntity::class,
         WatchlistEntity::class,
         SeriesNextUpEntity::class,
-        RecentSearchEntity::class
+        RecentSearchEntity::class,
+        HistoryTombstoneEntity::class,
+        RuntimeOwnerEntity::class
     ],
-    version = 53,
+    version = 54,
     exportSchema = true // schema JSON exported via room.schemaLocation (ksp args in app/build.gradle.kts)
 )
 abstract class LumeraDatabase : RoomDatabase() {

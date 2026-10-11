@@ -8,11 +8,13 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
+import com.hereliesaz.illumera.data.model.HistoryTombstoneEntity
 import com.hereliesaz.illumera.data.model.HubRowEntity
 import com.hereliesaz.illumera.data.model.HubRowWithItems
 import com.hereliesaz.illumera.data.model.HubRowItemEntity
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.RecentSearchEntity
+import com.hereliesaz.illumera.data.model.RuntimeOwnerEntity
 import com.hereliesaz.illumera.data.model.ThemeEntity
 import com.hereliesaz.illumera.data.model.SeriesNextUpEntity
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
@@ -23,6 +25,9 @@ import androidx.room.Delete
 /** Escapes `%`, `_`, and `\` in a LIKE operand so they are treated as literals. */
 fun escapeLikeParam(value: String): String =
     value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+/** Watch-history deletion tombstones older than this are pruned during a merge. */
+const val HISTORY_TOMBSTONE_TTL_MS: Long = 90L * 24 * 60 * 60 * 1000
 
 @Dao
 interface AddonDao {
@@ -119,13 +124,57 @@ interface AddonDao {
     // later call failing partway through would leave a profile gone but its watchlist/next-up
     // rows orphaned, with no UI path left to retry cleanup. @Transaction runs all three deletes
     // as one unit so that can't happen.
+    @Query("DELETE FROM history_tombstones WHERE profileId = :profileId")
+    suspend fun deleteHistoryTombstonesForProfile(profileId: Int)
+
+    @Query("DELETE FROM runtime_owner WHERE profileId = :profileId")
+    suspend fun clearRuntimeOwnerIfProfile(profileId: Int)
+
     @Transaction
     suspend fun deleteProfileCascading(id: Int) {
         deleteProfile(id)
         deleteWatchlistForProfile(id)
         deleteSeriesNextUpForProfile(id)
         deleteRecentSearchesForProfile(id)
+        deleteHistoryTombstonesForProfile(id)
+        clearRuntimeOwnerIfProfile(id)
     }
+
+    // ---- Runtime owner marker -------------------------------------------------------
+    // Names the profile whose data is in the shared runtime tables. Written inside
+    // replaceRuntimeState's transaction so it always agrees with watch_history, unlike the
+    // SharedPreferences "last active" id, which is written after the transaction commits.
+
+    @Query("SELECT profileId FROM runtime_owner WHERE id = 0")
+    suspend fun getRuntimeOwnerProfileId(): Int?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun setRuntimeOwner(owner: RuntimeOwnerEntity)
+
+    // ---- History deletion tombstones -----------------------------------------------
+    // Every user/sync deletion of watch history records a tombstone for the runtime owner
+    // profile in the same transaction, so a crash-recovery merge with a stale snapshot
+    // can't resurrect it. No owner recorded yet (legacy DB) → no tombstone, same as before.
+
+    @Query(
+        "INSERT OR REPLACE INTO history_tombstones (profileId, itemId, deletedAt) " +
+            "SELECT o.profileId, h.id, :deletedAt FROM watch_history h, runtime_owner o " +
+            "WHERE o.id = 0 AND h.id = :id"
+    )
+    suspend fun recordHistoryTombstone(id: String, deletedAt: Long)
+
+    @Query(
+        "INSERT OR REPLACE INTO history_tombstones (profileId, itemId, deletedAt) " +
+            "SELECT o.profileId, h.id, :deletedAt FROM watch_history h, runtime_owner o " +
+            "WHERE o.id = 0 AND h.type = 'series' AND h.id LIKE :episodePrefix ESCAPE '\\'"
+    )
+    suspend fun recordSeriesHistoryTombstonesRaw(episodePrefix: String, deletedAt: Long)
+
+    @Query("SELECT * FROM history_tombstones WHERE profileId = :profileId")
+    suspend fun getHistoryTombstones(profileId: Int): List<HistoryTombstoneEntity>
+
+    @Query("DELETE FROM history_tombstones WHERE deletedAt < :cutoff")
+    suspend fun pruneHistoryTombstones(cutoff: Long)
 
     @Query("SELECT * FROM watch_history ORDER BY lastWatched DESC")
     fun getWatchHistory(): Flow<List<WatchHistoryEntity>>
@@ -189,7 +238,14 @@ interface AddonDao {
         getLatestSeriesEpisodeHistoryRaw(escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
 
     @Query("DELETE FROM watch_history WHERE id = :id")
-    suspend fun deleteHistoryItem(id: String)
+    suspend fun deleteHistoryItemRaw(id: String)
+
+    /** Deletes a history row and tombstones it for the runtime owner profile, atomically. */
+    @Transaction
+    suspend fun deleteHistoryItem(id: String) {
+        recordHistoryTombstone(id, System.currentTimeMillis())
+        deleteHistoryItemRaw(id)
+    }
 
     /**
      * Returns episode history for a series, newest first.
@@ -212,8 +268,12 @@ interface AddonDao {
     @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\'")
     suspend fun deleteSeriesHistoryRaw(episodePrefix: String)
 
-    suspend fun deleteSeriesHistory(episodePrefix: String) =
-        deleteSeriesHistoryRaw(escapeLikeParam(episodePrefix.removeSuffix("%")) + "%")
+    @Transaction
+    suspend fun deleteSeriesHistory(episodePrefix: String) {
+        val pattern = escapeLikeParam(episodePrefix.removeSuffix("%")) + "%"
+        recordSeriesHistoryTombstonesRaw(pattern, System.currentTimeMillis())
+        deleteSeriesHistoryRaw(pattern)
+    }
 
     @Query("SELECT * FROM themes")
     fun getAllThemes(): Flow<List<ThemeEntity>>
@@ -406,7 +466,11 @@ interface AddonDao {
         // recovery). On a genuine profile switch this must be false: the DB's watch
         // history belongs to the outgoing profile and merging it in by id would leak
         // that profile's progress/watched-state into the incoming one.
-        mergeWatchHistory: Boolean
+        mergeWatchHistory: Boolean,
+        // Profile the snapshot belongs to. Recorded as the runtime owner in this same
+        // transaction, and used to look up its deletion tombstones during a merge.
+        ownerProfileId: Int? = null,
+        now: Long = System.currentTimeMillis()
     ) {
         // Replace addon/catalog/hub state from snapshot
         clearHubRowItems()
@@ -425,12 +489,22 @@ interface AddonDao {
             // (e.g., power failure before onStop snapshot could be written).
             val existing = getAllWatchHistoryOnce().associateBy { it.id }
             val snapshotMap = watchHistory.associateBy { it.id }
+            // A snapshot-only row whose id was deleted after the snapshot was written must
+            // stay deleted, unless it was watched again after the deletion.
+            val tombstones = if (ownerProfileId != null) {
+                pruneHistoryTombstones(now - HISTORY_TOMBSTONE_TTL_MS)
+                getHistoryTombstones(ownerProfileId).associate { it.itemId to it.deletedAt }
+            } else {
+                emptyMap()
+            }
             val allIds = existing.keys + snapshotMap.keys
             allIds.mapNotNull { id ->
                 val db = existing[id]
                 val snap = snapshotMap[id]
                 when {
-                    db == null -> snap
+                    db == null -> snap?.takeIf { s ->
+                        tombstones[id]?.let { deletedAt -> s.lastWatched > deletedAt } ?: true
+                    }
                     snap == null -> db
                     snap.lastWatched >= db.lastWatched -> snap
                     else -> db
@@ -441,5 +515,6 @@ interface AddonDao {
         }
         clearWatchHistory()
         if (finalHistory.isNotEmpty()) upsertHistoryItems(finalHistory)
+        if (ownerProfileId != null) setRuntimeOwner(RuntimeOwnerEntity(profileId = ownerProfileId))
     }
 }
