@@ -770,10 +770,12 @@ class DetailsViewModel @Inject constructor(
     }
 
     // 1. Open Episodes (Series)
-    fun openEpisodes() {
+    /** [focusEpisodeId] (the episode the Resume button names) wins over the last-browsed one. */
+    fun openEpisodes(focusEpisodeId: String? = null) {
         val meta = _state.value.meta
         val videos = meta?.videos ?: emptyList()
-        val initialFocusEpisodeId = meta?.id?.let { episodeBrowseStore.getRememberedEpisodeSuffix(it) }
+        val initialFocusEpisodeId = focusEpisodeId
+            ?: meta?.id?.let { episodeBrowseStore.getRememberedEpisodeSuffix(it) }
         _state.update { it.copy(
             autoPlayStream = null,
             addonSubtitles = emptyList(),
