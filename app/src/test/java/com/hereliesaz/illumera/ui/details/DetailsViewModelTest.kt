@@ -51,6 +51,7 @@ class DetailsViewModelTest {
         dao = mockk(relaxed = true)
         sourceSelectionStore = mockk(relaxed = true)
         repository = mockk()
+        every { repository.lastStreamOutcomes } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
         subtitleRepository = mockk()
         profileConfigurationManager = mockk()
 
@@ -80,7 +81,7 @@ class DetailsViewModelTest {
         coEvery {
             repository.resolveMetaDetails("movie", "tt1", "https://two.example")
         } returns second
-        coEvery { repository.getStreams(any(), any(), any(), any()) } returns emptyList()
+        coEvery { repository.getStreams(any(), any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { subtitleRepository.getSubtitles(any(), any(), any(), any(), any(), any(), any()) } returns emptyList()
 
         val viewModel = newViewModel()
@@ -126,7 +127,7 @@ class DetailsViewModelTest {
             repository.resolvePreferredMetaDetails("movie", "tmdb:42", originBase)
         } returns originMeta
         coEvery {
-            repository.getStreams("movie", "tt0042", originBase, "tmdb:42")
+            repository.getStreams("movie", "tt0042", originBase, "tmdb:42", any(), any())
         } returns emptyList()
         coEvery {
             subtitleRepository.getSubtitles(
@@ -143,7 +144,7 @@ class DetailsViewModelTest {
             repository.resolvePreferredMetaDetails("movie", "tmdb:42", originBase)
         }
         coVerify(exactly = 1) {
-            repository.getStreams("movie", "tt0042", originBase, "tmdb:42")
+            repository.getStreams("movie", "tt0042", originBase, "tmdb:42", any(), any())
         }
     }
 
@@ -166,7 +167,7 @@ class DetailsViewModelTest {
             addonName = "Subs"
         )
 
-        coEvery { repository.getStreams("series", streamRequestId, null, null) } returns listOf(stream)
+        coEvery { repository.getStreams("series", streamRequestId, null, null, any(), any()) } returns listOf(stream)
         coEvery {
             subtitleRepository.getSubtitles(
                 "series", streamRequestId, null, null, null, null, null
