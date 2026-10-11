@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.hereliesaz.illumera.data.model.ThemeEntity
 // 1. Alias the Mobile Theme (For Settings, Dialogs)
 import androidx.compose.material3.MaterialTheme as MobileMaterialTheme
@@ -50,16 +51,21 @@ fun LumeraTheme(
         animationSpec = tween(THEME_ANIMATION_DURATION)
     )
 
+    // Readable content colour on primary/error fills: black on light, white on dark.
+    val onPrimaryColor = contentColorFor(primaryColor)
+    val onErrorColor = contentColorFor(errorColor)
+
     // A. Configure Mobile Colors
     val mobileScheme = mobileDarkColorScheme(
         primary = primaryColor,
         secondary = primaryColor,
         background = backgroundColor,
         surface = surfaceColor,
-        onPrimary = Color.Black,
+        onPrimary = onPrimaryColor,
         onBackground = textColor,
         onSurface = textColor,
-        error = errorColor
+        error = errorColor,
+        onError = onErrorColor
     )
 
     // B. Configure TV Colors (Crucial for LumeraCard Glow)
@@ -68,9 +74,10 @@ fun LumeraTheme(
         secondary = primaryColor,
         background = backgroundColor,
         surface = surfaceColor,
-        onPrimary = Color.Black,
+        onPrimary = onPrimaryColor,
         onSurface = textColor,
-        error = errorColor
+        error = errorColor,
+        onError = onErrorColor
     )
 
     // androidx.tv.material3.Typography is a distinct class from
@@ -96,3 +103,7 @@ fun LumeraTheme(
         )
     }
 }
+
+/** Black on light backgrounds, white on dark ones. */
+private fun contentColorFor(background: Color): Color =
+    if (background.luminance() > 0.5f) Color.Black else Color.White

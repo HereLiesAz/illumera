@@ -57,6 +57,17 @@ class AppUpdateManagerSecurityTest {
     }
 
     @Test
+    fun prereleaseIsOlderThanSameStableVersion() {
+        // A prerelease never supersedes its stable release...
+        assertFalse(callBoolean("isNewerVersion", "1.2.3-beta", "1.2.3"))
+        // ...and the stable release does supersede an installed prerelease.
+        assertTrue(callBoolean("isNewerVersion", "1.2.3", "1.2.3-beta"))
+        assertTrue(callBoolean("isNewerVersion", "1.2.3+build2", "1.2.3-rc1"))
+        assertFalse(callBoolean("isNewerVersion", "1.2.3-rc2", "1.2.3-rc1"))
+        assertFalse(callBoolean("isNewerVersion", "1.2.2", "1.2.3-beta"))
+    }
+
+    @Test
     fun versionComparisonPadsMissingNumericComponentsWithZero() {
         assertFalse(callBoolean("isNewerVersion", "1.2", "1.2.0"))
         assertTrue(callBoolean("isNewerVersion", "1.2.1", "1.2"))

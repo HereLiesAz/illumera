@@ -49,7 +49,7 @@ fun HubCategoryManagerDialog(
 
     LaunchedEffect(Unit) {
         delay(100)
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
     }
 
     if (managingItem == null && confirmRemoveItem == null && confirmRemoveImageItem == null && renameItem == null) {
@@ -164,7 +164,7 @@ fun HubCategoryManagerDialog(
 
     if (confirmRemoveItem != null) {
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+        LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
         VoidDialog(
             onDismissRequest = { confirmRemoveItem = null },
@@ -200,7 +200,7 @@ fun HubCategoryManagerDialog(
     // Remove Image Confirmation Dialog
     if (confirmRemoveImageItem != null) {
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+        LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
         VoidDialog(
             onDismissRequest = { confirmRemoveImageItem = null },
@@ -241,7 +241,7 @@ fun HubCategoryManagerDialog(
     // Rename Dialog
     if (renameItem != null) {
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+        LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
         VoidDialog(onDismissRequest = { renameItem = null }, title = "Rename Item") {
             com.hereliesaz.illumera.ui.addons.VoidInput(

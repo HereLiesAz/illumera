@@ -9,25 +9,38 @@ import java.net.NetworkInterface
 object NetworkUtils {
 
     /**
-     * Finds the first non-loopback IPv4 address on the device.
-     * Returns null if no suitable address is found.
+     * Returns the device's LAN IPv4 address, preferring a physical Wi-Fi or
+     * Ethernet interface (`wlan*` / `eth*`) that is up, not virtual and not
+     * point-to-point (so VPN tunnels and cellular links are skipped). If no such
+     * interface has an address, falls back to the first non-loopback IPv4
+     * address on any up interface. Returns null if nothing suitable is found.
      */
     fun getLocalIpAddress(): String? {
         try {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
-            for (networkInterface in interfaces) {
-                // Skip loopback and down interfaces
-                if (networkInterface.isLoopback || !networkInterface.isUp) continue
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: return null
+            val up = interfaces.filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
 
-                for (address in networkInterface.inetAddresses) {
-                    // Only consider IPv4 addresses
-                    if (address is Inet4Address && !address.isLoopbackAddress) {
-                        return address.hostAddress
-                    }
-                }
+            val preferred = up.filter { iface ->
+                val name = iface.name.orEmpty()
+                (name.startsWith("wlan") || name.startsWith("eth")) &&
+                    !iface.isVirtual &&
+                    runCatching { !iface.isPointToPoint }.getOrDefault(false)
+            }
+
+            for (networkInterface in preferred + up) {
+                firstIpv4(networkInterface)?.let { return it }
             }
         } catch (e: Exception) {
             com.hereliesaz.illumera.crash.AppErrors.w("NetworkUtils", "Failed to get local IP", e)
+        }
+        return null
+    }
+
+    private fun firstIpv4(networkInterface: NetworkInterface): String? {
+        for (address in networkInterface.inetAddresses) {
+            if (address is Inet4Address && !address.isLoopbackAddress) {
+                return address.hostAddress
+            }
         }
         return null
     }

@@ -245,8 +245,9 @@ private val MIGRATION_48_49 = object : Migration(48, 49) {
     }
 }
 
-// Corrects devices that ran the erroneous 48→49 migration which set sourceSkipSeedless = 0
-// for all profiles. The intended default is 1 (skip 0-seed streams).
+// Historical (already shipped; do not change): forces sourceSkipSeedless = 1 for EVERY
+// profile, overwriting any value the user had chosen — not only rows touched by an
+// earlier migration. 48→49 is a no-op, so this did not "correct" anything it set.
 private val MIGRATION_49_50 = object : Migration(49, 50) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("UPDATE profiles SET sourceSkipSeedless = 1")
@@ -259,12 +260,22 @@ private val MIGRATION_50_51 = object : Migration(50, 51) {
     }
 }
 
-// Versions 47-50 made "skip seedless" effectively mandatory for existing profiles.
-// Reset it once so filtering explicit zero-seed results is opt-in again. Unknown seed
-// counts remain unknown and are never treated as zero by StreamParser/StreamSortingService.
+// Historical (already shipped; do not change): unconditionally resets sourceSkipSeedless
+// to 0 for EVERY profile, discarding any explicit user choice, so filtering explicit
+// zero-seed results became opt-in again. Unknown seed counts remain unknown and are
+// never treated as zero by StreamParser/StreamSortingService.
 private val MIGRATION_51_52 = object : Migration(51, 52) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("UPDATE profiles SET sourceSkipSeedless = 0")
+    }
+}
+
+// 29→30 added supportsStream with DEFAULT 1, so pre-existing metadata-only addons were
+// marked as stream providers and get queried (and 404) on every source lookup. Clear it
+// for the known metadata-only default addon. Other addons re-derive it on reinstall.
+private val MIGRATION_52_53 = object : Migration(52, 53) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("UPDATE addons SET supportsStream = 0 WHERE transportUrl = 'https://v3-cinemeta.strem.io'")
     }
 }
 
@@ -287,7 +298,7 @@ object DatabaseModule {
                     db.execSQL("PRAGMA synchronous = 2")
                 }
             })
-            .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50, MIGRATION_50_51, MIGRATION_51_52)
+            .addMigrations(MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50, MIGRATION_50_51, MIGRATION_51_52, MIGRATION_52_53)
             // No explicit migrations exist below version 26 (an early, narrowly
             // distributed schema). Without this, any device still on one of those
             // versions hits Room's "no migration found" IllegalStateException and

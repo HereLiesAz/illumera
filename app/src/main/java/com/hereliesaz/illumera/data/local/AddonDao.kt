@@ -60,6 +60,22 @@ interface AddonDao {
     @Query("DELETE FROM catalog_configs")
     suspend fun clearCatalogConfigs()
 
+    @Query("DELETE FROM catalog_configs WHERE transportUrl = :url AND uniqueId NOT IN (:keepIds)")
+    suspend fun deleteCatalogConfigsExcept(url: String, keepIds: List<String>)
+
+    // Installing/re-installing an addon writes the addon row and its catalog configs as one
+    // unit, and prunes configs for catalogs the new manifest no longer lists.
+    @Transaction
+    suspend fun installAddonAtomically(addon: AddonEntity, configs: List<CatalogConfigEntity>) {
+        insertAddon(addon)
+        if (configs.isEmpty()) {
+            deleteCatalogConfigs(addon.transportUrl)
+        } else {
+            deleteCatalogConfigsExcept(addon.transportUrl, configs.map { it.uniqueId })
+            saveCatalogConfigs(configs)
+        }
+    }
+
     @Query("SELECT * FROM catalog_configs WHERE uniqueId = :uniqueId")
     suspend fun getCatalogConfig(uniqueId: String): CatalogConfigEntity?
 
@@ -146,9 +162,9 @@ interface AddonDao {
 
     /**
      * Returns all history items for a series.
-     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
-     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
-     * The query uses `ESCAPE '\'`.
+     * The `*Raw` query takes a fully escaped LIKE pattern (including the trailing `%`).
+     * Callers should use the non-Raw wrapper, which takes the plain prefix (a trailing `%`
+     * is tolerated and stripped), escapes `%`, `_`, `\` itself, and appends `%`.
      */
     @Query("SELECT * FROM watch_history WHERE type = 'series' AND (seriesId = :seriesId OR id LIKE :episodePrefix ESCAPE '\\')")
     suspend fun getHistoryItemsForSeriesRaw(seriesId: String, episodePrefix: String): List<WatchHistoryEntity>
@@ -158,9 +174,9 @@ interface AddonDao {
 
     /**
      * Returns the most-recently-watched episode history for the given series.
-     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
-     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
-     * The query uses `ESCAPE '\'`.
+     * The `*Raw` query takes a fully escaped LIKE pattern (including the trailing `%`).
+     * Callers should use the non-Raw wrapper, which takes the plain prefix (a trailing `%`
+     * is tolerated and stripped), escapes `%`, `_`, `\` itself, and appends `%`.
      */
     @Query(
         "SELECT * FROM watch_history " +
@@ -177,9 +193,9 @@ interface AddonDao {
 
     /**
      * Returns episode history for a series, newest first.
-     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
-     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
-     * The query uses `ESCAPE '\'`.
+     * The `*Raw` query takes a fully escaped LIKE pattern (including the trailing `%`).
+     * Callers should use the non-Raw wrapper, which takes the plain prefix (a trailing `%`
+     * is tolerated and stripped), escapes `%`, `_`, `\` itself, and appends `%`.
      */
     @Query("SELECT * FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\' ORDER BY lastWatched DESC")
     suspend fun getSeriesEpisodeHistoryRaw(episodePrefix: String): List<WatchHistoryEntity>
@@ -189,9 +205,9 @@ interface AddonDao {
 
     /**
      * Deletes all episode history rows for a series.
-     * [episodePrefix] must be the full LIKE pattern including any trailing `%` wildcard,
-     * with `%`, `_`, `\` already escaped — callers are responsible for escaping and appending `%`.
-     * The query uses `ESCAPE '\'`.
+     * The `*Raw` query takes a fully escaped LIKE pattern (including the trailing `%`).
+     * Callers should use the non-Raw wrapper, which takes the plain prefix (a trailing `%`
+     * is tolerated and stripped), escapes `%`, `_`, `\` itself, and appends `%`.
      */
     @Query("DELETE FROM watch_history WHERE type = 'series' AND id LIKE :episodePrefix ESCAPE '\\'")
     suspend fun deleteSeriesHistoryRaw(episodePrefix: String)

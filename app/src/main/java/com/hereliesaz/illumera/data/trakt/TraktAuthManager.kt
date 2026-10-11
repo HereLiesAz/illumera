@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.data.trakt
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -21,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -55,17 +57,40 @@ class TraktAuthManager @Inject constructor(
         private const val KEY_EXPIRES_AT = "expires_at"
     }
 
-    private val prefs by lazy {
+    private val prefs: SharedPreferences? by lazy {
+        try {
+            createEncryptedPrefs()
+        } catch (e: Exception) {
+            // Corrupted file or key mismatch: drop only Trakt's own prefs file (never the
+            // shared master key, which other integrations also use) and try again.
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Trakt secure prefs corrupted, resetting", e)
+            clearCorruptedPrefs()
+            try {
+                createEncryptedPrefs()
+            } catch (e2: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Trakt secure storage unavailable", e2)
+                null
+            }
+        }
+    }
+
+    private fun createEncryptedPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+    }
+
+    private fun clearCorruptedPrefs() {
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+        File(prefsDir, "$PREFS_NAME.xml").delete()
+        File(prefsDir, "$PREFS_NAME.xml.bak").delete()
     }
 
     private val _isConnected = MutableStateFlow(false)
@@ -84,8 +109,13 @@ class TraktAuthManager @Inject constructor(
     private fun profileKey(key: String, profileId: Int) = "${key}_$profileId"
 
     init {
-        migrateGlobalTokensToProfile()
-        _isConnected.value = getAccessToken() != null
+        try {
+            migrateGlobalTokensToProfile()
+            _isConnected.value = getAccessToken() != null
+        } catch (e: Exception) {
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Couldn't read Trakt credentials", e)
+            _isConnected.value = false
+        }
     }
 
     /**
@@ -94,6 +124,7 @@ class TraktAuthManager @Inject constructor(
      */
     private fun migrateGlobalTokensToProfile() {
         val profileId = activeProfileId() ?: return
+        val prefs = this.prefs ?: return
         val globalToken = prefs.getString(KEY_ACCESS_TOKEN, null) ?: return
         val globalRefresh = prefs.getString(KEY_REFRESH_TOKEN, null)
         val globalExpiry = prefs.getLong(KEY_EXPIRES_AT, 0L)
@@ -141,6 +172,7 @@ class TraktAuthManager @Inject constructor(
     // ── Token Storage (per-profile) ──
 
     private suspend fun saveTokens(response: TraktTokenResponse, profileId: Int): Boolean {
+        val prefs = this.prefs ?: return false
         return profileMutationCoordinator.withExistingProfile(profileId) {
             prefs.edit()
                 .putString(profileKey(KEY_ACCESS_TOKEN, profileId), response.accessToken)
@@ -164,6 +196,7 @@ class TraktAuthManager @Inject constructor(
     }
 
     private fun getAccessToken(profileId: Int): String? {
+        val prefs = this.prefs ?: return null
         val token = prefs.getString(profileKey(KEY_ACCESS_TOKEN, profileId), null)
         if (token == null) {
             if (activeProfileId() == profileId) needsRefresh = false
@@ -185,15 +218,15 @@ class TraktAuthManager @Inject constructor(
         private set
 
     private fun getRefreshToken(profileId: Int): String? =
-        prefs.getString(profileKey(KEY_REFRESH_TOKEN, profileId), null)
+        prefs?.getString(profileKey(KEY_REFRESH_TOKEN, profileId), null)
 
     private fun clearTokens(profileId: Int?) {
         if (profileId != null) {
-            prefs.edit()
-                .remove(profileKey(KEY_ACCESS_TOKEN, profileId))
-                .remove(profileKey(KEY_REFRESH_TOKEN, profileId))
-                .remove(profileKey(KEY_EXPIRES_AT, profileId))
-                .apply()
+            prefs?.edit()
+                ?.remove(profileKey(KEY_ACCESS_TOKEN, profileId))
+                ?.remove(profileKey(KEY_REFRESH_TOKEN, profileId))
+                ?.remove(profileKey(KEY_EXPIRES_AT, profileId))
+                ?.apply()
         }
         if (profileId == null || activeProfileId() == profileId) {
             _isConnected.value = false
@@ -203,11 +236,11 @@ class TraktAuthManager @Inject constructor(
 
     /** Clear tokens for a specific profile (e.g., when deleting the profile). */
     fun clearTokensForProfile(profileId: Int) {
-        prefs.edit()
-            .remove(profileKey(KEY_ACCESS_TOKEN, profileId))
-            .remove(profileKey(KEY_REFRESH_TOKEN, profileId))
-            .remove(profileKey(KEY_EXPIRES_AT, profileId))
-            .apply()
+        prefs?.edit()
+            ?.remove(profileKey(KEY_ACCESS_TOKEN, profileId))
+            ?.remove(profileKey(KEY_REFRESH_TOKEN, profileId))
+            ?.remove(profileKey(KEY_EXPIRES_AT, profileId))
+            ?.apply()
         if (activeProfileId() == profileId) {
             _isConnected.value = false
             needsRefresh = false
@@ -350,7 +383,11 @@ class TraktAuthManager @Inject constructor(
                 body.accessToken
             } else {
                 Log.w(TAG, "Token refresh failed: ${response.code()}")
-                if (response.code() == 401 || response.code() == 403) {
+                // Trakt answers an invalid/revoked refresh token with 400 invalid_grant.
+                val invalidGrant = response.code() == 400 &&
+                    runCatching { response.errorBody()?.string() }.getOrNull()
+                        ?.contains("invalid_grant") == true
+                if (response.code() == 401 || response.code() == 403 || invalidGrant) {
                     // Refresh token is also invalid — user needs to re-authenticate
                     clearTokens(profileId)
                 }

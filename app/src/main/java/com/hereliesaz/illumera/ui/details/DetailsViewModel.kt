@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
@@ -178,12 +179,24 @@ class DetailsViewModel @Inject constructor(
         ) {
             refreshResumeStateIfNeeded(_state.value.meta)
             if (_state.value.sidebarState !is SidebarState.Closed) {
-                _state.value = _state.value.copy(sidebarState = SidebarState.Closed)
+                _state.update { it.copy(sidebarState = SidebarState.Closed) }
             }
             return
         }
 
         loadDetailsJob?.cancel()
+        // A different item is loading: stop all in-flight work for the previous one so it
+        // cannot patch the new item's state.
+        loadStreamsJob?.cancel()
+        loadStreamsJob = null
+        sourceSelectionJob?.cancel()
+        sourceSelectionJob = null
+        backgroundRefreshJob?.cancel()
+        backgroundRefreshJob = null
+        prefetchStreamsJob?.cancel()
+        prefetchStreamsJob = null
+        tmdbEnrichmentJob?.cancel()
+        tmdbEnrichmentJob = null
         fullyLoadedKey = null
         loadRequestVersion += 1
         val requestVersion = loadRequestVersion
@@ -228,53 +241,74 @@ class DetailsViewModel @Inject constructor(
                 // details.id remains the origin addon's private request ID when it differs.
                 val streamFetchId = canonicalFallbackId
                 // Publish usable details before any watch-history or enrichment work.
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     meta = details,
                     resolvedId = streamFetchId,
                     contentKey = requestKey,
                     isLoading = false,
                     tmdbEnabled = isTmdbEnabled,
                     tmdbLoading = isTmdbEnabled
-                )
+                ) }
                 loadTmdbEnrichment(details.type, streamFetchId, requestKey)
 
-                val resumePlaybackId = if (details.type == "series") {
-                    val latest = dao.getLatestSeriesEpisodeHistory("${streamFetchId}:%")
-                    if (latest != null && !latest.watched) {
-                        latest.id // In-progress episode — resume it
+                // History lookups are auxiliary: if they fail after meta is published, still
+                // mark resume state ready (Play must not stay on "Loading…") and keep going.
+                var resumePlaybackId: String? = null
+                var isMovieWatched = false
+                var episodeProgressMap: Map<String, EpisodeProgress> = emptyMap()
+                try {
+                    resumePlaybackId = if (details.type == "series") {
+                        val latest = dao.getLatestSeriesEpisodeHistory("${streamFetchId}:%")
+                        if (latest != null && !latest.watched) {
+                            latest.id // In-progress episode — resume it
+                        } else {
+                            // All episodes watched or no history — use next-up if aired
+                            val nextUp = dao.getSeriesNextUp(profileId, streamFetchId)
+                            val today = java.time.LocalDate.now().toString()
+                            val hasAired = nextUp != null && !nextUp.isComplete &&
+                                (nextUp.nextReleased == null || nextUp.nextReleased <= today)
+                            if (hasAired) {
+                                "${streamFetchId}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
+                            } else null
+                        }
                     } else {
-                        // All episodes watched or no history — use next-up if aired
-                        val nextUp = dao.getSeriesNextUp(profileId, streamFetchId)
-                        val today = java.time.LocalDate.now().toString()
-                        val hasAired = nextUp != null && !nextUp.isComplete &&
-                            (nextUp.nextReleased == null || nextUp.nextReleased <= today)
-                        if (hasAired) {
-                            "${streamFetchId}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
-                        } else null
+                        val movieHistory = dao.getHistoryItem(streamFetchId)
+                        if (movieHistory?.watched == true) null else movieHistory?.id
                     }
-                } else {
-                    val movieHistory = dao.getHistoryItem(streamFetchId)
-                    if (movieHistory?.watched == true) null else movieHistory?.id
+                    isMovieWatched = if (details.type != "series") {
+                        dao.getHistoryItem(streamFetchId)?.watched == true
+                    } else false
+                    // Build per-episode progress map for the episodes sidebar
+                    episodeProgressMap = if (details.type == "series") {
+                        buildEpisodeProgressMap(streamFetchId)
+                    } else emptyMap()
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (e: Exception) {
+                    com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
+                    resumePlaybackId = null
+                    isMovieWatched = false
+                    episodeProgressMap = emptyMap()
                 }
-                val isMovieWatched = if (details.type != "series") {
-                    dao.getHistoryItem(streamFetchId)?.watched == true
-                } else false
-                // Build per-episode progress map for the episodes sidebar
-                val episodeProgressMap = if (details.type == "series") {
-                    buildEpisodeProgressMap(streamFetchId)
-                } else emptyMap()
 
                 if (requestVersion != loadRequestVersion) return@launch
                 // Preserve interactions and enrichment that arrived during the lookups.
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     resumePlaybackId = resumePlaybackId,
                     isResumeStateReady = true,
                     isMovieWatched = isMovieWatched,
                     episodeProgressMap = episodeProgressMap
-                )
+                ) }
                 // Update next-up entry when details load
                 if (details.type == "series") {
-                    computeAndStoreNextUp(streamFetchId, details.name, details.poster, details.videos)
+                    try {
+                        computeAndStoreNextUp(streamFetchId, details.name, details.poster, details.videos)
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (e: Exception) {
+                        // Next-up is auxiliary persistence; don't skip prefetch / fullyLoadedKey.
+                        com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Next-up persistence failed", e)
+                    }
                 }
 
                 // Prefetch streams so they're ready when the user hits Play
@@ -314,14 +348,14 @@ class DetailsViewModel @Inject constructor(
                     return@launch
                 }
                 loadedContentKey = null
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     meta = null,
                     isLoading = false,
                     resumePlaybackId = null,
                     autoPlayStream = null,
                     addonSubtitles = emptyList(),
                     availableStreams = emptyList()
-                )
+                ) }
             }
         }
     }
@@ -329,12 +363,12 @@ class DetailsViewModel @Inject constructor(
     private fun refreshResumeStateIfNeeded(meta: MetaItem?) {
         if (meta == null) {
             if (_state.value.resumePlaybackId != null) {
-                _state.value = _state.value.copy(resumePlaybackId = null)
+                _state.update { it.copy(resumePlaybackId = null) }
             }
             return
         }
 
-        _state.value = _state.value.copy(isResumeStateReady = false)
+        _state.update { it.copy(isResumeStateReady = false) }
         // History and next-up are keyed by the canonical id loadDetails uses, not the addon's id.
         val historyId = _state.value.resolvedId ?: meta.id
         viewModelScope.launch {
@@ -352,13 +386,13 @@ class DetailsViewModel @Inject constructor(
                     val episodeProgressMap = if (meta.type == "series") {
                         buildEpisodeProgressMap(historyId)
                     } else emptyMap()
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         resumePlaybackId = resumePlaybackId,
                         isResumeStateReady = true,
                         isMovieWatched = isMovieWatched,
                         autoPlayStream = null,
                         episodeProgressMap = episodeProgressMap
-                    )
+                    ) }
                     if (meta.type == "series") {
                         try {
                             computeAndStoreNextUp(historyId, meta.name, meta.poster, meta.videos)
@@ -380,13 +414,13 @@ class DetailsViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (_state.value.meta?.id == meta.id && _state.value.meta?.type == meta.type) {
                     com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Resume-state lookup failed; falling back to normal playback", e)
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         resumePlaybackId = null,
                         isResumeStateReady = true,
                         isMovieWatched = false,
                         autoPlayStream = null,
                         episodeProgressMap = emptyMap()
-                    )
+                    ) }
                 }
             }
         }
@@ -556,19 +590,19 @@ class DetailsViewModel @Inject constructor(
                 val profileId = profileConfigurationManager.getLastActiveProfileId()
                 val profile = profileId?.let { dao.getProfileById(it) }
                 if (profile?.tmdbEnabled != true) {
-                    _state.value = _state.value.copy(tmdbEnabled = false, tmdbLoading = false)
+                    _state.update { it.copy(tmdbEnabled = false, tmdbLoading = false) }
                     return@launch
                 }
 
-                _state.value = _state.value.copy(tmdbEnabled = true, tmdbLoading = true)
+                _state.update { it.copy(tmdbEnabled = true, tmdbLoading = true) }
 
-                val language = profile.tmdbLanguage.ifBlank { null } ?: "en"
+                val language = profile.tmdbLanguage.ifBlank { java.util.Locale.getDefault().toLanguageTag() } // blank = device language
                 val mediaType = tmdbService.normalizeMediaType(type)
 
                 // Resolve TMDB ID — if unresolvable (e.g. Kitsu IDs), stop loading and show addon data
                 val tmdbId = tmdbService.ensureTmdbId(videoId, mediaType)
                 if (tmdbId == null) {
-                    _state.value = _state.value.copy(tmdbLoading = false)
+                    _state.update { it.copy(tmdbLoading = false) }
                     return@launch
                 }
 
@@ -626,7 +660,7 @@ class DetailsViewModel @Inject constructor(
                     } else emptyMap()
                 } else emptyMap()
 
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     meta = enrichedMeta,
                     tmdbLoading = false,
                     tmdbEnrichment = enrichment,
@@ -635,12 +669,12 @@ class DetailsViewModel @Inject constructor(
                     tmdbCollection = collection,
                     tmdbCollectionName = enrichment?.collectionName,
                     episodeEnrichmentMap = episodeEnrichmentMap
-                )
+                ) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.w("DetailsViewModel", "TMDB enrichment failed: ${e.message}")
-                _state.value = _state.value.copy(tmdbLoading = false)
+                _state.update { it.copy(tmdbLoading = false) }
             }
         }
     }
@@ -678,10 +712,10 @@ class DetailsViewModel @Inject constructor(
                 traktSyncManager.pushMovieWatched(itemId)
                 wutchManager.onMarkedWatched(itemId)
             }
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 isMovieWatched = !isCurrentlyWatched,
                 resumePlaybackId = null
-            )
+            ) }
         }
     }
 
@@ -727,7 +761,7 @@ class DetailsViewModel @Inject constructor(
 
             // Refresh the progress map and next-up entry
             val updatedMap = buildEpisodeProgressMap(streamId)
-            _state.value = _state.value.copy(episodeProgressMap = updatedMap)
+            _state.update { it.copy(episodeProgressMap = updatedMap) }
             computeAndStoreNextUp(streamId, meta.name, meta.poster, meta.videos)
         }
     }
@@ -737,12 +771,12 @@ class DetailsViewModel @Inject constructor(
         val meta = _state.value.meta
         val videos = meta?.videos ?: emptyList()
         val initialFocusEpisodeId = meta?.id?.let { episodeBrowseStore.getRememberedEpisodeSuffix(it) }
-        _state.value = _state.value.copy(
+        _state.update { it.copy(
             autoPlayStream = null,
             addonSubtitles = emptyList(),
             availableStreams = emptyList(),
             sidebarState = SidebarState.Episodes(videos, initialFocusEpisodeId = initialFocusEpisodeId)
-        )
+        ) }
     }
 
     /** Remembers which episode was last browsed for this series, so reopening the
@@ -834,23 +868,22 @@ class DetailsViewModel @Inject constructor(
         val streams = sortStreams(rawStreams, mediaType)
         val sourceListDisabled = sourceSelectionStore.isSourceListDisabled(sourceSelectionId)
         val excludedSourceIds = sourceSelectionStore.getExcludedSources(sourceSelectionId)
+        // Auto-selection must never pick a source the user excluded (same key as GlassSidebar).
+        val selectableStreams = streams.filterNot {
+            (it.sourceSelectionId ?: it.addonTransportUrl ?: it.url) in excludedSourceIds
+        }
 
         val preferredStream = if (forceSourcePicker || !rememberSourceSelection) {
             null
         } else {
-            sourceSelectionStore.findPreferredStream(sourceSelectionId, streams)
+            sourceSelectionStore.findPreferredStream(sourceSelectionId, selectableStreams)
         }
 
         if (preferredStream != null) {
-            _state.value = _state.value.copy(
-                isLoadingStreams = true,
-                sidebarState = SidebarState.Closed,
-                activeStreamRequestId = streamRequestId
-            )
             // Playback starts with the generic subtitles; the player session fetches matches
             // for this exact file in the background, so the stream never waits on them.
             val resolvedSubtitles = addonSubtitles
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 isLoadingStreams = false,
                 sidebarState = SidebarState.Closed,
                 autoPlayStream = preferredStream,
@@ -861,25 +894,20 @@ class DetailsViewModel @Inject constructor(
                 activeSourceSelectionId = sourceSelectionId,
                 sourceListDisabled = sourceListDisabled,
                 excludedSourceIds = excludedSourceIds
-            )
+            ) }
             return
         }
 
         // Auto-select first playable source when enabled
         if (autoSelectSource && !forceSourcePicker) {
-            val firstPlayable = streams.firstOrNull {
+            val firstPlayable = selectableStreams.firstOrNull {
                 !it.url.isNullOrBlank() || !it.infoHash.isNullOrBlank()
             }
             if (firstPlayable != null) {
-                _state.value = _state.value.copy(
-                    isLoadingStreams = true,
-                    sidebarState = SidebarState.Closed,
-                    activeStreamRequestId = streamRequestId
-                )
                 // Playback starts with the generic subtitles; the player session fetches matches
                 // for this exact file in the background, so the stream never waits on them.
                 val resolvedSubtitles = addonSubtitles
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     isLoadingStreams = false,
                     sidebarState = SidebarState.Closed,
                     autoPlayStream = firstPlayable,
@@ -890,7 +918,7 @@ class DetailsViewModel @Inject constructor(
                     activeSourceSelectionId = sourceSelectionId,
                     sourceListDisabled = sourceListDisabled,
                     excludedSourceIds = excludedSourceIds
-                )
+                ) }
                 return
             }
         }
@@ -904,7 +932,7 @@ class DetailsViewModel @Inject constructor(
         } else null
 
         // Update sidebar with results
-        _state.value = _state.value.copy(
+        _state.update { it.copy(
             isLoadingStreams = false,
             autoPlayStream = null,
             addonSubtitles = addonSubtitles,
@@ -915,7 +943,7 @@ class DetailsViewModel @Inject constructor(
             sourceListDisabled = sourceListDisabled,
             excludedSourceIds = excludedSourceIds,
             sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = highlightedStreamId)
-        )
+        ) }
     }
 
     /** Silently refetches streams and, only if the sources sidebar for this same item is
@@ -949,14 +977,14 @@ class DetailsViewModel @Inject constructor(
                 val openSources = _state.value.sidebarState as? SidebarState.Sources
                 if (openSources != null) {
                     val streams = sortStreams(rawStreams, type)
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         addonSubtitles = addonSubtitles,
                         availableStreams = streams,
                         // Preserve whatever was already highlighted/focused rather than
                         // recomputing it, so a silent background refresh never yanks
                         // focus away from where the user currently is in the list.
                         sidebarState = SidebarState.Sources(displayTitle, streams, selectedStreamId = openSources.selectedStreamId)
-                    )
+                    ) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1062,14 +1090,14 @@ class DetailsViewModel @Inject constructor(
             val hasRemembered = rememberSourceSelection && sourceSelectionStore.hasRememberedSelection(sourceSelectionId)
             val showSidebar = forceSourcePicker || (!autoSelectSource && !hasRemembered)
 
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 autoPlayStream = null,
                 addonSubtitles = emptyList(),
                 availableStreams = emptyList(),
                 isLoadingStreams = true,
                 sidebarState = if (showSidebar) SidebarState.Sources(displayTitle, null)
                                else SidebarState.Closed
-            )
+            ) }
 
             try {
                 val rawStreams: List<Stream>
@@ -1112,13 +1140,13 @@ class DetailsViewModel @Inject constructor(
                 // A newer loadStreams() replaced this one; it owns the state now.
                 throw cancelled
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     isLoadingStreams = false,
                     autoPlayStream = null,
                     addonSubtitles = emptyList(),
                     availableStreams = emptyList(),
                     sidebarState = SidebarState.Sources(displayTitle, emptyList())
-                )
+                ) }
             }
         }
     }
@@ -1130,80 +1158,84 @@ class DetailsViewModel @Inject constructor(
 
         sourceSelectionJob?.cancel()
         sourceSelectionJob = viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isLoadingStreams = true,
-                autoPlayStream = null,
-                sidebarState = SidebarState.Closed
-            )
-
             // File-specific subtitles are fetched by the player session once playback starts.
             val resolvedSubtitles = fallbackSubtitles
 
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 isLoadingStreams = false,
                 autoPlayStream = stream,
                 addonSubtitles = resolvedSubtitles,
                 sidebarState = SidebarState.Closed
-            )
+            ) }
         }
     }
 
     fun consumeAutoPlayStream() {
         if (_state.value.autoPlayStream == null) return
-        _state.value = _state.value.copy(autoPlayStream = null)
+        _state.update { it.copy(autoPlayStream = null) }
     }
 
     // --- Clear Progress (with confirmation dialog) ---
 
     fun confirmClearProgress() {
         val meta = _state.value.meta ?: return
+        // Same canonical id every other history/next-up/Trakt read and write uses.
+        val streamId = _state.value.resolvedId ?: meta.id
 
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             // Collect items to clear
             val historyItems = if (meta.type == "series") {
-                dao.getSeriesEpisodeHistory("${meta.id}:%")
+                dao.getSeriesEpisodeHistory("${streamId}:%")
             } else {
-                listOfNotNull(dao.getHistoryItem(meta.id))
+                listOfNotNull(dao.getHistoryItem(streamId))
             }
 
             // Delete from local DB
             if (meta.type == "series") {
-                dao.deleteSeriesHistory("${meta.id}:%")
-                dao.deleteSeriesNextUp(profileId, meta.id)
-                sourceSelectionStore.clearSelectionsForPrefix(meta.id)
-                playbackTrackSelectionStore.clearSelectionsForPrefix(meta.id)
+                dao.deleteSeriesHistory("${streamId}:%")
+                dao.deleteSeriesNextUp(profileId, streamId)
+                sourceSelectionStore.clearSelectionsForPrefix(streamId)
+                playbackTrackSelectionStore.clearSelectionsForPrefix(streamId)
             } else {
-                dao.deleteHistoryItem(meta.id)
-                sourceSelectionStore.clearSelection(meta.id)
-                playbackTrackSelectionStore.clearSelection(meta.id)
+                dao.deleteHistoryItem(streamId)
+                sourceSelectionStore.clearSelection(streamId)
+                playbackTrackSelectionStore.clearSelection(streamId)
             }
 
-            // Delete from Trakt (playback progress + watched history)
-            for (item in historyItems) {
-                if (item.scrobbled) {
-                    traktSyncManager.deletePlaybackFromTrakt(item.id)
+            // Remote cleanup is best-effort: a throw must not skip the local state update.
+            try {
+                // Delete from Trakt (playback progress + watched history)
+                for (item in historyItems) {
+                    if (item.scrobbled) {
+                        traktSyncManager.deletePlaybackFromTrakt(item.id)
+                    }
                 }
-            }
-            // Remove watched episodes from Trakt history for series
-            if (meta.type == "series") {
-                val streamId = _state.value.resolvedId ?: meta.id
-                val watchedEpisodes = historyItems.filter { it.watched }
-                for (ep in watchedEpisodes) {
-                    val (season, episode) = parseSeasonEpisode(meta.id, ep.id) ?: continue
-                    traktSyncManager.pushEpisodeUnwatched(streamId, season, episode)
+                // Remove watched episodes from Trakt history for series
+                if (meta.type == "series") {
+                    val watchedEpisodes = historyItems.filter { it.watched }
+                    for (ep in watchedEpisodes) {
+                        val (season, episode) = parseSeasonEpisode(streamId, ep.id) ?: continue
+                        traktSyncManager.pushEpisodeUnwatched(streamId, season, episode)
+                    }
                 }
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Trakt progress cleanup failed", e)
             }
 
-            profileConfigurationManager.saveActiveRuntimeState()
+            try {
+                profileConfigurationManager.saveActiveRuntimeState()
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w("DetailsViewModel", "Saving runtime state failed", e)
+            }
 
             // Refresh episode progress map
-            val streamId = _state.value.resolvedId ?: meta.id
             val updatedMap = if (meta.type == "series") buildEpisodeProgressMap(streamId) else emptyMap()
 
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 resumePlaybackId = null,
+                isMovieWatched = false,
                 episodeProgressMap = updatedMap
-            )
+            ) }
         }
     }
 
@@ -1239,19 +1271,19 @@ class DetailsViewModel @Inject constructor(
         loadStreamsJob = null
         sourceSelectionJob?.cancel()
         sourceSelectionJob = null
-        _state.value = _state.value.copy(
+        _state.update { it.copy(
             isLoadingStreams = false,
             autoPlayStream = null,
             availableStreams = emptyList(),
             sidebarState = SidebarState.Closed
-        )
+        ) }
     }
 
     fun toggleSourceListDisabled() {
         val id = _state.value.activeSourceSelectionId ?: return
         val newDisabled = !_state.value.sourceListDisabled
         sourceSelectionStore.rememberSourceListDisabled(id, newDisabled)
-        _state.value = _state.value.copy(sourceListDisabled = newDisabled)
+        _state.update { it.copy(sourceListDisabled = newDisabled) }
     }
 
     fun toggleSourceExcluded(stream: Stream) {
@@ -1261,7 +1293,7 @@ class DetailsViewModel @Inject constructor(
         val current = _state.value.excludedSourceIds
         val updated = if (streamId in current) current - streamId else current + streamId
         sourceSelectionStore.rememberExcludedSources(id, updated)
-        _state.value = _state.value.copy(excludedSourceIds = updated)
+        _state.update { it.copy(excludedSourceIds = updated) }
     }
 
     // 4. Back Button Logic (Drill Up)

@@ -10,9 +10,12 @@ import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.domain.AddonSubtitle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -183,6 +186,12 @@ class SubtitleRepository @Inject constructor(
     private suspend fun <T> requestOrNull(block: suspend () -> T): T? {
         return try {
             block()
+        } catch (timeout: TimeoutCancellationException) {
+            // An inner per-request withTimeout firing means this addon contributes nothing;
+            // it must not cancel the sibling requests. If the caller itself was cancelled
+            // (e.g. an enclosing timeout), ensureActive() rethrows that instead.
+            currentCoroutineContext().ensureActive()
+            null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

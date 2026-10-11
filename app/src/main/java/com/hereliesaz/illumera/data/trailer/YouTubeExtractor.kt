@@ -3,9 +3,11 @@ package com.hereliesaz.illumera.data.trailer
 import android.net.Uri
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,6 +123,11 @@ class YouTubeExtractor @Inject constructor() {
             withTimeout(EXTRACTOR_TIMEOUT_MS) {
                 extractInternal(youtubeKey)
             }
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "Extraction timed out for $youtubeKey")
+            null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Extraction failed for $youtubeKey: ${e.message}")
             null
@@ -194,6 +201,8 @@ class YouTubeExtractor @Inject constructor() {
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Client ${client.key} failed: ${e.message}")
             }
@@ -215,6 +224,8 @@ class YouTubeExtractor @Inject constructor() {
                     (candidate.height == bestManifest.height && candidate.bandwidth > bestManifest.bandwidth)) {
                     bestManifest = candidate
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Manifest parse failed: ${e.message}")
             }

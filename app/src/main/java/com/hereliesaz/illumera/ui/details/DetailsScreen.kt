@@ -194,7 +194,7 @@ fun DetailsScreen(
 
     LaunchedEffect(autoPlayStream) {
         val stream = autoPlayStream ?: return@LaunchedEffect
-        val urlToPlay = resolvePlayableUrl(stream)
+        val urlToPlay = com.hereliesaz.illumera.ui.playback.resolvePlayableSourceUrl(stream)
         if (!urlToPlay.isNullOrEmpty()) {
             val playbackId = pendingPlaybackId.ifBlank { movie?.id ?: id }
             val playbackType = pendingPlaybackType.ifBlank { movie?.type ?: type }
@@ -1031,7 +1031,7 @@ fun DetailsScreen(
             },
             onSourceSelected = { stream ->
                 val externalUrl = stream.externalUrl
-                if (!resolvePlayableUrl(stream).isNullOrEmpty()) {
+                if (!com.hereliesaz.illumera.ui.playback.resolvePlayableSourceUrl(stream).isNullOrEmpty()) {
                     viewModel.selectStreamForPlayback(stream)
                 } else if (!externalUrl.isNullOrBlank()) {
                     // Link-only entries (e.g. a song list) open in the browser, as in Stremio.
@@ -1652,28 +1652,4 @@ private fun playbackIdBelongsToSeries(seriesId: String, playbackId: String): Boo
     val episode = parts.last().toIntOrNull()
     if (season == null || episode == null) return playbackId == seriesId
     return parts.dropLast(2).joinToString(":") == seriesId
-}
-
-private val TORRENT_TRACKERS = listOf(
-    // HTTP trackers (TCP — work even when UDP is blocked)
-    "http://tracker.opentrackr.org:1337/announce",
-    "http://tracker.openbittorrent.com:80/announce",
-    "http://tracker1.bt.moack.co.kr:80/announce",
-    "http://tracker.gbitt.info:80/announce",
-    // UDP trackers (fallback)
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://open.stealth.si:80/announce",
-    "udp://tracker.openbittorrent.com:6969/announce",
-    "udp://exodus.desync.com:6969/announce"
-)
-
-private fun resolvePlayableUrl(stream: com.hereliesaz.illumera.data.model.stremio.Stream): String? {
-    if (!stream.url.isNullOrEmpty()) return stream.url
-    if (!stream.infoHash.isNullOrEmpty()) {
-        val trackerParams = TORRENT_TRACKERS.joinToString("") {
-            "&tr=${java.net.URLEncoder.encode(it, "UTF-8")}"
-        }
-        return "magnet:?xt=urn:btih:${stream.infoHash}&dn=Video${trackerParams}"
-    }
-    return null
 }

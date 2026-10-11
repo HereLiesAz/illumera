@@ -146,11 +146,15 @@ class AddonCatalogRepository @Inject constructor(
             val items = coroutineScope {
                 manifest.addonCatalogs.orEmpty().map { catalog ->
                     async {
-                        runCatching {
+                        try {
                             val type = Uri.encode(catalog.type)
                             val id = Uri.encode(catalog.id)
                             api.getAddonCatalog("$base/addon_catalog/$type/$id.json").addons
-                        }.getOrDefault(emptyList())
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
                     }
                 }.awaitAll().flatten()
             }
@@ -200,9 +204,15 @@ class AddonCatalogRepository @Inject constructor(
             "$clean/manifest.json"
         }
 
-        val manifest = runCatching {
+        val manifest = try {
             withTimeout(LEGACY_MANIFEST_TIMEOUT_MS) { api.getManifest(manifestUrl) }
-        }.getOrNull() ?: return null
+        } catch (_: TimeoutCancellationException) {
+            null // a slow endpoint is skipped, not allowed to cancel the others
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return null
 
         @Suppress("SENSELESS_COMPARISON")
         if (manifest.id == null || manifest.name == null || manifest.id.isBlank() || manifest.name.isBlank()) {

@@ -18,6 +18,7 @@ import com.hereliesaz.illumera.data.model.trakt.TraktWatchlistItem
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -37,8 +38,28 @@ class TraktSyncManager @Inject constructor(
         private const val TAG = "TraktSyncManager"
     }
 
-    private val profileId: Int
-        get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
+    // No fallback: writing into a default profile when none is active would leak one
+    // profile's Trakt data into another. Operations capture this once and use the capture.
+    private val profileId: Int?
+        get() = profileConfigurationManager.getLastActiveProfileId()
+
+    /**
+     * Runs a Trakt request, honoring Retry-After on 429 for a couple of attempts.
+     * Returns the last response (possibly still 429) so callers can stop early.
+     */
+    private suspend fun <T> withRateLimitRetry(
+        block: suspend () -> retrofit2.Response<T>
+    ): retrofit2.Response<T> {
+        var attempt = 0
+        while (true) {
+            val response = block()
+            if (response.code() != 429 || attempt >= 2) return response
+            val retryAfterSec = response.headers()["Retry-After"]?.trim()?.toLongOrNull() ?: 1L
+            Log.w(TAG, "Trakt 429, retrying after ${retryAfterSec}s")
+            delay(retryAfterSec.coerceIn(1L, 30L) * 1000L)
+            attempt++
+        }
+    }
 
     private val syncMutex = Mutex()
 
@@ -91,8 +112,8 @@ class TraktSyncManager @Inject constructor(
                 val watchlistTimestamp = activities.watchlist?.updatedAt
                 if (watchlistTimestamp != null && watchlistTimestamp != lastWatchlistActivity) {
                     Log.d(TAG, "Watchlist activity changed: $lastWatchlistActivity → $watchlistTimestamp")
-                    lastWatchlistActivity = watchlistTimestamp
-                    syncWatchlist()
+                    // Advance the timestamp only once the sync succeeded, so a failure is retried.
+                    if (syncWatchlist().isSuccess) lastWatchlistActivity = watchlistTimestamp
                     synced = true
                 }
 
@@ -102,8 +123,7 @@ class TraktSyncManager @Inject constructor(
                 val playbackTimestamp = listOfNotNull(moviesPaused, episodesPaused).maxOrNull()
                 if (playbackTimestamp != null && playbackTimestamp != lastPlaybackActivity) {
                     Log.d(TAG, "Playback activity changed: $lastPlaybackActivity → $playbackTimestamp")
-                    lastPlaybackActivity = playbackTimestamp
-                    syncPlaybackProgress()
+                    if (syncPlaybackProgress()) lastPlaybackActivity = playbackTimestamp
                     synced = true
                 }
 
@@ -113,8 +133,7 @@ class TraktSyncManager @Inject constructor(
                 val watchedTimestamp = listOfNotNull(moviesWatched, episodesWatched).maxOrNull()
                 if (watchedTimestamp != null && watchedTimestamp != lastWatchedActivity) {
                     Log.d(TAG, "Watched activity changed: $lastWatchedActivity → $watchedTimestamp")
-                    lastWatchedActivity = watchedTimestamp
-                    syncSeriesNextUp()
+                    if (syncSeriesNextUp()) lastWatchedActivity = watchedTimestamp
                     synced = true
                 }
 
@@ -125,10 +144,11 @@ class TraktSyncManager @Inject constructor(
                 ).maxOrNull()
                 if (collectionTimestamp != null && collectionTimestamp != lastCollectionActivity) {
                     val firstSeen = lastCollectionActivity == null
-                    lastCollectionActivity = collectionTimestamp
                     if (!firstSeen || collectionIds == null) {
-                        refreshCollection()
+                        if (refreshCollection() != null) lastCollectionActivity = collectionTimestamp
                         synced = true
+                    } else {
+                        lastCollectionActivity = collectionTimestamp
                     }
                 }
 
@@ -152,7 +172,8 @@ class TraktSyncManager @Inject constructor(
             syncMutex.withLock {
                 withContext(Dispatchers.IO) {
                     try {
-                        val localItems = dao.getWatchlistOnce(profileId)
+                        val activeProfile = profileId ?: return@withContext
+                        val localItems = dao.getWatchlistOnce(activeProfile)
                         if (localItems.isNotEmpty()) {
                             pushToTrakt(localItems)
                             Log.d(TAG, "Initial push: ${localItems.size} items")
@@ -193,17 +214,23 @@ class TraktSyncManager @Inject constructor(
                 // 0. Retry local changes Trakt hasn't confirmed, then keep the ones that
                 //    still failed out of the diff below so it doesn't undo them.
                 val activeProfile = profileId
+                    ?: return@withContext Result.failure(Exception("No active profile"))
                 retryPendingPushes(activeProfile)
-                val pending = pendingStore.pending(activeProfile)
-                val pendingAdds = pending.filter { it.op == TraktWatchlistPendingStore.Op.ADD }.map { it.id }.toSet()
-                val pendingRemoves = pending.filter { it.op == TraktWatchlistPendingStore.Op.REMOVE }.map { it.id }.toSet()
 
                 // 1. Fetch Trakt watchlist
                 val traktItems = fetchAllTraktWatchlist()
                     ?: return@withContext Result.failure(Exception("Failed to fetch Trakt watchlist"))
+                if (profileConfigurationManager.getLastActiveProfileId() != activeProfile) {
+                    throw CancellationException("Active profile changed during Trakt watchlist sync")
+                }
 
-                // 2. Get local watchlist
-                val localItems = dao.getWatchlistOnce(profileId)
+                // 2. Get local watchlist, then the pending changes. Both are read after the
+                //    network fetch, so a local add/remove made while it was in flight (pushAdd /
+                //    pushRemove mark pending before pushing) is excluded from the diff below.
+                val localItems = dao.getWatchlistOnce(activeProfile)
+                val pending = pendingStore.pending(activeProfile)
+                val pendingAdds = pending.filter { it.op == TraktWatchlistPendingStore.Op.ADD }.map { it.id }.toSet()
+                val pendingRemoves = pending.filter { it.op == TraktWatchlistPendingStore.Op.REMOVE }.map { it.id }.toSet()
 
                 // 3. Build lookup sets. A Trakt item matches a local one saved
                 //    under either its IMDb id or "tmdb:N".
@@ -222,7 +249,7 @@ class TraktSyncManager @Inject constructor(
                     ids.isNotEmpty() && ids.none { it in localIds || it in pendingRemoves }
                 }
                 if (toPull.isNotEmpty()) {
-                    pullFromTrakt(toPull)
+                    pullFromTrakt(toPull, activeProfile)
                     Log.d(TAG, "Pulled ${toPull.size} items from Trakt")
                 }
 
@@ -235,7 +262,7 @@ class TraktSyncManager @Inject constructor(
                     traktIdsFor(it.id) != null && it.id !in traktLocalIds && it.id !in pendingAdds
                 }
                 for (item in toRemove) {
-                    dao.removeFromWatchlist(profileId, item.id)
+                    dao.removeFromWatchlist(activeProfile, item.id)
                     Log.d(TAG, "Removed ${item.title} (deleted on Trakt)")
                 }
 
@@ -255,7 +282,7 @@ class TraktSyncManager @Inject constructor(
      */
     suspend fun pushAdd(item: WatchlistEntity) {
         if (traktAuthManager.getAccessToken() == null) return
-        val activeProfile = profileId
+        val activeProfile = profileId ?: return
         withContext(Dispatchers.IO) {
             pendingStore.mark(activeProfile, item.id, item.type, TraktWatchlistPendingStore.Op.ADD)
             try {
@@ -273,7 +300,7 @@ class TraktSyncManager @Inject constructor(
      */
     suspend fun pushRemove(itemId: String, type: String) {
         if (traktAuthManager.getAccessToken() == null) return
-        val activeProfile = profileId
+        val activeProfile = profileId ?: return
         withContext(Dispatchers.IO) {
             pendingStore.mark(activeProfile, itemId, type, TraktWatchlistPendingStore.Op.REMOVE)
             try {
@@ -295,7 +322,7 @@ class TraktSyncManager @Inject constructor(
     private suspend fun pushCollectionChange(id: String, type: String, add: Boolean) {
         if (traktAuthManager.getAccessToken() == null) return
         val ids = traktIdsFor(id) ?: return
-        val activeProfile = profileId
+        val activeProfile = profileId ?: return
         withContext(Dispatchers.IO) {
             try {
                 val item = listOf(TraktSyncItem(ids = ids))
@@ -323,7 +350,8 @@ class TraktSyncManager @Inject constructor(
      */
     suspend fun isInTraktCollection(id: String): Boolean {
         if (traktAuthManager.getAccessToken() == null) return false
-        val cached = collectionIds.takeIf { collectionProfileId == profileId }
+        val activeProfile = profileId ?: return false
+        val cached = collectionIds.takeIf { collectionProfileId == activeProfile }
             ?: withContext(Dispatchers.IO) { refreshCollection() }
             ?: return false
         return id in cached
@@ -331,7 +359,7 @@ class TraktSyncManager @Inject constructor(
 
     /** Re-fetches collection membership; null (cache untouched) on failure. */
     private suspend fun refreshCollection(): Set<String>? {
-        val activeProfile = profileId
+        val activeProfile = profileId ?: return null
         return try {
             val movies = traktSyncApi.getCollectionMovies()
             val shows = traktSyncApi.getCollectionShows()
@@ -501,14 +529,15 @@ class TraktSyncManager @Inject constructor(
      * For each item on Trakt playback NOT in local:
      *   → Pull to Lumera (watched on other app)
      */
-    suspend fun syncPlaybackProgress() {
-        withContext(Dispatchers.IO) {
+    /** Returns true when the sync completed. */
+    suspend fun syncPlaybackProgress(): Boolean {
+        return withContext(Dispatchers.IO) {
             try {
                 // 1. Fetch Trakt playback progress
-                val playbackResponse = traktSyncApi.getPlaybackProgress()
+                val playbackResponse = withRateLimitRetry { traktSyncApi.getPlaybackProgress() }
                 if (!playbackResponse.isSuccessful) {
                     Log.w(TAG, "Playback progress fetch failed: ${playbackResponse.code()}")
-                    return@withContext
+                    return@withContext false
                 }
                 val traktPlayback = playbackResponse.body() ?: emptyList()
 
@@ -609,14 +638,12 @@ class TraktSyncManager @Inject constructor(
                         }
                     }
 
-                    // Fix #12: clamp progress to [0,100] and store duration=0 (unknown) rather
-                    // than a fabricated 90-minute estimate that produces impossible positions for
-                    // short-form content. The player will seek to the raw millisecond position
-                    // without percentage math when duration is 0.
+                    // Trakt only reports a percentage and the runtime is unknown here. The player
+                    // resumes from the raw millisecond position, and the schema has no percent
+                    // field, so don't fabricate a position from a guessed runtime: store 0/0 and
+                    // let the item surface as in progress; local playback fills in real values.
                     val estimatedDurationMs = 0L
-                    val clampedProgress = item.progress.coerceIn(0f, 100f)
-                    val estimatedPositionMs = ((clampedProgress / 100f) * (90 * 60 * 1000L)).toLong()
-                        .coerceAtLeast(0L)
+                    val estimatedPositionMs = 0L
 
                     dao.upsertHistory(
                         WatchHistoryEntity(
@@ -635,10 +662,12 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 Log.i(TAG, "Playback sync: added=$added, removed=$removed, markedWatched=$markedWatched")
+                true
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Playback progress sync failed", e)
+                false
             }
         }
     }
@@ -648,8 +677,10 @@ class TraktSyncManager @Inject constructor(
      * For each watched show on Trakt, fetches the show's watched progress
      * to get the next episode, and updates the local series_next_up table.
      */
-    suspend fun syncSeriesNextUp() {
-        withContext(Dispatchers.IO) {
+    /** Returns true when the sync completed. */
+    suspend fun syncSeriesNextUp(): Boolean {
+        val activeProfile = profileId ?: return false
+        return withContext(Dispatchers.IO) {
             try {
                 // Pull Trakt's watched movies and shows into local history (batched)
                 val moviesResponse = traktSyncApi.getWatchedMovies()
@@ -661,9 +692,9 @@ class TraktSyncManager @Inject constructor(
                 if (!showsResponse.isSuccessful) {
                     importWatchedHistory(watchedMovies, emptyList())
                     Log.w(TAG, "Failed to fetch watched shows for next-up: ${showsResponse.code()}")
-                    return@withContext
+                    return@withContext false
                 }
-                val watchedShows = showsResponse.body() ?: return@withContext
+                val watchedShows = showsResponse.body() ?: return@withContext false
                 importWatchedHistory(watchedMovies, watchedShows)
 
                 val traktWatchedEpisodeIds = mutableSetOf<String>()
@@ -677,17 +708,25 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 var updated = 0
+                var rateLimited = false
                 for (show in watchedShows) {
                     val imdbId = localIdFor(show.show.ids) ?: continue
                     val traktSlug = show.show.ids.slug ?: show.show.ids.trakt?.toString() ?: continue
 
                     try {
-                        val progressResponse = traktSyncApi.getShowProgress(traktSlug)
+                        val progressResponse = withRateLimitRetry { traktSyncApi.getShowProgress(traktSlug) }
+                        if (progressResponse.code() == 429) {
+                            // Still throttled after honoring Retry-After: stop instead of
+                            // silently skipping every remaining show.
+                            Log.w(TAG, "Trakt rate limit hit during next-up sync; stopping early")
+                            rateLimited = true
+                            break
+                        }
                         if (!progressResponse.isSuccessful) continue
                         val progress = progressResponse.body() ?: continue
 
                         val nextEp = progress.nextEpisode
-                        val existing = dao.getSeriesNextUp(profileId, imdbId)
+                        val existing = dao.getSeriesNextUp(activeProfile, imdbId)
                         if (nextEp != null) {
                             val airDate = nextEp.firstAired?.take(10)
                             val unchanged = existing != null &&
@@ -703,7 +742,7 @@ class TraktSyncManager @Inject constructor(
 
                             dao.upsertSeriesNextUp(
                                 SeriesNextUpEntity(
-                                    profileId = profileId,
+                                    profileId = activeProfile,
                                     seriesId = imdbId,
                                     title = show.show.title ?: "Unknown",
                                     poster = existing?.poster,
@@ -751,10 +790,12 @@ class TraktSyncManager @Inject constructor(
                 }
 
                 Log.i(TAG, "Series next-up sync: updated $updated shows")
+                !rateLimited
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Series next-up sync failed", e)
+                false
             }
         }
     }
@@ -869,7 +910,7 @@ class TraktSyncManager @Inject constructor(
         var page = 1
 
         while (true) {
-            val response = traktSyncApi.getWatchlist(page = page, limit = 100)
+            val response = withRateLimitRetry { traktSyncApi.getWatchlist(page = page, limit = 100) }
             if (!response.isSuccessful) {
                 Log.w(TAG, "Trakt watchlist fetch failed on page $page: ${response.code()}")
                 return null // Fail entirely — never return partial data
@@ -1033,7 +1074,7 @@ class TraktSyncManager @Inject constructor(
         }
     }
 
-    private suspend fun pullFromTrakt(items: List<TraktWatchlistItem>) {
+    private suspend fun pullFromTrakt(items: List<TraktWatchlistItem>, activeProfile: Int) {
         for (item in items) {
             val (id, title, type) = when (item.type) {
                 "movie" -> Triple(
@@ -1051,7 +1092,7 @@ class TraktSyncManager @Inject constructor(
 
             dao.addToWatchlist(
                 WatchlistEntity(
-                    profileId = profileId,
+                    profileId = activeProfile,
                     id = id,
                     type = type,
                     title = title,

@@ -235,7 +235,7 @@ fun ThemeScreen(
     if (themeToManage != null) {
         val theme = themeToManage!!
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+        LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
         VoidDialog(
             onDismissRequest = { themeToManage = null },
@@ -281,7 +281,7 @@ fun ThemeScreen(
     if (themeToDelete != null) {
         val theme = themeToDelete!!
         val focusRequester = remember { FocusRequester() }
-        LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+        LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
         VoidDialog(
             onDismissRequest = { themeToDelete = null },

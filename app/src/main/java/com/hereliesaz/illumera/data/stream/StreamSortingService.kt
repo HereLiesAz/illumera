@@ -193,7 +193,6 @@ class StreamSortingService @Inject constructor() {
                 val subtitleDistance = nearestCueDistance(text, match.range, SUBTITLE_CUE_REGEX)
                 when {
                     audioDistance != null && (subtitleDistance == null || audioDistance <= subtitleDistance) -> true
-                    subtitleDistance != null -> false
                     else -> false
                 }
             }

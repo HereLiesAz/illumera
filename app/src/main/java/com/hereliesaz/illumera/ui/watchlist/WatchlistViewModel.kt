@@ -28,12 +28,13 @@ class WatchlistViewModel @Inject constructor(
     private val profileConfigurationManager: ProfileConfigurationManager
 ) : ViewModel() {
 
-    private val resolveInFlight = mutableSetOf<String>()
+    // Touched from Main (resolvePosterIfNeeded) and IO (the launch's finally) — must be concurrent.
+    private val resolveInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     // Cools down retries for items that just failed to resolve, instead of retrying
     // every one of them on every watchlist mutation (the movieItems/seriesItems
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
     // resolvePosterIfNeeded for every previously-failed item every time).
-    private val lastResolveFailureAt = mutableMapOf<String, Long>()
+    private val lastResolveFailureAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val resolveFailureCooldownMs = 5 * 60_000L
 
     var lastFocusedKey: String? = null

@@ -314,7 +314,9 @@ class QueueManager @Inject constructor(
         fun matches(item: QueueItem): Boolean =
             item.id == playbackId ||
                 (item.type == "episode" && item.season != null && item.episode != null &&
-                    playbackId.endsWith(":${item.season}:${item.episode}")) ||
+                    playbackId.endsWith(":${item.season}:${item.episode}") &&
+                    // Same S/E numbers in a different show must not consume this item.
+                    normalizeId(playbackId) == normalizeId(item.seriesId ?: item.id)) ||
                 (item.type == "series" && playbackId.startsWith("${item.seriesId ?: item.id}:"))
 
         val manual = current.manualItems.toMutableList()
@@ -445,7 +447,16 @@ class QueueManager @Inject constructor(
             // Seen means finished. Started-but-unfinished titles stay eligible in both modes;
             // excluding them too emptied the row whenever Trakt had nothing to add.
             // "Only unseen" is stricter through the Trakt watched lookup below.
-            excludedIds += history.filter { it.watched }.map { normalizeId(it.id) }
+            // A finished episode only marks that episode seen, not the show, so episode rows
+            // never exclude their series; and a show with any unfinished episode stays eligible.
+            val seriesInProgress = history
+                .filter { !it.watched && it.type == "series" }
+                .map { normalizeId(it.seriesId ?: it.id) }
+                .toSet()
+            excludedIds += history
+                .filter { it.watched && normalizeId(it.id) == it.id.lowercase() }
+                .map { normalizeId(it.id) }
+                .filterNot { it in seriesInProgress }
             excludedIds += current.manualItems.map { normalizeId(it.seriesId ?: it.id) }
 
             val useTrakt = QueueSuggestionSource.TRAKT in current.preferences.suggestionSources

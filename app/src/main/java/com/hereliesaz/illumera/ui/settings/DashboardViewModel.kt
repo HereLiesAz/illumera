@@ -20,6 +20,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Collections
 import java.util.UUID
 import javax.inject.Inject
@@ -63,7 +65,25 @@ class DashboardViewModel @Inject constructor(
     private val profileMutationCoordinator: ProfileMutationCoordinator
 ) : ViewModel() {
 
+    /**
+     * Set whenever a dashboard write lands; the editor consumes it on exit to invalidate the
+     * Home screen cache only when something actually changed.
+     */
+    @Volatile
+    private var dashboardModified = false
+
+    /** Returns whether the dashboard was modified since the last call, and clears the flag. */
+    fun consumeDashboardModified(): Boolean {
+        val modified = dashboardModified
+        dashboardModified = false
+        return modified
+    }
+
+    // Serializes reorder writes so rapid D-pad presses persist in order.
+    private val reorderMutex = Mutex()
+
     private suspend fun persistProfileState() {
+        dashboardModified = true
         profileConfigurationManager.saveActiveRuntimeState()
         profileConfigurationManager.resetStartupCapture()
     }
@@ -155,6 +175,8 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun moveEditorItem(item: EditorListItem, direction: Int, screen: String) {
+        // Reads the in-memory list, which is updated optimistically below, so rapid presses
+        // build on the previous move instead of on a Room emission that hasn't arrived yet.
         val currentList = getEditorItems(screen).toMutableList()
         val index = currentList.indexOfFirst { it.key == item.key }
         if (index == -1) return
@@ -189,10 +211,20 @@ class DashboardViewModel @Inject constructor(
                 }
             }
 
+            // Optimistic local update (Room re-emits the same values once the write lands).
+            val configsById = updatedConfigs.associateBy { it.uniqueId }
+            _configs.value = _configs.value.map { configsById[it.uniqueId] ?: it }
+            val hubsById = updatedHubs.associateBy { it.id }
+            _hubRows.value = _hubRows.value.map { row ->
+                hubsById[row.hub.id]?.let { row.copy(hub = it) } ?: row
+            }
+
             viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-                if (updatedHubs.isNotEmpty()) dao.updateHubRows(updatedHubs)
-                if (updatedConfigs.isNotEmpty()) dao.saveCatalogConfigs(updatedConfigs)
-                persistProfileState()
+                reorderMutex.withLock {
+                    if (updatedHubs.isNotEmpty()) dao.updateHubRows(updatedHubs)
+                    if (updatedConfigs.isNotEmpty()) dao.saveCatalogConfigs(updatedConfigs)
+                    persistProfileState()
+                }
             }
         }
     }
@@ -252,18 +284,11 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun renameHubRow(hubRowId: String, newTitle: String) {
+    /** Saves title and shape in one write so neither change overwrites the other. */
+    fun updateHubRow(hubRowId: String, newTitle: String, shape: HubShape) {
         val currentHub = _hubRows.value.find { it.hub.id == hubRowId }?.hub ?: return
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.updateHubRow(currentHub.copy(title = newTitle))
-            persistProfileState()
-        }
-    }
-
-    fun changeHubRowShape(hubRowId: String, shape: HubShape) {
-        val currentHub = _hubRows.value.find { it.hub.id == hubRowId }?.hub ?: return
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            dao.updateHubRow(currentHub.copy(shape = shape.name))
+            dao.updateHubRow(currentHub.copy(title = newTitle, shape = shape.name))
             persistProfileState()
         }
     }
@@ -292,15 +317,6 @@ class DashboardViewModel @Inject constructor(
     fun updateHubItemImage(hubRowId: String, configUniqueId: String, imageUrl: String?) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.updateHubItemImage(hubRowId, configUniqueId, imageUrl)
-            persistProfileState()
-        }
-    }
-
-    fun renameHubRowItem(hubRowId: String, configUniqueId: String, newTitle: String) {
-        viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val currentItems = _hubRows.value.find { it.hub.id == hubRowId }?.items ?: return@launch
-            val item = currentItems.find { it.configUniqueId == configUniqueId } ?: return@launch
-            dao.updateHubRowItem(item.copy(title = newTitle))
             persistProfileState()
         }
     }

@@ -110,6 +110,9 @@ fun IntegrationsScreen(
                 is IntegrationsEvent.SyncComplete -> {
                     Toast.makeText(context, "Imported ${event.count} addon(s)", Toast.LENGTH_SHORT).show()
                 }
+                is IntegrationsEvent.PushComplete -> {
+                    Toast.makeText(context, "Pushed ${event.count} addon(s) to Stremio", Toast.LENGTH_SHORT).show()
+                }
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
                 }
@@ -352,17 +355,6 @@ fun IntegrationsScreen(
             onConfirm = {
                 showResetSyncConfirm = false
                 viewModel.resetStremioSync()
-            }
-        )
-    }
-
-    // Addon Import Dialog
-    state.pendingAddons?.let { addons ->
-        com.hereliesaz.illumera.ui.addons.AddonImportDialog(
-            addons = addons,
-            onDismissRequest = { viewModel.dismissImportDialog() },
-            onConfirmImport = { selectedAddons ->
-                viewModel.importAddons(selectedAddons)
             }
         )
     }
@@ -1270,7 +1262,7 @@ private fun StremioManagementDialog(
 
     LaunchedEffect(Unit) {
         delay(100)
-        syncFocusRequester.requestFocus()
+        runCatching { syncFocusRequester.requestFocus() }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1548,7 +1540,7 @@ private fun DisconnectConfirmDialog(
 
     LaunchedEffect(Unit) {
         delay(100)
-        confirmFocusRequester.requestFocus()
+        runCatching { confirmFocusRequester.requestFocus() }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1684,7 +1676,7 @@ private fun TmdbSettingsDialog(
 
     LaunchedEffect(Unit) {
         delay(100)
-        toggleFocusRequester.requestFocus()
+        runCatching { toggleFocusRequester.requestFocus() }
     }
 
     val selectedIndex = TMDB_LANGUAGE_OPTIONS.indexOfFirst { it.second == language }.coerceAtLeast(0)

@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.ui.profiles
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hereliesaz.illumera.crash.AppErrors
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.data.debrid.DebridManager
@@ -60,6 +61,9 @@ class ProfileViewModel @Inject constructor(
     private val _setupSocialLoginState = MutableStateFlow<SetupSocialLoginState>(SetupSocialLoginState.Idle)
     val setupSocialLoginState: StateFlow<SetupSocialLoginState> = _setupSocialLoginState
     private var setupSocialLoginJob: Job? = null
+    // Identifies the current social-login attempt so a cancelled older attempt's finally
+    // doesn't clear _isInitializingProfile for the attempt that replaced it.
+    @Volatile private var setupSocialLoginAttempt = 0
 
     // WIZARD DATA
     @Volatile var tempName = ""
@@ -121,37 +125,44 @@ class ProfileViewModel @Inject constructor(
 
     private fun finishWizard() {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val profileIdBeingEdited = editingProfileId
-            if (profileIdBeingEdited != null) {
-                var previousAvatarRef: String? = null
-                profileMutationCoordinator.update(profileIdBeingEdited) { current ->
-                    previousAvatarRef = current.avatarRef
-                    current.copy(
-                        name = tempName,
-                        avatarRef = tempAvatarRef,
-                        themeId = tempThemeId
-                    )
+            try {
+                val profileIdBeingEdited = editingProfileId
+                if (profileIdBeingEdited != null) {
+                    var previousAvatarRef: String? = null
+                    profileMutationCoordinator.update(profileIdBeingEdited) { current ->
+                        previousAvatarRef = current.avatarRef
+                        current.copy(
+                            name = tempName,
+                            avatarRef = tempAvatarRef,
+                            themeId = tempThemeId
+                        )
+                    }
+                    if (previousAvatarRef != null && previousAvatarRef != tempAvatarRef) {
+                        deleteCustomAvatarFile(previousAvatarRef)
+                    }
+                } else {
+                    val profileId = dao.insertProfile(
+                        ProfileEntity(
+                            name = tempName,
+                            avatarRef = tempAvatarRef,
+                            themeId = tempThemeId,
+                            navPosition = "left",
+                            homeTabLayout = "cinematic",
+                            roundCorners = true
+                        )
+                    ).toInt()
+                    if (profileId > 0) {
+                        profileConfigurationManager.markPendingSetup(profileId)
+                    }
                 }
-                if (previousAvatarRef != null && previousAvatarRef != tempAvatarRef) {
-                    deleteCustomAvatarFile(previousAvatarRef)
-                }
-            } else {
-                val profileId = dao.insertProfile(
-                    ProfileEntity(
-                        name = tempName,
-                        avatarRef = tempAvatarRef,
-                        themeId = tempThemeId,
-                        navPosition = "left",
-                        homeTabLayout = "cinematic",
-                        roundCorners = true
-                    )
-                ).toInt()
-                if (profileId > 0) {
-                    profileConfigurationManager.markPendingSetup(profileId)
-                }
+            } catch (e: Exception) {
+                // A failed insert/update must not crash the app or leave the wizard stuck
+                // on its last step.
+                AppErrors.e("ProfileViewModel", "Failed to save profile from wizard", e)
+            } finally {
+                _wizardStep.value = 0
+                editingProfileId = null
             }
-            _wizardStep.value = 0
-            editingProfileId = null
         }
     }
 
@@ -254,6 +265,7 @@ class ProfileViewModel @Inject constructor(
         val (state, url) = handoff
         _setupSocialLoginState.value = SetupSocialLoginState.WaitingForUser(provider, url)
         _isInitializingProfile.value = true
+        val attempt = ++setupSocialLoginAttempt
 
         setupSocialLoginJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -292,7 +304,9 @@ class ProfileViewModel @Inject constructor(
                     }
                 )
             } finally {
-                _isInitializingProfile.value = false
+                if (attempt == setupSocialLoginAttempt) {
+                    _isInitializingProfile.value = false
+                }
             }
         }
     }
@@ -323,6 +337,7 @@ class ProfileViewModel @Inject constructor(
     fun resetSetupSocialLoginState() {
         setupSocialLoginJob?.cancel()
         setupSocialLoginJob = null
+        setupSocialLoginAttempt++
         _setupSocialLoginState.value = SetupSocialLoginState.Idle
         _isInitializingProfile.value = false
     }

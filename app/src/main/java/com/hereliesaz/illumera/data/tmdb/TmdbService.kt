@@ -17,7 +17,9 @@ class TmdbService @Inject constructor(
     private val tmdbApi: TmdbApiService
 ) {
     private val imdbToTmdbCache = com.hereliesaz.illumera.data.cache.boundedCache<String, Int>(2_000)
-    private val tmdbToImdbCache = com.hereliesaz.illumera.data.cache.boundedCache<Int, String>(2_000)
+    // TMDB movie and TV ids live in separate namespaces (movie 1399 != tv 1399), so
+    // both caches are keyed by "<normalizedType>:<id>".
+    private val tmdbToImdbCache = com.hereliesaz.illumera.data.cache.boundedCache<String, String>(2_000)
     private val cacheMutex = Mutex()
 
     fun apiKey(): String = BuildConfig.TMDB_API_KEY
@@ -28,7 +30,8 @@ class TmdbService @Inject constructor(
     suspend fun imdbToTmdb(imdbId: String, mediaType: String): Int? = withContext(Dispatchers.IO) {
         if (!imdbId.startsWith("tt")) return@withContext null
 
-        imdbToTmdbCache[imdbId]?.let { return@withContext it }
+        val normalizedType = normalizeMediaType(mediaType)
+        imdbToTmdbCache["$normalizedType:$imdbId"]?.let { return@withContext it }
 
         try {
             val response = tmdbApi.findByExternalId(
@@ -39,17 +42,18 @@ class TmdbService @Inject constructor(
             if (!response.isSuccessful) return@withContext null
 
             val body = response.body() ?: return@withContext null
-            val normalizedType = normalizeMediaType(mediaType)
-            val result = when (normalizedType) {
-                "movie" -> body.movieResults?.firstOrNull()
-                "tv" -> body.tvResults?.firstOrNull()
-                else -> body.movieResults?.firstOrNull() ?: body.tvResults?.firstOrNull()
+            val movie = body.movieResults?.firstOrNull()
+            val tv = body.tvResults?.firstOrNull()
+            val (foundType, result) = when (normalizedType) {
+                "movie" -> "movie" to movie
+                "tv" -> "tv" to tv
+                else -> if (movie != null) "movie" to movie else "tv" to tv
             }
 
             result?.let { found ->
                 cacheMutex.withLock {
-                    imdbToTmdbCache[imdbId] = found.id
-                    tmdbToImdbCache[found.id] = imdbId
+                    imdbToTmdbCache["$normalizedType:$imdbId"] = found.id
+                    tmdbToImdbCache["$foundType:${found.id}"] = imdbId
                 }
                 found.id
             }
@@ -65,10 +69,11 @@ class TmdbService @Inject constructor(
      * Convert a TMDB ID to an IMDB ID.
      */
     suspend fun tmdbToImdb(tmdbId: Int, mediaType: String): String? = withContext(Dispatchers.IO) {
-        tmdbToImdbCache[tmdbId]?.let { return@withContext it }
+        val normalizedType = normalizeMediaType(mediaType)
+        val cacheType = if (normalizedType == "movie") "movie" else "tv"
+        tmdbToImdbCache["$cacheType:$tmdbId"]?.let { return@withContext it }
 
         try {
-            val normalizedType = normalizeMediaType(mediaType)
             val response = when (normalizedType) {
                 "movie" -> tmdbApi.getMovieExternalIds(tmdbId, apiKey())
                 else -> tmdbApi.getTvExternalIds(tmdbId, apiKey())
@@ -78,8 +83,8 @@ class TmdbService @Inject constructor(
             val body = response.body() ?: return@withContext null
             body.imdbId?.let { imdbId ->
                 cacheMutex.withLock {
-                    tmdbToImdbCache[tmdbId] = imdbId
-                    imdbToTmdbCache[imdbId] = tmdbId
+                    tmdbToImdbCache["$cacheType:$tmdbId"] = imdbId
+                    imdbToTmdbCache["$cacheType:$imdbId"] = tmdbId
                 }
                 imdbId
             }
@@ -129,8 +134,9 @@ class TmdbService @Inject constructor(
         tmdbToImdbCache.clear()
     }
 
-    fun preCacheMapping(imdbId: String, tmdbId: Int) {
-        imdbToTmdbCache[imdbId] = tmdbId
-        tmdbToImdbCache[tmdbId] = imdbId
+    fun preCacheMapping(imdbId: String, tmdbId: Int, mediaType: String) {
+        val type = if (normalizeMediaType(mediaType) == "movie") "movie" else "tv"
+        imdbToTmdbCache["$type:$imdbId"] = tmdbId
+        tmdbToImdbCache["$type:$tmdbId"] = imdbId
     }
 }

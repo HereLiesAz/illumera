@@ -55,15 +55,18 @@ object ImagePrefetcher {
     private fun effectiveAroundCount(requestedCount: Int): Int {
         val now = System.currentTimeMillis()
         val delta = now - lastAroundPrefetchAtMs
-        lastAroundPrefetchAtMs = now
 
         val safeRequested = requestedCount.coerceAtLeast(1)
-        return when {
+        val count = when {
             delta in 0 until AROUND_PREFETCH_SKIP_WINDOW_MS -> 0
             delta in AROUND_PREFETCH_SKIP_WINDOW_MS until AROUND_PREFETCH_REDUCED_WINDOW_MS ->
                 (safeRequested / 2).coerceAtLeast(2)
             else -> safeRequested
         }
+        // Only a prefetch that actually runs starts a new window; skipped calls must not
+        // keep extending it, or steady fast scrolling would never prefetch at all.
+        if (count > 0) lastAroundPrefetchAtMs = now
+        return count
     }
     
     /**

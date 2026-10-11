@@ -43,11 +43,44 @@ class StremioLibrarySyncManager @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val libraryListType = object : TypeToken<List<StremioLibraryItem>>() {}.type
 
+    private val profileSyncMutexes = mutableMapOf<Int, Mutex>()
+
+    private fun profileSyncMutex(profileId: Int): Mutex =
+        synchronized(profileSyncMutexes) { profileSyncMutexes.getOrPut(profileId) { Mutex() } }
+
     suspend fun syncLibrary(force: Boolean = false): Result<Unit> = withContext(Dispatchers.IO) {
         val profileId = profileConfigurationManager.getLastActiveProfileId()
             ?: return@withContext Result.success(Unit)
+        syncLibraryInternal(profileId, force, runtimeHeld = false)
+    }
+
+    /**
+     * Variant for callers that already own the profile runtime through
+     * [ProfileConfigurationManager.withActiveProfileRuntime]. The runtime mutex is not
+     * reentrant, so this must never try to acquire it again.
+     */
+    suspend fun syncLibraryWithinActiveRuntime(profileId: Int, force: Boolean = false): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            syncLibraryInternal(profileId, force, runtimeHeld = true)
+        }
+
+    private suspend fun <T> inProfileRuntime(profileId: Int, runtimeHeld: Boolean, block: suspend () -> T): T =
+        if (runtimeHeld) {
+            ensureProfileStillActive(profileId)
+            block()
+        } else {
+            profileConfigurationManager.withActiveProfileRuntime(profileId, block)
+        }
+
+    // Serialize the whole sync per profile: two overlapping syncs could otherwise read the
+    // same baseline and push/pull/save conflicting snapshots.
+    private suspend fun syncLibraryInternal(
+        profileId: Int,
+        force: Boolean,
+        runtimeHeld: Boolean
+    ): Result<Unit> = profileSyncMutex(profileId).withLock {
         val authKey = stremioAuthManager.getStoredAuthKey()
-            ?: return@withContext Result.success(Unit)
+            ?: return@withLock Result.success(Unit)
 
         val startedAt = System.currentTimeMillis()
         val shouldRun = syncMutex.withLock {
@@ -59,13 +92,13 @@ class StremioLibrarySyncManager @Inject constructor(
                 true
             }
         }
-        if (!shouldRun) return@withContext Result.success(Unit)
+        if (!shouldRun) return@withLock Result.success(Unit)
 
         try {
             // Shared watch-history tables belong to whichever profile runtime is active.
             // Capture the initiating profile's local view while ownership is guaranteed,
             // then release the runtime lock before any network call.
-            val localItems = profileConfigurationManager.withActiveProfileRuntime(profileId) {
+            val localItems = inProfileRuntime(profileId, runtimeHeld) {
                 buildLocalLibraryView()
             }
             // The baseline belongs to both the profile and the Stremio account. A profile
@@ -126,7 +159,7 @@ class StremioLibrarySyncManager @Inject constructor(
 
             // Network work is finished. Reacquire ownership only for the short local
             // mutation phase, so profile switching is never blocked by remote latency.
-            profileConfigurationManager.withActiveProfileRuntime(profileId) {
+            inProfileRuntime(profileId, runtimeHeld) {
                 for (item in remoteItems) applyRemoteItem(item)
 
                 val refreshedLocal = buildLocalLibraryView()

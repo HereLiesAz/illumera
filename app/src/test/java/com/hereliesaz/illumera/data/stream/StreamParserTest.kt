@@ -17,6 +17,7 @@ class StreamParserTest {
         assertEquals(1_572_864L, StreamParser.extractSizeBytes("1.5 MB"))
         assertEquals(2_147_483_648L, StreamParser.extractSizeBytes("2GB"))
         assertEquals(1_099_511_627_776L, StreamParser.extractSizeBytes("1 TB"))
+        assertEquals(1_610_612_736L, StreamParser.extractSizeBytes("1,5 GB"))
     }
 
     @Test

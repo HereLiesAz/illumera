@@ -1,6 +1,8 @@
 package com.hereliesaz.illumera.data.player
 
 import android.content.Context
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -50,12 +52,23 @@ class SourceSelectionStore @Inject constructor(
 
     fun rememberExcludedSources(playbackId: String, excludedIds: Set<String>) {
         val scopedId = canonicalSourceScopeId(playbackId) ?: return
-        prefs.edit().putString(excludedSourcesKey(scopedId), excludedIds.joinToString(",")).apply()
+        // JSON array so ids containing commas survive the round trip.
+        val json = JsonArray().apply { excludedIds.forEach(::add) }.toString()
+        prefs.edit().putString(excludedSourcesKey(scopedId), json).apply()
     }
 
     fun getExcludedSources(playbackId: String): Set<String> {
         val scopedId = canonicalSourceScopeId(playbackId) ?: return emptySet()
         val raw = prefs.getString(excludedSourcesKey(scopedId), null) ?: return emptySet()
+        if (raw.trimStart().startsWith("[")) {
+            runCatching {
+                return JsonParser.parseString(raw).asJsonArray
+                    .mapNotNull { el -> el.takeUnless { it.isJsonNull }?.asString }
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+        }
+        // Legacy comma-joined format.
         return raw.split(",").filter { it.isNotBlank() }.toSet()
     }
 
@@ -64,7 +77,9 @@ class SourceSelectionStore @Inject constructor(
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
             if (key.startsWith("${KEY_STREAM_PREFIX}$scopedPrefix") ||
-                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix")
+                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_SOURCE_LIST_DISABLED_PREFIX}$scopedPrefix") ||
+                key.startsWith("${KEY_EXCLUDED_SOURCES_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }

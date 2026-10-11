@@ -173,6 +173,9 @@ class PlaybackSessionViewModel @Inject constructor(
     private var stallWatchdog: Job? = null
     private var firstFrameWatchdog: Job? = null
     private var fallbackJob: Job? = null
+    // Where the viewer left the playing episode when picking another from the player.
+    private var leavingPositionMs = 0L
+    private var leavingDurationMs: Long? = null
 
     // ---- Derived state ----
 
@@ -552,7 +555,9 @@ class PlaybackSessionViewModel @Inject constructor(
     fun selectEpisode(
         episode: MetaVideo,
         playerCurrentSourceUrl: String?,
-        profile: ProfileEntity?
+        profile: ProfileEntity?,
+        positionMs: Long = 0L,
+        durationMs: Long? = null
     ) {
         // Guard against a double-tap/rapid re-selection firing a second
         // independent switch while one is already resolving — whichever
@@ -570,6 +575,8 @@ class PlaybackSessionViewModel @Inject constructor(
         val autoSelect = profile?.autoSelectSource == true
         val willAutoResolve = autoplay || autoSelect
         beginSwitch()
+        leavingPositionMs = positionMs
+        leavingDurationMs = durationMs
         isEpisodeSwitchLoading = true
         pendingEpisodeSwitch = if (!willAutoResolve) {
             PendingEpisodeSwitch(
@@ -631,8 +638,8 @@ class PlaybackSessionViewModel @Inject constructor(
             pendingEpisodeSwitch = null
             settle(
                 PlayerSessionResult(
-                    positionMs = 0L,
-                    durationMs = null,
+                    positionMs = leavingPositionMs,
+                    durationMs = leavingDurationMs,
                     isCompleted = false,
                     selectedSourceUrl = playerCurrentSourceUrl ?: selectedVideoUrl,
                     selectedAudioTrackId = null,
@@ -666,11 +673,11 @@ class PlaybackSessionViewModel @Inject constructor(
         pendingEpisodeSwitch = null
         isEpisodeSwitchLoading = true
         episodeSwitchJob = viewModelScope.launch {
-            // Now save progress for current episode
+            // Settle the episode being left at the position it was left at.
             settle(
                 PlayerSessionResult(
-                    positionMs = 0L,
-                    durationMs = null,
+                    positionMs = leavingPositionMs,
+                    durationMs = leavingDurationMs,
                     isCompleted = false,
                     selectedSourceUrl = pending.playerCurrentSourceUrl ?: selectedVideoUrl,
                     selectedAudioTrackId = null,
@@ -751,7 +758,8 @@ class PlaybackSessionViewModel @Inject constructor(
             ?: return
         if (stream === currentStream) return
         currentStream = stream
-        if (!sourceUrl.startsWith("magnet:") && torrentProgress != null) stopTorrent()
+        // Unconditional: a streaming torrent has already cleared its progress.
+        if (!sourceUrl.startsWith("magnet:")) stopTorrent()
     }
 
     fun onFirstFrame() {
@@ -999,6 +1007,9 @@ class PlaybackSessionViewModel @Inject constructor(
         subtitles: List<AddonSubtitle>,
         subtitleRequestId: String
     ) {
+        // A debrid wait or ranked fallback for the episode being left must not land on this one.
+        fallbackJob?.cancel()
+        fallbackJob = null
         val subtitlePayload = buildSubtitlePayload(stream, subtitles)
         val sourcePayload = buildSourcePayload(candidates, stream)
         pendingSourceSelection = PendingSourceSelection(

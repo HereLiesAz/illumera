@@ -72,6 +72,7 @@ class WutchApiTest {
     fun playbackIdsAndTimesParse() {
         assertEquals(Triple("tt1", null, null), WutchManager.parsePlaybackId("tt1"))
         assertEquals(Triple("tt1", 2, 3), WutchManager.parsePlaybackId("tt1:2:3"))
+        assertEquals(Triple("tt1", 2, 3), WutchManager.parsePlaybackId("tt1:2:3:0"))
         assertNull(WutchManager.parsePlaybackId("kitsu:1:2"))
         assertEquals(1787184000000L, WutchManager.parseTime("2026-08-20 21:20:00")?.let { it - it % 86_400_000L })
         assertEquals(WutchManager.parseTime("2026-08-20T21:04:11+00:00"), WutchManager.parseTime("2026-08-20 21:04:11"))

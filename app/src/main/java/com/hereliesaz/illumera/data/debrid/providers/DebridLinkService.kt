@@ -63,6 +63,7 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
                                 id = o.get("id")?.asString ?: return@mapNotNull null,
                                 name = o.get("name")?.asString ?: "Unknown",
                                 provider = DebridProvider.DEBRID_LINK,
+                                infoHash = o.get("hashString")?.takeUnless { it.isJsonNull }?.asString,
                                 sizeBytes = o.get("size")?.asLong,
                                 status = if (o.get("downloadPercent")?.asInt == 100) "downloaded" else "downloading",
                                 progress = o.get("downloadPercent")?.asInt,

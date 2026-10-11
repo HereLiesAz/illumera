@@ -15,7 +15,8 @@ object StreamParser {
         Regex("""(?i)\bS[:\s]+(\d[\d,.]*)""")
     )
 
-    private val sizePattern = Regex("""(\d+(?:\.\d+)?)\s?(KB|MB|GB|TB)""", RegexOption.IGNORE_CASE)
+    // Leading boundary keeps "1,5 GB" from parsing as "5 GB"; comma is accepted as a decimal mark.
+    private val sizePattern = Regex("""(?<!\d)(?<!\d[.,])(\d+(?:[.,]\d+)?)\s?(KB|MB|GB|TB)""", RegexOption.IGNORE_CASE)
 
     private val dvPattern = Regex("""(?i)\b(dolby\s*vision|dovi|dv)\b""")
     private val hdrPattern = Regex("""(?i)\b(hdr10\+?|hdr|hlg)\b""")
@@ -67,7 +68,7 @@ object StreamParser {
     fun extractSizeBytes(text: String?): Long? {
         if (text.isNullOrBlank()) return null
         val match = sizePattern.find(text) ?: return null
-        val value = match.groupValues[1].toDoubleOrNull() ?: return null
+        val value = match.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return null
         val unit = match.groupValues[2].uppercase()
         val bytes = when (unit) {
             "TB" -> value * 1_099_511_627_776L

@@ -459,7 +459,9 @@ class TmdbMetadataService @Inject constructor(
                 movieCredits = movieCredits,
                 tvCredits = tvCredits
             )
-            personCache[cacheKey] = detail
+            // Only cache a complete result: a failed credits call would otherwise pin an
+            // empty filmography for the life of the cache.
+            if (credits != null) personCache[cacheKey] = detail
             detail
         } catch (cancelled: CancellationException) {
             throw cancelled

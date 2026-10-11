@@ -155,6 +155,8 @@ class StremioAddonsViewModelTest {
     fun profileChangeBeforeRuntimeLockStopsSyncWithoutMutation() = runTest(dispatcher) {
         coEvery { profileManager.withActiveProfileRuntime<Unit>(7, any()) } throws
             CancellationException("Active profile changed before refresh started")
+        // Initiated on profile 7; by the time the cancellation surfaces the user is on 8.
+        every { profileManager.getLastActiveProfileId() } returnsMany listOf(7, 8)
         val viewModel = newViewModel()
 
         viewModel.syncFromStremio()
@@ -167,6 +169,21 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
         coVerify(exactly = 0) { addonRepository.updateAddons(any()) }
         coVerify(exactly = 0) { profileManager.saveRuntimeStateWithinActiveRuntime(any()) }
+    }
+
+    @Test
+    fun emptyRemoteListDoesNotWipeLocalAddons() = runTest(dispatcher) {
+        val cinemeta = addon("https://v3-cinemeta.strem.io", "Cinemeta", 0)
+        val local = addon("https://local.example", "Local", 1)
+        coEvery { authManager.fetchAddons() } returns Result.success(emptyList())
+        every { addonRepository.getAddons() } returns flowOf(listOf(cinemeta, local))
+
+        val viewModel = newViewModel()
+        viewModel.syncFromStremio()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
+        assertTrue(viewModel.uiState.value.error?.contains("empty addon list") == true)
     }
 
     @Test

@@ -60,8 +60,17 @@ fun DashboardEditorScreen(
     onBack: () -> Unit,
     isTopNav: Boolean = false,
     currentProfile: ProfileEntity? = null,
+    onDashboardChanged: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
+    // Invalidate Home's cache on every way out of the editor (Back, leaving Settings, switching
+    // section), but only when something was actually written.
+    val latestOnDashboardChanged by rememberUpdatedState(onDashboardChanged)
+    DisposableEffect(viewModel) {
+        onDispose {
+            if (viewModel.consumeDashboardModified()) latestOnDashboardChanged()
+        }
+    }
     val configs by viewModel.configs.collectAsState()
     val hubRows by viewModel.hubRows.collectAsState()
     var selectedTab by remember { mutableStateOf("home") }
@@ -410,7 +419,7 @@ fun DashboardEditorScreen(
                                 LaunchedEffect(isReordering, item.order) {
                                     if (isReordering) {
                                         delay(50)
-                                        itemRequester.requestFocus()
+                                        runCatching { itemRequester.requestFocus() }
                                     }
                                 }
 
@@ -461,7 +470,7 @@ fun DashboardEditorScreen(
                                 LaunchedEffect(isReordering) {
                                     if (isReordering) {
                                         delay(50)
-                                        itemRequester.requestFocus()
+                                        runCatching { itemRequester.requestFocus() }
                                     }
                                 }
 
@@ -536,7 +545,7 @@ fun DashboardEditorScreen(
             val catalogDefault = if (config.catalogName != null) "${config.catalogName} - ${config.catalogType.replaceFirstChar { it.uppercase() }}" else "${config.addonName} - ${config.catalogId}"
             val title = config.customTitle ?: catalogDefault
             val focusRequester = remember { FocusRequester() }
-            LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+            LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
             VoidDialog(onDismissRequest = { dialogState = DialogState.None }, title = "Manage Category") {
                 Text(
@@ -588,7 +597,7 @@ fun DashboardEditorScreen(
             var newName by remember { mutableStateOf(state.currentName) }
             val inputFocusRequester = remember { FocusRequester() }
             val saveFocusRequester = remember { FocusRequester() }
-            LaunchedEffect(Unit) { delay(100); inputFocusRequester.requestFocus() }
+            LaunchedEffect(Unit) { delay(100); runCatching { inputFocusRequester.requestFocus() } }
 
             VoidDialog(onDismissRequest = { dialogState = DialogState.None }, title = "Rename") {
                 VoidInput(
@@ -615,7 +624,7 @@ fun DashboardEditorScreen(
             val catalogDefault = if (config.catalogName != null) "${config.catalogName} - ${config.catalogType.replaceFirstChar { it.uppercase() }}" else "${config.addonName} - ${config.catalogId}"
             val title = config.customTitle ?: catalogDefault
             val focusRequester = remember { FocusRequester() }
-            LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+            LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
             var isGridViewEnabled by remember(config) { mutableStateOf(config.isInfiniteLoopEnabled) }
             var itemCount by remember(config) { mutableFloatStateOf(config.visibleItemCount.toFloat()) }
@@ -673,7 +682,7 @@ fun DashboardEditorScreen(
 
         is DialogState.AddToTab -> {
             val focusRequester = remember { FocusRequester() }
-            LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+            LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
             VoidDialog(
                 onDismissRequest = { dialogState = DialogState.None },
@@ -730,7 +739,7 @@ fun DashboardEditorScreen(
 
             if (!showDeleteHubConfirm) {
                 val focusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+                LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
                 VoidDialog(onDismissRequest = { dialogState = DialogState.None }, title = "Manage Hub Row") {
                 Text(
@@ -784,7 +793,7 @@ fun DashboardEditorScreen(
             }
             } else {
                 val confirmFocusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) { delay(100); confirmFocusRequester.requestFocus() }
+                LaunchedEffect(Unit) { delay(100); runCatching { confirmFocusRequester.requestFocus() } }
 
                 VoidDialog(
                     onDismissRequest = { showDeleteHubConfirm = false },
@@ -842,8 +851,6 @@ fun DashboardEditorScreen(
                 )
             }
             var showAddCategoryToHub by remember { mutableStateOf(false) }
-            var selectedManageItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
-            var reorderingHubItem by remember { mutableStateOf<HubRowItemEntity?>(null) }
 
             val focusRequester = remember { FocusRequester() }
             val shapeFocusRequester = remember { FocusRequester() }
@@ -851,7 +858,7 @@ fun DashboardEditorScreen(
             val manageCategoriesFocusRequester = remember { FocusRequester() }
             val context = LocalContext.current
             var lastSubDialog by remember { mutableStateOf<String?>(null) }
-            LaunchedEffect(Unit) { delay(100); shapeFocusRequester.requestFocus() }
+            LaunchedEffect(Unit) { delay(100); runCatching { shapeFocusRequester.requestFocus() } }
 
             val existingCategoryIds = currentItems.map { it.configUniqueId }.toSet()
             val availableForHub = configs.filter { it.uniqueId !in existingCategoryIds }
@@ -863,15 +870,15 @@ fun DashboardEditorScreen(
                 if (!showAddCategoryToHub && !showHubCategoryManager && lastSubDialog != null) {
                     delay(100)
                     when (lastSubDialog) {
-                        "add" -> addCategoryFocusRequester.requestFocus()
-                        "manage" -> manageCategoriesFocusRequester.requestFocus()
+                        "add" -> runCatching { addCategoryFocusRequester.requestFocus() }
+                        "manage" -> runCatching { manageCategoriesFocusRequester.requestFocus() }
                     }
                 }
             }
 
             // Main Content (always rendered — sub-dialogs overlay on top)
             HubEditorContent(
-                title = if (reorderingHubItem != null) "Reordering..." else "Edit Hub Row",
+                title = "Edit Hub Row",
                 name = editName,
                 onNameChange = { editName = it },
                 shape = editShape,
@@ -879,17 +886,9 @@ fun DashboardEditorScreen(
                 categoryCount = currentItems.size,
                 onAddCategory = { lastSubDialog = "add"; showAddCategoryToHub = true },
                 onManageCategories = { lastSubDialog = "manage"; showHubCategoryManager = true },
-                onCancel = {
-                    if (reorderingHubItem != null) {
-                        reorderingHubItem = null
-                    } else {
-                        dialogState = DialogState.None
-                    }
-                },
+                onCancel = { dialogState = DialogState.None },
                 onSave = {
-                    viewModel.renameHubRow(currentHub.id, editName.ifBlank { "Hub Row" })
-                    viewModel.changeHubRowShape(currentHub.id, editShape)
-                    reorderingHubItem = null
+                    viewModel.updateHubRow(currentHub.id, editName.trim().ifBlank { "Hub Row" }, editShape)
                     dialogState = DialogState.None
                     showSnackbar("Hub row saved")
                 },
@@ -933,41 +932,9 @@ fun DashboardEditorScreen(
                 )
             }
 
-            if (selectedManageItem != null) {
-                HubItemManageDialog(
-                    item = selectedManageItem!!,
-                    onDismiss = { selectedManageItem = null },
-                    onRename = { newName ->
-                        viewModel.renameHubRowItem(
-                            currentHub.id,
-                            selectedManageItem!!.configUniqueId,
-                            newName
-                        )
-                    },
-                    onStartReorder = {
-                        reorderingHubItem = selectedManageItem
-                        selectedManageItem = null
-                    },
-                    onRemove = {
-                        viewModel.removeCategoryFromHubRow(
-                            currentHub.id,
-                            selectedManageItem!!.configUniqueId
-                        )
-                        selectedManageItem = null
-                    },
-                    onRemoveImage = {
-                        viewModel.updateHubItemImage(
-                            currentHub.id,
-                            selectedManageItem!!.configUniqueId,
-                            null
-                        )
-                    }
-                )
-            }
-
             if (showAddCategoryToHub) {
                 val addFocusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) { delay(100); addFocusRequester.requestFocus() }
+                LaunchedEffect(Unit) { delay(100); runCatching { addFocusRequester.requestFocus() } }
 
                 VoidDialog(
                     onDismissRequest = { showAddCategoryToHub = false },
@@ -1019,7 +986,7 @@ fun DashboardEditorScreen(
                 var posterCount by remember { mutableFloatStateOf(heroConfig.posterCount.toFloat()) }
                 var autoScrollSeconds by remember { mutableFloatStateOf(heroConfig.autoScrollSeconds.toFloat()) }
                 val focusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+                LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
 
                 val visibleConfigs = configs.filter {
                     when (tab) {
@@ -1108,7 +1075,7 @@ fun DashboardEditorScreen(
                     }
                 } else {
                     val confirmFocusRequester = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { delay(100); confirmFocusRequester.requestFocus() }
+                    LaunchedEffect(Unit) { delay(100); runCatching { confirmFocusRequester.requestFocus() } }
 
                     VoidDialog(
                         onDismissRequest = { showDisableConfirm = false },
@@ -1146,7 +1113,7 @@ fun DashboardEditorScreen(
 
                 if (showCategoryPicker && !showDisableConfirm) {
                     val pickerFocusRequester = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { delay(100); pickerFocusRequester.requestFocus() }
+                    LaunchedEffect(Unit) { delay(100); runCatching { pickerFocusRequester.requestFocus() } }
 
                     VoidDialog(
                         onDismissRequest = { showCategoryPicker = false },
@@ -1433,7 +1400,7 @@ fun HubItemEditorRow(
 
     LaunchedEffect(isReordering) {
         if (isReordering) {
-            focusRequester.requestFocus()
+            runCatching { focusRequester.requestFocus() }
         }
     }
 

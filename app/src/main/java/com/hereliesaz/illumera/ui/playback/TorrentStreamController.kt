@@ -119,8 +119,13 @@ class TorrentStreamController internal constructor(
         launcher.start(magnet, fileIdx, fileName)
     }
 
-    /** Stops [TorrentService]. Its shutdown clears [progress] through the progress callback. */
+    /**
+     * Stops [TorrentService] and drops its callbacks: a stream that turns ready after the
+     * stop must not replace whatever the session opened instead.
+     */
     fun stop() {
+        release()
+        progress = null
         launcher.stop()
     }
 

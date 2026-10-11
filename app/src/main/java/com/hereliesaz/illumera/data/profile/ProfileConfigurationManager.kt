@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.profile
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
+import com.hereliesaz.illumera.crash.AppErrors
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,14 +35,23 @@ data class ProfileRuntimeSnapshot(
     val watchHistory: List<WatchHistoryEntity> = emptyList()
 )
 
+/** Result of reading a profile's snapshot file: absent, unreadable, or parsed. */
+private sealed class SnapshotRead {
+    object Missing : SnapshotRead()
+    object Corrupt : SnapshotRead()
+    data class Loaded(val snapshot: ProfileRuntimeSnapshot) : SnapshotRead()
+}
+
 @Singleton
 class ProfileConfigurationManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: AddonDao,
     private val stremioAuthManager: StremioAuthManager,
-    private val addonRepository: AddonRepository
+    private val addonRepository: AddonRepository,
+    private val profileMutationCoordinator: ProfileMutationCoordinator
 ) {
     companion object {
+        private const val TAG = "ProfileConfigManager"
         private const val PREFS_FILE = "profile_configuration_prefs"
         private const val KEY_PENDING_SETUP_PROFILES = "pending_setup_profiles"
         private const val KEY_LAST_ACTIVE_PROFILE_ID = "last_active_profile_id"
@@ -134,14 +145,30 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     suspend fun loadRuntimeState(profileId: Int) = runtimeMutex.withLock {
-        val existingSnapshot = readSnapshot(profileId)
-        val snapshot = existingSnapshot ?: if (!needsInitialSetup(profileId)) {
-            captureRuntimeSnapshot().also {
-                writeSnapshot(profileId, it)
-                stremioAuthManager.saveCredentialsForProfile(profileId)
+        val sameProfile = profileId == getLastActiveProfileId()
+        val snapshot = when (val read = readSnapshot(profileId)) {
+            is SnapshotRead.Loaded -> read.snapshot
+            // No snapshot yet (legacy profile from before snapshots existed): adopt the
+            // live tables, which is how such profiles were stored.
+            SnapshotRead.Missing -> if (!needsInitialSetup(profileId)) {
+                captureRuntimeSnapshot().also {
+                    writeSnapshot(profileId, it)
+                    stremioAuthManager.saveCredentialsForProfile(profileId)
+                }
+            } else {
+                ProfileRuntimeSnapshot()
             }
-        } else {
-            ProfileRuntimeSnapshot()
+            // An unreadable snapshot must never be "repaired" from the live tables on a
+            // switch: those hold the OUTGOING profile's data and Stremio session, which
+            // would leak into this one. Only the same, already-active profile may
+            // re-adopt the live DB (it is its own data); otherwise fall back to setup.
+            SnapshotRead.Corrupt -> if (sameProfile) {
+                captureRuntimeSnapshot().also { writeSnapshot(profileId, it) }
+            } else {
+                AppErrors.e(TAG, "Profile snapshot unreadable; profile reset to initial setup")
+                markPendingSetup(profileId)
+                ProfileRuntimeSnapshot()
+            }
         }
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
@@ -149,7 +176,6 @@ class ProfileConfigurationManager @Inject constructor(
         // to a different profile, the DB's watch history belongs to the outgoing
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
-        val sameProfile = profileId == getLastActiveProfileId()
         dao.replaceRuntimeState(
             addons = snapshot.addons,
             catalogConfigs = snapshot.catalogConfigs,
@@ -169,10 +195,18 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     suspend fun initializeByCopying(targetProfileId: Int, sourceProfileId: Int) {
-        captureStartupRuntimeIfNeeded()
-        val sourceSnapshot = readSnapshot(sourceProfileId) ?: captureRuntimeSnapshot().also {
-            writeSnapshot(sourceProfileId, it)
-            stremioAuthManager.saveCredentialsForProfile(sourceProfileId)
+        // The live tables only ever belong to the active profile. If the source is
+        // active, persist its live state first so the copy isn't of a stale snapshot;
+        // otherwise copy only its own snapshot — never the active profile's tables.
+        if (sourceProfileId == getLastActiveProfileId()) {
+            saveRuntimeState(sourceProfileId)
+        }
+        val sourceSnapshot = when (val read = readSnapshot(sourceProfileId)) {
+            is SnapshotRead.Loaded -> read.snapshot
+            else -> {
+                AppErrors.e(TAG, "Copy source profile has no readable snapshot; using defaults")
+                createDefaultRuntimeSnapshot()
+            }
         }
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
@@ -238,15 +272,21 @@ class ProfileConfigurationManager @Inject constructor(
     private suspend fun buildSnapshotFromStremioAddons(entries: List<StremioAddonEntry>): ProfileRuntimeSnapshot {
         val addons = mutableListOf<AddonEntity>()
         val configs = mutableListOf<CatalogConfigEntity>()
+        var failed = 0
 
         entries.forEach { entry ->
             val transportUrl = entry.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
             // Every fresh profile already gets the default Cinemeta addon — skip a duplicate.
             if (transportUrl == DEFAULT_CINEMETA_TRANSPORT_URL) return@forEach
 
-            val manifest = runCatching {
+            val manifest = try {
                 addonRepository.fetchManifest("$transportUrl/manifest.json")
-            }.getOrNull() ?: return@forEach
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed++
+                return@forEach
+            }
             val catalogs = manifest.catalogs.orEmpty()
             val addonName = manifest.name.ifBlank { entry.manifest?.name ?: "Unknown Addon" }
 
@@ -260,7 +300,8 @@ class ProfileConfigurationManager @Inject constructor(
                 isTrusted = false,
                 isEnabled = true,
                 nickname = null,
-                catalogsJson = gson.toJson(catalogs)
+                catalogsJson = gson.toJson(catalogs),
+                supportsStream = manifest.supportsResource("stream")
             )
 
             configs += catalogs.mapIndexed { index, catalog ->
@@ -284,6 +325,11 @@ class ProfileConfigurationManager @Inject constructor(
             }
         }
 
+        if (failed > 0) {
+            // The returned snapshot (and the count reported to the caller) only contains
+            // addons whose manifest loaded; surface the ones that were dropped.
+            AppErrors.e(TAG, "Skipped $failed of ${entries.size} Stremio addons: manifest fetch failed")
+        }
         return ProfileRuntimeSnapshot(addons = addons, catalogConfigs = configs)
     }
 
@@ -299,9 +345,10 @@ class ProfileConfigurationManager @Inject constructor(
 
     private suspend fun copyProfileDisplayAndDashboardConfig(targetProfileId: Int, sourceProfileId: Int) {
         val sourceProfile = dao.getProfileById(sourceProfileId) ?: return
-        val targetProfile = dao.getProfileById(targetProfileId) ?: return
 
-        dao.insertProfile(
+        // Routed through the coordinator so a concurrent settings write to the target
+        // row can't be lost to (or clobber) this read-modify-write.
+        profileMutationCoordinator.update(targetProfileId) { targetProfile ->
             targetProfile.copy(
                 roundCorners = sourceProfile.roundCorners,
                 hubRoundCorners = sourceProfile.hubRoundCorners,
@@ -322,7 +369,7 @@ class ProfileConfigurationManager @Inject constructor(
                 seriesHeroPosterCount = sourceProfile.seriesHeroPosterCount,
                 seriesHeroAutoScrollSeconds = sourceProfile.seriesHeroAutoScrollSeconds
             )
-        )
+        }
     }
 
     private suspend fun captureRuntimeSnapshot(): ProfileRuntimeSnapshot {
@@ -358,7 +405,9 @@ class ProfileConfigurationManager @Inject constructor(
             isTrusted = false,
             isEnabled = true,
             nickname = null,
-            catalogsJson = gson.toJson(catalogs)
+            catalogsJson = gson.toJson(catalogs),
+            // Cinemeta is metadata only; asking it for streams always 404s.
+            supportsStream = manifest?.supportsResource("stream") ?: false
         )
 
         val configs = catalogs.mapIndexed { index, catalog ->
@@ -394,18 +443,42 @@ class ProfileConfigurationManager @Inject constructor(
         val file = snapshotFile(profileId)
         file.parentFile?.mkdirs()
         val tmpFile = File(file.parentFile, "${file.name}.tmp")
-        tmpFile.writeText(gson.toJson(snapshot))
-        tmpFile.renameTo(file)
+        FileOutputStream(tmpFile).use { out ->
+            out.write(gson.toJson(snapshot).toByteArray(Charsets.UTF_8))
+            out.flush()
+            // Durable before the rename publishes it, so a power loss can't leave an
+            // empty/partial file under the real name.
+            out.fd.sync()
+        }
+        if (!tmpFile.renameTo(file)) {
+            // rename can fail (e.g. target briefly locked); fall back to copy + delete.
+            try {
+                tmpFile.copyTo(file, overwrite = true)
+                tmpFile.delete()
+            } catch (e: Exception) {
+                AppErrors.e(TAG, "Failed to persist profile snapshot", e)
+                throw e
+            }
+        }
     }
 
-    private fun readSnapshot(profileId: Int): ProfileRuntimeSnapshot? {
+    private fun readSnapshot(profileId: Int): SnapshotRead {
         val file = snapshotFile(profileId)
         // Clean up any leftover temp file from a previous interrupted write
         File(file.parentFile, "${file.name}.tmp").takeIf { it.exists() }?.delete()
-        if (!file.exists()) return null
-        return runCatching {
+        if (!file.exists()) return SnapshotRead.Missing
+        val parsed = try {
             gson.fromJson(file.readText(), ProfileRuntimeSnapshot::class.java)
-        }.getOrNull()
+        } catch (e: Exception) {
+            AppErrors.w(TAG, "Profile snapshot could not be parsed", e)
+            null
+        }
+        if (parsed == null) {
+            // Keep the bad file aside for diagnosis instead of overwriting it silently.
+            file.renameTo(File(file.parentFile, "${file.name}.corrupt"))
+            return SnapshotRead.Corrupt
+        }
+        return SnapshotRead.Loaded(parsed)
     }
 
     private fun snapshotFile(profileId: Int): File {

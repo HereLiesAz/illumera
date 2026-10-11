@@ -31,7 +31,6 @@ class AddonRepository @Inject constructor(
     private val dao: AddonDao
 ) {
     private val gson = Gson()
-    private val MAX_CATALOG_PAGES = 30
 
     /** Filter out MetaItems where Gson injected null into non-null Kotlin fields */
     private fun List<MetaItem>.sanitize(): List<MetaItem> = filter { item ->
@@ -56,34 +55,44 @@ class AddonRepository @Inject constructor(
                 if (baseUrl.endsWith(".json")) baseUrl.dropLast(5) + "/skip=$skip.json" else baseUrl + "/skip=$skip.json"
             }
             withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize()
+        } catch (_: TimeoutCancellationException) {
+            // A slow addon yields no page; it must not cancel the caller.
+            emptyList()
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) { emptyList() }
     }
 
 
+    /**
+     * Searches Cinemeta movies + series. A single failing request degrades to partial results;
+     * if every request fails, the last error is rethrown so callers can surface a failure state.
+     */
     suspend fun searchMovies(query: String): List<MetaItem> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
 
-        val movieJob = async {
-            try {
-                withTimeout(CATALOG_TIMEOUT_MS) {
-                    api.getCatalog("https://v3-cinemeta.strem.io/catalog/movie/top/search=$query.json")
-                }.metas.orEmpty().sanitize()
-            } catch (e: CancellationException) { throw e
-            } catch (e: Exception) { emptyList() }
-        }
-
-        val seriesJob = async {
-            try {
-                withTimeout(CATALOG_TIMEOUT_MS) {
-                    api.getCatalog("https://v3-cinemeta.strem.io/catalog/series/top/search=$query.json")
-                }.metas.orEmpty().sanitize()
-            } catch (e: CancellationException) { throw e
-            } catch (e: Exception) { emptyList() }
-        }
-
         val cinemeta = "https://v3-cinemeta.strem.io"
-        return@withContext (movieJob.await() + seriesJob.await())
+        // Stremio extra values are URL-encoded path segments; spaces must be %20, not '+'.
+        val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8").replace("+", "%20")
+
+        val jobs = listOf("movie", "series").map { type ->
+            async {
+                try {
+                    Result.success(
+                        withTimeout(CATALOG_TIMEOUT_MS) {
+                            api.getCatalog("$cinemeta/catalog/$type/top/search=$encoded.json")
+                        }.metas.orEmpty().sanitize()
+                    )
+                } catch (e: TimeoutCancellationException) { Result.failure<List<MetaItem>>(e)
+                } catch (e: CancellationException) { throw e
+                } catch (e: Exception) { Result.failure(e) }
+            }
+        }
+        val outcomes = jobs.awaitAll()
+        if (outcomes.all { it.isFailure }) {
+            val cause = outcomes.last().exceptionOrNull()
+            throw java.io.IOException("All search requests failed", cause)
+        }
+        return@withContext outcomes.flatMap { it.getOrDefault(emptyList()) }
             .map { it.copy(addonBaseUrl = cinemeta) }
     }
 
@@ -136,7 +145,8 @@ class AddonRepository @Inject constructor(
                 try {
                     val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
                     // Fetch only the first page for fast initial load
-                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
+                    // A timed-out catalog contributes nothing; it must not abort the other rows.
+                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (_: TimeoutCancellationException) { emptyList() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
                     if (rawMetas.isNotEmpty()) {
                         val metas = rawMetas.map { it.copy(addonBaseUrl = config.transportUrl) }
                         val typeSuffix = config.catalogType.replaceFirstChar { it.uppercase() }
@@ -300,6 +310,14 @@ class AddonRepository @Inject constructor(
                     emptyList()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (e: retrofit2.HttpException) {
+                    // 404 is an addon saying it has no streams for this id (or no stream
+                    // resource at all: rows stored before supportsStream was read default
+                    // to true). Not an error; anything else still reports.
+                    if (e.code() != 404) {
+                        AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
+                    }
+                    emptyList()
                 } catch (e: Exception) {
                     AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
                     emptyList()
@@ -328,20 +346,8 @@ class AddonRepository @Inject constructor(
         }
         val transportUrl = url.removeSuffix("/manifest.json").trimEnd('/')
         val catalogsJson = gson.toJson(manifest.catalogs.orEmpty())
-        val supportsMeta = manifest.resources?.any { element ->
-            when {
-                element.isJsonPrimitive -> element.asString == "meta"
-                element.isJsonObject -> element.asJsonObject.get("name")?.asString == "meta"
-                else -> false
-            }
-        } ?: false
-        val supportsStream = manifest.resources?.any { element ->
-            when {
-                element.isJsonPrimitive -> element.asString == "stream"
-                element.isJsonObject -> element.asJsonObject.get("name")?.asString == "stream"
-                else -> false
-            }
-        } ?: false
+        val supportsMeta = manifest.supportsResource("meta")
+        val supportsStream = manifest.supportsResource("stream")
 
         // Re-installing an already-installed addon (e.g. re-pasting the same manifest
         // URL) must not silently discard a nickname or per-catalog customizations the
@@ -358,8 +364,6 @@ class AddonRepository @Inject constructor(
             idPrefixesJson = gson.toJson(manifest.idPrefixes.orEmpty()),
             sortOrder = existingAddon?.sortOrder ?: 999
         )
-        dao.insertAddon(entity)
-
         val newConfigs = manifest.catalogs.orEmpty().map { catalog ->
             val uniqueId = "${transportUrl}/${catalog.type}/${catalog.id}"
             val isMovieCat = catalog.type == "movie"
@@ -378,7 +382,9 @@ class AddonRepository @Inject constructor(
                 )
             }
         }
-        dao.saveCatalogConfigs(newConfigs)
+        // Addon row + catalog configs are written atomically, and configs for catalogs the
+        // manifest no longer lists are pruned so they don't linger as dead rows.
+        dao.installAddonAtomically(entity, newConfigs)
     }
 
     suspend fun installAddon(url: String) = installAddonWithConfig(url, true, true, true)
@@ -410,7 +416,7 @@ class AddonRepository @Inject constructor(
         id: String,
         preferredAddonBaseUrl: String
     ): MetaItem? = withContext(Dispatchers.IO) {
-        val baseUrl = preferredAddonBaseUrl.trimEnd('/')
+        val baseUrl = preferredAddonBaseUrl.trim().trimEnd('/')
         try {
             val url = "$baseUrl/meta/$type/$id.json"
             val meta = withTimeout(5_000L) { api.getMeta(url) }.meta.sanitize()
@@ -481,7 +487,7 @@ class AddonRepository @Inject constructor(
         // meta with a different ID (e.g. tmdb:12345 instead of tt1234567), which causes
         // the details screen to appear stuck since it checks movie.id == requestedId.
         for ((addon, candidateType) in candidates) {
-            if (addon.transportUrl == preferredAddonBaseUrl) continue
+            if (addon.transportUrl.trimEnd('/') == preferredAddonBaseUrl?.trim()?.trimEnd('/')) continue
             try {
                 val url = "${addon.transportUrl}/meta/$candidateType/$id.json"
                 val meta = withTimeout(CATALOG_TIMEOUT_MS) { api.getMeta(url) }.meta.sanitize()

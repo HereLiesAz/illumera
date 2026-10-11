@@ -44,6 +44,7 @@ class DebridManager @Inject constructor(
         private const val KEY_API_KEY = "api_key"
         private const val KEY_USERNAME = "username"
         private const val POLL_MS = 5_000L
+        private const val STALL_BAIL_MS = 60_000L
     }
 
     private val prefs by lazy {
@@ -195,7 +196,7 @@ class DebridManager @Inject constructor(
         val deadline = started + maxWaitSeconds * 1_000L
         var previousProgress: Int? = null
         var previousSampleAt = started
-        var stagnantPolls = 0
+        var lastAdvanceAt = started
 
         while (System.currentTimeMillis() < deadline) {
             val library = when (val result = service.listLibrary(apiKey)) {
@@ -228,17 +229,20 @@ class DebridManager @Inject constructor(
                     val now = System.currentTimeMillis()
                     val old = previousProgress
                     if (old != null) {
-                        if (progress <= old) stagnantPolls++ else stagnantPolls = 0
+                        if (progress > old) lastAdvanceAt = now
                         val elapsedSampleSeconds = ((now - previousSampleAt).coerceAtLeast(1L)) / 1000.0
                         val rate = (progress - old).coerceAtLeast(0) / elapsedSampleSeconds
                         val secondsRemaining = ((deadline - now).coerceAtLeast(0L)) / 1000.0
                         if (rate > 0.0) {
                             val estimatedSeconds = (100 - progress) / rate
                             if (estimatedSeconds > secondsRemaining * 1.15) return null
-                        } else if (stagnantPolls >= 3 && progress < 90) {
+                        } else if (progress in 1 until 90 && now - lastAdvanceAt >= STALL_BAIL_MS) {
+                            // Only give up on a transfer that started and then stalled for a
+                            // while; queued 0% transfers ride out the deadline instead.
                             return null
                         }
                     }
+                    if (old == null) lastAdvanceAt = now
                     previousProgress = progress
                     previousSampleAt = now
                 }

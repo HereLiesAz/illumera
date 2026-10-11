@@ -14,8 +14,10 @@ object TorrentDeviceTuner {
     private const val KEY_CACHE_MB = "cache_mb"
     private const val KEY_CONNECTION_LIMIT = "connection_limit"
 
-    const val MIN_CONNECTION_LIMIT = 20
-    const val MAX_CONNECTION_LIMIT = 25
+    // TorrServer's default is 25; anything lower only starves the swarm.
+    const val MIN_CONNECTION_LIMIT = 25
+    const val MAX_CONNECTION_LIMIT = 100
+    const val CONNECTION_LIMIT_STEP = 5
 
     data class Settings(
         val cacheSizeMb: Int,
@@ -29,7 +31,7 @@ object TorrentDeviceTuner {
                 context = context,
                 settings = Settings(
                     cacheSizeMb = prefs.getInt(KEY_CACHE_MB, 192),
-                    connectionsLimit = prefs.getInt(KEY_CONNECTION_LIMIT, 22)
+                    connectionsLimit = prefs.getInt(KEY_CONNECTION_LIMIT, 60)
                 )
             )
         }
@@ -76,9 +78,9 @@ object TorrentDeviceTuner {
         val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
         val base = when {
-            totalRamMb <= 1536L || cores <= 2 -> Settings(cacheSizeMb = 96, connectionsLimit = 20)
-            totalRamMb <= 3072L || cores <= 4 -> Settings(cacheSizeMb = 192, connectionsLimit = 22)
-            else -> Settings(cacheSizeMb = 384, connectionsLimit = 25)
+            totalRamMb <= 1536L || cores <= 2 -> Settings(cacheSizeMb = 96, connectionsLimit = 40)
+            totalRamMb <= 3072L || cores <= 4 -> Settings(cacheSizeMb = 192, connectionsLimit = 60)
+            else -> Settings(cacheSizeMb = 384, connectionsLimit = 80)
         }
 
         return sanitizeSettings(context, base)

@@ -47,7 +47,19 @@ class SearchViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            var previousProfileId: Int? = null
+            var first = true
             profileConfigurationManager.activeProfileId.collectLatest { profileId ->
+                if (!first && profileId != previousProfileId) {
+                    // Another profile's query/results must not leak across a profile switch.
+                    searchJob?.cancel()
+                    _state.value = _state.value.copy(
+                        query = "", results = emptyList(), movies = emptyList(),
+                        series = emptyList(), isLoading = false, searchFailed = false
+                    )
+                }
+                first = false
+                previousProfileId = profileId
                 val recent = if (profileId == null) {
                     emptyList()
                 } else {

@@ -54,7 +54,7 @@ fun RemotePasteDialog(
     // Start server when dialog opens
     LaunchedEffect(configurationUrl, addonName) {
         delay(100)
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
 
         val info = serverManager.startServer(
             helperUrl = configurationUrl,

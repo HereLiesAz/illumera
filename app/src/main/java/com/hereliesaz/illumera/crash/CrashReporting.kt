@@ -59,6 +59,13 @@ object CrashReporting {
     private fun reportRecordedAnrs(context: Context) {
         val prefs = prefs(context)
         val lastReported = prefs.getLong(PREF_LAST_ANR_TIMESTAMP, 0L)
+        if (lastReported == 0L) {
+            // First run with reporting: set the baseline to now. Earlier history is not
+            // reported, but the first ANR after this point is (if the baseline were only
+            // set when history existed, a clean device would swallow its first real ANR).
+            prefs.edit { putLong(PREF_LAST_ANR_TIMESTAMP, System.currentTimeMillis()) }
+            return
+        }
         val activityManager = context.getSystemService(ActivityManager::class.java) ?: return
         val anrs = runCatching {
             activityManager.getHistoricalProcessExitReasons(context.packageName, 0, 0)
@@ -67,27 +74,26 @@ object CrashReporting {
             .sortedBy { it.timestamp }
         if (anrs.isEmpty()) return
 
-        // First launch after enabling: don't flood with history from before reporting existed.
-        if (lastReported == 0L) {
-            prefs.edit { putLong(PREF_LAST_ANR_TIMESTAMP, anrs.last().timestamp) }
-            return
+        try {
+            for (info in anrs) {
+                val trace = runCatching {
+                    info.traceInputStream?.bufferedReader()?.use { it.readText() }
+                }.getOrNull().orEmpty()
+                // Issues are public: description and trace go through the same redaction
+                // as handled errors (URLs can carry addon/debrid tokens).
+                val error = ApplicationNotResponding(
+                    redact(info.description?.takeIf { it.isNotBlank() } ?: "Application not responding"),
+                    parseMainThread(trace)
+                )
+                ACRA.errorReporter.putCustomData("anr_source", "ApplicationExitInfo")
+                ACRA.errorReporter.putCustomData("anr_timestamp", info.timestamp.toString())
+                ACRA.errorReporter.putCustomData("anr_trace", redact(trace).take(30_000))
+                ACRA.errorReporter.handleSilentException(error)
+                prefs.edit { putLong(PREF_LAST_ANR_TIMESTAMP, info.timestamp) }
+            }
+        } finally {
+            ACRA.errorReporter.clearCustomData()
         }
-
-        for (info in anrs) {
-            val trace = runCatching {
-                info.traceInputStream?.bufferedReader()?.use { it.readText() }
-            }.getOrNull().orEmpty()
-            val error = ApplicationNotResponding(
-                info.description?.takeIf { it.isNotBlank() } ?: "Application not responding",
-                parseMainThread(trace)
-            )
-            ACRA.errorReporter.putCustomData("anr_source", "ApplicationExitInfo")
-            ACRA.errorReporter.putCustomData("anr_timestamp", info.timestamp.toString())
-            ACRA.errorReporter.putCustomData("anr_trace", trace.take(30_000))
-            ACRA.errorReporter.handleSilentException(error)
-            prefs.edit { putLong(PREF_LAST_ANR_TIMESTAMP, info.timestamp) }
-        }
-        ACRA.errorReporter.clearCustomData()
     }
 
     private fun startWatchdog(context: Context) {
@@ -108,9 +114,12 @@ object CrashReporting {
                     "Main thread blocked for ${WATCHDOG_TIMEOUT_MS / 1000}s",
                     Looper.getMainLooper().thread.stackTrace
                 )
-                ACRA.errorReporter.putCustomData("anr_source", "watchdog")
-                ACRA.errorReporter.handleSilentException(error)
-                ACRA.errorReporter.clearCustomData()
+                try {
+                    ACRA.errorReporter.putCustomData("anr_source", "watchdog")
+                    ACRA.errorReporter.handleSilentException(error)
+                } finally {
+                    ACRA.errorReporter.clearCustomData()
+                }
             }
         }, "anr-watchdog").apply { isDaemon = true }.start()
     }

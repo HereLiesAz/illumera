@@ -7,7 +7,6 @@ import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
-import com.hereliesaz.illumera.data.model.StremioAddonItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
@@ -23,6 +22,7 @@ import com.hereliesaz.illumera.ui.profiles.ProfileAssets
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.CancellationException
@@ -32,6 +32,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -44,6 +50,7 @@ sealed class IntegrationsEvent {
     object LoginSuccess : IntegrationsEvent()
     data class LoginError(val message: String) : IntegrationsEvent()
     data class SyncComplete(val count: Int) : IntegrationsEvent()
+    data class PushComplete(val count: Int) : IntegrationsEvent()
     object Disconnected : IntegrationsEvent()
     data class StremioSyncReset(val removedAddons: Int) : IntegrationsEvent()
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
@@ -71,7 +78,6 @@ sealed class AppleLoginState {
 data class IntegrationsUiState(
     val connectionState: StremioConnectionState = StremioConnectionState.Disconnected,
     val isLoading: Boolean = false,
-    val pendingAddons: List<StremioAddonItem>? = null,
     val facebookLoginState: FacebookLoginState = FacebookLoginState.Idle,
     val appleLoginState: AppleLoginState = AppleLoginState.Idle,
     val tmdbEnabled: Boolean = false,
@@ -85,6 +91,7 @@ data class IntegrationsUiState(
     val wutchBusy: Boolean = false
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class IntegrationsViewModel @Inject constructor(
     @ApplicationContext private val applicationContext: Context,
@@ -113,18 +120,18 @@ class IntegrationsViewModel @Inject constructor(
         // Observe connection state
         viewModelScope.launch {
             stremioAuthManager.connectionState.collect { state ->
-                _uiState.value = _uiState.value.copy(connectionState = state)
+                _uiState.update { it.copy(connectionState = state) }
             }
         }
         // Observe Trakt connection state
         viewModelScope.launch {
             traktAuthManager.isConnected.collect { connected ->
-                _uiState.value = _uiState.value.copy(traktConnected = connected)
+                _uiState.update { it.copy(traktConnected = connected) }
             }
         }
         viewModelScope.launch {
             traktAuthManager.authState.collect { authState ->
-                _uiState.value = _uiState.value.copy(traktAuthState = authState)
+                _uiState.update { it.copy(traktAuthState = authState) }
                 // Push existing local watchlist + pull from Trakt after first auth
                 if (authState is DeviceAuthState.Success) {
                     traktSyncManager.initialSync()
@@ -134,30 +141,30 @@ class IntegrationsViewModel @Inject constructor(
         viewModelScope.launch {
             wutchManager.refreshConnectionState()
             wutchManager.username.collect { username ->
-                _uiState.value = _uiState.value.copy(wutchUsername = username)
+                _uiState.update { it.copy(wutchUsername = username) }
             }
         }
         // Observe Debrid connection state
         viewModelScope.launch {
             debridManager.connectedProvider.collect { provider ->
-                _uiState.value = _uiState.value.copy(debridProvider = provider)
+                _uiState.update { it.copy(debridProvider = provider) }
             }
         }
         viewModelScope.launch {
             debridManager.connectedUsername.collect { username ->
-                _uiState.value = _uiState.value.copy(debridUsername = username)
+                _uiState.update { it.copy(debridUsername = username) }
             }
         }
-        // Load TMDB settings from active profile
-        viewModelScope.launch(Dispatchers.IO) {
-            val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
-            val profile = dao.getProfileById(profileId)
-            if (profile != null) {
-                _uiState.value = _uiState.value.copy(
-                    tmdbEnabled = profile.tmdbEnabled,
-                    tmdbLanguage = profile.tmdbLanguage
-                )
-            }
+        // Follow the active profile's TMDB settings (this VM outlives profile switches)
+        viewModelScope.launch {
+            profileConfigurationManager.activeProfileId
+                .flatMapLatest { id -> if (id == null) flowOf(null) else dao.getProfileFlow(id) }
+                .filterNotNull()
+                .map { it.tmdbEnabled to it.tmdbLanguage }
+                .distinctUntilChanged()
+                .collect { (enabled, language) ->
+                    _uiState.update { it.copy(tmdbEnabled = enabled, tmdbLanguage = language) }
+                }
         }
     }
 
@@ -175,7 +182,7 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     fun updateTmdbEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(tmdbEnabled = enabled)
+        _uiState.update { it.copy(tmdbEnabled = enabled) }
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
             profileMutationCoordinator.update(profileId) { it.copy(tmdbEnabled = enabled) }
@@ -183,7 +190,7 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     fun updateTmdbLanguage(language: String) {
-        _uiState.value = _uiState.value.copy(tmdbLanguage = language)
+        _uiState.update { it.copy(tmdbLanguage = language) }
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return@launch
             profileMutationCoordinator.update(profileId) { it.copy(tmdbLanguage = language) }
@@ -196,13 +203,13 @@ class IntegrationsViewModel @Inject constructor(
      */
     fun login(email: String, password: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
 
             val result = stremioAuthManager.login(email, password)
 
             result.fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     // Auto-sync addons and continue-watching after login
@@ -210,7 +217,7 @@ class IntegrationsViewModel @Inject constructor(
                     syncLibrary()
                 },
                 onFailure = { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     val message = when (error) {
                         is StremioAuthError.InvalidCredentials -> "Invalid email or password"
                         is StremioAuthError.NetworkError -> "Network error: ${error.message}"
@@ -225,19 +232,19 @@ class IntegrationsViewModel @Inject constructor(
     /** Creates and immediately connects a new Stremio account. */
     fun register(email: String, password: String, marketing: Boolean) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
 
             val result = stremioAuthManager.register(email, password, marketing)
             result.fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     syncAddons()
                     syncLibrary()
                 },
                 onFailure = { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     val message = when (error) {
                         is StremioAuthError.NetworkError -> "Network error: ${error.message}"
                         else -> error.message ?: "Could not create Stremio account"
@@ -257,21 +264,21 @@ class IntegrationsViewModel @Inject constructor(
     fun startFacebookLogin() {
         facebookLoginJob?.cancel()
         val (state, url) = stremioAuthManager.startFacebookLogin()
-        _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url))
+        _uiState.update { it.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url)) }
 
         facebookLoginJob = viewModelScope.launch {
             val result = withTimeoutOrNull(5 * 60_000L) {
                 stremioAuthManager.completeFacebookLogin(state)
             }
             if (result == null) {
-                _uiState.value = _uiState.value.copy(
+                _uiState.update { it.copy(
                     facebookLoginState = FacebookLoginState.Error("Facebook login timed out. Please try again.")
-                )
+                ) }
                 return@launch
             }
             result.fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Success)
+                    _uiState.update { it.copy(facebookLoginState = FacebookLoginState.Success) }
                     applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     syncAddons()
@@ -279,7 +286,7 @@ class IntegrationsViewModel @Inject constructor(
                 },
                 onFailure = { error ->
                     val message = error.message ?: "Facebook login failed"
-                    _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Error(message))
+                    _uiState.update { it.copy(facebookLoginState = FacebookLoginState.Error(message)) }
                 }
             )
         }
@@ -288,19 +295,19 @@ class IntegrationsViewModel @Inject constructor(
     fun resetFacebookLoginState() {
         facebookLoginJob?.cancel()
         facebookLoginJob = null
-        _uiState.value = _uiState.value.copy(facebookLoginState = FacebookLoginState.Idle)
+        _uiState.update { it.copy(facebookLoginState = FacebookLoginState.Idle) }
     }
 
     fun startAppleLogin() {
         appleLoginJob?.cancel()
         val (state, url) = stremioAuthManager.startAppleLogin()
-        _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.WaitingForUser(url))
+        _uiState.update { it.copy(appleLoginState = AppleLoginState.WaitingForUser(url)) }
 
         appleLoginJob = viewModelScope.launch {
             val result = stremioAuthManager.completeAppleLogin(state)
             result.fold(
                 onSuccess = {
-                    _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Success)
+                    _uiState.update { it.copy(appleLoginState = AppleLoginState.Success) }
                     applyStremioAvatarToProfile()
                     _events.send(IntegrationsEvent.LoginSuccess)
                     syncAddons()
@@ -308,7 +315,7 @@ class IntegrationsViewModel @Inject constructor(
                 },
                 onFailure = { error ->
                     val message = error.message ?: "Apple login failed"
-                    _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Error(message))
+                    _uiState.update { it.copy(appleLoginState = AppleLoginState.Error(message)) }
                 }
             )
         }
@@ -317,19 +324,19 @@ class IntegrationsViewModel @Inject constructor(
     fun resetAppleLoginState() {
         appleLoginJob?.cancel()
         appleLoginJob = null
-        _uiState.value = _uiState.value.copy(appleLoginState = AppleLoginState.Idle)
+        _uiState.update { it.copy(appleLoginState = AppleLoginState.Idle) }
     }
 
     fun exportStremioData() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             stremioAuthManager.getDataExportUrl().fold(
                 onSuccess = { url ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     _events.send(IntegrationsEvent.ExternalUrlReady("Stremio Data Export", url))
                 },
                 onFailure = { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not export Stremio data"))
                 }
             )
@@ -338,14 +345,14 @@ class IntegrationsViewModel @Inject constructor(
 
     fun openStremioCalendar() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             stremioAuthManager.getCalendarUrl().fold(
                 onSuccess = { url ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     _events.send(IntegrationsEvent.ExternalUrlReady("Stremio Calendar", url))
                 },
                 onFailure = { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _uiState.update { it.copy(isLoading = false) }
                     _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not open Stremio calendar"))
                 }
             )
@@ -369,12 +376,12 @@ class IntegrationsViewModel @Inject constructor(
      */
     fun pushAddonsToStremio() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
+            _uiState.update { it.copy(isLoading = true) }
             val urls = addonRepository.getAddons().firstOrNull()?.map { it.transportUrl } ?: emptyList()
             val result = stremioAuthManager.pushAddonCollection(urls)
-            _uiState.value = _uiState.value.copy(isLoading = false)
+            _uiState.update { it.copy(isLoading = false) }
             result.fold(
-                onSuccess = { _events.send(IntegrationsEvent.SyncComplete(urls.size)) },
+                onSuccess = { _events.send(IntegrationsEvent.PushComplete(urls.size)) },
                 onFailure = { error -> _events.send(IntegrationsEvent.LoginError(error.message ?: "Push failed")) }
             )
         }
@@ -387,7 +394,7 @@ class IntegrationsViewModel @Inject constructor(
     fun syncAddons() {
         val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId() ?: return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, pendingAddons = null)
+            _uiState.update { it.copy(isLoading = true) }
             try {
                 profileConfigurationManager.withActiveProfileRuntime(initiatingProfileId) {
                     val entries = stremioAuthManager.fetchAddons().getOrElse { throw it }
@@ -399,10 +406,12 @@ class IntegrationsViewModel @Inject constructor(
                     val current = addonRepository.getAddons().first()
                     val currentByUrl = current.associateBy { normalizeTransportUrl(it.transportUrl) }
 
+                    var installedCount = 0
                     for (transportUrl in remoteUrls) {
                         if (currentByUrl.containsKey(transportUrl)) continue
                         try {
                             addonRepository.installAddon("$transportUrl/manifest.json")
+                            installedCount++
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (e: Exception) {
@@ -444,7 +453,7 @@ class IntegrationsViewModel @Inject constructor(
                     addonRepository.updateAddons(ordered)
                     profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(initiatingProfileId)
                     profileConfigurationManager.resetStartupCapture()
-                    _events.send(IntegrationsEvent.SyncComplete(remoteUrls.size))
+                    _events.send(IntegrationsEvent.SyncComplete(installedCount))
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -456,59 +465,16 @@ class IntegrationsViewModel @Inject constructor(
                 }
                 _events.send(IntegrationsEvent.LoginError(message))
             } finally {
-                _uiState.value = _uiState.value.copy(isLoading = false, pendingAddons = null)
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
-    }
-
-    /**
-     * Imports selected addons to the local database.
-     */
-    fun importAddons(addons: List<StremioAddonItem>) {
-        if (addons.isEmpty()) {
-            _uiState.value = _uiState.value.copy(pendingAddons = null)
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, pendingAddons = null)
-            var successCount = 0
-
-            for (addon in addons) {
-                try {
-                    val manifestUrl = if (addon.transportUrl.endsWith("manifest.json")) {
-                        addon.transportUrl
-                    } else {
-                        "${addon.transportUrl}/manifest.json"
-                    }
-                    addonRepository.installAddon(manifestUrl)
-                    successCount++
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (e: Exception) {
-                    // Continue with next addon
-                }
-            }
-
-            profileConfigurationManager.saveActiveRuntimeState()
-            profileConfigurationManager.resetStartupCapture()
-            _uiState.value = _uiState.value.copy(isLoading = false)
-            _events.send(IntegrationsEvent.SyncComplete(successCount))
-        }
-    }
-
-    /**
-     * Dismisses the import dialog.
-     */
-    fun dismissImportDialog() {
-        _uiState.value = _uiState.value.copy(pendingAddons = null)
     }
 
     /**
      * Disconnects from Stremio.
      */
     fun disconnect() {
-        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: 1
+        val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return
         stremioAuthManager.clearCredentialsForProfile(profileId)
         stremioAuthManager.disconnect()
         viewModelScope.launch {
@@ -524,7 +490,7 @@ class IntegrationsViewModel @Inject constructor(
     fun resetStremioSync() {
         val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return
         if (_uiState.value.isLoading) return
-        _uiState.value = _uiState.value.copy(isLoading = true)
+        _uiState.update { it.copy(isLoading = true) }
         viewModelScope.launch {
             var removed = 0
             try {
@@ -550,7 +516,7 @@ class IntegrationsViewModel @Inject constructor(
                 com.hereliesaz.illumera.crash.AppErrors.w("Integrations", "Stremio sync reset failed", e)
                 _events.send(IntegrationsEvent.LoginError("Couldn't reset Stremio sync: ${e.message ?: "unknown error"}"))
             } finally {
-                _uiState.value = _uiState.value.copy(isLoading = false)
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -573,14 +539,14 @@ class IntegrationsViewModel @Inject constructor(
 
     fun connectDebrid(provider: DebridProvider, apiKey: String) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(debridConnecting = true)
+            _uiState.update { it.copy(debridConnecting = true) }
             when (val result = debridManager.connect(provider, apiKey)) {
                 is DebridResult.Success -> {
-                    _uiState.value = _uiState.value.copy(debridConnecting = false)
+                    _uiState.update { it.copy(debridConnecting = false) }
                     _events.send(IntegrationsEvent.DebridConnected(provider))
                 }
                 is DebridResult.Failure -> {
-                    _uiState.value = _uiState.value.copy(debridConnecting = false)
+                    _uiState.update { it.copy(debridConnecting = false) }
                     _events.send(IntegrationsEvent.DebridError(result.message))
                 }
             }
@@ -597,18 +563,19 @@ class IntegrationsViewModel @Inject constructor(
     fun connectWutch(email: String, password: String, apiKey: String?) {
         if (_uiState.value.wutchBusy) return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(wutchBusy = true)
+            _uiState.update { it.copy(wutchBusy = true) }
             try {
                 val username = if (!apiKey.isNullOrBlank()) wutchManager.signInWithKey(apiKey)
                 else wutchManager.signIn(email, password)
-                wutchManager.importAll()
                 _events.send(IntegrationsEvent.WutchConnected(username))
+                wutchManager.importAll()
+                    .onFailure { _events.send(IntegrationsEvent.WutchError(it.message ?: "wutch.tv sync failed.")) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 _events.send(IntegrationsEvent.WutchError(e.message ?: "Couldn't sign in to wutch.tv."))
             } finally {
-                _uiState.value = _uiState.value.copy(wutchBusy = false)
+                _uiState.update { it.copy(wutchBusy = false) }
             }
         }
     }
@@ -616,10 +583,10 @@ class IntegrationsViewModel @Inject constructor(
     fun syncWutch() {
         if (_uiState.value.wutchBusy) return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(wutchBusy = true)
+            _uiState.update { it.copy(wutchBusy = true) }
             wutchManager.importAll()
                 .onFailure { _events.send(IntegrationsEvent.WutchError(it.message ?: "wutch.tv sync failed.")) }
-            _uiState.value = _uiState.value.copy(wutchBusy = false)
+            _uiState.update { it.copy(wutchBusy = false) }
         }
     }
 

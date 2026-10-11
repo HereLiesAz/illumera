@@ -21,7 +21,17 @@ data class Manifest(
     val behaviorHints: ManifestBehaviorHints? = null,
     val config: List<ManifestConfig>? = null,
     val contactEmail: String? = null
-)
+) {
+    /** Whether [resources] declares [resource] ("stream", "meta"), in string or object form. */
+    fun supportsResource(resource: String): Boolean = resources.orEmpty().any { element ->
+        when {
+            element.isJsonPrimitive -> element.asString == resource
+            element.isJsonObject -> element.asJsonObject.get("name")
+                ?.takeIf { it.isJsonPrimitive }?.asString == resource
+            else -> false
+        }
+    }
+}
 
 data class ManifestBehaviorHints(
     val adult: Boolean? = null,

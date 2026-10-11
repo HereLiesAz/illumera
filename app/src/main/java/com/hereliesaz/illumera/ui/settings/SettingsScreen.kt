@@ -43,7 +43,6 @@ import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.ui.addons.AddonsScreen
 import com.hereliesaz.illumera.ui.theme.ThemeManager
-import com.hereliesaz.illumera.ui.utils.rememberLastFocus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -147,9 +146,12 @@ fun SettingsScreen(
         displayedSection = section
         contentPanelOpen = true
         scope.launch {
-            delay(400) // Wait for animation
-            contentPaneRequester.requestFocus()
-            isTransitioning = false // UNLOCK
+            try {
+                delay(400) // Wait for animation
+                runCatching { contentPaneRequester.requestFocus() }
+            } finally {
+                isTransitioning = false // UNLOCK
+            }
         }
     }
 
@@ -241,10 +243,10 @@ fun SettingsScreen(
                 }
                 SettingsSection.Dashboard -> {
                     DashboardEditorScreen(
-                        onBack = {
-                            onDashboardChanged() // Invalidate home screen cache
-                            itemRequesters[selectedSection]?.requestFocus()
-                        },
+                        // Home cache invalidation happens when the editor leaves composition
+                        // (any exit path), and only if the dashboard was modified.
+                        onBack = { runCatching { itemRequesters[selectedSection]?.requestFocus() } },
+                        onDashboardChanged = onDashboardChanged,
                         isTopNav = isTopNav,
                         currentProfile = currentProfile
                     )
@@ -300,7 +302,6 @@ fun SettingsScreen(
                         .background(MaterialTheme.colorScheme.background)
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
-                        .rememberLastFocus()
                 ) {
                     sidebarContent()
                 }
@@ -337,7 +338,6 @@ fun SettingsScreen(
                             }
                             .focusGroup()
                             .focusRequester(contentPaneRequester)
-                            .rememberLastFocus()
                             .onFocusChanged { if (it.hasFocus) { isContentFocused = true } }
                     ) {
                         Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 24.dp, end = 24.dp)) {
@@ -361,7 +361,6 @@ fun SettingsScreen(
                         .fillMaxHeight()
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
-                        .rememberLastFocus()
                 ) {
                     sidebarContent()
                 }
@@ -378,7 +377,6 @@ fun SettingsScreen(
                         }
                         .focusGroup()
                         .focusRequester(contentPaneRequester)
-                        .rememberLastFocus()
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = true } }
                 ) {
                     // INCREASED PADDING: Gutter 64dp (Sidebar ends at weight 0.28, this starts at 0 without extra padding logic, so we add start padding here)

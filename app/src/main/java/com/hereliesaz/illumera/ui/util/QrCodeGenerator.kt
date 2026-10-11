@@ -26,6 +26,8 @@ suspend fun generateQrCodeBitmap(url: String, size: Int = 512): Bitmap? = withCo
         }
 
         Bitmap.createBitmap(pixels, width, height, Bitmap.Config.RGB_565)
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         null
     }

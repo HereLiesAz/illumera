@@ -151,7 +151,7 @@ fun ProfileScreen(
 @Composable
 fun WelcomeView(onStart: () -> Unit) {
     val requester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(100); requester.requestFocus() }
+    LaunchedEffect(Unit) { delay(100); runCatching { requester.requestFocus() } }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -222,7 +222,7 @@ fun ProfileSelectorView(
         LaunchedEffect(profiles.size, activeProfileForOptions) {
             if (profiles.isNotEmpty() && activeProfileForOptions == null) {
                 delay(100)
-                focusRequesters[0].requestFocus()
+                runCatching { focusRequesters[0].requestFocus() }
             }
         }
         
@@ -1023,7 +1023,7 @@ fun ProfileOptionsDialog(
 
     LaunchedEffect(Unit) {
         delay(100)
-        editRequester.requestFocus()
+        runCatching { editRequester.requestFocus() }
         delay(400)
         areButtonsReady = true
     }
@@ -1116,7 +1116,7 @@ fun DeleteConfirmationDialog(
 
     LaunchedEffect(Unit) {
         delay(50)
-        noRequester.requestFocus()
+        runCatching { noRequester.requestFocus() }
         isReady = true
     }
 
@@ -1176,7 +1176,7 @@ fun WizardNameStep(initialName: String, onNext: (String) -> Unit, onCancel: () -
     var name by remember { mutableStateOf(initialName) }
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { delay(100); focusRequester.requestFocus() }
+    LaunchedEffect(Unit) { delay(100); runCatching { focusRequester.requestFocus() } }
     BackHandler { onCancel() }
 
     Column(
@@ -1221,7 +1221,7 @@ fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         listState.scrollToItem(initialIndex)
         delay(100)
-        focusRequesters[initialIndex].requestFocus()
+        runCatching { focusRequesters[initialIndex].requestFocus() }
     }
     BackHandler { onBack() }
 
@@ -1339,7 +1339,7 @@ fun WizardThemeStep(onFinish: (String) -> Unit, onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         listState.scrollToItem(initialIndex)
         delay(100)
-        focusRequesters[initialIndex].requestFocus()
+        runCatching { focusRequesters[initialIndex].requestFocus() }
     }
     BackHandler { onBack() }
 

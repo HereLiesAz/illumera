@@ -94,7 +94,7 @@ fun AvatarUploadDialog(
     // Start server when dialog opens
     LaunchedEffect(Unit) {
         delay(100)
-        focusRequester.requestFocus()
+        runCatching { focusRequester.requestFocus() }
         
         val info = serverManager.startServer { imageBytes ->
             // Image received from phone - save to file

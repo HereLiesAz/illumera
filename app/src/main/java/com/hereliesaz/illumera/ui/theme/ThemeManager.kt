@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.theme
 
+import androidx.compose.ui.graphics.luminance
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.local.AddonDao
@@ -7,6 +8,7 @@ import com.hereliesaz.illumera.data.model.ThemeEntity
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +28,7 @@ class ThemeManager @Inject constructor(
 
     // Current profile ID for theme resolution
     private val _currentProfileId = MutableStateFlow<Int?>(null)
+    private var profileThemeJob: Job? = null
     
     // All available themes (built-in + custom from database)
     val availableThemes: StateFlow<List<ThemeEntity>> = dao.getAllThemes()
@@ -49,8 +52,9 @@ class ThemeManager @Inject constructor(
 
     private suspend fun seedBuiltInThemes() {
         DefaultThemes.ALL.forEach { theme ->
+            // Upsert so a row seeded by an older build picks up the current code definition.
             val existing = dao.getThemeById(theme.id)
-            if (existing == null) {
+            if (existing != theme) {
                 dao.insertTheme(theme)
             }
         }
@@ -60,17 +64,26 @@ class ThemeManager @Inject constructor(
      * Set the current profile to resolve its theme
      */
     fun resetTheme() {
+        profileThemeJob?.cancel()
+        profileThemeJob = null
         _currentProfileId.value = null
         _currentTheme.value = DefaultThemes.ILLUMERA
     }
 
     fun setCurrentProfile(profileId: Int, themeId: String) {
         _currentProfileId.value = profileId
-        viewModelScope.launch {
-            val theme = dao.getThemeById(themeId) ?: DefaultThemes.getById(themeId)
-            _currentTheme.value = theme
+        // A quick profile switch must not let the previous profile's lookup land last.
+        profileThemeJob?.cancel()
+        profileThemeJob = viewModelScope.launch {
+            _currentTheme.value = resolveTheme(themeId)
         }
     }
+
+    /** Built-in ids resolve to the code definition (DB rows may be stale); others to the DB. */
+    private suspend fun resolveTheme(themeId: String): ThemeEntity =
+        DefaultThemes.ALL.find { it.id == themeId }
+            ?: dao.getThemeById(themeId)
+            ?: DefaultThemes.getById(themeId)
 
     /**
      * Assign a theme to a profile
@@ -81,8 +94,7 @@ class ThemeManager @Inject constructor(
             profileMutationCoordinator.update(profileId) { it.copy(themeId = themeId) }
             // Update current theme if this is the active profile
             if (currentId == profileId) {
-                val theme = dao.getThemeById(themeId) ?: DefaultThemes.getById(themeId)
-                _currentTheme.value = theme
+                _currentTheme.value = resolveTheme(themeId)
             }
         }
     }
@@ -103,12 +115,12 @@ class ThemeManager @Inject constructor(
         val id = "custom_${UUID.randomUUID().toString().take(8)}"
         val theme = ThemeEntity(
             id = id,
-            name = name,
+            name = name.trim().ifBlank { DEFAULT_CUSTOM_THEME_NAME },
             primaryColor = primaryColor,
             backgroundColor = backgroundColor,
             surfaceColor = darkenColor(backgroundColor, 0.1f),
-            textColor = 0xFFEEEEEE,
-            textMutedColor = 0xFF9AA0A6,
+            textColor = if (isLight(backgroundColor)) 0xFF111111 else 0xFFEEEEEE,
+            textMutedColor = if (isLight(backgroundColor)) 0xFF5F6368 else 0xFF9AA0A6,
             errorColor = 0xFFFF5252,
             isBuiltIn = false,
             category = "custom"
@@ -130,6 +142,13 @@ class ThemeManager @Inject constructor(
      */
     fun updateCustomTheme(theme: ThemeEntity) {
         if (theme.isBuiltIn) return // Don't allow modifying built-in themes
+        // Keep the surface derived from the (possibly edited) background, as createCustomTheme does.
+        val theme = theme.copy(
+            name = theme.name.trim().ifBlank { DEFAULT_CUSTOM_THEME_NAME },
+            surfaceColor = darkenColor(theme.backgroundColor, 0.1f),
+            textColor = if (isLight(theme.backgroundColor)) 0xFF111111 else 0xFFEEEEEE,
+            textMutedColor = if (isLight(theme.backgroundColor)) 0xFF5F6368 else 0xFF9AA0A6
+        )
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.insertTheme(theme)
             // Update current theme if it's the one being edited
@@ -154,6 +173,13 @@ class ThemeManager @Inject constructor(
             }
         }
     }
+
+    private companion object {
+        const val DEFAULT_CUSTOM_THEME_NAME = "My Theme"
+    }
+
+    private fun isLight(color: Long): Boolean =
+        androidx.compose.ui.graphics.Color(color.toInt()).luminance() > 0.5f
 
     // Helper to darken a color for surface
     private fun darkenColor(color: Long, factor: Float): Long {

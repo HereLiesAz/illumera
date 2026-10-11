@@ -30,19 +30,26 @@ fun localIdsFor(ids: TraktIds?): List<String> = listOfNotNull(
 )
 
 /**
+ * Number of leading ":"-separated parts that form the title id itself:
+ * 1 for "tt123", 2 for colon-prefixed ids like "tmdb:456" or "kitsu:789".
+ */
+internal fun titleIdPartCount(parts: List<String>): Int =
+    if (parts.size >= 2 && !IMDB_ID.matches(parts[0]) && parts[0].toIntOrNull() == null) 2 else 1
+
+/**
  * Strip stream index suffix from playback ID for Trakt lookup.
- * "tt123:1:3:0" → "tt123:1:3"  (has stream index)
- * "tt123:1:3"   → "tt123:1:3"  (already normalized)
- * "tt123"       → "tt123"      (movie, no change)
+ * "tt123:1:3:0"      → "tt123:1:3"       (has stream index)
+ * "tt123:1:3"        → "tt123:1:3"       (already normalized)
+ * "tmdb:456:1:3"     → "tmdb:456:1:3"    (prefixed episode, no stream index)
+ * "tmdb:456:1:3:0"   → "tmdb:456:1:3"    (prefixed episode with stream index)
+ * "tt123"            → "tt123"           (movie, no change)
  */
 internal fun normalizePlaybackId(id: String): String {
     val parts = id.split(":")
-    // Episode with stream index: 4+ parts where last is numeric (stream idx)
-    // and second-to-last and third-to-last are also numeric (episode, season)
-    if (parts.size >= 4 &&
-        parts.last().toIntOrNull() != null &&
-        parts[parts.size - 2].toIntOrNull() != null &&
-        parts[parts.size - 3].toIntOrNull() != null
+    // Episode with stream index: title id + season + episode + index, all numeric after the id.
+    val streamIndexedSize = titleIdPartCount(parts) + 3
+    if (parts.size == streamIndexedSize &&
+        parts.takeLast(3).all { it.toIntOrNull() != null }
     ) {
         return parts.dropLast(1).joinToString(":")
     }
