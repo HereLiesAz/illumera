@@ -14,8 +14,9 @@ import java.util.UUID
  * this local page and delivered directly to illumera.
  */
 class RemoteTextServer(
+    hostname: String,
     port: Int,
-    private val pairingToken: String,
+    pairingToken: String,
     private val title: String,
     private val prompt: String,
     private val fieldLabel: String,
@@ -23,7 +24,7 @@ class RemoteTextServer(
     private val helperLabel: String? = null,
     private val secret: Boolean = true,
     private val onTextReceived: (String) -> Unit
-) : NanoHTTPD(port) {
+) : PairedLanServer(hostname, port, pairingToken) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val csrfToken = UUID.randomUUID().toString()
@@ -32,11 +33,9 @@ class RemoteTextServer(
         private const val MAX_VALUE_LENGTH = 8192
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        if (session.parms["pin"] != pairingToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
-        }
+    // Address filtering, /ping, pin + expiry checks and no-store headers are
+    // handled by PairedLanServer before this is called.
+    override fun serveAuthorized(session: IHTTPSession): Response {
         return when {
             session.method == Method.GET && session.uri == "/" -> serveForm()
             session.method == Method.POST && session.uri == "/submit" -> handleSubmission(session)
@@ -90,7 +89,7 @@ class RemoteTextServer(
                             <input type="$inputType" name="value" id="value" placeholder="${escapeHtml(fieldLabel)}" autocomplete="off" autocapitalize="off" spellcheck="false" required>
                             <button type="submit" id="send">Send to TV</button>
                         </form>
-                        <p class="note">This transfer goes directly to the TV on your local network. The session is protected by the one-time QR pairing token; use a network you trust.</p>
+                        <p class="note">This transfer goes directly to the TV over your local network and only works from the same network. The connection is not encrypted, so use a network you trust. This link works once and expires after a few minutes.</p>
                     </div>
                     <div class="success" id="success">
                         <h1>Sent to TV</h1>
@@ -127,7 +126,7 @@ class RemoteTextServer(
         return try {
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
-            if (session.parms["csrf_token"] != csrfToken) {
+            if (!PairingSession.constantTimeEquals(session.parms["csrf_token"], csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
             val value = session.parms["value"]?.trim()
@@ -137,6 +136,8 @@ class RemoteTextServer(
             if (value.length > MAX_VALUE_LENGTH) {
                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Value too long")
             }
+            // Single-use: burn the pairing token once an API key has been accepted.
+            pairingSession.invalidate()
             mainHandler.post { onTextReceived(value) }
             newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
         } catch (e: Exception) {

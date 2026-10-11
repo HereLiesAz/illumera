@@ -39,6 +39,7 @@ object HubServerManager {
         for (port in PORT_START..PORT_END) {
             try {
                 val bulkServer = HubBulkUploadServer(
+                    hostname = ip, // bind only to the LAN address shown in the QR
                     port = port,
                     pairingToken = pairingToken,
                     items = items,

@@ -11,10 +11,11 @@ import java.util.UUID
  * with circle cropping capability. Receives the cropped image as Base64 data.
  */
 class AvatarUploadServer(
+    hostname: String,
     port: Int,
-    private val pairingToken: String,
+    pairingToken: String,
     private val onImageReceived: (ByteArray) -> Unit
-) : NanoHTTPD(port) {
+) : PairedLanServer(hostname, port, pairingToken) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val csrfToken = UUID.randomUUID().toString()
@@ -23,13 +24,9 @@ class AvatarUploadServer(
         private const val MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        // Require the pairing token from the QR/link URL on every request — proves
-        // the caller actually saw the URL shown on this TV.
-        if (session.parms["pin"] != pairingToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
-        }
+    // Address filtering, /ping, pin + expiry checks and no-store headers are
+    // handled by PairedLanServer before this is called.
+    override fun serveAuthorized(session: IHTTPSession): Response {
         return when (session.method) {
             Method.GET -> serveUploadForm()
             Method.POST -> handleImageUpload(session)
@@ -475,7 +472,7 @@ class AvatarUploadServer(
             session.parseBody(files)
 
             val token = session.parms["csrf_token"]
-            if (token != csrfToken) {
+            if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 

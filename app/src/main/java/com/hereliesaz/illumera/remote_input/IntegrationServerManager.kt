@@ -44,6 +44,7 @@ class IntegrationServerManager {
         for (port in PORT_START..PORT_END) {
             try {
                 val integrationServer = IntegrationServer(
+                    hostname = ip, // bind only to the LAN address shown in the QR
                     port = port,
                     pairingToken = pairingToken,
                     onCredentialsReceived = onCredentialsReceived
