@@ -739,6 +739,21 @@ class PlaybackSessionViewModel @Inject constructor(
         )
     }
 
+    /**
+     * The player switched to [sourceUrl] on its own (its fallback or the viewer's pick).
+     * Tracks it as the current stream so the ranked fallback continues from there, and
+     * stops a torrent the player has left for a direct source: its later failure would
+     * otherwise advance the ranked list away from the source now playing.
+     */
+    fun onPlayerSourceChanged(sourceUrl: String) {
+        val stream = pendingSourceSelection?.candidateStreams
+            ?.firstOrNull { resolvePlayableSourceUrl(it) == sourceUrl }
+            ?: return
+        if (stream === currentStream) return
+        currentStream = stream
+        if (!sourceUrl.startsWith("magnet:") && torrentProgress != null) stopTorrent()
+    }
+
     fun onFirstFrame() {
         playbackStatus = null
         awaitingFirstFrameId = null
@@ -750,6 +765,8 @@ class PlaybackSessionViewModel @Inject constructor(
      * falls back to the next ranked source.
      */
     fun onSuspectSource(status: PlaybackDurationStatus, profile: ProfileEntity?) {
+        // One fallback at a time; a second signal must not skip a source mid-start.
+        fallbackJob?.cancel()
         fallbackJob = viewModelScope.launch {
             val stream = currentStream
             if (status == PlaybackDurationStatus.DEBRID_DOWNLOADING && stream != null) {
@@ -759,7 +776,9 @@ class PlaybackSessionViewModel @Inject constructor(
                     infoHash = stream.infoHash,
                     fileName = stream.behaviorHints?.filename,
                     maxWaitSeconds = maxWait
-                )
+                ) { percent ->
+                    playbackStatus = "Your debrid service is downloading this · $percent% · waiting up to ${maxWait}s"
+                }
                 if (!readyUrl.isNullOrBlank()) {
                     playbackStatus = "Download finished · opening the video"
                     selectedVideoUrl = readyUrl

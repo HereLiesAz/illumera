@@ -57,6 +57,15 @@ class PlaybackPayloadsTest {
     }
 
     @Test
+    fun `sources ranked after the selection follow it, earlier ones go last`() {
+        val payload = buildSourcePayload(listOf(direct1, direct2, torrent), selectedStream = direct2)
+        assertEquals(
+            listOf(direct2.url, resolvePlayableSourceUrl(torrent), direct1.url),
+            payload.map { it.url }
+        )
+    }
+
+    @Test
     fun `duplicates and unplayable streams are dropped`() {
         val payload = buildSourcePayload(listOf(direct1, direct1.copy(), Stream(name = "none"), direct2), selectedStream = direct2)
         assertEquals(listOf(direct2.url, direct1.url), payload.map { it.url })

@@ -1277,6 +1277,7 @@ class MainActivity : ComponentActivity() {
                                 onFirstFrameRendered = session::onFirstFrame,
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status -> session.onSuspectSource(status, currentProfile) },
+                                onSourceChanged = session::onPlayerSourceChanged,
                                 onBack = { sessionResult -> session.end(sessionResult, currentProfile) }
                             )
                             }
