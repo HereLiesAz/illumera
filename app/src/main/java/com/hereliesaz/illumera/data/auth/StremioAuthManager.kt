@@ -244,6 +244,23 @@ class StremioAuthManager @Inject constructor(
             .apply()
     }
 
+    /** Removes every per-profile credential copy that holds [authKey]. */
+    private fun clearProfileCopiesOfAuthKey(authKey: String) {
+        val prefs = encryptedPrefs ?: return
+        val prefix = "${KEY_AUTH_KEY}_profile_"
+        val profileIds = prefs.all.mapNotNull { (key, value) ->
+            if (key.startsWith(prefix) && value == authKey) key.removePrefix(prefix).toIntOrNull() else null
+        }
+        if (profileIds.isEmpty()) return
+        val editor = prefs.edit()
+        profileIds.forEach { id ->
+            editor.remove(profileScopedAuthKey(id))
+                .remove(profileScopedEmail(id))
+                .remove(profileScopedAvatar(id))
+        }
+        editor.apply()
+    }
+
     /**
      * Logs in to Stremio and stores the credentials securely.
      * Returns the auth key on success.
@@ -314,8 +331,10 @@ class StremioAuthManager @Inject constructor(
             val addons = stremioAuthService.getAddonCollection(authKey)
             Result.success(addons)
         } catch (e: StremioAuthError) {
-            // If auth fails, the token might be expired - clear it
+            // If auth fails, the token might be expired - clear it, including the
+            // per-profile copies so a profile switch can't restore the dead key.
             if (e is StremioAuthError.InvalidCredentials) {
+                clearProfileCopiesOfAuthKey(authKey)
                 disconnect()
             }
             Result.failure(e)

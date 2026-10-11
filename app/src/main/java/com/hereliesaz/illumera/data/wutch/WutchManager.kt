@@ -304,7 +304,9 @@ class WutchManager @Inject constructor(
             if (!parts[0].startsWith("tt")) return null
             return when (parts.size) {
                 1 -> Triple(parts[0], null, null)
-                3 -> {
+                // "tt:S:E" or stream-indexed "tt:S:E:idx".
+                3, 4 -> {
+                    if (parts.size == 4 && parts[3].toIntOrNull() == null) return null
                     val season = parts[1].toIntOrNull() ?: return null
                     val episode = parts[2].toIntOrNull() ?: return null
                     Triple(parts[0], season, episode)

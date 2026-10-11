@@ -171,8 +171,14 @@ class TraktScrobbleManager @Inject constructor(
                 return null
             }
 
-            // Last part might be stream index (numeric) — detect based on count
-            val hasStreamIndex = parts.size >= 4 && parts.last().toIntOrNull() != null
+            // Last part might be stream index (numeric) — detect based on count, accounting
+            // for colon-prefixed show ids ("tmdb:456:1:3" has no stream index).
+            val idParts = titleIdPartCount(parts)
+            if (parts.size < idParts + 2) {
+                Log.w(TAG, "Invalid episode playback ID: $playbackId")
+                return null
+            }
+            val hasStreamIndex = parts.size >= idParts + 3 && parts.last().toIntOrNull() != null
             val dropCount = if (hasStreamIndex) 3 else 2
             val imdbId = parts.dropLast(dropCount).joinToString(":")
             val season = parts[parts.size - if (hasStreamIndex) 3 else 2].toIntOrNull()

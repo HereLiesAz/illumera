@@ -37,6 +37,21 @@ class TraktIdMappingTest {
         assertEquals(listOf("tt1", "tmdb:5"), localIdsFor(TraktIds(imdb = "tt1", tmdb = 5)))
     }
 
+    @Test
+    fun normalizePlaybackIdHandlesImdbIds() {
+        assertEquals("tt1:1:3", normalizePlaybackId("tt1:1:3:0"))
+        assertEquals("tt1:1:3", normalizePlaybackId("tt1:1:3"))
+        assertEquals("tt1", normalizePlaybackId("tt1"))
+    }
+
+    @Test
+    fun normalizePlaybackIdDoesNotTreatPrefixedEpisodeAsStreamIndexed() {
+        assertEquals("tmdb:456:1:3", normalizePlaybackId("tmdb:456:1:3"))
+        assertEquals("kitsu:789:1:3", normalizePlaybackId("kitsu:789:1:3"))
+        assertEquals("tmdb:456:1:3", normalizePlaybackId("tmdb:456:1:3:0"))
+        assertEquals("tmdb:456", normalizePlaybackId("tmdb:456"))
+    }
+
     private fun row(id: String, watched: Boolean, lastWatched: Long, position: Long = 0L) =
         WatchHistoryEntity(
             id = id, title = id, poster = null, position = position, duration = 1_000L,

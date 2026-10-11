@@ -191,6 +191,29 @@ class StremioAuthService @Inject constructor() {
         private const val APPLE_LOGIN_POLL_BASE = "https://www.strem.io/login-apple-get-acc"
     }
 
+    /**
+     * Throws when a Stremio API body carries {"error": ...}. Stremio reports most
+     * failures with HTTP 200, so the status code alone is not enough. An expired or
+     * unknown session maps to [StremioAuthError.InvalidCredentials] so callers can
+     * prompt for sign-in instead of treating it as a transient network error.
+     */
+    private fun throwIfApiError(json: JsonObject?, fallbackMessage: String) {
+        val errorElement = json?.get("error") ?: return
+        if (errorElement.isJsonNull) return
+        val apiError = errorElement.takeIf { it.isJsonObject }?.asJsonObject
+        val message = apiError?.get("message")?.takeIf { it.isJsonPrimitive }?.asString
+            ?: errorElement.takeIf { it.isJsonPrimitive }?.asString
+        val code = apiError?.get("code")?.takeIf { it.isJsonPrimitive }?.asString?.toIntOrNull()
+        val lower = message.orEmpty().lowercase()
+        // Stremio uses code 1 for "Session does not exist" (expired/invalid authKey).
+        if (code == 1 || "session" in lower || "authkey" in lower || "auth key" in lower) {
+            throw StremioAuthError.InvalidCredentials(
+                message?.takeIf { it.isNotBlank() } ?: "Stremio session expired — sign in again"
+            )
+        }
+        throw StremioAuthError.UnknownError(message?.takeIf { it.isNotBlank() } ?: fallbackMessage)
+    }
+
     private fun postJson(url: String, bodyJson: String): JsonObject {
         val request = Request.Builder()
             .url(url)
@@ -374,6 +397,10 @@ class StremioAuthService @Inject constructor() {
             if (!isSuccessful || responseBody == null) {
                 throw StremioAuthError.NetworkError("Failed to fetch addons: $code")
             }
+            throwIfApiError(
+                runCatching { JsonParser.parseString(responseBody).asJsonObject }.getOrNull(),
+                "Could not load Stremio addons"
+            )
             
             val collectionResponse = gson.fromJson(responseBody, StremioAddonCollectionResponse::class.java)
             val result = collectionResponse.result
@@ -526,7 +553,10 @@ class StremioAuthService @Inject constructor() {
      */
     suspend fun logout(authKey: String) = withContext(Dispatchers.IO) {
         try {
-            postJson(LOGOUT_ENDPOINT, gson.toJson(mapOf("type" to "Logout", "authKey" to authKey)))
+            val json = postJson(LOGOUT_ENDPOINT, gson.toJson(mapOf("type" to "Logout", "authKey" to authKey)))
+            throwIfApiError(json, "Stremio logout failed")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             // Best-effort: local state is cleared by the caller either way.
         }
@@ -544,6 +574,7 @@ class StremioAuthService @Inject constructor() {
                 DATASTORE_META_ENDPOINT,
                 gson.toJson(mapOf("authKey" to authKey, "collection" to LIBRARY_COLLECTION))
             )
+            throwIfApiError(json, "Could not read Stremio library")
             val result = json.getAsJsonArray("result") ?: return@withContext emptyMap()
             buildMap {
                 for (entry in result) {
@@ -553,6 +584,8 @@ class StremioAuthService @Inject constructor() {
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (e: StremioAuthError) {
+            throw e
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error", e)
         }
@@ -572,10 +605,13 @@ class StremioAuthService @Inject constructor() {
                     )
                 )
             )
+            throwIfApiError(json, "Could not read Stremio library items")
             val result = json.getAsJsonArray("result") ?: return@withContext emptyList()
             result.mapNotNull { runCatching { gson.fromJson(it, StremioLibraryItem::class.java) }.getOrNull() }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (e: StremioAuthError) {
+            throw e
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error", e)
         }
@@ -585,12 +621,15 @@ class StremioAuthService @Inject constructor() {
     suspend fun datastorePut(authKey: String, changes: List<StremioLibraryItem>) = withContext(Dispatchers.IO) {
         if (changes.isEmpty()) return@withContext
         try {
-            postJson(
+            val json = postJson(
                 DATASTORE_PUT_ENDPOINT,
                 gson.toJson(mapOf("authKey" to authKey, "collection" to LIBRARY_COLLECTION, "changes" to changes))
             )
+            throwIfApiError(json, "Could not update Stremio library")
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (e: StremioAuthError) {
+            throw e
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error", e)
         }
@@ -600,10 +639,15 @@ class StremioAuthService @Inject constructor() {
     /** Pushes the local addon collection up to the account, replacing it there. */
     suspend fun setAddonCollection(authKey: String, addons: List<StremioAddonDescriptor>) = withContext(Dispatchers.IO) {
         try {
-            postJson(
+            val json = postJson(
                 ADDON_COLLECTION_SET_ENDPOINT,
                 gson.toJson(mapOf("type" to "AddonCollectionSet", "authKey" to authKey, "addons" to addons))
             )
+            throwIfApiError(json, "Could not update Stremio addons")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: StremioAuthError) {
+            throw e
         } catch (e: Exception) {
             throw StremioAuthError.NetworkError(e.message ?: "Network error", e)
         }

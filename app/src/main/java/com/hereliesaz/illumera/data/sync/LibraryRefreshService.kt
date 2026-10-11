@@ -71,6 +71,7 @@ class LibraryRefreshService : Service() {
         private const val TAG = "LibraryRefreshService"
         private const val CHANNEL_ID = "library_refresh"
         private const val NOTIFICATION_ID = 42
+        private const val SUMMARY_NOTIFICATION_ID = 43
         private const val ACTION_REFRESH = "com.hereliesaz.illumera.action.REFRESH_LIBRARY"
         private const val ACTION_CANCEL = "com.hereliesaz.illumera.action.CANCEL_LIBRARY_REFRESH"
 
@@ -113,7 +114,7 @@ class LibraryRefreshService : Service() {
         if (refreshJob?.isActive != true) {
             val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId()
             if (initiatingProfileId == null) {
-                updateNotification("No active profile to refresh")
+                postSummaryNotification("No active profile to refresh")
                 stopForegroundCompat()
                 stopSelf()
                 return START_NOT_STICKY
@@ -124,13 +125,13 @@ class LibraryRefreshService : Service() {
                     profileConfigurationManager.withActiveProfileRuntime(initiatingProfileId) {
                         refreshConnectedData(initiatingProfileId)
                     }
-                    updateNotification("Library refresh complete")
+                    postSummaryNotification("Library refresh complete")
                 } catch (e: CancellationException) {
                     Log.i(TAG, "Library refresh cancelled")
                     throw e
                 } catch (e: Exception) {
                     com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Library refresh failed", e)
-                    updateNotification("Library refresh finished with errors")
+                    postSummaryNotification("Library refresh finished with errors")
                 } finally {
                     stopForegroundCompat()
                     stopSelf()
@@ -147,19 +148,12 @@ class LibraryRefreshService : Service() {
         // Stremio Continue Watching is a true two-way network sync.
         if (stremioAuthManager.getStoredAuthKey() != null) {
             updateNotification("Syncing Stremio library…")
-            stremioLibrarySyncManager.syncLibrary(force = true)
+            // This runs inside withActiveProfileRuntime; use the variant that does not
+            // re-acquire the non-reentrant runtime mutex.
+            stremioLibrarySyncManager.syncLibraryWithinActiveRuntime(profileId, force = true)
                 .onFailure {
                     failures += "Stremio library: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Stremio library sync failed", it)
-                }
-
-            // Refresh the account's addon collection from Stremio so the
-            // connected-library state is checked as part of this explicit sync.
-            updateNotification("Refreshing Stremio addon data…")
-            stremioAuthManager.fetchAddons()
-                .onFailure {
-                    failures += "Stremio addons: ${it.message ?: "refresh failed"}"
-                    Log.w(TAG, "Stremio addon refresh failed", it)
                 }
         }
 
@@ -217,14 +211,14 @@ class LibraryRefreshService : Service() {
                 }
 
             updateNotification("Syncing playback progress…")
-            refreshResult { traktSyncManager.syncPlaybackProgress() }
+            refreshResult { check(traktSyncManager.syncPlaybackProgress()) { "sync failed" } }
                 .onFailure {
                     failures += "Trakt playback: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Trakt playback sync failed", it)
                 }
 
             updateNotification("Syncing watched history…")
-            refreshResult { traktSyncManager.syncSeriesNextUp() }
+            refreshResult { check(traktSyncManager.syncSeriesNextUp()) { "sync failed" } }
                 .onFailure {
                     failures += "Trakt history: ${it.message ?: "sync failed"}"
                     Log.w(TAG, "Trakt history sync failed", it)
@@ -268,6 +262,21 @@ class LibraryRefreshService : Service() {
     private fun updateNotification(text: String) {
         getSystemService(NotificationManager::class.java)
             ?.notify(NOTIFICATION_ID, buildNotification(text))
+    }
+
+    /**
+     * Posts the final result on its own id: the foreground notification is removed by
+     * stopForeground(STOP_FOREGROUND_REMOVE), which would otherwise hide the summary.
+     */
+    private fun postSummaryNotification(text: String) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("Illumera library refresh")
+            .setContentText(text)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            ?.notify(SUMMARY_NOTIFICATION_ID, notification)
     }
 
     private fun buildNotification(text: String): Notification {
