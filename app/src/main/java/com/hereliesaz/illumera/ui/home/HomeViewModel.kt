@@ -80,8 +80,10 @@ class HomeViewModel @Inject constructor(
                 observedProfileId = activeProfileId
                 loadJob?.cancel()
                 loadJob = null
+                cancelProfileScopedJobs()
                 pendingRowItems.clear()
                 allFetchedRowIds.clear()
+                rowFetchOffsets.clear()
                 loadingMoreRows.clear()
                 metadataRequestsInFlight.clear()
                 tmdbEnrichmentInFlight.clear()
@@ -138,8 +140,13 @@ class HomeViewModel @Inject constructor(
 
     // Track which rows are currently loading more items to prevent duplicate fetches
     private val loadingMoreRows = mutableSetOf<String>()
-    private val metadataFallbackCache = mutableMapOf<String, MetadataFallback?>()
-    private val metadataRequestsInFlight = mutableSetOf<String>()
+    // Mutated from Dispatchers.IO and Main; must be thread-safe. Only successful
+    // lookups are cached (ConcurrentHashMap cannot hold null values).
+    private val metadataFallbackCache = java.util.concurrent.ConcurrentHashMap<String, MetadataFallback>()
+    // IO jobs (metadata fallback / TMDB enrichment) that patch profile-scoped state;
+    // cancelled on profile switch so they cannot patch the new profile's state.
+    private val profileScopedJobs = java.util.concurrent.ConcurrentHashMap.newKeySet<kotlinx.coroutines.Job>()
+    private val metadataRequestsInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private val hubInitialLoadCount = 100
     private val initialDashboardBatchSize = 6
     private val initialDashboardTimeoutMs = 2_500L
@@ -150,6 +157,9 @@ class HomeViewModel @Inject constructor(
     }
     private val pendingRowItems = mutableMapOf<String, MutableList<MetaItem>>()
     private val allFetchedRowIds = mutableMapOf<String, MutableSet<String>>()
+    // Raw number of items fetched per row (including duplicates) — used as the catalog skip
+    // so repeated items across pages don't cause the same page to be refetched forever.
+    private val rowFetchOffsets = mutableMapOf<String, Int>()
 
     private data class MetadataFallback(
         val poster: String?,
@@ -196,8 +206,9 @@ class HomeViewModel @Inject constructor(
                 }
 
                 // Skip = total fetched count for this row
-                val nextSkip = fetchedIds.size
+                val nextSkip = rowFetchOffsets.getOrPut(configId) { fetchedIds.size }
                 val newItems = repository.fetchNextCatalogPage(row.catalogUrl, nextSkip)
+                rowFetchOffsets[configId] = nextSkip + newItems.size
 
                 // Deduplicate against all previously fetched items
                 val newUniqueItems = newItems.filter { item ->
@@ -251,6 +262,7 @@ class HomeViewModel @Inject constructor(
     fun invalidate() {
         pendingRowItems.clear()
         allFetchedRowIds.clear()
+        rowFetchOffsets.clear()
         _state.value = _state.value.copy(
             loadedScreen = null,
             loadedProfileId = null
@@ -305,17 +317,15 @@ class HomeViewModel @Inject constructor(
         val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         val key = "$ownerProfileId:${item.type}:${item.id}"
 
-        if (metadataFallbackCache.containsKey(key)) {
-            val cachedFallback = metadataFallbackCache[key]
-            if (cachedFallback != null) {
-                applyMetadataFallbackToState(type = item.type, id = item.id, fallback = cachedFallback, sourceItem = item)
-            }
+        val cachedFallback = metadataFallbackCache[key]
+        if (cachedFallback != null) {
+            applyMetadataFallbackToState(type = item.type, id = item.id, fallback = cachedFallback, sourceItem = item)
             return
         }
 
         if (!metadataRequestsInFlight.add(key)) return
 
-        viewModelScope.launch(Dispatchers.IO) {
+        trackProfileScopedJob(viewModelScope.launch(Dispatchers.IO) {
             try {
                 profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
                     val meta = repository.resolveMetaDetails(item.type, item.id)
@@ -331,7 +341,9 @@ class HomeViewModel @Inject constructor(
                         genres = meta.genres
                     )
                     metadataFallbackCache[key] = fallback
-                    applyMetadataFallbackToState(type = item.type, id = item.id, fallback = fallback, sourceItem = item)
+                    if (profileConfigurationManager.activeProfileId.value == ownerProfileId) {
+                        applyMetadataFallbackToState(type = item.type, id = item.id, fallback = fallback, sourceItem = item)
+                    }
 
                     // Persist resolved images to the same profile runtime that supplied
                     // the addon metadata. A profile switch waits on this runtime lock.
@@ -363,11 +375,21 @@ class HomeViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                metadataFallbackCache[key] = null
+                // Don't cache failures: a transient error must not suppress retries forever.
             } finally {
                 metadataRequestsInFlight.remove(key)
             }
-        }
+        })
+    }
+
+    private fun trackProfileScopedJob(job: kotlinx.coroutines.Job) {
+        profileScopedJobs.add(job)
+        job.invokeOnCompletion { profileScopedJobs.remove(job) }
+    }
+
+    private fun cancelProfileScopedJobs() {
+        profileScopedJobs.forEach { it.cancel() }
+        profileScopedJobs.clear()
     }
 
     private fun applyFallbackToMeta(meta: MetaItem, fallback: MetadataFallback): MetaItem {
@@ -469,7 +491,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private val tmdbEnrichmentInFlight = mutableSetOf<String>()
+    private val tmdbEnrichmentInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private var tmdbProfileCache: com.hereliesaz.illumera.data.model.ProfileEntity? = null
 
     /**
@@ -485,8 +507,9 @@ class HomeViewModel @Inject constructor(
         if (!tmdbEnrichmentInFlight.add(key)) return
 
         val language = profile.tmdbLanguage.ifBlank { null } ?: "en"
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value
 
-        viewModelScope.launch(Dispatchers.IO) {
+        trackProfileScopedJob(viewModelScope.launch(Dispatchers.IO) {
             try {
                 val mediaType = tmdbService.normalizeMediaType(item.type)
                 val tmdbId = tmdbService.ensureTmdbId(item.id, mediaType)
@@ -512,6 +535,7 @@ class HomeViewModel @Inject constructor(
                     genres = enrichment.genres.ifEmpty { null }
                 )
 
+                if (profileConfigurationManager.activeProfileId.value != ownerProfileId) return@launch
                 applyTmdbEnrichmentToState(item.type, item.id, fallback, item)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -521,7 +545,7 @@ class HomeViewModel @Inject constructor(
             } finally {
                 tmdbEnrichmentInFlight.remove(key)
             }
-        }
+        })
     }
 
     private fun markTmdbEnriched(type: String, id: String) {
@@ -622,6 +646,7 @@ class HomeViewModel @Inject constructor(
             // Clear 'rows' immediately so the UI doesn't show "Ghost Data" from the previous tab
             pendingRowItems.clear()
             allFetchedRowIds.clear()
+            rowFetchOffsets.clear()
             _state.value = _state.value.copy(
                 isLoading = true,
                 mixedRows = emptyList(),
@@ -664,7 +689,7 @@ class HomeViewModel @Inject constructor(
                     // Extract canonical series ID from episode IDs (tt123:1:3 → tt123)
                     val canonicalIds = ids.map { id ->
                         val parts = id.split(":")
-                        if (parts.size >= 3) parts.first() else id
+                        if (parts.size >= 3) parts.dropLast(2).joinToString(":") else id
                     }.toSet()
                     _state.update { it.copy(watchedIds = canonicalIds) }
                 }

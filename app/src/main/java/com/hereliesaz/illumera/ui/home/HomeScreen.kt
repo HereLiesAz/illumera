@@ -101,7 +101,7 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
-    val displayState = remember(tab, state.rows, state.mixedRows, state.heroRow, state.watchedIds) {
+    val displayState = remember(tab, state) {
         if (tab != DashboardTab.HOME) {
             state
         } else {
@@ -678,7 +678,7 @@ fun CinematicLayout(
                                     // Use snapshotFlow to avoid reading layoutInfo during composition
                                     val itemId = item.id
                                     val itemSize = item.items.size
-                                    LaunchedEffect(rowListState, itemId) {
+                                    LaunchedEffect(rowListState, itemId, itemSize) {
                                         snapshotFlow {
                                             rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                                         }.collect { lastVisibleIndex ->
@@ -1214,7 +1214,7 @@ fun SimpleLayout(
                         // Use snapshotFlow to avoid reading layoutInfo during composition
                         val itemId = item.id
                         val itemSize = item.items.size
-                        LaunchedEffect(rowListState, itemId) {
+                        LaunchedEffect(rowListState, itemId, itemSize) {
                             snapshotFlow {
                                 rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
                             }.collect { lastVisibleIndex ->
