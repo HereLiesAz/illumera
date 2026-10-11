@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.RectangleShape
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
+import com.hereliesaz.illumera.ui.addons.VoidButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -104,16 +105,31 @@ fun StudioDetailScreen(
                 )
             }
             is StudioDetailState.Error -> {
-                Text(
-                    text = state.message,
-                    color = textColor.copy(alpha = 0.7f),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.align(Alignment.Center)
-                )
+                ) {
+                    Text(
+                        text = state.message,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    VoidButton(
+                        text = "Retry",
+                        onClick = { viewModel.retry() },
+                        modifier = Modifier.width(120.dp),
+                        isPrimary = true
+                    )
+                }
             }
             is StudioDetailState.Success -> {
                 val initialFocusRequester = remember { FocusRequester() }
 
-                RestoreFocusOnResume(memory = focusMemory, fallback = initialFocusRequester)
+                // With no rails nothing carries initialFocusRequester, so don't hand it out as the fallback.
+                RestoreFocusOnResume(
+                    memory = focusMemory,
+                    fallback = initialFocusRequester.takeIf { state.rails.isNotEmpty() }
+                )
 
                 StudioContent(
                     entity = state.entity,
@@ -169,6 +185,14 @@ private fun StudioContent(
 
         // Scrollable rails section (60%)
         Box(modifier = Modifier.weight(0.60f)) {
+            if (rails.isEmpty()) {
+                Text(
+                    text = "No titles found",
+                    color = textColor.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+                return@Box
+            }
             CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
                 LazyColumn(
                     state = rememberLazyListState(),

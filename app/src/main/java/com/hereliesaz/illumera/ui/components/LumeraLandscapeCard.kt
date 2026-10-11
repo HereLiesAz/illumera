@@ -224,7 +224,7 @@ fun LumeraLandscapeCard(
                     ) {
                         androidx.compose.material3.Text(
                             "+1",
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold
                         )

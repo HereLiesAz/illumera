@@ -1,8 +1,5 @@
 package com.hereliesaz.illumera.ui.util
 
-import android.app.UiModeManager
-import android.content.Context
-import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -17,8 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun rememberIsTvDevice(): Boolean {
     val context = LocalContext.current
-    return remember(context) {
-        val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
-        uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
-    }
+    // Same test as detectDeviceFormFactor (leanback/television features or TV ui mode),
+    // so the two never disagree about whether this is a TV.
+    return remember(context) { detectDeviceFormFactor(context) == DeviceFormFactor.TV }
 }

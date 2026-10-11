@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.remote_input
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -24,6 +26,8 @@ class HubBulkUploadServer(
     // Track images deleted during this session
     private val deletedIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private val csrfToken = UUID.randomUUID().toString()
+    // Callbacks are delivered on the main thread, matching the other upload servers.
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -507,10 +511,10 @@ class HubBulkUploadServer(
 
             val base64Image = session.parms["image"]
             if (!base64Image.isNullOrBlank()) {
-                // Reject on the encoded length before the (much larger) decode allocation —
-                // base64 is ~4/3 the size of the decoded bytes, so this bounds the second
-                // full-size copy the request would otherwise force onto the heap.
-                if (base64Image.length > MAX_IMAGE_SIZE * 2) {
+                // Reject on the encoded length before the decode allocation. Base64 is
+                // ~4/3 the size of the decoded bytes; allow 4/3 plus slack for padding
+                // and line breaks so a valid MAX_IMAGE_SIZE image still passes.
+                if (base64Image.length > MAX_IMAGE_SIZE / 3 * 4 + 1024) {
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Image too large (max 5 MB)")
                 }
                 val imageBytes = Base64.decode(base64Image, Base64.DEFAULT)
@@ -526,7 +530,7 @@ class HubBulkUploadServer(
                     uploadedPreviews[id] = base64Image
                 }
                 deletedIds.remove(id)
-                onImageReceived(id, imageBytes)
+                mainHandler.post { onImageReceived(id, imageBytes) }
                 return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
             }
 
@@ -568,7 +572,7 @@ class HubBulkUploadServer(
             if (items.none { it.configUniqueId == id }) return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unknown item id")
             uploadedPreviews.remove(id)
             deletedIds.add(id)
-            onImageDeleted?.invoke(id)
+            onImageDeleted?.let { cb -> mainHandler.post { cb(id) } }
             return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "OK")
         } catch (e: Exception) {
             com.hereliesaz.illumera.crash.AppErrors.w("HubBulkUploadServer", "Error processing delete", e)
@@ -583,6 +587,14 @@ class HubBulkUploadServer(
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "No preview")
         val bytes = Base64.decode(base64, Base64.DEFAULT)
         val stream = java.io.ByteArrayInputStream(bytes)
-        return newFixedLengthResponse(Response.Status.OK, "image/jpeg", stream, bytes.size.toLong())
+        return newFixedLengthResponse(Response.Status.OK, imageMimeType(bytes), stream, bytes.size.toLong())
+    }
+
+    private fun imageMimeType(bytes: ByteArray): String = when {
+        bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() -> "image/png"
+        bytes.size >= 12 && bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+            bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() -> "image/webp"
+        else -> "image/jpeg"
     }
 }

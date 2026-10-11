@@ -43,7 +43,6 @@ import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.ui.addons.AddonsScreen
 import com.hereliesaz.illumera.ui.theme.ThemeManager
-import com.hereliesaz.illumera.ui.utils.rememberLastFocus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -303,7 +302,6 @@ fun SettingsScreen(
                         .background(MaterialTheme.colorScheme.background)
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
-                        .rememberLastFocus()
                 ) {
                     sidebarContent()
                 }
@@ -340,7 +338,6 @@ fun SettingsScreen(
                             }
                             .focusGroup()
                             .focusRequester(contentPaneRequester)
-                            .rememberLastFocus()
                             .onFocusChanged { if (it.hasFocus) { isContentFocused = true } }
                     ) {
                         Column(modifier = Modifier.fillMaxSize().padding(top = contentTopPadding, start = 24.dp, end = 24.dp)) {
@@ -364,7 +361,6 @@ fun SettingsScreen(
                         .fillMaxHeight()
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
-                        .rememberLastFocus()
                 ) {
                     sidebarContent()
                 }
@@ -381,7 +377,6 @@ fun SettingsScreen(
                         }
                         .focusGroup()
                         .focusRequester(contentPaneRequester)
-                        .rememberLastFocus()
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = true } }
                 ) {
                     // INCREASED PADDING: Gutter 64dp (Sidebar ends at weight 0.28, this starts at 0 without extra padding logic, so we add start padding here)

@@ -459,6 +459,9 @@ fun MediaCardActionMenu(
                     contentDescription = null
                 )
             },
+            // The toggle direction comes from the loaded state; until it's loaded a tap
+            // would always "mark watched", even on an already-watched title.
+            enabled = state != null,
             onClick = {
                 val wasWatched = state?.watched == true
                 viewModel.toggleWatched(target, wasWatched)
@@ -502,7 +505,7 @@ fun MediaCardActionMenu(
                     contentDescription = null
                 )
             },
-            enabled = state?.traktAvailable != false,
+            enabled = state?.traktAvailable == true, // also false until state has loaded
             onClick = {
                 viewModel.toggleTraktLibrary(target, inTraktLibrary)
                 state = state?.copy(inTraktCollection = !inTraktLibrary)

@@ -13,6 +13,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -63,30 +64,42 @@ class StudioDetailViewModel @AssistedInject constructor(
         if (!inFlightLoads.add(loadKey)) return
 
         viewModelScope.launch {
-            val nextPage = rail.currentPage + 1
-            val sortBy = when (railType) {
-                "top_rated" -> if (mediaType == "movie") "vote_average.desc" else "vote_average.desc"
-                "recent" -> if (mediaType == "movie") "primary_release_date.desc" else "first_air_date.desc"
-                else -> "popularity.desc"
+            try {
+                val nextPage = rail.currentPage + 1
+                val sortBy = when (railType) {
+                    "top_rated" -> "vote_average.desc"
+                    "recent" -> if (mediaType == "movie") "primary_release_date.desc" else "first_air_date.desc"
+                    else -> "popularity.desc"
+                }
+                val (items, totalPages) = tmdbMetadataService.fetchDiscover(
+                    entityId = entityId, kind = entityKind, mediaType = mediaType,
+                    sortBy = sortBy, page = nextPage,
+                    voteCountGte = if (railType == "top_rated") 200 else null,
+                    dateLte = if (railType == "recent") LocalDate.now().toString() else null
+                )
+                // fetchDiscover reports failures as an empty page (totalPages = 1), which is
+                // indistinguishable from a real end. Leave the rail untouched on an empty
+                // result so a transient failure doesn't permanently end it; the next
+                // scroll-to-end retries the same page.
+                if (items.isEmpty()) return@launch
+
+                // Merge into the latest state (not the snapshot taken before the fetch) so
+                // concurrent loads of other rails aren't overwritten.
+                _state.update { current ->
+                    if (current !is StudioDetailState.Success) return@update current
+                    current.copy(rails = current.rails.map { r ->
+                        if (r.mediaType != mediaType || r.railType != railType) return@map r
+                        val existingIds = r.items.map { it.tmdbId }.toSet()
+                        r.copy(
+                            items = r.items + items.filter { it.tmdbId !in existingIds },
+                            currentPage = nextPage,
+                            hasMore = nextPage < totalPages
+                        )
+                    })
+                }
+            } finally {
+                inFlightLoads.remove(loadKey)
             }
-            val (items, totalPages) = tmdbMetadataService.fetchDiscover(
-                entityId = entityId, kind = entityKind, mediaType = mediaType,
-                sortBy = sortBy, page = nextPage,
-                voteCountGte = if (railType == "top_rated") 200 else null,
-                dateLte = if (railType == "recent") LocalDate.now().toString() else null
-            )
-            val existingIds = rail.items.map { it.tmdbId }.toSet()
-            val newItems = items.filter { it.tmdbId !in existingIds }
-            val updatedRail = rail.copy(
-                items = rail.items + newItems,
-                currentPage = nextPage,
-                hasMore = nextPage < totalPages
-            )
-            val updatedRails = currentState.rails.map {
-                if (it.mediaType == mediaType && it.railType == railType) updatedRail else it
-            }
-            _state.value = currentState.copy(rails = updatedRails)
-            inFlightLoads.remove(loadKey)
         }
     }
 

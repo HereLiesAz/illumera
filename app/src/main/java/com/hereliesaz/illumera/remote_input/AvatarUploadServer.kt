@@ -443,7 +443,14 @@ class AvatarUploadServer(
                             formData.append('image', base64Data);
                             formData.append('csrf_token', '${csrfToken}');
 
-                            await fetch('/' + window.location.search, { method: 'POST', body: formData });
+                            const res = await fetch('/' + window.location.search, { method: 'POST', body: formData });
+                            if (!res.ok) {
+                                const msg = (await res.text().catch(() => '')) || ('HTTP ' + res.status);
+                                doneBtn.disabled = false;
+                                doneBtn.textContent = 'Done';
+                                alert('Upload failed: ' + msg);
+                                return;
+                            }
                             
                             cropStep.style.display = 'none';
                             successStep.style.display = 'block';
@@ -474,11 +481,14 @@ class AvatarUploadServer(
 
             val base64Image = session.parms["image"]
 
-            if (!base64Image.isNullOrBlank()) {
-                // Reject on the encoded length before the (much larger) decode allocation —
-                // base64 is ~4/3 the size of the decoded bytes, so this bounds the second
-                // full-size copy the request would otherwise force onto the heap.
-                if (base64Image.length > MAX_IMAGE_SIZE * 2) {
+            if (base64Image.isNullOrBlank()) {
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No image received")
+            }
+            run {
+                // Reject on the encoded length before the decode allocation. Base64 is
+                // ~4/3 the size of the decoded bytes; allow 4/3 plus slack for padding
+                // and line breaks so a valid MAX_IMAGE_SIZE image still passes.
+                if (base64Image.length > MAX_IMAGE_SIZE / 3 * 4 + 1024) {
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Image too large (max 5 MB)")
                 }
                 val imageBytes = Base64.decode(base64Image, Base64.DEFAULT)

@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -25,6 +28,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.studio.PosterCard
 
 /** A grid of titles like [title]; a card opens its Details page. */
@@ -61,11 +65,29 @@ fun MoreLikeThisScreen(
                     color = accent,
                     modifier = Modifier.align(Alignment.Center)
                 )
-                is MoreLikeThisState.Empty -> Text(
-                    text = current.message,
-                    color = textColor.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.Center)
-                )
+                is MoreLikeThisState.Empty -> {
+                    // fetchRecommendations reports failures as an empty list, so "empty" may
+                    // be a network error: always offer Retry, focused for D-pad users.
+                    val retryFocus = remember { FocusRequester() }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.align(Alignment.Center)
+                    ) {
+                        Text(
+                            text = current.message,
+                            color = textColor.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        VoidButton(
+                            text = "Retry",
+                            onClick = { viewModel.retry() },
+                            modifier = Modifier.width(120.dp),
+                            focusRequester = retryFocus,
+                            isPrimary = true
+                        )
+                    }
+                    LaunchedEffect(current) { runCatching { retryFocus.requestFocus() } }
+                }
                 is MoreLikeThisState.Ready -> {
                     val firstCard = remember { FocusRequester() }
                     LazyVerticalGrid(

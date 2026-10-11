@@ -8,6 +8,13 @@ import java.util.UUID
 class RemoteTextServerManager {
     private var server: RemoteTextServer? = null
 
+    // Guards [server] and [generation]. startServer's bind loop runs on IO
+    // without holding the lock; a stopServer() (or newer startServer()) that
+    // lands meanwhile bumps [generation], so the late-bound server is stopped
+    // immediately instead of leaking.
+    private val lock = Any()
+    private var generation = 0L
+
     companion object {
         private const val PORT_START = 8080
         private const val PORT_END = 8090
@@ -22,6 +29,10 @@ class RemoteTextServerManager {
         secret: Boolean = true,
         onTextReceived: (String) -> Unit
     ): ServerInfo? = withContext(Dispatchers.IO) {
+        val myGeneration = synchronized(lock) {
+            stopLocked()
+            ++generation
+        }
         val ip = NetworkUtils.getLocalIpAddress() ?: return@withContext null
         val pairingToken = UUID.randomUUID().toString()
 
@@ -39,7 +50,17 @@ class RemoteTextServerManager {
                     onTextReceived = onTextReceived
                 )
                 candidate.start()
-                server = candidate
+                val accepted = synchronized(lock) {
+                    if (generation == myGeneration) {
+                        server = candidate
+                        true
+                    } else false
+                }
+                if (!accepted) {
+                    // Stopped (or superseded) while we were binding.
+                    candidate.stop()
+                    return@withContext null
+                }
                 return@withContext ServerInfo(ip, port, pairingToken)
             } catch (_: BindException) {
                 continue
@@ -51,6 +72,13 @@ class RemoteTextServerManager {
     }
 
     fun stopServer() {
+        synchronized(lock) {
+            generation++
+            stopLocked()
+        }
+    }
+
+    private fun stopLocked() {
         server?.stop()
         server = null
     }

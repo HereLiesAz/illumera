@@ -187,7 +187,7 @@ private fun CastDetailContent(
         // Filmography
         val allCredits = remember(person) {
             (person.movieCredits + person.tvCredits)
-                .distinctBy { it.tmdbId }
+                .distinctBy { "${it.type}:${it.tmdbId}" } // movie and TV ids are separate namespaces
                 .sortedByDescending { it.releaseInfo }
         }
 

@@ -12,7 +12,11 @@ import android.widget.Toast
  */
 fun Context.openExternalLink(url: String) {
     val uri = url.toUri()
-    if (uri.scheme !in setOf("http", "https")) return
+    if (uri.scheme?.lowercase() !in setOf("http", "https")) {
+        android.util.Log.w("ExternalLink", "Refusing non-http(s) link: $url")
+        Toast.makeText(this, "Can't open this link: $url", Toast.LENGTH_LONG).show()
+        return
+    }
     try {
         startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
