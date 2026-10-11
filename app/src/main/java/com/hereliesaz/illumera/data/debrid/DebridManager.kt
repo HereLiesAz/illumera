@@ -180,7 +180,8 @@ class DebridManager @Inject constructor(
     suspend fun awaitPlayableSource(
         infoHash: String?,
         fileName: String?,
-        maxWaitSeconds: Int
+        maxWaitSeconds: Int,
+        onProgress: (percent: Int) -> Unit = {}
     ): String? {
         if (maxWaitSeconds <= 0) return null
         val provider = _connectedProvider.value ?: return null
@@ -223,6 +224,7 @@ class DebridManager @Inject constructor(
                 }
 
                 if (progress != null) {
+                    onProgress(progress)
                     val now = System.currentTimeMillis()
                     val old = previousProgress
                     if (old != null) {

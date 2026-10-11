@@ -84,6 +84,7 @@ fun PlayerScreen(
     onFirstFrameRendered: () -> Unit = {},
     autoFallbackEnabled: Boolean = false,
     onSuspectSource: ((PlaybackDurationStatus) -> Unit)? = null,
+    onSourceChanged: ((String) -> Unit)? = null,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -122,7 +123,9 @@ fun PlayerScreen(
     var handledTorrentFailureAttemptId by remember(movieId) { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, autoFallbackEnabled) {
-        if (!autoFallbackEnabled || suspectHandledForUrl || !uiState.isReady || uiState.durationMs <= 0L) return@LaunchedEffect
+        // A blank URL is a torrent still resolving; the player still holds the previous
+        // source's duration, which already got its verdict.
+        if (!autoFallbackEnabled || suspectHandledForUrl || videoUrl.isBlank() || !uiState.isReady || uiState.durationMs <= 0L) return@LaunchedEffect
         if (movieId.startsWith("trailer_") || movieId.startsWith("debrid_")) return@LaunchedEffect
         val status = viewModel.classifyDuration(mediaType, uiState.durationMs)
         if (status != PlaybackDurationStatus.NORMAL) {
@@ -130,6 +133,15 @@ fun PlayerScreen(
             playbackController.pause()
             onSuspectSource?.invoke(status)
         }
+    }
+
+    // The player's own fallback switches sources without the session; report each switch
+    // so the session's ranked fallback continues from the source actually playing.
+    // Keyed on the id alone: a new source list arrives before the player opens its source.
+    LaunchedEffect(uiState.currentSourceId) {
+        if (videoUrl.isBlank()) return@LaunchedEffect
+        val url = sources.firstOrNull { it.id == uiState.currentSourceId }?.url ?: return@LaunchedEffect
+        onSourceChanged?.invoke(url)
     }
 
     LaunchedEffect(uiState.hasRenderedFirstFrame) {

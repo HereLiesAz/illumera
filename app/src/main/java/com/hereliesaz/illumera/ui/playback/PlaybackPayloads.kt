@@ -181,10 +181,16 @@ internal fun buildSourcePayload(
     selectedStream: Stream
 ): List<PlayerSourceOption> {
     val selectedUrl = resolvePlayableSourceUrl(selectedStream)
-    return streams
+    val options = streams
         .mapNotNull(::buildPlayerSourceOption)
         .distinctBy { it.id }
-        .sortedByDescending { option -> option.url == selectedUrl }
+    // Rotated, not moved to front: the selected source leads (the player treats the first
+    // option as current for a resolved torrent), then the sources ranked after it, then the
+    // ones before it. The player's own fallback walks forward from the selection, so moving
+    // it to the front sent that fallback back to sources already tried.
+    val selectedIndex = options.indexOfFirst { it.url == selectedUrl }
+    return if (selectedIndex <= 0) options
+    else options.drop(selectedIndex) + options.take(selectedIndex)
 }
 
 internal fun canonicalSubtitleUrlForId(rawUrl: String): String {

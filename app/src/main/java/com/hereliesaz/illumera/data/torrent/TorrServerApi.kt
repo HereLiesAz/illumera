@@ -15,6 +15,11 @@ import java.util.concurrent.TimeUnit
 
 class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
 
+    private companion object {
+        // TorrServer's own default.
+        const val DHT_CONNECTION_LIMIT = 500
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -64,7 +69,10 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 currentSettings.addProperty("ReaderReadAHead", 95)
                 currentSettings.addProperty("PreloadCache", preloadPercent)
                 currentSettings.addProperty("ConnectionsLimit", boundedConnections)
-                currentSettings.addProperty("DhtConnectionLimit", boundedConnections)
+                // DHT is peer discovery, not peer connections. Capping it at the connection
+                // limit (20-25) starved the swarm to a couple of seeders; TorrServer persists
+                // settings, so restore its default rather than merely stop setting it.
+                currentSettings.addProperty("DhtConnectionLimit", DHT_CONNECTION_LIMIT)
 
                 val body = JsonObject().apply {
                     addProperty("action", "set")
