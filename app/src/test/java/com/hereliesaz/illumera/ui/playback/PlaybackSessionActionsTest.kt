@@ -107,7 +107,7 @@ class PlaybackSessionActionsTest {
         coEvery { subtitleRepository.getSubtitles(any(), any(), any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { subtitleRepository.getSubtitlesForStream(any(), any(), any(), any()) } returns emptyList()
         every { sourceSelectionStore.findPreferredStream(any(), any()) } returns null
-        coEvery { addonRepository.getStreams(any(), any(), any(), any()) } returns emptyList()
+        coEvery { addonRepository.getStreams(any(), any(), any(), any(), any(), any()) } returns emptyList()
     }
 
     @After
@@ -138,7 +138,7 @@ class PlaybackSessionActionsTest {
         }
 
     private fun nextStreams(vararg streams: Stream) {
-        coEvery { addonRepository.getStreams("series", nextId, any(), any()) } returns streams.toList()
+        coEvery { addonRepository.getStreams("series", nextId, any(), any(), any(), any()) } returns streams.toList()
     }
 
     private fun TestScope.events(vm: PlaybackSessionViewModel): List<PlaybackNav> {
@@ -272,7 +272,7 @@ class PlaybackSessionActionsTest {
 
     @Test
     fun `a hand-off stalled for 45s is reported and falls back to the source list`() = runTest(dispatcher) {
-        coEvery { addonRepository.getStreams("series", nextId, any(), any()) } coAnswers { awaitCancellation() }
+        coEvery { addonRepository.getStreams("series", nextId, any(), any(), any(), any()) } coAnswers { awaitCancellation() }
         val vm = session()
 
         vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
@@ -368,7 +368,7 @@ class PlaybackSessionActionsTest {
     @Test
     fun `dismiss bumps the generation so a late result is ignored`() = runTest(dispatcher) {
         val late = CompletableDeferred<List<Stream>>()
-        coEvery { addonRepository.getStreams("series", nextId, any(), any()) } coAnswers { late.await() }
+        coEvery { addonRepository.getStreams("series", nextId, any(), any(), any(), any()) } coAnswers { late.await() }
         val vm = session()
 
         vm.selectEpisode(nextEpisode, null, manualProfile.copy(autoSelectSource = true))
@@ -590,13 +590,13 @@ class PlaybackSessionActionsTest {
         val next = vm.nextEpisode()
         assertEquals("B2", next?.title)
 
-        coEvery { addonRepository.getStreams("series", "ttB:1:2", any(), any()) } returns
+        coEvery { addonRepository.getStreams("series", "ttB:1:2", any(), any(), any(), any()) } returns
             listOf(Stream(name = "B2", url = "https://cdn/b2.mkv"))
         vm.autoplayNextEpisode(next!!, null, autoplayProfile)
         runCurrent()
 
-        coVerify { addonRepository.getStreams("series", "ttB:1:2", any(), any()) }
-        coVerify(exactly = 0) { addonRepository.getStreams(any(), match { it.startsWith("ttA") }, any(), any()) }
+        coVerify { addonRepository.getStreams("series", "ttB:1:2", any(), any(), any(), any()) }
+        coVerify(exactly = 0) { addonRepository.getStreams(any(), match { it.startsWith("ttA") }, any(), any(), any(), any()) }
         assertEquals("ttB:1:2", vm.selectedPlaybackId)
         assertEquals("https://cdn/b2.mkv", vm.selectedVideoUrl)
 
@@ -637,13 +637,13 @@ class PlaybackSessionActionsTest {
         // The next episode matches by id, and its stream request and saved-progress id use tt….
         val next = vm.nextEpisode()
         assertEquals("Two", next?.title)
-        coEvery { addonRepository.getStreams("series", "tt0944947:1:2", any(), any()) } returns
+        coEvery { addonRepository.getStreams("series", "tt0944947:1:2", any(), any(), any(), any()) } returns
             listOf(Stream(name = "Two", url = "https://cdn/e2.mkv"))
         vm.autoplayNextEpisode(next!!, null, autoplayProfile)
         runCurrent()
 
-        coVerify { addonRepository.getStreams("series", "tt0944947:1:2", any(), any()) }
-        coVerify(exactly = 0) { addonRepository.getStreams(any(), match { it.startsWith("tmdb:") }, any(), any()) }
+        coVerify { addonRepository.getStreams("series", "tt0944947:1:2", any(), any(), any(), any()) }
+        coVerify(exactly = 0) { addonRepository.getStreams(any(), match { it.startsWith("tmdb:") }, any(), any(), any(), any()) }
         assertEquals("tt0944947:1:2", vm.selectedPlaybackId)
         assertEquals("https://cdn/e2.mkv", vm.selectedVideoUrl)
 

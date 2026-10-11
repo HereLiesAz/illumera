@@ -135,6 +135,7 @@ fun GlassSidebar(
     mediaActionTarget: MediaActionTarget? = null,
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
+    streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onToggleWatched: (MetaVideo) -> Unit = {},
@@ -226,6 +227,7 @@ fun GlassSidebar(
                     focusRequester = focusRequester,
                     excludedSourceIds = excludedSourceIds,
                     sourceListDisabled = sourceListDisabled,
+                    streamOutcomes = streamOutcomes,
                     onToggleSourceExcluded = onToggleSourceExcluded,
                     onToggleSourceListDisabled = onToggleSourceListDisabled,
                     onSourceClick = onSourceSelected,
@@ -461,6 +463,7 @@ fun SourcesContent(
     focusRequester: FocusRequester,
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
+    streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onSourceClick: (Stream) -> Unit,
@@ -508,6 +511,16 @@ fun SourcesContent(
     Column {
         Text("Select Source", style = MaterialTheme.typography.titleLarge, color = Color.White)
         Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        // Per addon: how many sources it gave, or why none. Makes a short list explainable.
+        if (streams != null && streamOutcomes.isNotEmpty()) {
+            Text(
+                streamOutcomes.sortedByDescending { it.count }.joinToString(" · ") { o ->
+                    o.addonName + " " + (o.problem?.let { p -> if (o.count > 0) "${o.count} ($p)" else p } ?: o.count.toString())
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.6f)
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         if (streams == null) {

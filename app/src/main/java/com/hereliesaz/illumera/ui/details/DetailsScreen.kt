@@ -191,6 +191,7 @@ fun DetailsScreen(
     val availableStreams = state.availableStreams
     val sourceListDisabled = state.sourceListDisabled
     val excludedSourceIds = state.excludedSourceIds
+    val streamOutcomes by viewModel.streamOutcomes.collectAsState()
 
     LaunchedEffect(autoPlayStream) {
         val stream = autoPlayStream ?: return@LaunchedEffect
@@ -1001,6 +1002,7 @@ fun DetailsScreen(
             mediaActionTarget = movie?.let { com.hereliesaz.illumera.ui.components.MediaActionTarget.fromMeta(it) },
             sourceListDisabled = sourceListDisabled,
             excludedSourceIds = excludedSourceIds,
+            streamOutcomes = streamOutcomes,
             onToggleWatched = { episode -> viewModel.toggleEpisodeWatched(episode) },
             onQueueEpisode = { episode ->
                 onAddToQueue(

@@ -121,8 +121,8 @@ class AddonRepositoryTest {
         val disabled = addon("https://disabled.example", enabled = false)
         val noStreams = addon("https://nostream.example", supportsStream = false)
         every { dao.getAllAddons() } returns flowOf(listOf(enabled, disabled, noStreams))
-        coEvery { api.getStreams("https://one.example/stream/movie/tt1.json") } returns
-            StreamResponse(listOf(Stream(name = "1080p", url = "https://cdn.example/video")))
+        coEvery { api.getJson("https://one.example/stream/movie/tt1.json") } returns
+            JsonParser.parseString("""{"streams":[{"name":"1080p","url":"https://cdn.example/video"}]}""")
 
         val result = AddonRepository(api, dao).getStreams("movie", "tt1")
 
@@ -132,7 +132,7 @@ class AddonRepositoryTest {
         assertEquals("https://one.example", result.single().addonTransportUrl)
         assertEquals("movie", result.single().addonRequestType)
         assertEquals("tt1", result.single().addonRequestId)
-        coVerify(exactly = 1) { api.getStreams(any()) }
+        coVerify(exactly = 1) { api.getJson(any()) }
     }
 
     @Test
@@ -142,15 +142,39 @@ class AddonRepositoryTest {
         every { dao.getAllAddons() } returns flowOf(
             listOf(addon("https://bad.example", name = "Bad"), addon("https://good.example", name = "Good"))
         )
-        coEvery { api.getStreams("https://bad.example/stream/movie/tt1.json") } throws IllegalStateException("down")
-        coEvery { api.getStreams("https://good.example/stream/movie/tt1.json") } returns
-            StreamResponse(listOf(Stream(name = "720p", infoHash = "hash")))
+        coEvery { api.getJson("https://bad.example/stream/movie/tt1.json") } throws IllegalStateException("down")
+        coEvery { api.getJson("https://good.example/stream/movie/tt1.json") } returns
+            JsonParser.parseString("""{"streams":[{"name":"720p","infoHash":"hash"}]}""")
 
         val result = AddonRepository(api, dao).getStreams("movie", "tt1")
 
         assertEquals(1, result.size)
         assertEquals("720p", result.single().name)
         assertEquals("Good", result.single().addonDisplayName)
+    }
+
+    @Test
+    fun malformedStreamEntryDropsOnlyThatEntryAndOutcomesReportEachAddon() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(
+            listOf(addon("https://mixed.example", name = "Mixed"), addon("https://down.example", name = "Down"))
+        )
+        // fileIdx as an object can't become an Int: before, this one entry failed the whole response.
+        coEvery { api.getJson("https://mixed.example/stream/movie/tt1.json") } returns JsonParser.parseString(
+            """{"streams":[{"name":"good","infoHash":"a"},{"name":"bad","infoHash":"b","fileIdx":{"x":1}},{"name":"also good","url":"https://cdn/v"}]}"""
+        )
+        coEvery { api.getJson("https://down.example/stream/movie/tt1.json") } throws IllegalStateException("down")
+        val repository = AddonRepository(api, dao)
+
+        val result = repository.getStreams("movie", "tt1")
+
+        assertEquals(listOf("good", "also good"), result.map { it.name })
+        val outcomes = repository.lastStreamOutcomes.value.associateBy { it.addonName }
+        assertEquals(2, outcomes.getValue("Mixed").count)
+        assertEquals("1 unreadable", outcomes.getValue("Mixed").problem)
+        assertEquals(0, outcomes.getValue("Down").count)
+        assertEquals("failed", outcomes.getValue("Down").problem)
     }
 
     @Test

@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const TORRSERVER_VERSION = 'MatriX.145'
 
@@ -28,7 +29,8 @@ if (!asset) {
   process.exit(1)
 }
 
-const dir = new URL('../src-tauri/binaries/', import.meta.url).pathname
+// fileURLToPath, not .pathname: on Windows .pathname is "/D:/...", which resolved to D:\D:\...
+const dir = fileURLToPath(new URL('../src-tauri/binaries/', import.meta.url))
 mkdirSync(dir, { recursive: true })
 const file = join(dir, `torrserver-${triple}${triple.includes('windows') ? '.exe' : ''}`)
 if (existsSync(file)) {

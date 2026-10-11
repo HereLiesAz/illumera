@@ -128,6 +128,9 @@ class DetailsViewModel @Inject constructor(
         fun streamId(pageId: String): String = resolvedId ?: meta?.id ?: pageId
     }
 
+    /** Per-addon results of the latest stream request, shown in the source panel. */
+    val streamOutcomes = repository.lastStreamOutcomes
+
     private val _state = MutableStateFlow(DetailsState())
     val state: StateFlow<DetailsState> = _state
 
@@ -949,6 +952,20 @@ class DetailsViewModel @Inject constructor(
     /** Silently refetches streams and, only if the sources sidebar for this same item is
      *  still open, updates the visible list — never touches autoPlayStream/isLoadingStreams,
      *  since a background refresh must not yank the user away from a list they're browsing. */
+    /** Shows the sources answered so far in the open list, keeping the highlighted row. */
+    private suspend fun showPartialSources(displayTitle: String, partial: List<Stream>, mediaType: String) {
+        // An empty partial would show "no sources" while other addons are still answering.
+        if (partial.isEmpty() || _state.value.sidebarState !is SidebarState.Sources) return
+        val sorted = sortStreams(partial, mediaType)
+        _state.update { current ->
+            val open = current.sidebarState as? SidebarState.Sources ?: return@update current
+            current.copy(
+                availableStreams = sorted,
+                sidebarState = SidebarState.Sources(displayTitle, sorted, selectedStreamId = open.selectedStreamId)
+            )
+        }
+    }
+
     private fun refreshStreamsInBackground(
         type: String,
         id: String,
@@ -960,7 +977,16 @@ class DetailsViewModel @Inject constructor(
         backgroundRefreshJob = viewModelScope.launch {
             try {
                 val streamsDeferred = async {
-                    repository.getStreams(type, id, preferredAddonBaseUrl, preferredAddonRequestId)
+                    // No cutoff: the cached list stays on screen, so a slow addon only adds later.
+                    repository.getStreams(
+                        type, id, preferredAddonBaseUrl, preferredAddonRequestId,
+                        timeoutMs = null,
+                        onProgress = { partial ->
+                            // Only grow the visible list; never shrink it below the cached one mid-refresh.
+                            val shown = (_state.value.sidebarState as? SidebarState.Sources)?.streams?.size ?: 0
+                            if (partial.size > shown) showPartialSources(displayTitle, partial, type)
+                        }
+                    )
                 }
                 val subtitlesDeferred = async {
                     subtitleRepository.getSubtitles(
@@ -1112,12 +1138,25 @@ class DetailsViewModel @Inject constructor(
                     addonSubtitles = prefetched.subtitles
                 } else {
                     val streamsDeferred = async {
-                        repository.getStreams(
-                            type,
-                            requestId,
-                            request.preferredAddonBaseUrl,
-                            request.preferredAddonRequestId
-                        )
+                        if (showSidebar) {
+                            // The viewer is looking at the list: no per-addon cutoff, and each
+                            // addon's sources appear as it answers (as Stremio does).
+                            repository.getStreams(
+                                type,
+                                requestId,
+                                request.preferredAddonBaseUrl,
+                                request.preferredAddonRequestId,
+                                timeoutMs = null,
+                                onProgress = { partial -> showPartialSources(displayTitle, partial, type) }
+                            )
+                        } else {
+                            repository.getStreams(
+                                type,
+                                requestId,
+                                request.preferredAddonBaseUrl,
+                                request.preferredAddonRequestId
+                            )
+                        }
                     }
                     val subtitlesDeferred = async {
                         subtitleRepository.getSubtitles(
@@ -1136,6 +1175,13 @@ class DetailsViewModel @Inject constructor(
                     type, requestId, displayTitle, sourceSelectionId, forceSourcePicker, autoSelectSource,
                     rememberSourceSelection, rawStreams, addonSubtitles
                 )
+                // A prefetch ran with the per-addon cutoff; let slow addons still fill in the open list.
+                if (prefetched != null && _state.value.sidebarState is SidebarState.Sources) {
+                    refreshStreamsInBackground(
+                        type, requestId, key, displayTitle,
+                        request.preferredAddonBaseUrl, request.preferredAddonRequestId
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 // A newer loadStreams() replaced this one; it owns the state now.
                 throw cancelled
