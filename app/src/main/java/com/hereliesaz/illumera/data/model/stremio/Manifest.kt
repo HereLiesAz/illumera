@@ -26,7 +26,8 @@ data class Manifest(
     fun supportsResource(resource: String): Boolean = resources.orEmpty().any { element ->
         when {
             element.isJsonPrimitive -> element.asString == resource
-            element.isJsonObject -> element.asJsonObject.get("name")?.asString == resource
+            element.isJsonObject -> element.asJsonObject.get("name")
+                ?.takeIf { it.isJsonPrimitive }?.asString == resource
             else -> false
         }
     }

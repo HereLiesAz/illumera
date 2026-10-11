@@ -4,6 +4,7 @@ import android.content.Context
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -38,7 +39,7 @@ class ProfileConfigurationManagerTest {
         dao = mockk(relaxed = true)
         authManager = mockk(relaxed = true)
         addonRepository = mockk(relaxed = true)
-        manager = ProfileConfigurationManager(context, dao, authManager, addonRepository)
+        manager = ProfileConfigurationManager(context, dao, authManager, addonRepository, ProfileMutationCoordinator(dao))
     }
 
     @After
@@ -152,13 +153,32 @@ class ProfileConfigurationManagerTest {
         verify(exactly = 1) { authManager.clearCredentialsForProfile(1) }
     }
 
+    @Test
+    fun corruptSnapshotOnSwitchDoesNotInheritOutgoingProfileState() = runTest {
+        setLastActiveProfile(1)
+        val snapshot = File(File(context.filesDir, SNAPSHOT_DIR), "profile_2.json")
+        snapshot.parentFile?.mkdirs()
+        snapshot.writeText("{not json")
+
+        manager.loadRuntimeState(2)
+
+        // The live DB belongs to profile 1; it must not be captured as profile 2's data.
+        verify(exactly = 0) { authManager.saveCredentialsForProfile(2) }
+        coVerify(exactly = 0) { dao.getAllAddons() }
+        coVerify(exactly = 1) {
+            dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), false)
+        }
+        assertTrue(manager.needsInitialSetup(2))
+        assertEquals(2, manager.getLastActiveProfileId())
+    }
+
     private fun setLastActiveProfile(profileId: Int) {
         context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
             .edit()
             .putInt(KEY_LAST_ACTIVE_PROFILE_ID, profileId)
             .commit()
         // Simulate a fresh process reading the persisted active profile.
-        manager = ProfileConfigurationManager(context, dao, authManager, addonRepository)
+        manager = ProfileConfigurationManager(context, dao, authManager, addonRepository, ProfileMutationCoordinator(dao))
     }
 
     companion object {

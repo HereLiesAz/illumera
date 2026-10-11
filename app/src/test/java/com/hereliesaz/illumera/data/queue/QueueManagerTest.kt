@@ -186,12 +186,17 @@ class QueueManagerTest {
             id = "addon-episode-id",
             type = "episode",
             title = "Episode",
+            seriesId = "canonical-show",
             season = 2,
             episode = 5
         )
         val next = QueueItem(id = "next", type = "movie", title = "Next")
         manager.add(episode)
         manager.add(next)
+
+        // Same season/episode numbers in a different show must not consume the item.
+        manager.advanceAfterPlayback("other-show:2:5")
+        assertEquals(listOf("addon-episode-id", "next"), manager.state.value.manualItems.map { it.id })
 
         assertEquals("next", manager.advanceAfterPlayback("canonical-show:2:5")?.id)
         assertEquals(listOf("next"), manager.state.value.manualItems.map { it.id })
@@ -270,6 +275,21 @@ class QueueManagerTest {
         queue.refreshSuggestions()
 
         assertEquals(setOf("tt-started", "tt-show:1:2"), queue.state.value.suggestions.map { it.id }.toSet())
+    }
+
+    @Test
+    fun finishedEpisodeDoesNotExcludeAShowWithAnUnfinishedEpisode() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        coEvery { addonDao.getAllWatchHistoryOnce() } returns listOf(
+            WatchHistoryEntity(id = "tt-show:1:1", title = "Show", poster = null, seriesId = "tt-show", position = 100, duration = 100, lastWatched = 2, type = "series", watched = true),
+            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, seriesId = "tt-show", position = 10, duration = 100, lastWatched = 1, type = "series"),
+        )
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+
+        queue.refreshSuggestions()
+
+        assertTrue("tt-show:1:2" in queue.state.value.suggestions.map { it.id })
     }
 
     private fun historyOf(vararg ids: String): List<WatchHistoryEntity> = ids.mapIndexed { index, id ->

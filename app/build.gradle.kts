@@ -204,6 +204,11 @@ kotlin {
     }
 }
 
+ksp {
+    // Export Room schema JSON so future migrations can be validated against it.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 composeCompiler {
     stabilityConfigurationFiles.add(project.layout.projectDirectory.file("compose_stability_config.conf"))
 }

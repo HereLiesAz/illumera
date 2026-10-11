@@ -68,9 +68,12 @@ class AppUpdateManager @Inject constructor(
 
     private val gson = Gson()
 
-    /** Cached release body from the last checkForUpdate, used for checksum extraction. */
-    @Volatile
-    private var lastReleaseBody: String? = null
+    /**
+     * Release body keyed by the APK URL it was published with, so the checksum used to
+     * verify a download always comes from the same release as the file being downloaded
+     * (not from whichever release a later check happened to see).
+     */
+    private val releaseBodyByApkUrl = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     suspend fun checkForUpdate() {
         if (!BuildConfig.ENABLE_SELF_UPDATE) {
@@ -91,7 +94,7 @@ class AppUpdateManager @Inject constructor(
                         _state.value = UpdateState.Error("Update URL is not from a trusted source.")
                         return
                     }
-                    lastReleaseBody = release.body
+                    releaseBodyByApkUrl[apkAsset.downloadUrl] = release.body.orEmpty()
                     _state.value = UpdateState.UpdateAvailable(
                         UpdateInfo(
                             versionName = remoteVersion,
@@ -183,13 +186,13 @@ class AppUpdateManager @Inject constructor(
     }
 
     private fun downloadApk(apkUrl: String): File {
-        // Capture once so a concurrent checkForUpdate() updating the @Volatile
-        // field mid-download does not affect checksum verification for this run.
-        val releaseBody = lastReleaseBody
-        val request = Request.Builder().url(apkUrl).build()
-        val response = okHttpClient.newCall(request).execute()
+        val releaseBody = releaseBodyByApkUrl[apkUrl]
+        val response = executeWithCheckedRedirects(apkUrl)
 
-        if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+        if (!response.isSuccessful) {
+            response.close()
+            throw Exception("HTTP ${response.code}")
+        }
 
         val updateDir = File(context.cacheDir, "updates")
         updateDir.mkdirs()
@@ -231,61 +234,78 @@ class AppUpdateManager @Inject constructor(
         return apkFile
     }
 
+    /**
+     * Follows redirects manually so every hop is re-checked against the download
+     * allow-list (OkHttp's automatic redirects would follow to any host).
+     */
+    private fun executeWithCheckedRedirects(startUrl: String): okhttp3.Response {
+        val client = okHttpClient.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+        var url = startUrl
+        repeat(MAX_DOWNLOAD_REDIRECTS + 1) {
+            if (!isAllowedDownloadUrl(url)) throw SecurityException("Update redirected to an untrusted host")
+            val response = client.newCall(Request.Builder().url(url).build()).execute()
+            if (!response.isRedirect) return response
+            val location = response.header("Location")
+            val next = location?.let { response.request.url.resolve(it) }
+            response.close()
+            url = next?.toString() ?: throw Exception("Redirect without a valid Location")
+        }
+        throw Exception("Too many redirects")
+    }
+
     /** Signing-certificate SHA-256 hashes for the currently-installed app. */
     @Suppress("DEPRECATION")
-    private fun installedSigningCertHashes(): Set<String> {
+    private fun installedSigningCertHashes(): SignerCerts {
         val pm = context.packageManager
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val signingInfo = info.signingInfo ?: return emptySet()
-                val certs = if (signingInfo.hasMultipleSigners()) {
-                    signingInfo.apkContentsSigners
-                } else {
-                    signingInfo.signingCertificateHistory
-                }
-                certs.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet()
+                val signingInfo = info.signingInfo ?: return SignerCerts.NONE
+                signingInfo.toSignerCerts()
             } else {
                 val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
-                info.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet()
+                SignerCerts(info.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet(), multipleSigners = true)
             }
         } catch (_: Exception) {
-            emptySet()
+            SignerCerts.NONE
         }
     }
 
     /** Signing-certificate SHA-256 hashes for an on-disk (not yet installed) APK file. */
     @Suppress("DEPRECATION")
-    private fun apkSigningCertHashes(apkFile: File): Set<String> {
+    private fun apkSigningCertHashes(apkFile: File): SignerCerts {
         val pm = context.packageManager
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
-                val signingInfo = info?.signingInfo ?: return emptySet()
-                val certs = if (signingInfo.hasMultipleSigners()) {
-                    signingInfo.apkContentsSigners
-                } else {
-                    signingInfo.signingCertificateHistory
-                }
-                certs.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet()
+                val signingInfo = info?.signingInfo ?: return SignerCerts.NONE
+                signingInfo.toSignerCerts()
             } else {
                 val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
-                info?.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet()
+                SignerCerts(info?.signatures.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet(), multipleSigners = true)
             }
         } catch (_: Exception) {
-            emptySet()
+            SignerCerts.NONE
         }
     }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
+    private fun android.content.pm.SigningInfo.toSignerCerts(): SignerCerts =
+        if (hasMultipleSigners()) {
+            SignerCerts(apkContentsSigners.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet(), multipleSigners = true)
+        } else {
+            // Single signer: the full rotation lineage (current + past certs it has proven).
+            SignerCerts(signingCertificateHistory.orEmpty().map { sha256Hex(it.toByteArray()) }.toSet(), multipleSigners = false)
+        }
 
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun verifyApkSignatureMatchesInstalled(apkFile: File): Boolean {
-        val installed = installedSigningCertHashes()
-        if (installed.isEmpty()) return false
-        val apk = apkSigningCertHashes(apkFile)
-        if (apk.isEmpty()) return false
-        return installed == apk
+        return signersCompatible(installedSigningCertHashes(), apkSigningCertHashes(apkFile))
     }
 
     private fun installApk(apkFile: File) {
@@ -303,13 +323,35 @@ class AppUpdateManager @Inject constructor(
         context.startActivity(intent)
     }
 
+    /** SHA-256 hashes of signing certs; for a single signer, its whole rotation lineage. */
+    private data class SignerCerts(val hashes: Set<String>, val multipleSigners: Boolean) {
+        companion object {
+            val NONE = SignerCerts(emptySet(), multipleSigners = false)
+        }
+    }
+
     companion object {
         private const val KEY_UPDATE_POPUP_ENABLED = "update_popup_enabled"
+        private const val MAX_DOWNLOAD_REDIRECTS = 5
+
+        /**
+         * Multiple signers (no rotation possible) must match exactly. With a single signer,
+         * the update may have rotated its key: accept it when its lineage contains the whole
+         * installed lineage (it has proven descent from the installed signer), as Android's
+         * installer does. A different, unrelated key fails both checks.
+         */
+        private fun signersCompatible(installed: SignerCerts, apk: SignerCerts): Boolean {
+            if (installed.hashes.isEmpty() || apk.hashes.isEmpty()) return false
+            if (installed.multipleSigners || apk.multipleSigners) return installed.hashes == apk.hashes
+            return apk.hashes.containsAll(installed.hashes)
+        }
 
         /** Trusted domains for APK downloads. */
         private val ALLOWED_DOWNLOAD_HOSTS = setOf(
             "github.com",
-            "objects.githubusercontent.com"
+            "objects.githubusercontent.com",
+            // GitHub's current redirect target for release asset downloads.
+            "release-assets.githubusercontent.com"
         )
 
         /** Validate that the download URL is from a trusted GitHub domain over HTTPS. */
@@ -337,6 +379,7 @@ class AppUpdateManager @Inject constructor(
                 v.substringBefore('-').substringBefore('+')
                     .split('.')
                     .map { it.toIntOrNull() ?: 0 }
+            fun isPrerelease(v: String): Boolean = v.substringBefore('+').contains('-')
             val remoteParts = parse(remote)
             val currentParts = parse(current)
             val size = maxOf(remoteParts.size, currentParts.size)
@@ -345,7 +388,9 @@ class AppUpdateManager @Inject constructor(
                 val c = currentParts.getOrElse(i) { 0 }
                 if (r != c) return r > c
             }
-            return false
+            // Same numeric version: a prerelease (1.2.3-beta) is older than the stable
+            // release (1.2.3), so a stable remote supersedes an installed prerelease.
+            return !isPrerelease(remote) && isPrerelease(current)
         }
 
         /** Extract SHA-256 hash from release body. Expected format: `SHA-256: abcdef1234...` */

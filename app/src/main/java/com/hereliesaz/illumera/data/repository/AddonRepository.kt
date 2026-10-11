@@ -31,7 +31,6 @@ class AddonRepository @Inject constructor(
     private val dao: AddonDao
 ) {
     private val gson = Gson()
-    private val MAX_CATALOG_PAGES = 30
 
     /** Filter out MetaItems where Gson injected null into non-null Kotlin fields */
     private fun List<MetaItem>.sanitize(): List<MetaItem> = filter { item ->
@@ -56,6 +55,9 @@ class AddonRepository @Inject constructor(
                 if (baseUrl.endsWith(".json")) baseUrl.dropLast(5) + "/skip=$skip.json" else baseUrl + "/skip=$skip.json"
             }
             withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize()
+        } catch (_: TimeoutCancellationException) {
+            // A slow addon yields no page; it must not cancel the caller.
+            emptyList()
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) { emptyList() }
     }
@@ -143,7 +145,8 @@ class AddonRepository @Inject constructor(
                 try {
                     val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
                     // Fetch only the first page for fast initial load
-                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
+                    // A timed-out catalog contributes nothing; it must not abort the other rows.
+                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (_: TimeoutCancellationException) { emptyList() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
                     if (rawMetas.isNotEmpty()) {
                         val metas = rawMetas.map { it.copy(addonBaseUrl = config.transportUrl) }
                         val typeSuffix = config.catalogType.replaceFirstChar { it.uppercase() }
@@ -361,8 +364,6 @@ class AddonRepository @Inject constructor(
             idPrefixesJson = gson.toJson(manifest.idPrefixes.orEmpty()),
             sortOrder = existingAddon?.sortOrder ?: 999
         )
-        dao.insertAddon(entity)
-
         val newConfigs = manifest.catalogs.orEmpty().map { catalog ->
             val uniqueId = "${transportUrl}/${catalog.type}/${catalog.id}"
             val isMovieCat = catalog.type == "movie"
@@ -381,7 +382,9 @@ class AddonRepository @Inject constructor(
                 )
             }
         }
-        dao.saveCatalogConfigs(newConfigs)
+        // Addon row + catalog configs are written atomically, and configs for catalogs the
+        // manifest no longer lists are pruned so they don't linger as dead rows.
+        dao.installAddonAtomically(entity, newConfigs)
     }
 
     suspend fun installAddon(url: String) = installAddonWithConfig(url, true, true, true)
@@ -413,7 +416,7 @@ class AddonRepository @Inject constructor(
         id: String,
         preferredAddonBaseUrl: String
     ): MetaItem? = withContext(Dispatchers.IO) {
-        val baseUrl = preferredAddonBaseUrl.trimEnd('/')
+        val baseUrl = preferredAddonBaseUrl.trim().trimEnd('/')
         try {
             val url = "$baseUrl/meta/$type/$id.json"
             val meta = withTimeout(5_000L) { api.getMeta(url) }.meta.sanitize()
@@ -484,7 +487,7 @@ class AddonRepository @Inject constructor(
         // meta with a different ID (e.g. tmdb:12345 instead of tt1234567), which causes
         // the details screen to appear stuck since it checks movie.id == requestedId.
         for ((addon, candidateType) in candidates) {
-            if (addon.transportUrl == preferredAddonBaseUrl) continue
+            if (addon.transportUrl.trimEnd('/') == preferredAddonBaseUrl?.trim()?.trimEnd('/')) continue
             try {
                 val url = "${addon.transportUrl}/meta/$candidateType/$id.json"
                 val meta = withTimeout(CATALOG_TIMEOUT_MS) { api.getMeta(url) }.meta.sanitize()

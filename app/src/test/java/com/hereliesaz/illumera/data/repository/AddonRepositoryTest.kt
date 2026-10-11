@@ -395,12 +395,9 @@ class AddonRepositoryTest {
             moviesOrder = 2
         )
         coEvery { dao.getCatalogConfig(existingConfig.uniqueId) } returns existingConfig
-        coEvery { dao.insertAddon(any()) } returns Unit
-        coEvery { dao.saveCatalogConfigs(any()) } returns Unit
         val addonSlot = slot<AddonEntity>()
         val configsSlot = slot<List<CatalogConfigEntity>>()
-        coEvery { dao.insertAddon(capture(addonSlot)) } returns Unit
-        coEvery { dao.saveCatalogConfigs(capture(configsSlot)) } returns Unit
+        coEvery { dao.installAddonAtomically(capture(addonSlot), capture(configsSlot)) } returns Unit
 
         AddonRepository(api, dao).installAddonWithConfig(manifestUrl, home = true, movies = false, series = true)
 
@@ -415,6 +412,53 @@ class AddonRepositoryTest {
         assertTrue(saved.showInMovies)
         assertEquals("Fresh Name", saved.addonName)
         assertEquals("Popular", saved.catalogName)
+    }
+
+    @Test
+    fun fetchNextCatalogPageTimeoutReturnsEmptyInsteadOfCancellingCaller() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        coEvery { api.getCatalog(any()) } coAnswers {
+            delay(10_001L)
+            CatalogResponse(listOf(meta("late")))
+        }
+
+        val result = AddonRepository(api, dao).fetchNextCatalogPage("https://slow.example/catalog/movie/top.json", 0)
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun dashboardRowTimeoutDropsOnlyThatRow() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val slowUrl = "https://slow.example"
+        val goodUrl = "https://good.example"
+        every { dao.getAllAddons() } returns flowOf(listOf(addon(slowUrl), addon(goodUrl)))
+        every { dao.getAllCatalogConfigs() } returns flowOf(
+            listOf(
+                CatalogConfigEntity(
+                    uniqueId = "$slowUrl/movie/top", transportUrl = slowUrl, addonName = "Slow",
+                    catalogType = "movie", catalogId = "top", catalogName = "Top", customTitle = null,
+                    showInHome = true, homeOrder = 0
+                ),
+                CatalogConfigEntity(
+                    uniqueId = "$goodUrl/movie/top", transportUrl = goodUrl, addonName = "Good",
+                    catalogType = "movie", catalogId = "top", catalogName = "Top", customTitle = null,
+                    showInHome = true, homeOrder = 1
+                )
+            )
+        )
+        coEvery { api.getCatalog("$slowUrl/catalog/movie/top.json") } coAnswers {
+            delay(500L)
+            CatalogResponse(listOf(meta("late")))
+        }
+        coEvery { api.getCatalog("$goodUrl/catalog/movie/top.json") } returns CatalogResponse(listOf(meta("m1")))
+
+        val rows = AddonRepository(api, dao).getDashboardRows("home", catalogTimeoutMs = 100L)
+
+        assertEquals(1, rows.size)
+        assertEquals("$goodUrl/movie/top", rows.single().configId)
     }
 
     private fun meta(id: String, type: String = "movie") = MetaItem(id = id, type = type, name = id)

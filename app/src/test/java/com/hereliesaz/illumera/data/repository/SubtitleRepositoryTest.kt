@@ -14,6 +14,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -317,6 +318,34 @@ class SubtitleRepositoryTest {
 
         coVerify(exactly = 1) { api.getManifest("https://addon.example/manifest.json") }
         coVerify(exactly = 2) { api.getSubtitles(any()) }
+    }
+
+    @Test
+    fun innerTimeoutsOnlyDropTheSlowAddon() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val slowManifest = addon(url = "https://slow-manifest.example")
+        val slowSubs = addon(url = "https://slow-subs.example")
+        every { dao.getAllAddons() } returns flowOf(listOf(slowManifest, slowSubs))
+        coEvery { api.getManifest("https://slow-manifest.example/manifest.json") } coAnswers {
+            delay(6_001L)
+            Manifest(resources = listOf(JsonParser.parseString("\"subtitles\"")))
+        }
+        coEvery { api.getManifest("https://slow-subs.example/manifest.json") } returns Manifest(
+            resources = listOf(JsonParser.parseString("\"subtitles\""))
+        )
+        coEvery { api.getSubtitles("https://slow-manifest.example/subtitles/movie/tt123.json") } returns SubtitleResponse(
+            listOf(StreamSubtitle(lang = "fr", url = "https://cdn.example/fr.vtt"))
+        )
+        coEvery { api.getSubtitles("https://slow-subs.example/subtitles/movie/tt123.json") } coAnswers {
+            delay(8_001L)
+            SubtitleResponse(listOf(StreamSubtitle(lang = "de", url = "https://cdn.example/de.vtt")))
+        }
+
+        val result = SubtitleRepository(api, dao).getSubtitles("movie", "tt123")
+
+        // Manifest timeout -> capability unknown -> addon still queried; subtitle timeout -> none.
+        assertEquals(listOf("https://cdn.example/fr.vtt"), result.map { it.url })
     }
 
     private fun addon(

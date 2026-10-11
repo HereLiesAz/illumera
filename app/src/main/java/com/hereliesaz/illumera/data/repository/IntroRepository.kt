@@ -2,7 +2,9 @@ package com.hereliesaz.illumera.data.repository
 
 import com.hereliesaz.illumera.data.model.introdb.IntroDbSegmentsResponse
 import com.hereliesaz.illumera.data.remote.IntroDbService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
@@ -27,6 +29,10 @@ class IntroRepository @Inject constructor(
             val response = withTimeout(TIMEOUT_MS) { api.getSegments(url) }
             cache[cacheKey] = response
             response
+        } catch (_: TimeoutCancellationException) {
+            null
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             null
         }

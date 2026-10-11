@@ -76,6 +76,8 @@ class PlayStoreUpdateManager @Inject constructor(
         manager.appUpdateInfo
             .addOnSuccessListener { info ->
                 pendingInfo = info
+                // An update flow started while this check was in flight wins.
+                if (_state.value is PlayStoreUpdateState.InProgress) return@addOnSuccessListener
                 _state.value = when (info.updateAvailability()) {
                     UpdateAvailability.UPDATE_AVAILABLE ->
                         PlayStoreUpdateState.UpdateAvailable(info.availableVersionCode())
@@ -86,6 +88,7 @@ class PlayStoreUpdateManager @Inject constructor(
                 if (_state.value == PlayStoreUpdateState.UpToDate) checkPublishedVersion(PlayStoreUpdateState.UpToDate)
             }
             .addOnFailureListener { error ->
+                if (_state.value is PlayStoreUpdateState.InProgress) return@addOnFailureListener
                 pendingInfo = null
                 checkPublishedVersion(
                     PlayStoreUpdateState.Error(error.message ?: "Could not check Google Play for updates.")
@@ -100,6 +103,8 @@ class PlayStoreUpdateManager @Inject constructor(
     private fun checkPublishedVersion(otherwise: PlayStoreUpdateState) {
         scope.launch {
             val published = runCatching { fetchPublishedVersionCode() }.getOrNull()
+            // The network fetch is slow; don't clobber an update the user started meanwhile.
+            if (_state.value is PlayStoreUpdateState.InProgress) return@launch
             _state.value = if (published != null && published > BuildConfig.VERSION_CODE) {
                 PlayStoreUpdateState.UpdateAvailable(published, fromPlay = false)
             } else {
