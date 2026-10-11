@@ -32,7 +32,10 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
         RuntimeOwnerEntity::class
     ],
     version = 54,
-    exportSchema = true // schema JSON exported via room.schemaLocation (ksp args in app/build.gradle.kts)
+    // A plain ksp room.schemaLocation arg broke release builds: the debug, release and
+    // play KSP tasks wrote the same schemas/<v>.json concurrently and one read it
+    // half-written. Re-enable through the Room Gradle plugin (per-variant), not a ksp arg.
+    exportSchema = false
 )
 abstract class LumeraDatabase : RoomDatabase() {
     abstract fun addonDao(): AddonDao
