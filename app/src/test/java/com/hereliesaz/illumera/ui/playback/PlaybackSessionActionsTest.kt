@@ -435,7 +435,7 @@ class PlaybackSessionActionsTest {
 
     @Test
     fun `a debrid download that finishes in time replaces the url`() = runTest(dispatcher) {
-        coEvery { debridManager.awaitPlayableSource(any(), any(), 30) } returns "https://debrid/ready.mkv"
+        coEvery { debridManager.awaitPlayableSource(any(), any(), 30, any()) } returns "https://debrid/ready.mkv"
         val vm = session()
 
         vm.onSuspectSource(PlaybackDurationStatus.DEBRID_DOWNLOADING, autoplayProfile.copy(sourceDebridMaxWaitSeconds = 30))

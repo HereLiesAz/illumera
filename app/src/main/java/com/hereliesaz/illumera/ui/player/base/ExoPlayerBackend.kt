@@ -551,6 +551,9 @@ class ExoPlayerBackend(
         // Emit loading state immediately so Compose can render the spinner
         _uiState.update {
             it.copy(
+                // Not ready until the new media is: a stale READY with the previous
+                // source's duration would be judged as this source's.
+                isReady = false,
                 isBuffering = true,
                 hasRenderedFirstFrame = false,
                 isEnded = false,
