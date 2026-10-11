@@ -60,6 +60,8 @@ class DetailsFocusReturnTest {
         val dao = mockk<AddonDao>(relaxed = true)
         val sourceSelectionStore = mockk<SourceSelectionStore>(relaxed = true)
         val repository = mockk<AddonRepository>(relaxed = true)
+        // A relaxed StateFlow mock hands collectAsState a non-List value (ClassCastException).
+        every { repository.lastStreamOutcomes } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
         val profileConfigurationManager = mockk<ProfileConfigurationManager>(relaxed = true)
         every { profileConfigurationManager.getLastActiveProfileId() } returns null
         every { sourceSelectionStore.isSourceListDisabled(any()) } returns false

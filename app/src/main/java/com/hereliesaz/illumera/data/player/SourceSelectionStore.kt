@@ -76,10 +76,10 @@ class SourceSelectionStore @Inject constructor(
         val scopedPrefix = canonicalSourceScopeId(prefix) ?: return
         val editor = prefs.edit()
         prefs.all.keys.forEach { key ->
+            // Clears the remembered pick only. The viewer's exclusions and "source list
+            // disabled" choice are deliberate settings and survive (see SourceSelectionStoreTest).
             if (key.startsWith("${KEY_STREAM_PREFIX}$scopedPrefix") ||
-                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix") ||
-                key.startsWith("${KEY_SOURCE_LIST_DISABLED_PREFIX}$scopedPrefix") ||
-                key.startsWith("${KEY_EXCLUDED_SOURCES_PREFIX}$scopedPrefix")
+                key.startsWith("${KEY_ADDON_PREFIX}$scopedPrefix")
             ) {
                 editor.remove(key)
             }
