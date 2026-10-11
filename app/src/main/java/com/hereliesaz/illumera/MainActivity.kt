@@ -1255,8 +1255,8 @@ class MainActivity : ComponentActivity() {
                                 episodes = session.currentEpisodeList,
                                 currentPlaybackId = session.selectedPlaybackId,
                                 onEpisodeSelected = if (session.currentEpisodeList.isNotEmpty()) {
-                                    { episode, playerCurrentSourceUrl ->
-                                        session.selectEpisode(episode, playerCurrentSourceUrl, currentProfile)
+                                    { episode, playerCurrentSourceUrl, positionMs, durationMs ->
+                                        session.selectEpisode(episode, playerCurrentSourceUrl, currentProfile, positionMs, durationMs)
                                     }
                                 } else null,
                                 episodeSwitchSources = session.pendingEpisodeSwitch?.let { pending ->

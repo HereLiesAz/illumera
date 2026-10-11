@@ -70,7 +70,7 @@ fun PlayerScreen(
     onAutoplayNextEpisode: ((currentSourceUrl: String?) -> Unit)? = null,
     episodes: List<MetaVideo> = emptyList(),
     currentPlaybackId: String? = null,
-    onEpisodeSelected: ((episode: MetaVideo, currentSourceUrl: String?) -> Unit)? = null,
+    onEpisodeSelected: ((episode: MetaVideo, currentSourceUrl: String?, positionMs: Long, durationMs: Long?) -> Unit)? = null,
     episodeSwitchSources: List<PlayerSourceOption>? = null,
     isEpisodeSwitchLoading: Boolean = false,
     episodeSwitchTitle: String? = null,
@@ -122,12 +122,17 @@ fun PlayerScreen(
     var suspectHandledForUrl by remember(videoUrl) { mutableStateOf(false) }
     var handledTorrentFailureAttemptId by remember(movieId) { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, autoFallbackEnabled) {
-        // A blank URL is a torrent still resolving; the player still holds the previous
-        // source's duration, which already got its verdict.
-        if (!autoFallbackEnabled || suspectHandledForUrl || videoUrl.isBlank() || !uiState.isReady || uiState.durationMs <= 0L) return@LaunchedEffect
+    // The URL the player was last told to load. Until it matches videoUrl the player still
+    // holds the previous source's state (a torrent resolving, or a load not yet issued).
+    var loadedUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, loadedUrl, autoFallbackEnabled) {
+        if (!autoFallbackEnabled || suspectHandledForUrl || videoUrl.isBlank() || loadedUrl != videoUrl) return@LaunchedEffect
+        // Live state, not the composed snapshot: that can lag the load's isReady reset by a frame.
+        val state = playbackController.uiState.value
+        if (!state.isReady || state.durationMs <= 0L) return@LaunchedEffect
         if (movieId.startsWith("trailer_") || movieId.startsWith("debrid_")) return@LaunchedEffect
-        val status = viewModel.classifyDuration(mediaType, uiState.durationMs)
+        val status = viewModel.classifyDuration(mediaType, state.durationMs)
         if (status != PlaybackDurationStatus.NORMAL) {
             suspectHandledForUrl = true
             playbackController.pause()
@@ -284,6 +289,7 @@ fun PlayerScreen(
                 sourceAutoFallbackEnabled = autoFallbackEnabled
             )
         )
+        loadedUrl = videoUrl
         playbackController.setSubtitleVerticalOffset(playbackSettings.subtitleOffset)
         playbackController.setSubtitleSize(playbackSettings.subtitleSize)
         playbackController.setSubtitleTextColor(playbackSettings.subtitleTextColor)
@@ -399,7 +405,14 @@ fun PlayerScreen(
             autoplayThresholdSeconds = playbackSettings.autoplayThresholdSeconds,
             episodes = episodes,
             currentPlaybackId = currentPlaybackId,
-            onEpisodeSelected = onEpisodeSelected,
+            // The leaving episode's real position goes along, so the switch saves it
+            // instead of settling the episode as abandoned at 0.
+            onEpisodeSelected = onEpisodeSelected?.let { select ->
+                { episode: MetaVideo, currentSourceUrl: String? ->
+                    val state = playbackController.uiState.value
+                    select(episode, currentSourceUrl, state.positionMs.coerceAtLeast(0L), state.durationMs.takeIf { it > 0L })
+                }
+            },
             episodeSwitchSources = episodeSwitchSources,
             isEpisodeSwitchLoading = isEpisodeSwitchLoading,
             episodeSwitchTitle = episodeSwitchTitle,
