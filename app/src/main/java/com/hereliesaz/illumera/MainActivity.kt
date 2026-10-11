@@ -514,12 +514,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        lifecycleScope.launch(Dispatchers.IO) {
+        // NonCancellable: a finishing activity is destroyed right after onStop, which would
+        // cancel lifecycleScope mid-save.
+        lifecycleScope.launch(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
             profileConfigurationManager.saveActiveRuntimeState()
         }
     }
 
     override fun onDestroy() {
+        splashHandler.removeCallbacksAndMessages(null)
         dismissSplash()
         super.onDestroy()
     }
@@ -544,8 +547,10 @@ class MainActivity : ComponentActivity() {
         _splashFinished.value = true
     }
 
+    private val splashHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
     private fun attachSplashOverlay() {
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val handler = splashHandler
         val density = resources.displayMetrics.density
 
         val container = android.widget.FrameLayout(this).apply {

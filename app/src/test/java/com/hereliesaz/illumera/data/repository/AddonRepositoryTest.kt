@@ -80,6 +80,40 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun searchQueryIsUrlEncodedWithPercent20Spaces() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        coEvery { api.getCatalog(any()) } returns CatalogResponse(emptyList())
+
+        AddonRepository(api, dao).searchMovies("star wars/&?")
+
+        coVerify { api.getCatalog("https://v3-cinemeta.strem.io/catalog/movie/top/search=star%20wars%2F%26%3F.json") }
+    }
+
+    @Test
+    fun searchReturnsPartialResultsWhenOneRequestFails() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        coEvery { api.getCatalog("https://v3-cinemeta.strem.io/catalog/movie/top/search=matrix.json") } returns
+            CatalogResponse(listOf(meta("movie", "movie")))
+        coEvery { api.getCatalog("https://v3-cinemeta.strem.io/catalog/series/top/search=matrix.json") } throws
+            java.io.IOException("down")
+
+        val result = AddonRepository(api, dao).searchMovies("matrix")
+
+        assertEquals(listOf("movie"), result.map { it.id })
+    }
+
+    @Test(expected = java.io.IOException::class)
+    fun searchThrowsWhenEveryRequestFails() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        coEvery { api.getCatalog(any()) } throws java.io.IOException("offline")
+
+        AddonRepository(api, dao).searchMovies("matrix")
+    }
+
+    @Test
     fun streamLookupQueriesOnlyEnabledStreamingAddonsAndLabelsOrigin() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()

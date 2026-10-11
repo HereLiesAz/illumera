@@ -61,29 +61,36 @@ class AddonRepository @Inject constructor(
     }
 
 
+    /**
+     * Searches Cinemeta movies + series. A single failing request degrades to partial results;
+     * if every request fails, the last error is rethrown so callers can surface a failure state.
+     */
     suspend fun searchMovies(query: String): List<MetaItem> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
 
-        val movieJob = async {
-            try {
-                withTimeout(CATALOG_TIMEOUT_MS) {
-                    api.getCatalog("https://v3-cinemeta.strem.io/catalog/movie/top/search=$query.json")
-                }.metas.orEmpty().sanitize()
-            } catch (e: CancellationException) { throw e
-            } catch (e: Exception) { emptyList() }
-        }
-
-        val seriesJob = async {
-            try {
-                withTimeout(CATALOG_TIMEOUT_MS) {
-                    api.getCatalog("https://v3-cinemeta.strem.io/catalog/series/top/search=$query.json")
-                }.metas.orEmpty().sanitize()
-            } catch (e: CancellationException) { throw e
-            } catch (e: Exception) { emptyList() }
-        }
-
         val cinemeta = "https://v3-cinemeta.strem.io"
-        return@withContext (movieJob.await() + seriesJob.await())
+        // Stremio extra values are URL-encoded path segments; spaces must be %20, not '+'.
+        val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8").replace("+", "%20")
+
+        val jobs = listOf("movie", "series").map { type ->
+            async {
+                try {
+                    Result.success(
+                        withTimeout(CATALOG_TIMEOUT_MS) {
+                            api.getCatalog("$cinemeta/catalog/$type/top/search=$encoded.json")
+                        }.metas.orEmpty().sanitize()
+                    )
+                } catch (e: TimeoutCancellationException) { Result.failure<List<MetaItem>>(e)
+                } catch (e: CancellationException) { throw e
+                } catch (e: Exception) { Result.failure(e) }
+            }
+        }
+        val outcomes = jobs.awaitAll()
+        if (outcomes.all { it.isFailure }) {
+            val cause = outcomes.last().exceptionOrNull()
+            throw java.io.IOException("All search requests failed", cause)
+        }
+        return@withContext outcomes.flatMap { it.getOrDefault(emptyList()) }
             .map { it.copy(addonBaseUrl = cinemeta) }
     }
 

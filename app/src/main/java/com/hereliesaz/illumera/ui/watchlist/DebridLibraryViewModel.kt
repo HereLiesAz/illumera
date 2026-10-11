@@ -7,6 +7,7 @@ import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,8 +50,14 @@ class DebridLibraryViewModel @Inject constructor(
         }
     }
 
+    private var refreshJob: Job? = null
+    private var playJob: Job? = null
+
     fun refresh() {
-        viewModelScope.launch {
+        // A newer refresh supersedes an in-flight one; otherwise a slow older listing could
+        // land last and overwrite fresher items.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             when (val result = debridManager.listLibrary()) {
                 is DebridResult.Success -> _uiState.value = _uiState.value.copy(
@@ -66,7 +73,8 @@ class DebridLibraryViewModel @Inject constructor(
     }
 
     fun play(item: DebridItem) {
-        viewModelScope.launch {
+        playJob?.cancel()
+        playJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(resolvingItemId = item.id)
             when (val result = debridManager.getStreamUrl(item)) {
                 is DebridResult.Success -> {
@@ -79,6 +87,18 @@ class DebridLibraryViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Called when the Watchlist screen leaves composition. A stream that resolves while the
+     * screen is gone must not start playback the next time the user comes back, so the
+     * in-flight resolve is cancelled and any undelivered one-shot events are dropped.
+     */
+    fun onScreenDisposed() {
+        playJob?.cancel()
+        playJob = null
+        _uiState.value = _uiState.value.copy(resolvingItemId = null)
+        while (_events.tryReceive().isSuccess) { /* drop stale events */ }
     }
 
     fun delete(item: DebridItem) {

@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -77,6 +78,11 @@ fun WatchlistScreen(
     val debridProvider by debridViewModel.connectedProvider.collectAsState()
     val debridState by debridViewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    // Drop a debrid stream that resolves after the user left, so it can't auto-play on return.
+    DisposableEffect(debridViewModel) {
+        onDispose { debridViewModel.onScreenDisposed() }
+    }
 
     LaunchedEffect(Unit) {
         debridViewModel.events.collect { event ->

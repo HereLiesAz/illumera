@@ -81,6 +81,23 @@ class SearchViewModelTest {
     }
 
     @Test
+    fun profileSwitchClearsQueryResultsAndFailure() = runTest(dispatcher) {
+        coEvery { repository.searchMovies("x") } throws IllegalStateException("network")
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+        viewModel.onQueryChange("x")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.searchFailed)
+
+        activeProfileId.value = 8
+        advanceUntilIdle()
+
+        assertEquals("", viewModel.state.value.query)
+        assertTrue(viewModel.state.value.results.isEmpty())
+        assertFalse(viewModel.state.value.searchFailed)
+    }
+
+    @Test
     fun liveSearchIsDebouncedAndPartitionsMovieAndSeriesResults() = runTest(dispatcher) {
         val movie = MetaItem(id = "m", type = "movie", name = "Movie")
         val series = MetaItem(id = "s", type = "series", name = "Series")

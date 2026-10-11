@@ -93,8 +93,11 @@ class StremioAddonsViewModel @Inject constructor(
                         }
                     }
 
+                    // An empty remote list is far more likely a bad/partial account response
+                    // than a user who removed every addon; never wipe local addons on it.
+                    val skipDeletions = remoteUrls.isEmpty()
                     val remoteSet = remoteUrls.toSet()
-                    current.forEach { addon ->
+                    if (!skipDeletions) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
                         if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
                             try {
@@ -124,7 +127,9 @@ class StremioAddonsViewModel @Inject constructor(
                     profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(initiatingProfileId)
                     profileConfigurationManager.resetStartupCapture()
 
-                    val summary = buildString {
+                    val summary = if (skipDeletions) {
+                        "Stremio returned no addons; local addons were left unchanged."
+                    } else buildString {
                         append("Synced ${remoteUrls.size} Stremio addon")
                         if (remoteUrls.size != 1) append('s')
                         if (installedCount > 0 || removedCount > 0) {
@@ -138,11 +143,16 @@ class StremioAddonsViewModel @Inject constructor(
                     _uiState.value = StremioAddonsUiState(
                         isSyncing = false,
                         message = summary,
-                        error = if (failedCount > 0) "Some addons could not be refreshed." else null
+                        error = when {
+                            skipDeletions -> "Stremio returned an empty addon list."
+                            failedCount > 0 -> "Some addons could not be refreshed."
+                            else -> null
+                        }
                     )
                 }
             } catch (ce: CancellationException) {
-                val profileChanged = ce.message?.contains("Active profile changed", ignoreCase = true) == true
+                // Compare profile ids rather than matching the exception's message text.
+                val profileChanged = profileConfigurationManager.getLastActiveProfileId() != initiatingProfileId
                 _uiState.value = StremioAddonsUiState(
                     isSyncing = false,
                     message = if (profileChanged) "Profile changed before Stremio sync could complete." else null,

@@ -266,6 +266,8 @@ class AddonsViewModel @Inject constructor(
                 } else {
                     confirmInstall(validUrl, false, false, false)
                 }
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
                 _events.send(AddonEvent.InstallationFailure(e.message ?: "Error"))
@@ -294,8 +296,11 @@ class AddonsViewModel @Inject constructor(
                 persistProfileState()
                 _uiState.value = _uiState.value.copy(isLoading = false)
                 _events.send(AddonEvent.InstallationSuccess)
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)
+                _events.send(AddonEvent.InstallationFailure(e.message ?: "Error"))
             }
         }
     }
@@ -304,7 +309,18 @@ class AddonsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(pendingInstall = null)
     }
 
-    fun deleteAddon(transportUrl: String) { viewModelScope.launch { repository.deleteAddon(transportUrl); persistProfileState() } }
+    fun deleteAddon(transportUrl: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteAddon(transportUrl)
+                persistProfileState()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to remove addon")
+            }
+        }
+    }
 
     fun renameAddon(transportUrl: String, newName: String) {
         // Apply optimistically so a moveAddon() firing before the Room Flow round-trips

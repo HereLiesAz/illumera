@@ -13,8 +13,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Pre-warms Coil's image decoder pool and memory cache during splash/profile selection
- * to eliminate first-scroll lag.
+ * Best-effort warmup during splash/profile selection: allocates a few poster-sized bitmaps
+ * and runs one tiny Coil request so the image pipeline's lazy initialization happens before
+ * the first scroll. It may reduce first-scroll jank; it does not guarantee eliminating it.
  */
 @Singleton
 class StartupOptimizer @Inject constructor(
@@ -41,15 +42,17 @@ class StartupOptimizer @Inject constructor(
         
         warmupScope.launch {
             try {
-                // 1. Warm up bitmap decode pool with dummy bitmaps
-                // This triggers JNI initialization and thread pool creation
+                // 1. Allocate/draw a few poster-sized bitmaps (touches the Bitmap/Canvas
+                // native paths; it does not decode anything or populate Coil's pools).
                 warmupBitmapDecoding()
                 
-                // 2. Pre-fill a small portion of memory cache
-                // This ensures the cache data structures are allocated
+                // 2. Run one tiny Coil request so the loader's lazy components (fetchers,
+                // decoders, memory cache) are initialized before real requests arrive.
                 primeMemoryCache()
                 
-                if (com.hereliesaz.illumera.BuildConfig.DEBUG) Log.d(TAG, "Warmup complete - decoder pool primed")
+                if (com.hereliesaz.illumera.BuildConfig.DEBUG) Log.d(TAG, "Warmup complete")
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e: Exception) {
                 if (com.hereliesaz.illumera.BuildConfig.DEBUG) Log.w(TAG, "Warmup failed (non-critical): ${e.message}")
             }
@@ -57,14 +60,13 @@ class StartupOptimizer @Inject constructor(
     }
     
     /**
-     * Creates dummy bitmap decodes to warm up the decoder thread pool.
-     * Uses actual poster dimensions so the decoder thread pool is primed
-     * for the real work it will do during first scroll.
+     * Allocates and draws a few poster-sized bitmaps. This is not a decode and does not
+     * touch Coil's decoder dispatcher; it only exercises Bitmap/Canvas allocation.
      */
     private fun warmupBitmapDecoding() {
         repeat(WARMUP_DECODE_COUNT) {
             try {
-                // Use actual poster size (280x420) to warm the decoder for real workloads
+                // Poster-sized (280x420) to match the real allocation size
                 val bitmap = Bitmap.createBitmap(POSTER_WIDTH, POSTER_HEIGHT, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
                 canvas.drawColor(0xFF121212.toInt())
@@ -76,12 +78,11 @@ class StartupOptimizer @Inject constructor(
     }
     
     /**
-     * Makes a small allocation in the memory cache to ensure it's initialized
+     * Executes a 1x1 data-URI request through Coil to initialize the loader lazily.
      */
     private suspend fun primeMemoryCache() {
         try {
-            // Create a small image request with a data URI to avoid network
-            // This forces the memory cache to initialize its data structures
+            // A data URI avoids the network; running it initializes Coil's lazy components.
             val dummyRequest = ImageRequest.Builder(context)
                 .data("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
                 .size(1, 1)
@@ -89,6 +90,8 @@ class StartupOptimizer @Inject constructor(
                 .build()
             
             imageLoader.execute(dummyRequest)
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (e: Exception) {
             // Ignore
         }
