@@ -2075,7 +2075,7 @@ fun SourcePreferencesSettings(
                     title = "Exclude Phrases"
                 ) {
                     Text(
-                        "Sources containing these words will be hidden. Comma-separated.",
+                        "Sources containing these words are tried last. Comma-separated.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(0.6f),
                         modifier = Modifier.padding(bottom = 16.dp)
@@ -2096,7 +2096,7 @@ fun SourcePreferencesSettings(
 
                     LaunchedEffect(Unit) {
                         delay(100)
-                        focusRequester.requestFocus()
+                        runCatching { focusRequester.requestFocus() }
                     }
                 }
             }

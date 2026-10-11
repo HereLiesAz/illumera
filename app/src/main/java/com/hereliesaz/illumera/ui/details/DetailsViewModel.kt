@@ -596,7 +596,7 @@ class DetailsViewModel @Inject constructor(
 
                 _state.update { it.copy(tmdbEnabled = true, tmdbLoading = true) }
 
-                val language = profile.tmdbLanguage.ifBlank { null } ?: "en"
+                val language = profile.tmdbLanguage.ifBlank { java.util.Locale.getDefault().toLanguageTag() } // blank = device language
                 val mediaType = tmdbService.normalizeMediaType(type)
 
                 // Resolve TMDB ID — if unresolvable (e.g. Kitsu IDs), stop loading and show addon data

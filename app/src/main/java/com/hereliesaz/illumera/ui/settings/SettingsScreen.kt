@@ -147,9 +147,12 @@ fun SettingsScreen(
         displayedSection = section
         contentPanelOpen = true
         scope.launch {
-            delay(400) // Wait for animation
-            contentPaneRequester.requestFocus()
-            isTransitioning = false // UNLOCK
+            try {
+                delay(400) // Wait for animation
+                runCatching { contentPaneRequester.requestFocus() }
+            } finally {
+                isTransitioning = false // UNLOCK
+            }
         }
     }
 
@@ -241,10 +244,10 @@ fun SettingsScreen(
                 }
                 SettingsSection.Dashboard -> {
                     DashboardEditorScreen(
-                        onBack = {
-                            onDashboardChanged() // Invalidate home screen cache
-                            itemRequesters[selectedSection]?.requestFocus()
-                        },
+                        // Home cache invalidation happens when the editor leaves composition
+                        // (any exit path), and only if the dashboard was modified.
+                        onBack = { runCatching { itemRequesters[selectedSection]?.requestFocus() } },
+                        onDashboardChanged = onDashboardChanged,
                         isTopNav = isTopNav,
                         currentProfile = currentProfile
                     )

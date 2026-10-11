@@ -103,7 +103,7 @@ class ThemeManager @Inject constructor(
         val id = "custom_${UUID.randomUUID().toString().take(8)}"
         val theme = ThemeEntity(
             id = id,
-            name = name,
+            name = name.trim().ifBlank { DEFAULT_CUSTOM_THEME_NAME },
             primaryColor = primaryColor,
             backgroundColor = backgroundColor,
             surfaceColor = darkenColor(backgroundColor, 0.1f),
@@ -130,6 +130,11 @@ class ThemeManager @Inject constructor(
      */
     fun updateCustomTheme(theme: ThemeEntity) {
         if (theme.isBuiltIn) return // Don't allow modifying built-in themes
+        // Keep the surface derived from the (possibly edited) background, as createCustomTheme does.
+        val theme = theme.copy(
+            name = theme.name.trim().ifBlank { DEFAULT_CUSTOM_THEME_NAME },
+            surfaceColor = darkenColor(theme.backgroundColor, 0.1f)
+        )
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
             dao.insertTheme(theme)
             // Update current theme if it's the one being edited
@@ -153,6 +158,10 @@ class ThemeManager @Inject constructor(
                 }
             }
         }
+    }
+
+    private companion object {
+        const val DEFAULT_CUSTOM_THEME_NAME = "My Theme"
     }
 
     // Helper to darken a color for surface

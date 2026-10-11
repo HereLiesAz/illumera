@@ -506,7 +506,7 @@ class HomeViewModel @Inject constructor(
         val key = "tmdb:${item.type}:${item.id}"
         if (!tmdbEnrichmentInFlight.add(key)) return
 
-        val language = profile.tmdbLanguage.ifBlank { null } ?: "en"
+        val language = profile.tmdbLanguage.ifBlank { java.util.Locale.getDefault().toLanguageTag() } // blank = device language
         val ownerProfileId = profileConfigurationManager.activeProfileId.value
 
         trackProfileScopedJob(viewModelScope.launch(Dispatchers.IO) {

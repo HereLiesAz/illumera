@@ -159,7 +159,7 @@ fun ThemeEditorScreen(
     }
     
     LaunchedEffect(Unit) {
-        primarySlotFocus.requestFocus()
+        runCatching { primarySlotFocus.requestFocus() }
     }
 
     // Block focus escape upwards
@@ -331,7 +331,7 @@ fun ThemeEditorScreen(
                     isPrimary = true,
                     onClick = {
                         onSave(
-                            themeName,
+                            themeName.trim().ifBlank { editingTheme?.name ?: "My Theme" },
                             colorToLong(primaryColor),
                             colorToLong(backgroundColor)
                         )

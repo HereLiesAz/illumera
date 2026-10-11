@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.security.KeyStore
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -81,16 +80,8 @@ class StremioAuthManager @Inject constructor(
         val prefsDir = "shared_prefs"
         File(context.filesDir.parent, "$prefsDir/$PREFS_FILE.xml").delete()
         File(context.filesDir.parent, "$prefsDir/$PREFS_FILE.xml.bak").delete()
-
-        // Remove the master key from Android KeyStore
-        try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore")
-            keyStore.load(null)
-            keyStore.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
-            keyStore.deleteEntry("_androidx_security_master_key")
-        } catch (e: Exception) {
-            com.hereliesaz.illumera.crash.AppErrors.e("StremioAuthManager", "Failed to clear master key", e)
-        }
+        // Do NOT delete the default MasterKey alias: Trakt and wutch.tv encrypt their
+        // prefs with the same shared key, and removing it makes their data undecryptable.
     }
 
     private fun clearLegacyFallbackPrefs() {
@@ -257,7 +248,8 @@ class StremioAuthManager @Inject constructor(
      * Logs in to Stremio and stores the credentials securely.
      * Returns the auth key on success.
      */
-    suspend fun login(email: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun login(rawEmail: String, password: String): Result<String> = withContext(Dispatchers.IO) {
+        val email = rawEmail.trim()
         val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val loginResult = stremioAuthService.login(email, password)
