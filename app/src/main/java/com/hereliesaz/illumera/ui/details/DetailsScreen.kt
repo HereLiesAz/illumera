@@ -623,7 +623,11 @@ fun DetailsScreen(
                             modifier = Modifier
                                 .focusRequester(episodesButtonFocusRequester)
                                 .restorableFocus("hero:episodes", focusMemory),
-                            onClick = { viewModel.openEpisodes() }
+                            onClick = {
+                                viewModel.openEpisodes(
+                                    resumeEpisode?.takeIf { resumePlaybackId != null }?.let { episodePlaybackId(streamId, it) }
+                                )
+                            }
                         )
 
                         ExpandableIconButton(

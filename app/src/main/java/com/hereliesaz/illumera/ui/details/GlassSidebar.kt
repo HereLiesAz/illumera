@@ -331,6 +331,10 @@ fun EpisodesContent(
         }
         if (episodes.isNotEmpty() && savedIndex in episodes.indices) {
             runCatching { listState.scrollToItem(savedIndex) }
+            // Focus the target once it is laid out; the sidebar's own timed request can
+            // land before the scroll does and miss an episode far down the list.
+            withFrameNanos { }
+            runCatching { focusRequester.requestFocus() }
         }
     }
 
