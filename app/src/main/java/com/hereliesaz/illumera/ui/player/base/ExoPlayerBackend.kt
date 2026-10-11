@@ -1718,6 +1718,9 @@ class ExoPlayerBackend(
         ) {
             return true
         }
+        // The system took the hardware decoder for another app or overlay. Nothing is wrong
+        // with the source; re-preparing at the same position gets a decoder back.
+        if (codeName == "ERROR_CODE_DECODING_RESOURCES_RECLAIMED") return true
 
         if (!codeName.startsWith("ERROR_CODE_IO_")) return false
         if (codeName == "ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED") return false
