@@ -67,6 +67,7 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                                 id = o.get("id")?.asString ?: return@mapNotNull null,
                                 name = o.get("name")?.asString ?: "Unknown",
                                 provider = DebridProvider.TORBOX,
+                                infoHash = o.get("hash")?.takeUnless { it.isJsonNull }?.asString,
                                 sizeBytes = o.get("size")?.asLong,
                                 status = o.get("download_state")?.asString,
                                 progress = o.get("progress")?.asDouble?.let { (it * 100).toInt() },

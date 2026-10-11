@@ -65,6 +65,7 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
                                 id = o.get("id")?.asString ?: return@mapNotNull null,
                                 name = o.get("filename")?.asString ?: "Unknown",
                                 provider = DebridProvider.ALL_DEBRID,
+                                infoHash = o.get("hash")?.takeUnless { it.isJsonNull }?.asString,
                                 sizeBytes = o.get("size")?.asLong,
                                 status = o.get("status")?.asString,
                                 addedAt = o.get("uploadDate")?.asString,

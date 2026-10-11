@@ -25,6 +25,11 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
+    // Adding a magnet and listing its files can block on metadata from the swarm.
+    private val slowClient = client.newBuilder()
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
+
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     suspend fun addTorrent(magnetLink: String, title: String = ""): JsonObject =
@@ -39,7 +44,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 .url("$baseUrl/torrents")
                 .post(body.toString().toRequestBody(jsonType))
                 .build()
-            val response = client.newCall(request).execute()
+            val response = slowClient.newCall(request).execute()
             val responseBody = response.body?.string() ?: "{}"
             response.close()
             if (!response.isSuccessful) {
@@ -64,7 +69,17 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
             val preloadPercent = ((15 * 100) / boundedCacheMb).coerceIn(3, 15)
 
             try {
-                val currentSettings = getCurrentSettings() ?: return@withContext false
+                // Retry the GET once; if it still fails, skip the write rather than POST a
+                // partial BTSets (the set action replaces the whole object, so a partial one
+                // would reset every other TorrServer value to zero/defaults).
+                val currentSettings = getCurrentSettings() ?: getCurrentSettings() ?: run {
+                    com.hereliesaz.illumera.crash.AppErrors.w(
+                        "LumeraTorrent",
+                        "TorrServer settings unavailable; streaming settings not applied",
+                        IllegalStateException("settings get failed twice")
+                    )
+                    return@withContext false
+                }
                 currentSettings.addProperty("CacheSize", cacheBytes)
                 currentSettings.addProperty("ReaderReadAHead", 95)
                 currentSettings.addProperty("PreloadCache", preloadPercent)
@@ -167,7 +182,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 .post(body.toString().toRequestBody(jsonType))
                 .build()
             try {
-                val response = client.newCall(request).execute()
+                val response = slowClient.newCall(request).execute()
                 val responseBody = response.body?.string() ?: "{}"
                 response.close()
                 if (!response.isSuccessful) {
@@ -194,8 +209,9 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
         }
 
     private fun extractHash(magnetLink: String): String {
-        val regex = Regex("btih:([a-fA-F0-9]{40})")
-        return regex.find(magnetLink)?.groupValues?.get(1) ?: magnetLink
+        // btih is either 40-char hex or 32-char base32.
+        val regex = Regex("btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})(?![a-zA-Z0-9])")
+        return regex.find(magnetLink)?.groupValues?.get(1)?.lowercase() ?: magnetLink
     }
 
     private fun parseTorrentStats(json: JsonObject): TorrentStats {

@@ -76,7 +76,8 @@ class TorrentService : Service() {
             stopSelf()
         }
 
-        return START_STICKY
+        // A null-intent sticky restart has no magnet to resume, so never ask for one.
+        return START_NOT_STICKY
     }
 
     private fun startForegroundService() {
@@ -230,7 +231,8 @@ class TorrentService : Service() {
     private val videoExtensions = setOf("mkv", "mp4", "avi", "webm", "ts", "m4v", "mov", "wmv", "flv")
 
     private suspend fun resolveFileIndex(magnet: String, hintIdx: Int, hintName: String = ""): Int {
-        val deadline = System.currentTimeMillis() + 15_000L
+        // Slow swarms can take well over 15s to deliver metadata.
+        val deadline = System.currentTimeMillis() + 45_000L
         while (System.currentTimeMillis() < deadline) {
             val files = api.getFileList(magnet)
             if (files.isNotEmpty()) {
@@ -283,9 +285,9 @@ class TorrentService : Service() {
             }
             delay(500)
         }
-        val fallback = hintIdx.coerceAtLeast(0)
-        if (BuildConfig.DEBUG) Log.w(TAG, "Timeout resolving file list, using index $fallback")
-        return fallback
+        // Guessing an id here is unsafe (TorrServer ids are 1-based, and the hint may point
+        // at a non-video file); fail so the ranked fallback moves to the next source.
+        throw IllegalStateException("Timed out waiting for torrent metadata from peers")
     }
 
     private fun updateNotification(text: String) {

@@ -54,6 +54,9 @@ class PremiumizeService @Inject constructor(private val http: DebridHttp) : Debr
                             id = o.get("id")?.asString ?: return@mapNotNull null,
                             name = o.get("name")?.asString ?: "Unknown",
                             provider = DebridProvider.PREMIUMIZE,
+                            // Transfers expose the source magnet, not a bare hash.
+                            infoHash = o.get("src")?.takeUnless { it.isJsonNull }?.asString
+                                ?.let { Regex("btih:([a-fA-F0-9]{40})").find(it)?.groupValues?.get(1) },
                             status = o.get("status")?.asString,
                             progress = o.get("progress")?.asDouble?.let { (it * 100).toInt() },
                             directLinks = listOfNotNull(o.get("src")?.asString)

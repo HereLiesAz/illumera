@@ -125,6 +125,22 @@ class SourceSelectionStoreTest {
     }
 
     @Test
+    fun excludedSourceIdsContainingCommasRoundTrip() {
+        store.rememberExcludedSources("movie", setOf("a,b", "c"))
+
+        assertEquals(setOf("a,b", "c"), store.getExcludedSources("movie"))
+    }
+
+    @Test
+    fun legacyCommaJoinedExcludedSourcesAreStillRead() {
+        context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit()
+            .putString("excluded_sources_p1:movie", "source-a,source-b")
+            .commit()
+
+        assertEquals(setOf("source-a", "source-b"), store.getExcludedSources("movie"))
+    }
+
+    @Test
     fun rememberedSelectionsAreProfileScoped() {
         activeProfileId = 1
         store.rememberSelection("movie", Stream(name = "[One] 1080p", url = "one"))

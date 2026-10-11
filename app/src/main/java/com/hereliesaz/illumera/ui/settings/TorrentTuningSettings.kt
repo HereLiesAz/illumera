@@ -121,7 +121,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
             modifier = Modifier.padding(start = 4.dp, bottom = 3.dp)
         )
         Text(
-            text = "The bundled TorrServer build recommends 20–25 connections; Illumera keeps manual values inside that range.",
+            text = "More connections find more peers on slow swarms at the cost of CPU and battery. Range: ${TorrentDeviceTuner.MIN_CONNECTION_LIMIT}–${TorrentDeviceTuner.MAX_CONNECTION_LIMIT}.",
             color = Color.White.copy(alpha = 0.5f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
@@ -135,7 +135,8 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
                 connections = settings.connectionsLimit
             },
             valueRange = TorrentDeviceTuner.MIN_CONNECTION_LIMIT.toFloat()..TorrentDeviceTuner.MAX_CONNECTION_LIMIT.toFloat(),
-            steps = (TorrentDeviceTuner.MAX_CONNECTION_LIMIT - TorrentDeviceTuner.MIN_CONNECTION_LIMIT - 1).coerceAtLeast(0)
+            steps = ((TorrentDeviceTuner.MAX_CONNECTION_LIMIT - TorrentDeviceTuner.MIN_CONNECTION_LIMIT) /
+                TorrentDeviceTuner.CONNECTION_LIMIT_STEP - 1).coerceAtLeast(0)
         )
     }
 }

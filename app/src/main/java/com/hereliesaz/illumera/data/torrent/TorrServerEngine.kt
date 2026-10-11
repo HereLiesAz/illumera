@@ -55,17 +55,16 @@ class TorrServerEngine @Inject constructor(
             .redirectErrorStream(true)
             .start()
 
-        // Log output in background for debugging
-        if (BuildConfig.DEBUG) {
-            val proc = process
-            Thread({
-                try {
-                    proc?.inputStream?.bufferedReader()?.forEachLine { line ->
-                        Log.v(TAG, "TorrServer: $line")
-                    }
-                } catch (_: Exception) {}
-            }, "torrserver-log").apply { isDaemon = true }.start()
-        }
+        // Always drain stdout/stderr: an unread pipe fills up and blocks TorrServer.
+        // Lines are only logged in debug builds.
+        val proc = process
+        Thread({
+            try {
+                proc?.inputStream?.bufferedReader()?.forEachLine { line ->
+                    if (BuildConfig.DEBUG) Log.v(TAG, "TorrServer: $line")
+                }
+            } catch (_: Exception) {}
+        }, "torrserver-log").apply { isDaemon = true }.start()
 
         // Wait for server to be ready
         val deadline = System.currentTimeMillis() + 10_000L
