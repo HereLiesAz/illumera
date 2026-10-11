@@ -39,6 +39,7 @@ class RemoteTextServerManager {
         for (port in PORT_START..PORT_END) {
             try {
                 val candidate = RemoteTextServer(
+                    hostname = ip, // bind only to the LAN address shown in the QR
                     port = port,
                     pairingToken = pairingToken,
                     title = title,

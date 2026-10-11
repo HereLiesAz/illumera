@@ -151,6 +151,69 @@ class AddonDaoIntegrationTest {
     }
 
     @Test
+    fun replaceRuntimeStateRecordsOwnerInSameTransaction() = runTest {
+        assertNull(dao.getRuntimeOwnerProfileId())
+
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), false, ownerProfileId = 7)
+
+        assertEquals(7, dao.getRuntimeOwnerProfileId())
+    }
+
+    @Test
+    fun mergeDoesNotResurrectTombstonedSnapshotOnlyRows() = runTest {
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("deleted", lastWatched = 100L), history("ep:1:1", lastWatched = 100L, type = "series")),
+            mergeWatchHistory = false, ownerProfileId = 1)
+        dao.deleteHistoryItem("deleted")
+        dao.deleteSeriesHistory("ep:")
+
+        // Stale snapshot (written before the deletes) still lists both rows.
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("deleted", lastWatched = 100L), history("ep:1:1", lastWatched = 100L, type = "series")),
+            mergeWatchHistory = true, ownerProfileId = 1)
+
+        assertNull(dao.getHistoryItem("deleted"))
+        assertNull(dao.getHistoryItem("ep:1:1"))
+    }
+
+    @Test
+    fun mergeKeepsSnapshotRowWatchedAgainAfterTombstone() = runTest {
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("item", lastWatched = 100L)), mergeWatchHistory = false, ownerProfileId = 1)
+        dao.deleteHistoryItem("item")
+        val rewatchedAt = System.currentTimeMillis() + 60_000L
+
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("item", lastWatched = rewatchedAt)), mergeWatchHistory = true, ownerProfileId = 1)
+
+        assertEquals(rewatchedAt, dao.getHistoryItem("item")?.lastWatched)
+    }
+
+    @Test
+    fun tombstonesArePerProfilePrunedAndRemovedWithProfile() = runTest {
+        dao.insertProfile(ProfileEntity(id = 1, name = "One"))
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("item", lastWatched = 100L)), mergeWatchHistory = false, ownerProfileId = 1)
+        dao.deleteHistoryItem("item")
+        assertEquals(listOf("item"), dao.getHistoryTombstones(1).map { it.itemId })
+        assertTrue(dao.getHistoryTombstones(2).isEmpty())
+
+        // Profile 2's merge must not see profile 1's tombstones.
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(history("item", lastWatched = 100L)), mergeWatchHistory = true, ownerProfileId = 2)
+        assertEquals(100L, dao.getHistoryItem("item")?.lastWatched)
+
+        dao.deleteProfileCascading(1)
+        assertTrue(dao.getHistoryTombstones(1).isEmpty())
+
+        dao.deleteHistoryItem("item") // owner is now profile 2
+        dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
+            mergeWatchHistory = true, ownerProfileId = 2,
+            now = System.currentTimeMillis() + HISTORY_TOMBSTONE_TTL_MS + 1L)
+        assertTrue(dao.getHistoryTombstones(2).isEmpty())
+    }
+
+    @Test
     fun recentSearchesReplaceSameQueryOrderNewestFirstAndTrimPerProfile() = runTest {
         for (index in 1L..6L) {
             dao.upsertRecentSearch(RecentSearchEntity(1, "q$index", index))

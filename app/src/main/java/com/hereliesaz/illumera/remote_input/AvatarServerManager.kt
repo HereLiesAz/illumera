@@ -44,7 +44,7 @@ class AvatarServerManager {
         // Try ports in range
         for (port in PORT_START..PORT_END) {
             try {
-                val avatarServer = AvatarUploadServer(port, pairingToken, onImageReceived)
+                val avatarServer = AvatarUploadServer(ip, port, pairingToken, onImageReceived)
                 avatarServer.start()
                 val accepted = synchronized(lock) {
                     if (generation == myGeneration) {

@@ -11,13 +11,14 @@ import fi.iki.elonen.NanoHTTPD
 import java.util.UUID
 
 class HubBulkUploadServer(
+    hostname: String,
     port: Int,
     private val pairingToken: String,
     private val items: List<HubRowItemEntity>,
     private val shape: HubShape,
     private val onImageReceived: (String, ByteArray) -> Unit,
     private val onImageDeleted: ((String) -> Unit)? = null
-) : NanoHTTPD(port) {
+) : PairedLanServer(hostname, port, pairingToken) {
 
     // Track images uploaded during this session for preview and status updates.
     // NanoHTTPD services each connection on its own thread, so these need to be
@@ -33,15 +34,13 @@ class HubBulkUploadServer(
         private const val MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        val uri = session.uri
-        if (uri == "/ping") return DisconnectBanner.pingResponse()
-        // Require the pairing token from the QR/link URL on every request — proves
-        // the caller actually saw the URL shown on this TV.
-        if (session.parms["pin"] != pairingToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
-        }
+    // Address filtering, /ping, pin + expiry checks and no-store headers are
+    // handled by PairedLanServer before this is called.
+    override fun wrongPinResponse(): Response =
+        newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not Found")
 
+    override fun serveAuthorized(session: IHTTPSession): Response {
+        val uri = session.uri
         return when {
             uri == "/" -> servePage()
             uri == "/upload" && session.method == Method.POST -> handleImageUpload(session)
@@ -505,7 +504,7 @@ class HubBulkUploadServer(
             session.parseBody(files)
 
             val token = session.parms["csrf_token"]
-            if (token != csrfToken) {
+            if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
@@ -563,7 +562,7 @@ class HubBulkUploadServer(
             session.parseBody(files)
 
             val token = session.parms["csrf_token"]
-            if (token != csrfToken) {
+            if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 

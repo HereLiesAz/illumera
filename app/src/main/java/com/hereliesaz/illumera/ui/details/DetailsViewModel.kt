@@ -1246,8 +1246,7 @@ class DetailsViewModel @Inject constructor(
         val itemId = _state.value.resolvedId ?: meta.id
         viewModelScope.launch(Dispatchers.IO) {
             if (dao.isInWatchlist(profileId, itemId)) {
-                dao.removeFromWatchlist(profileId, itemId)
-                traktSyncManager.pushRemove(itemId, meta.type)
+                traktSyncManager.removeFromWatchlist(profileId, itemId, meta.type)
                 wutchManager.onWatchlistChanged(itemId, added = false)
             } else {
                 val entity = WatchlistEntity(
@@ -1258,8 +1257,7 @@ class DetailsViewModel @Inject constructor(
                     poster = meta.poster,
                     addedAt = System.currentTimeMillis()
                 )
-                dao.addToWatchlist(entity)
-                traktSyncManager.pushAdd(entity)
+                traktSyncManager.addToWatchlist(entity)
                 wutchManager.onWatchlistChanged(itemId, added = true)
             }
         }

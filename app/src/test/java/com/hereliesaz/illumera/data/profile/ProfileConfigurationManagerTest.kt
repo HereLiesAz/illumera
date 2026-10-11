@@ -166,7 +166,7 @@ class ProfileConfigurationManagerTest {
         verify(exactly = 0) { authManager.saveCredentialsForProfile(2) }
         coVerify(exactly = 0) { dao.getAllAddons() }
         coVerify(exactly = 1) {
-            dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), false)
+            dao.replaceRuntimeState(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), false, 2, any())
         }
         assertTrue(manager.needsInitialSetup(2))
         assertEquals(2, manager.getLastActiveProfileId())

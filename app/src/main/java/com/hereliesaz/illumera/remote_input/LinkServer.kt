@@ -11,12 +11,13 @@ import java.util.UUID
  * and receives the pasted URL from the user's phone.
  */
 class LinkServer(
+    hostname: String,
     port: Int,
-    private val pairingToken: String,
+    pairingToken: String,
     private val helperUrl: String? = null,
     private val helperLabel: String? = null,
     private val onLinkReceived: (String) -> Unit
-) : NanoHTTPD(port) {
+) : PairedLanServer(hostname, port, pairingToken) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val csrfToken = UUID.randomUUID().toString()
@@ -25,14 +26,9 @@ class LinkServer(
         private const val MAX_URL_LENGTH = 4096
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        // Require the pairing token from the QR/link URL on every request — proves
-        // the caller actually saw the URL shown on this TV, unlike the CSRF token
-        // below (which is only good against forged submissions once you have the page).
-        if (session.parms["pin"] != pairingToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
-        }
+    // Address filtering, /ping, pin + expiry checks and no-store headers are
+    // handled by PairedLanServer before this is called.
+    override fun serveAuthorized(session: IHTTPSession): Response {
         return when (session.method) {
             Method.GET -> serveForm()
             Method.POST -> handleSubmission(session)
@@ -212,7 +208,7 @@ class LinkServer(
 
             // Validate CSRF token
             val token = session.parms["csrf_token"]
-            if (token != csrfToken) {
+            if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 

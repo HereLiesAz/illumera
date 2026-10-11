@@ -12,10 +12,11 @@ import java.util.UUID
  * Serves a login form and forwards credentials to the app.
  */
 class IntegrationServer(
+    hostname: String,
     port: Int,
-    private val pairingToken: String,
+    pairingToken: String,
     private val onCredentialsReceived: (email: String, password: String) -> Unit
-) : NanoHTTPD(port) {
+) : PairedLanServer(hostname, port, pairingToken) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val csrfToken = UUID.randomUUID().toString()
@@ -26,15 +27,9 @@ class IntegrationServer(
         private const val MAX_FIELD_LENGTH = 1024
     }
 
-    override fun serve(session: IHTTPSession): Response {
-        if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        // Require the pairing token from the QR/link URL on every request — proves
-        // the caller actually saw the URL shown on this TV, unlike the CSRF token
-        // below (which only protects against a forged submission once you already
-        // have the page — anyone on the LAN could otherwise just GET / for it).
-        if (session.parms["pin"] != pairingToken) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
-        }
+    // Address filtering, /ping, pin + expiry checks and no-store headers are
+    // handled by PairedLanServer before this is called.
+    override fun serveAuthorized(session: IHTTPSession): Response {
         return when {
             session.method == Method.GET && session.uri == "/" -> serveLoginForm()
             session.method == Method.POST && session.uri == "/login" -> handleLogin(session)
@@ -200,7 +195,7 @@ class IntegrationServer(
                         </form>
                         
                         <div class="info">
-                            <p>This page is unique to this session — only send your credentials here if you scanned this link's QR code or opened it from your TV. They are not stored on any server, but this local connection is not encrypted, so avoid using this on a network you don't trust.</p>
+                            <p>This page is unique to this session — only send your credentials here if you scanned this link's QR code or opened it from your TV. They are not stored on any server, but this local connection is not encrypted and only works from the same network as your TV, so avoid using this on a network you don't trust. This link works once and expires after a few minutes.</p>
                         </div>
                     </div>
                     
@@ -268,7 +263,7 @@ class IntegrationServer(
 
             // Validate CSRF token
             val token = session.parms["csrf_token"]
-            if (token != csrfToken) {
+            if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return jsonResponse(false, "Invalid request")
             }
 
@@ -281,6 +276,10 @@ class IntegrationServer(
             if (email.length > MAX_FIELD_LENGTH || password.length > MAX_FIELD_LENGTH) {
                 return jsonResponse(false, "Input too long")
             }
+
+            // Credential forms are single-use: burn the pairing token so a
+            // replayed/leaked URL can't submit again.
+            pairingSession.invalidate()
 
             // Forward credentials to the app on main thread
             mainHandler.post {

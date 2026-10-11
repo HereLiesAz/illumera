@@ -145,7 +145,11 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     suspend fun loadRuntimeState(profileId: Int) = runtimeMutex.withLock {
-        val sameProfile = profileId == getLastActiveProfileId()
+        // The DB's runtime_owner marker is committed atomically with the runtime tables, so
+        // it is authoritative about whose watch history is in the DB. The prefs id is written
+        // after that transaction and can be stale after a crash in between; it is only a
+        // fallback for databases that predate the marker.
+        val sameProfile = (dao.getRuntimeOwnerProfileId() ?: getLastActiveProfileId()) == profileId
         val snapshot = when (val read = readSnapshot(profileId)) {
             is SnapshotRead.Loaded -> read.snapshot
             // No snapshot yet (legacy profile from before snapshots existed): adopt the
@@ -182,7 +186,8 @@ class ProfileConfigurationManager @Inject constructor(
             hubRows = snapshot.hubRows,
             hubRowItems = snapshot.hubRowItems,
             watchHistory = snapshot.watchHistory,
-            mergeWatchHistory = sameProfile
+            mergeWatchHistory = sameProfile,
+            ownerProfileId = profileId
         )
         stremioAuthManager.loadCredentialsForProfile(profileId)
         setLastActiveProfileId(profileId)
