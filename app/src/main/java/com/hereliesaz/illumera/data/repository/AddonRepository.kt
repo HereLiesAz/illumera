@@ -45,6 +45,13 @@ class AddonRepository @Inject constructor(
     private val TAG = "AddonRepository"
     private val STREAM_TIMEOUT_MS = 20_000L  // 20 seconds per stream request (torrent addons need more time)
 
+    /** What one addon contributed to the last stream request: a count, or why it gave none. */
+    data class AddonStreamOutcome(val addonName: String, val count: Int, val problem: String? = null)
+
+    private val _lastStreamOutcomes = kotlinx.coroutines.flow.MutableStateFlow<List<AddonStreamOutcome>>(emptyList())
+    /** Per-addon results of the most recent [getStreams], so a short source list can say why. */
+    val lastStreamOutcomes: kotlinx.coroutines.flow.StateFlow<List<AddonStreamOutcome>> = _lastStreamOutcomes
+
     /**
      * Fetches a single page of catalog items at the given skip offset.
      * Used for on-demand lazy loading as the user scrolls.
@@ -274,6 +281,7 @@ class AddonRepository @Inject constructor(
             ?.filter { it.isEnabled && it.supportsStream }
             ?: emptyList()
         val preferredBase = preferredAddonBaseUrl?.trimEnd('/')
+        val outcomes = java.util.concurrent.ConcurrentLinkedQueue<AddonStreamOutcome>()
 
         val jobs = addons.map { addon ->
             async {
@@ -290,11 +298,30 @@ class AddonRepository @Inject constructor(
                 // declare its own prefixes, and stored manifests are never refreshed. An addon
                 // that can't serve this id answers empty, which costs one request.
 
+                val sourceLabel = addon.nickname ?: addon.name
                 try {
                     val url = "$addonBase/stream/$type/$requestId.json"
-                    val response = withTimeout(STREAM_TIMEOUT_MS) { api.getStreams(url) }
-                    val sourceLabel = addon.nickname ?: addon.name
-                    response.streams.orEmpty().map { stream ->
+                    // Parsed per stream: one malformed entry used to fail the whole
+                    // response, silently dropping every stream that addon returned.
+                    val json = withTimeout(STREAM_TIMEOUT_MS) { api.getJson(url) }
+                    val elements = json.takeIf { it.isJsonObject }
+                        ?.asJsonObject?.get("streams")
+                        ?.takeIf { it.isJsonArray }?.asJsonArray
+                        ?.toList().orEmpty()
+                    var skipped = 0
+                    val parsed = elements.mapNotNull { element ->
+                        runCatching { gson.fromJson(element, Stream::class.java) }
+                            .getOrNull() ?: run { skipped++; null }
+                    }
+                    if (skipped > 0) {
+                        AppErrors.w(TAG, "Streams from ${addon.name}: skipped $skipped malformed of ${elements.size}",
+                            IllegalStateException("malformed stream entries"))
+                    }
+                    outcomes += AddonStreamOutcome(
+                        sourceLabel, parsed.size,
+                        if (skipped > 0) "$skipped unreadable" else null
+                    )
+                    parsed.map { stream ->
                         val tagged = stream.copy(
                             addonTransportUrl = addon.transportUrl,
                             addonDisplayName = sourceLabel,
@@ -307,6 +334,7 @@ class AddonRepository @Inject constructor(
                     }
                 } catch (timeout: TimeoutCancellationException) {
                     AppErrors.w(TAG, "Streams from ${addon.name} timed out after ${STREAM_TIMEOUT_MS}ms", timeout)
+                    outcomes += AddonStreamOutcome(sourceLabel, 0, "timed out")
                     emptyList()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -317,15 +345,17 @@ class AddonRepository @Inject constructor(
                     if (e.code() != 404) {
                         AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
                     }
+                    outcomes += AddonStreamOutcome(sourceLabel, 0, if (e.code() == 404) null else "HTTP ${e.code()}")
                     emptyList()
                 } catch (e: Exception) {
                     AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
+                    outcomes += AddonStreamOutcome(sourceLabel, 0, "failed")
                     emptyList()
                 }
             }
         }
 
-        jobs.awaitAll().flatten()
+        jobs.awaitAll().flatten().also { _lastStreamOutcomes.value = outcomes.toList() }
     }
 
     suspend fun getAddonSortOrders(): Map<String, Int> = withContext(Dispatchers.IO) {

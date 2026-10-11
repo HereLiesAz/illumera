@@ -128,6 +128,9 @@ class DetailsViewModel @Inject constructor(
         fun streamId(pageId: String): String = resolvedId ?: meta?.id ?: pageId
     }
 
+    /** Per-addon results of the latest stream request, shown in the source panel. */
+    val streamOutcomes = repository.lastStreamOutcomes
+
     private val _state = MutableStateFlow(DetailsState())
     val state: StateFlow<DetailsState> = _state
 
