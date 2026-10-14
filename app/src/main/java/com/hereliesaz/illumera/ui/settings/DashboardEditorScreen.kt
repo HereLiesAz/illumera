@@ -74,8 +74,9 @@ fun DashboardEditorScreen(
     }
     val configs by viewModel.configs.collectAsState()
     val hubRows by viewModel.hubRows.collectAsState()
-    val availableGenres by viewModel.availableGenres.collectAsState()
     var selectedTab by remember { mutableStateOf("home") }
+    var genreChanges by remember(currentProfile?.id) { mutableIntStateOf(0) }
+    val availableGenres by viewModel.availableGenres(selectedTab).collectAsState()
     var focusedTab by remember { mutableStateOf("home") }
 
     var dialogState by remember { mutableStateOf<DialogState>(DialogState.None) }
@@ -353,9 +354,8 @@ fun DashboardEditorScreen(
             }
 
             if (currentProfile != null && selectedTab in setOf("movies", "series")) {
-                var genreSelectionVersion by remember(currentProfile.id, selectedTab) { mutableIntStateOf(0) }
-                val selectedGenres = remember(currentProfile.id, selectedTab, genreSelectionVersion) {
-                    viewModel.selectedGenres(currentProfile.id, selectedTab)
+                val hidden = remember(currentProfile.id, selectedTab, genreChanges) {
+                    viewModel.disabledGenres(currentProfile.id, selectedTab)
                 }
                 Text(
                     "Genre rows",
@@ -364,30 +364,22 @@ fun DashboardEditorScreen(
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
                 Text(
-                    "Choose the genres that appear above the full catalog on the ${if (selectedTab == "movies") "Movies" else "Series"} screen.",
+                    "${availableGenres.count { genre -> hidden.none { it.equals(genre, true) } }} of ${availableGenres.size} enabled · Every genre is shown by default. Disable individual genres below.",
                     color = Color.LightGray,
                     style = MaterialTheme.typography.bodySmall
                 )
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
-                ) {
-                    items(availableGenres.size) { index ->
-                        val genre = availableGenres[index]
-                        val checked = genre in selectedGenres
-                        VoidButton(
-                            text = "${if (checked) "✓ " else ""}$genre",
-                            onClick = {
-                                viewModel.toggleGenre(currentProfile.id, selectedTab, genre)
-                                genreSelectionVersion++
-                            },
-                            isPrimary = checked,
-                            modifier = Modifier.width(158.dp)
-                        )
-                    }
-                }
+                Spacer(Modifier.height(8.dp))
+                VoidButton(
+                    text = "Manage ${if (selectedTab == "movies") "Movie" else "Series"} Genres",
+                    onClick = { dialogState = DialogState.ManageGenres(selectedTab) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
             }
 
+            // Only Home uses individually managed addon rows. Movies/Series
+            // are generated entirely from enabled genres.
+            if (selectedTab == "home") {
             // --- REORDER BANNER ---
             if (isReorderActive) {
                 Box(
@@ -554,6 +546,7 @@ fun DashboardEditorScreen(
                     }
                 }
             }
+            } // End Home-only catalog editor.
         }
 
         // --- SNACKBAR ---
@@ -578,6 +571,65 @@ fun DashboardEditorScreen(
 
     when (val state = dialogState) {
         DialogState.None -> {}
+        is DialogState.ManageGenres -> {
+            if (currentProfile != null) {
+                val genres by viewModel.availableGenres(state.screen).collectAsState()
+                val hidden = remember(currentProfile.id, state.screen, genreChanges) {
+                    viewModel.disabledGenres(currentProfile.id, state.screen)
+                }
+                val requester = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    delay(100)
+                    runCatching { requester.requestFocus() }
+                }
+                VoidDialog(
+                    title = "${if (state.screen == "movies") "Movie" else "Series"} Genres",
+                    onDismissRequest = { dialogState = DialogState.None }
+                ) {
+                    Text(
+                        "All Stremio genres are enabled by default. Choose a genre to hide or restore its row.",
+                        color = Color.LightGray,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        VoidButton("Enable All", {
+                            viewModel.setAllGenresEnabled(currentProfile.id, state.screen, true)
+                            genreChanges++
+                        }, Modifier.weight(1f), focusRequester = requester)
+                        VoidButton("Disable All", {
+                            viewModel.setAllGenresEnabled(currentProfile.id, state.screen, false)
+                            genreChanges++
+                        }, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 410.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        items(genres.size) { index ->
+                            val genre = genres[index]
+                            val enabled = hidden.none { it.equals(genre, ignoreCase = true) }
+                            VoidButton(
+                                text = "${if (enabled) "✓  " else "○  "}$genre",
+                                onClick = {
+                                    viewModel.toggleGenre(currentProfile.id, state.screen, genre)
+                                    genreChanges++
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                isPrimary = enabled
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    VoidButton(
+                        "Done", { dialogState = DialogState.None },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
 
         is DialogState.ManageCategory -> {
             val config = state.config
@@ -1052,7 +1104,7 @@ fun DashboardEditorScreen(
                     ) {
                     val selectedCatName = if (selectedCategoryId == null) {
                         if (tab == DashboardTab.HOME) "Automatic (first populated Home row)" else
-                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
+                            "Automatic (first enabled genre row)"
                     } else if (selectedCategoryId != null) {
                         val cat = configs.find { it.uniqueId == selectedCategoryId }
                         if (cat != null) {
@@ -1175,7 +1227,7 @@ fun DashboardEditorScreen(
                             item(key = "unified_hero") {
                                 VoidSimpleItem(
                                     text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
-                                        "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
+                                        "Automatic (first enabled genre row)",
                                     onClick = {
                                         selectedCategoryId = null
                                         showCategoryPicker = false

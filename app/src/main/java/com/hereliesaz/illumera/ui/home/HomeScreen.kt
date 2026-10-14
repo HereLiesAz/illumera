@@ -686,6 +686,15 @@ fun CinematicLayout(
                                         onPositionChanged = { onScrollPositionChange(rowKey, it) }
                                     )
                                     
+                                    // A genre row is created without eagerly querying all
+                                    // addon catalogs. Fetch when its LazyColumn item first
+                                    // enters view, then keep pagination on horizontal scrolling.
+                                    LaunchedEffect(item.id) {
+                                        if (item.id.startsWith("catalog-aggregate:") &&
+                                            item.items.isEmpty()
+                                        ) onLoadMore(item.id)
+                                    }
+
                                     // Lazy pagination: load more items when scrolling near the end
                                     // Use snapshotFlow to avoid reading layoutInfo during composition
                                     val itemId = item.id

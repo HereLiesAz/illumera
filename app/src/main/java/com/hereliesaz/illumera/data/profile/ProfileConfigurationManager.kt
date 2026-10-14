@@ -245,9 +245,14 @@ class ProfileConfigurationManager @Inject constructor(
         val sourceGenres = context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
         val genreEditor = sourceGenres.edit()
         listOf("movies", "series").forEach { screen ->
-            val genres = sourceGenres.getStringSet("${sourceProfileId}_$screen", null)
-            val key = "${targetProfileId}_$screen"
-            if (genres == null) genreEditor.remove(key) else genreEditor.putStringSet(key, genres.toSet())
+            // v2 stores disabled genres, not a selected-only subset.
+            // Copy the new setting while leaving legacy keys for compatibility.
+            listOf("_$screen", "_${screen}_disabled").forEach { suffix ->
+                val genres = sourceGenres.getStringSet("$sourceProfileId$suffix", null)
+                val key = "$targetProfileId$suffix"
+                if (genres == null) genreEditor.remove(key)
+                else genreEditor.putStringSet(key, genres.toSet())
+            }
         }
         genreEditor.apply()
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
@@ -407,7 +412,9 @@ class ProfileConfigurationManager @Inject constructor(
         snapshotFile(profileId).delete()
         prefs.edit().remove("$KEY_DEFAULT_SET_SEEDED$profileId").apply()
         context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE).edit()
-            .remove("${profileId}_movies").remove("${profileId}_series").apply()
+            .remove("${profileId}_movies").remove("${profileId}_series")
+            .remove("${profileId}_movies_disabled").remove("${profileId}_series_disabled")
+            .apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {

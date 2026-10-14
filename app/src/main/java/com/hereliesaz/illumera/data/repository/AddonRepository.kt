@@ -9,6 +9,7 @@ import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.remote.StremioApiService
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 import com.hereliesaz.illumera.domain.HomeRow
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.HubItem
@@ -35,6 +36,46 @@ fun aggregatedMediaIdentityKeys(meta: MetaItem): Set<String> {
         if (imdb != null) add("${meta.type}:imdb:$imdb")
         if (title.isNotBlank() && year != null) add("${meta.type}:title:$title:$year")
         if (isEmpty()) add("${meta.type}:id:${meta.id}")
+    }
+}
+
+/**
+ * Cross-addon deduplication: canonical IMDb identifiers win when present.
+ * Only collapse by title/year when at least one side lacks an IMDb ID.
+ * Two films with distinct IMDb IDs must survive even if titles and years match.
+ */
+fun distinctAggregatedMetas(
+    existing: List<MetaItem>, incoming: List<MetaItem>
+): List<MetaItem> {
+    val seenIds = mutableSetOf<String>()
+    val imdbIds = mutableSetOf<String>()
+    val titleIdentities = mutableMapOf<String, MutableSet<String?>>()
+    val imdbRegex = Regex("^tt[0-9]+$")
+    fun titleKey(meta: MetaItem): String? {
+        val title = meta.name.lowercase().filter { it.isLetterOrDigit() }
+        val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
+        return if (title.isNotEmpty() && year != null) "${meta.type}:$title:$year" else null
+    }
+    fun register(meta: MetaItem) {
+        seenIds.add("${meta.type}:${meta.id}")
+        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        if (imdb != null) imdbIds.add("${meta.type}:$imdb")
+        titleKey(meta)?.let { title ->
+            titleIdentities.getOrPut(title) { mutableSetOf() }.add(imdb)
+        }
+    }
+    existing.forEach(::register)
+    return incoming.filter { meta ->
+        val id = "${meta.type}:${meta.id}"
+        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        val title = titleKey(meta)
+        val old = title?.let { titleIdentities[it] }
+        val duplicate = id in seenIds ||
+            (imdb != null && "${meta.type}:$imdb" in imdbIds) ||
+            (title != null && old != null &&
+                (imdb == null || null in old))
+        if (!duplicate) register(meta)
+        !duplicate
     }
 }
 
@@ -133,13 +174,22 @@ class AddonRepository @Inject constructor(
      * catalog sources before fetching subsequent skip-enabled pages, keeping requests bounded.
      * Deduplication within a page happens here; the caller deduplicates across pages.
      */
-    suspend fun getAggregatedCatalogPage(
-        type: String,
-        genre: String? = null,
-        page: Int = 0,
-        sourcesPerPage: Int = 4
-    ): List<MetaItem> = withContext(Dispatchers.IO) {
-        require(type == "movie" || type == "series")
+    /** Official Stremio genre dropdown plus real genres advertised by enabled addons. */
+    suspend fun availableScreenGenres(type: String): List<String> = withContext(Dispatchers.IO) {
+        val catalogs = dao.getAllAddons().firstOrNull().orEmpty()
+            .filter { it.isEnabled }
+            .flatMap { addon ->
+                runCatching {
+                    gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
+                        ?.toList().orEmpty()
+                }.getOrDefault(emptyList())
+            }
+        ScreenGenreRows.availableGenres(type, catalogs)
+    }
+
+    private suspend fun aggregatedCatalogSources(
+        type: String, genre: String?
+    ): List<Triple<AddonEntity, CatalogManifest, String?>> {
         val addons = dao.getAllAddons().firstOrNull().orEmpty().filter { it.isEnabled }
         val sources = addons.flatMap { addon ->
             val manifests = runCatching {
@@ -154,10 +204,21 @@ class AddonRepository @Inject constructor(
                     val genreExtra = extras.firstOrNull { it.name == "genre" }
                     val options = genreExtra?.options.orEmpty()
                     val sourceGenres: List<String?> = when {
-                        !genre.isNullOrBlank() && genreExtra?.isRequired == true &&
-                            options.isNotEmpty() && options.none { it.equals(genre, ignoreCase = true) } ->
-                            emptyList()
-                        !genre.isNullOrBlank() && genreExtra != null -> listOf(genre)
+                        !genre.isNullOrBlank() && genreExtra != null -> {
+                            val matchingOption = options.firstOrNull {
+                                ScreenGenreRows.canonicalGenre(it).equals(
+                                    ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                )
+                            }
+                            when {
+                                matchingOption != null -> listOf(matchingOption)
+                                options.isEmpty() -> listOf(genre)
+                                genreExtra.isRequired -> emptyList()
+                                // Optional genre unsupported by this addon. Fetch unfiltered,
+                                // then match actual metadata genres on the client.
+                                else -> listOf(null)
+                            }
+                        }
                         genreExtra?.isRequired == true -> options.distinct().map { it }
                         else -> listOf(null)
                     }
@@ -167,6 +228,24 @@ class AddonRepository @Inject constructor(
         }.distinctBy { (addon, catalog, sourceGenre) ->
             "${addon.transportUrl}/${catalog.type}/${catalog.id}/${sourceGenre.orEmpty()}"
         }
+
+        return sources
+    }
+
+    /** Number of bounded source batches to probe before concluding a row is empty. */
+    suspend fun aggregatedFirstLayerPageCount(type: String, genre: String?): Int =
+        withContext(Dispatchers.IO) {
+            (aggregatedCatalogSources(type, genre).size + 3) / 4
+        }
+
+    suspend fun getAggregatedCatalogPage(
+        type: String,
+        genre: String? = null,
+        page: Int = 0,
+        sourcesPerPage: Int = 4
+    ): List<MetaItem> = withContext(Dispatchers.IO) {
+        require(type == "movie" || type == "series")
+        val sources = aggregatedCatalogSources(type, genre)
         if (sources.isEmpty()) return@withContext emptyList()
         val batchSize = sourcesPerPage.coerceIn(1, 8)
         val batchCount = (sources.size + batchSize - 1) / batchSize
@@ -175,7 +254,7 @@ class AddonRepository @Inject constructor(
         kotlinx.coroutines.coroutineScope {
             val sourceGroups = listOf(sources.drop(offset).take(batchSize))
             var selected = emptyList<MetaItem>()
-            val seenKeys = mutableSetOf<String>()
+
             for (group in sourceGroups) {
                 selected = group.map { (addon, catalog, sourceGenre) ->
                 async {
@@ -203,18 +282,22 @@ class AddonRepository @Inject constructor(
                     result.asSequence().filter { it.type == type }
                         .filter { meta ->
                             genre.isNullOrBlank() ||
-                                (supportsGenre || meta.genres.orEmpty().any {
-                                    it.equals(genre, ignoreCase = true)
-                                })
+                                // Trust an addon to filter only when a supported
+                                // genre value was actually supplied in its request.
+                                (!sourceGenre.isNullOrBlank() &&
+                                    (meta.genres.isNullOrEmpty() || meta.genres.orEmpty().any {
+                                        ScreenGenreRows.canonicalGenre(it).equals(
+                                            ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                        )
+                                    })) ||
+                                meta.genres.orEmpty().any {
+                                    ScreenGenreRows.canonicalGenre(it).equals(
+                                        ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                    )
+                                }
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
-                }.awaitAll().flatten().filter { meta ->
-                    val keys = aggregatedMediaIdentityKeys(meta)
-                    if (keys.any { it in seenKeys }) false else {
-                        seenKeys.addAll(keys)
-                        true
-                    }
-                }
+                }.awaitAll().flatten().let { distinctAggregatedMetas(emptyList(), it) }
                 if (selected.isNotEmpty()) break
             }
             selected

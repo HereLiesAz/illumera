@@ -572,6 +572,58 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun unsupportedOptionalGenreFetchesUnfilteredThenMatchesMetadataLocally() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://optional.example").copy(
+                catalogsJson = """[{"type":"movie","id":"top","extra":[{"name":"genre","options":["Drama"]}]}]"""
+            )
+        ))
+        coEvery { api.getCatalog("https://optional.example/catalog/movie/top.json") } returns
+            CatalogResponse(listOf(
+                MetaItem(id = "tt0000011", type = "movie", name = "Action A", genres = listOf("Action")),
+                MetaItem(id = "tt0000012", type = "movie", name = "Drama B", genres = listOf("Drama"))
+            ))
+        val result = AddonRepository(api, dao).getAggregatedCatalogPage("movie", genre = "Action")
+        assertEquals(listOf("tt0000011"), result.map { it.id })
+        coVerify(exactly = 0) {
+            api.getCatalog("https://optional.example/catalog/movie/top/genre=Action.json")
+        }
+    }
+
+    @Test
+    fun officialScienceFictionAliasUsesAddonsDeclaredGenreValue() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://scifi.example").copy(
+                catalogsJson = """[{"type":"series","id":"top","extra":[{"name":"genre","options":["Science Fiction"]}]}]"""
+            )
+        ))
+        coEvery {
+            api.getCatalog("https://scifi.example/catalog/series/top/genre=Science%20Fiction.json")
+        } returns CatalogResponse(listOf(
+            MetaItem(id = "tt0000013", type = "series", name = "Space Series", genres = listOf("Science Fiction"))
+        ))
+        val result = AddonRepository(api, dao).getAggregatedCatalogPage("series", genre = "Sci-Fi")
+        assertEquals(listOf("tt0000013"), result.map { it.id })
+    }
+
+    @Test
+    fun countsAllSourceBatchesBeforeConcludingThatAGenreIsEmpty() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val manyCatalogs = (1..11).joinToString(",", prefix = "[", postfix = "]") {
+            """{"type":"movie","id":"catalog$it","extra":[{"name":"genre","options":["Action"]}]}"""
+        }
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://many.example").copy(catalogsJson = manyCatalogs)
+        ))
+        assertEquals(3, AddonRepository(api, dao).aggregatedFirstLayerPageCount("movie", "Action"))
+    }
+
+    @Test
     fun aggregatedUnfilteredFeedIncludesEveryRequiredGenreVariant() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
@@ -590,6 +642,27 @@ class AddonRepositoryTest {
         val second = repository.getAggregatedCatalogPage("movie", page = 1, sourcesPerPage = 1)
         assertEquals(setOf("tt1234567", "tt7654321"), (first + second).map { it.id }.toSet())
         coVerify(exactly = 0) { api.getCatalog("https://genre.example/catalog/movie/top.json") }
+    }
+
+    @Test
+    fun overlappingGenresKeepDifferentCanonicalIdsWithSameTitleAndYear() {
+        val first = MetaItem(
+            id = "tt1230001", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        val second = MetaItem(
+            id = "tt1230002", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        assertEquals(listOf(first, second), distinctAggregatedMetas(emptyList(), listOf(first, second)))
+    }
+
+    @Test
+    fun duplicateWithoutImdbMatchesCanonicalTitleAndYear() {
+        val imdb = MetaItem(
+            id = "tt1230001", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        val tmdb = imdb.copy(id = "tmdb:123")
+        assertTrue(distinctAggregatedMetas(listOf(imdb), listOf(tmdb)).isEmpty())
+        assertTrue(distinctAggregatedMetas(listOf(tmdb), listOf(imdb)).isEmpty())
     }
 
     @Test
