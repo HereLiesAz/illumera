@@ -4,6 +4,12 @@ illumera speaks the [Stremio addon protocol](https://github.com/Stremio/stremio-
 
 Everything here reflects the current code. When the code changes, this page changes with it.
 
+## Managing addons in Illumera
+
+The Android Addons screen manages the active profile locally without requiring a Stremio account. **Browse addons** opens Illumera's catalog with Official, Community, and user-added collection sources. Install a manifest URL or Stremio install link directly, or use **Paste from phone** on a TV. Installing an addon with content catalogs offers controls for whether those catalogs appear in the Home, Movies, and Series views. Installed addons can be removed in the same screen.
+
+**Stremio Addons directory** opens [stremio-addons.net](https://stremio-addons.net/) externally. Copy an addon's manifest/install URL from the directory into Illumera to install it. The site is credited and is not scraped or mirrored: [its API terms](https://docs.stremio-addons.net/developers/api) prohibit competing substitute directories without permission. This preserves access to addons outside Stremio's official and community collections without replicating third-party listings.
+
 ## Contents
 
 - [What illumera reads that Stremio doesn't](#what-illumera-reads-that-stremio-doesnt)
