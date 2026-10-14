@@ -213,12 +213,18 @@ class StremioLibrarySyncManager @Inject constructor(
         val mtimeMs = runCatching { Instant.parse(item.mtime).toEpochMilli() }.getOrNull() ?: return
 
         val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
+        val ownedCreatedAtKey = "remote_bookmark_created_${profileId}_${item.id}"
         val watchCountKey = "watch_count_${profileId}_${item.id}"
         if (item.removed) {
-            if (prefs.getBoolean(ownedBookmarkKey, false)) {
+            val importedAt = prefs.getLong(ownedCreatedAtKey, Long.MIN_VALUE)
+            val current = dao.getWatchlistItem(profileId, item.id)
+            if (prefs.getBoolean(ownedBookmarkKey, false) &&
+                current != null && current.addedAt == importedAt
+            ) {
                 dao.removeFromWatchlist(profileId, item.id)
-                prefs.edit().remove(ownedBookmarkKey).remove(watchCountKey).apply()
             }
+            prefs.edit().remove(ownedBookmarkKey).remove(ownedCreatedAtKey)
+                .remove(watchCountKey).apply()
             if (item.type == "series") {
                 dao.getHistoryItemsForSeries(item.id, "${item.id}:%")
                     .forEach { dao.deleteHistoryItem(it.id) }
@@ -247,7 +253,8 @@ class StremioLibrarySyncManager @Inject constructor(
                         addedAt = createdAt
                     )
                 )
-                prefs.edit().putBoolean(ownedBookmarkKey, true).apply()
+                prefs.edit().putBoolean(ownedBookmarkKey, true)
+                    .putLong(ownedCreatedAtKey, createdAt).apply()
             }
         }
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
@@ -306,7 +313,15 @@ class StremioLibrarySyncManager @Inject constructor(
             val prefix = "$KEY_LOCAL_SNAPSHOT_PREFIX${profileId}_"
             val legacyKey = "$KEY_LOCAL_SNAPSHOT_PREFIX$profileId"
             val editor = prefs.edit().remove(legacyKey)
-            prefs.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
+            val syncMetadataPrefixes = listOf(
+                prefix,
+                "remote_bookmark_${profileId}_",
+                "remote_bookmark_created_${profileId}_",
+                "watch_count_${profileId}_"
+            )
+            prefs.all.keys.filter { key ->
+                syncMetadataPrefixes.any { key.startsWith(it) }
+            }.forEach(editor::remove)
             editor.commit()
         }
     }
