@@ -258,9 +258,10 @@ fun HeroCarousel(
             contentKey = { "${it.type}:${it.id}" },
             label = "hero_bg"
         ) { item ->
-            val bgReady = !tmdbEnabled || tmdbEnrichedIds.contains("${item.type}:${item.id}")
+            // TMDB enrichment updates metadata later; it must not suppress
+            // the original backdrop while a trailer is resolving.
             val imageUrl = item.background ?: item.poster
-            if (imageUrl != null && bgReady) {
+            if (imageUrl != null) {
                 val context = LocalContext.current
                 val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
                 val request = remember(imageUrl) {
