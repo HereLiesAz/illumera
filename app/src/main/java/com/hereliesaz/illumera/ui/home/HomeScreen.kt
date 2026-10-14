@@ -356,10 +356,12 @@ fun CinematicLayout(
 
     // Focus the remembered item (entryRequester follows it) once there is something to focus:
     // on resume, and again if a refresh takes the focused card away.
+    val firstRowPivotRequester = remember { FocusRequester() }
+
     RestoreFocusOnResume(
         memory = focusMemory,
         fallback = entryRequester,
-        enabled = historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
+        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
         neighbour = { resolveHomeFocusNeighbour(it, focusMemory.registeredKeys) }
     )
 
@@ -427,7 +429,7 @@ fun CinematicLayout(
                     // When the continue watching row first appears at index 0, all saved
                     // indices are off by 1 — adjust the initial index to compensate.
                     val verticalListState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = verticalScrollPosition.first + historyScrollAdjustment,
+                        initialFirstVisibleItemIndex = verticalScrollPosition.first + if (heroItems.isNotEmpty()) 0 else historyScrollAdjustment,
                         initialFirstVisibleItemScrollOffset = verticalScrollPosition.second
                     )
 
@@ -473,6 +475,7 @@ fun CinematicLayout(
                                     onFocusChange = { wrappedOnFocusChange("hero_$it") },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
+                                    onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
                                     drawerRequester = drawerRequester,
@@ -533,7 +536,8 @@ fun CinematicLayout(
                                     drawerRequester = drawerRequester,
                                     locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("-1_") == true) effectiveLastFocusedKey else null,
                                     isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                    isFirstRow = true,
+                                    isFirstRow = heroItems.isEmpty(),
+                                    pivotFocusRequester = if (heroItems.isNotEmpty()) firstRowPivotRequester else null,
                                     isInfiniteLoopEnabled = false,
                                     visibleItemCount = 15,
                                     isInfiniteScrollingEnabled = true,
@@ -602,7 +606,7 @@ fun CinematicLayout(
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
                                         isLastRow = index == state.mixedRows.lastIndex,
-                                        isFirstRow = historyItems.isEmpty() && index == 0,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null
                                     )
                                     }
@@ -671,7 +675,8 @@ fun CinematicLayout(
                                         drawerRequester = drawerRequester,
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                        isFirstRow = historyItems.isEmpty() && index == 0,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == 0) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
