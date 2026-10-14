@@ -7,6 +7,9 @@ import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
 import com.hereliesaz.illumera.ui.navigation.focus.focusMemoryRoot
 import com.hereliesaz.illumera.ui.navigation.focus.rememberFocusMemory
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
@@ -305,6 +308,9 @@ fun CinematicLayout(
     onPreviewItemVisible: (MetaItem) -> Unit,
     isLandscapeContinueWatching: Boolean = false
 ) {
+    // Track the *currently* focused row rather than relying on a previously
+    // restored poster key. The preview expands immediately above its own row.
+    var activeCinematicRow by remember { mutableStateOf<String?>(null) }
     var instantFocusItem by remember { mutableStateOf<MetaItem?>(null) }
     var displayedItem by remember { mutableStateOf<MetaItem?>(null) }
     val previewUpdateGate = remember { PreviewUpdateGate() }
@@ -452,6 +458,29 @@ fun CinematicLayout(
                         )
                     }
 
+                    // The expanded panel belongs ABOVE the focused poster row,
+                    // so bring its header into view on vertical row transitions.
+                    // Do not re-scroll when navigating between posters in one row.
+                    LaunchedEffect(activeCinematicRow, state.mixedRows, heroItems.size, historyItems.size) {
+                        val focused = activeCinematicRow ?: return@LaunchedEffect
+                        val index = when (focused) {
+                            "history" -> if (historyItems.isNotEmpty()) (if (heroItems.isNotEmpty()) 1 else 0) else -1
+                            "__hero__", "__hub__" -> -1
+                            else -> {
+                                val row = state.mixedRows.indexOfFirst {
+                                    it is CategoryRow && it.id == focused
+                                }
+                                if (row < 0) -1 else row +
+                                    (if (heroItems.isNotEmpty()) 1 else 0) +
+                                    (if (historyItems.isNotEmpty()) 1 else 0)
+                            }
+                        }
+                        if (index >= 0) {
+                            delay(100)
+                            verticalListState.animateScrollToItem(index)
+                        }
+                    }
+
                     PersistLazyListPosition(
                         listState = verticalListState,
                         key = "cinematic_vertical",
@@ -482,7 +511,10 @@ fun CinematicLayout(
                                     autoScrollSeconds = heroAutoScrollSeconds,
                                     onItemClick = onMovieClick,
                                     startPadding = startPadding,
-                                    onFocusChange = { wrappedOnFocusChange("hero_$it") },
+                                    onFocusChange = {
+                                        activeCinematicRow = "__hero__"
+                                        wrappedOnFocusChange("hero_$it")
+                                    },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
                                     onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
@@ -505,7 +537,12 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
-                                    if (effectiveLastFocusedKey?.startsWith("-1_") == true) {
+                                    AnimatedVisibility(
+                                        visible = activeCinematicRow == "history" ||
+                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("-1_") == true),
+                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+                                    ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
                                             startPadding = startPadding, infoTopPadding = infoTopPadding,
@@ -536,11 +573,10 @@ fun CinematicLayout(
                                     items = historyItems,
                                     onMovieClick = onMovieClick,
                                     onViewMore = { onViewMore("Continue Watching", historyItems, "") },
-                                    onFocused = remember(wrappedOnFocusChange) {
-                                        { item: MetaItem?, key: String ->
-                                            updatePreviewItem(item)
-                                            wrappedOnFocusChange(key)
-                                        }
+                                    onFocused = { item: MetaItem?, key: String ->
+                                        activeCinematicRow = "history"
+                                        updatePreviewItem(item)
+                                        wrappedOnFocusChange(key)
                                     },
                                     entryRequester = entryRequester,
                                     drawerRequester = drawerRequester,
@@ -604,6 +640,7 @@ fun CinematicLayout(
                                         startPadding = startPadding,
                                         onHubClick = onHubClick,
                                         onFocused = { _, focusKey ->
+                                            activeCinematicRow = "__hub__"
                                             instantFocusItem = null
                                             wrappedOnFocusChange("hub_$focusKey")
                                         },
@@ -658,7 +695,12 @@ fun CinematicLayout(
                                         }
                                     }
 
-                                    if (effectiveLastFocusedKey?.startsWith("${index}_") == true) {
+                                    AnimatedVisibility(
+                                        visible = activeCinematicRow == rowKey ||
+                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("${index}_") == true),
+                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+                                    ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
                                             startPadding = startPadding, infoTopPadding = infoTopPadding,
@@ -675,11 +717,10 @@ fun CinematicLayout(
                                         onViewMore = remember(item.title, item.items, item.id, onViewMore) {
                                             { onViewMore(item.title, item.items, item.id) }
                                         },
-                                        onFocused = remember(wrappedOnFocusChange) {
-                                            { focusItem: MetaItem?, key: String ->
-                                                updatePreviewItem(focusItem)
-                                                wrappedOnFocusChange(key)
-                                            }
+                                        onFocused = { focusItem: MetaItem?, key: String ->
+                                            activeCinematicRow = rowKey
+                                            updatePreviewItem(focusItem)
+                                            wrappedOnFocusChange(key)
                                         },
                                         entryRequester = entryRequester,
                                         drawerRequester = drawerRequester,
