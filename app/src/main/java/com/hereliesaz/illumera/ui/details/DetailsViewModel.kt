@@ -144,6 +144,7 @@ class DetailsViewModel @Inject constructor(
     private val profileId: Int
         get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
 
+    private var episodeMetadataRetryJob: Job? = null
     private var loadDetailsJob: Job? = null
     private var loadStreamsJob: Job? = null
     private var sourceSelectionJob: Job? = null
@@ -188,6 +189,7 @@ class DetailsViewModel @Inject constructor(
         }
 
         loadDetailsJob?.cancel()
+        episodeMetadataRetryJob?.cancel()
         // A different item is loading: stop all in-flight work for the previous one so it
         // cannot patch the new item's state.
         loadStreamsJob?.cancel()
@@ -241,7 +243,9 @@ class DetailsViewModel @Inject constructor(
                 // A meta response can contain a poster/title yet no episode index.
                 // Fill it before publishing so the Details Episodes sidebar, Play,
                 // stream prefetch and the player all receive the same complete list.
-                if (details.type == "series" && details.videos.isNullOrEmpty()) {
+                if (details.type == "series" &&
+                    details.videos.orEmpty().none { it.season > 0 && it.episode > 0 }
+                ) {
                     val recovered = repository.recoverSeriesEpisodes(
                         canonicalFallbackId, details.name, details.releaseInfo
                     )
@@ -782,16 +786,43 @@ class DetailsViewModel @Inject constructor(
     // 1. Open Episodes (Series)
     /** [focusEpisodeId] (the episode the Resume button names) wins over the last-browsed one. */
     fun openEpisodes(focusEpisodeId: String? = null) {
-        val meta = _state.value.meta
-        val videos = meta?.videos ?: emptyList()
+        val meta = _state.value.meta ?: return
+        val videos = meta.videos.orEmpty()
         val initialFocusEpisodeId = focusEpisodeId
-            ?: meta?.id?.let { episodeBrowseStore.getRememberedEpisodeSuffix(it) }
+            ?: episodeBrowseStore.getRememberedEpisodeSuffix(meta.id)
+        val needsRecovery = videos.none { it.season > 0 && it.episode > 0 }
         _state.update { it.copy(
             autoPlayStream = null,
             addonSubtitles = emptyList(),
             availableStreams = emptyList(),
-            sidebarState = SidebarState.Episodes(videos, initialFocusEpisodeId = initialFocusEpisodeId)
+            sidebarState = SidebarState.Episodes(
+                videos, initialFocusEpisodeId = initialFocusEpisodeId,
+                isLoading = needsRecovery
+            )
         ) }
+        if (!needsRecovery) return
+        episodeMetadataRetryJob?.cancel()
+        val contentKey = _state.value.contentKey
+        val seriesId = _state.value.resolvedId ?: meta.id
+        episodeMetadataRetryJob = viewModelScope.launch {
+            val recovered = repository.recoverSeriesEpisodes(
+                seriesId, meta.name, meta.releaseInfo
+            )
+            if (_state.value.contentKey != contentKey || _state.value.meta?.id != meta.id) return@launch
+            _state.update { current ->
+                val sidebar = current.sidebarState
+                current.copy(
+                    meta = if (recovered.isNotEmpty()) current.meta?.copy(videos = recovered)
+                        else current.meta,
+                    sidebarState = if (sidebar is SidebarState.Episodes) {
+                        sidebar.copy(
+                            videos = if (recovered.isNotEmpty()) recovered else sidebar.videos,
+                            isLoading = false
+                        )
+                    } else sidebar
+                )
+            }
+        }
     }
 
     /** Remembers which episode was last browsed for this series, so reopening the
