@@ -116,12 +116,12 @@ class AddonRepository @Inject constructor(
     }
 
     /**
-     * One lazily browsed Discover feed per media type, without Stremio's catalog selector.
+     * One lazily browsed aggregated catalog per media type, without Stremio's catalog selector.
      * Every enabled addon's matching catalog is a candidate. Page numbers advance across
      * catalog sources before fetching subsequent skip-enabled pages, keeping requests bounded.
      * Deduplication within a page happens here; the caller deduplicates across pages.
      */
-    suspend fun getUnifiedDiscoveryPage(
+    suspend fun getAggregatedCatalogPage(
         type: String,
         genre: String? = null,
         page: Int = 0,
