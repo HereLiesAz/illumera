@@ -239,7 +239,7 @@ class StremioLibrarySyncManager @Inject constructor(
                     name = bookmark.title.ifBlank { watched.name },
                     poster = bookmark.poster ?: watched.poster,
                     ctime = bookmarkedAt,
-                    mtime = Instant.ofEpochMilli(maxOf(remoteModified, bookmarkedAt.let { bookmark.addedAt }, watchedAt)).toString()
+                    mtime = Instant.ofEpochMilli(maxOf(remoteModified, bookmark.addedAt, watchedAt)).toString()
                 )
             }
         }
