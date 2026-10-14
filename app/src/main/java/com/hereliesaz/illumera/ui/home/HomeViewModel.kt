@@ -857,8 +857,18 @@ class HomeViewModel @Inject constructor(
                 // Fetch HERO row separately (even if hidden in dashboard).
                 val tabEnum = DashboardTab.fromString(screenName)
                 val heroConfig = currentProfile?.heroFor(tabEnum)
+                val automaticAggregateId = when (screenName) {
+                    "movies" -> "catalog-aggregate:movie:all"
+                    "series" -> "catalog-aggregate:series:all"
+                    else -> null
+                }
                 val heroRow = when {
                     heroConfig?.categoryId == HERO_DISABLED_MARKER -> null
+                    // Older editor versions persisted the synthetic aggregate ID.
+                    // Treat it as automatic rather than making a failed catalog lookup.
+                    automaticAggregateId != null && heroConfig?.categoryId == automaticAggregateId ->
+                        initialRows.find { it.configId == automaticAggregateId }
+                            ?: initialRows.firstOrNull { it.items.isNotEmpty() }
                     heroConfig?.categoryId != null ->
                         initialRows.find { it.configId == heroConfig.categoryId }
                             ?: repository.getCategoryRowPreview(
