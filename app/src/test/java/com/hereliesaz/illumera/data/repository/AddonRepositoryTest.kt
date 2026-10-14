@@ -487,7 +487,7 @@ class AddonRepositoryTest {
 
 
     @Test
-    fun unifiedDiscoverCombinesEnabledCatalogsAndDeduplicatesTitles() = runTest {
+    fun aggregatedCatalogCombinesEnabledCatalogsAndDeduplicatesTitles() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
         val catalog = """[{"type":"movie","id":"top","name":"Top"}]"""
@@ -510,14 +510,14 @@ class AddonRepositoryTest {
             )
         )
 
-        val result = AddonRepository(api, dao).getUnifiedDiscoveryPage("movie", sourcesPerPage = 8)
+        val result = AddonRepository(api, dao).getAggregatedCatalogPage("movie", sourcesPerPage = 8)
 
         assertEquals(listOf("tt0000001", "tt0000002", "tt0000003"), result.map { it.id })
         coVerify(exactly = 0) { api.getCatalog("https://disabled.example/catalog/movie/top.json") }
     }
 
     @Test
-    fun unifiedDiscoverPagesSourcesBeforeRequestingSkipLayers() = runTest {
+    fun aggregatedCatalogPagesSourcesBeforeRequestingSkipLayers() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
         val paginated = """[{"type":"movie","id":"top","extra":[{"name":"skip"}]}]"""
@@ -529,10 +529,10 @@ class AddonRepositoryTest {
         coEvery { api.getCatalog(any()) } returns CatalogResponse(listOf(meta("tt0000005")))
 
         val repository = AddonRepository(api, dao)
-        repository.getUnifiedDiscoveryPage("movie", page = 0, sourcesPerPage = 1)
-        repository.getUnifiedDiscoveryPage("movie", page = 1, sourcesPerPage = 1)
-        repository.getUnifiedDiscoveryPage("movie", page = 2, sourcesPerPage = 1)
-        repository.getUnifiedDiscoveryPage("movie", page = 3, sourcesPerPage = 1)
+        repository.getAggregatedCatalogPage("movie", page = 0, sourcesPerPage = 1)
+        repository.getAggregatedCatalogPage("movie", page = 1, sourcesPerPage = 1)
+        repository.getAggregatedCatalogPage("movie", page = 2, sourcesPerPage = 1)
+        repository.getAggregatedCatalogPage("movie", page = 3, sourcesPerPage = 1)
 
         coVerify(exactly = 1) { api.getCatalog("https://paged.example/catalog/movie/top.json") }
         coVerify(exactly = 1) { api.getCatalog("https://fixed.example/catalog/movie/latest.json") }
@@ -541,7 +541,7 @@ class AddonRepositoryTest {
     }
 
     @Test
-    fun unifiedGenreUsesCatalogExtraAndChecksGenresForOtherSources() = runTest {
+    fun aggregatedGenreUsesCatalogExtraAndChecksGenresForOtherSources() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
         every { dao.getAllAddons() } returns flowOf(listOf(
@@ -564,7 +564,7 @@ class AddonRepositoryTest {
             )
         )
 
-        val result = AddonRepository(api, dao).getUnifiedDiscoveryPage(
+        val result = AddonRepository(api, dao).getAggregatedCatalogPage(
             "series", genre = "Science Fiction", sourcesPerPage = 4
         )
 
