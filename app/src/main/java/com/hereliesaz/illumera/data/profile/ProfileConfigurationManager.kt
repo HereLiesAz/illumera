@@ -220,7 +220,7 @@ class ProfileConfigurationManager @Inject constructor(
     }
 
     /**
-     * Initializes a fresh profile from scratch (default Cinemeta addon, same as
+     * Initializes a fresh profile from scratch (default Cinemeta and trailer addons, same as
      * [initializeFromScratch]), then logs in to Stremio with the given credentials and
      * folds the account's addon collection into the profile's snapshot so it's ready
      * as soon as the profile is selected. On login/fetch failure the profile still ends
@@ -282,7 +282,8 @@ class ProfileConfigurationManager @Inject constructor(
         entries.forEach { entry ->
             val transportUrl = entry.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
             // Every fresh profile already gets the default Cinemeta addon — skip a duplicate.
-            if (transportUrl == DEFAULT_CINEMETA_TRANSPORT_URL) return@forEach
+            if (transportUrl == DEFAULT_CINEMETA_TRANSPORT_URL ||
+                transportUrl == "https://stremio-trailer-addon.vercel.app") return@forEach
 
             val manifest = try {
                 addonRepository.fetchManifest("$transportUrl/manifest.json")
