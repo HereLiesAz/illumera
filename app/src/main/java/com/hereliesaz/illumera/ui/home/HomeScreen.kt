@@ -36,6 +36,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem as PlayerMediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -194,6 +199,7 @@ fun HomeScreen(
                 CinematicLayout(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
+                    resolveTrailer = viewModel::resolveTrailer,
                     infoTopPadding = infoTopPadding,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
@@ -267,6 +273,7 @@ fun HomeScreen(
 fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
+    resolveTrailer: suspend (MetaItem) -> String?,
     infoTopPadding: androidx.compose.ui.unit.Dp,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
@@ -418,6 +425,11 @@ fun CinematicLayout(
             renderedPreviewItem
         } else null
         CinematicBackground(bgItem)
+        TrailerPreview(
+            item = bgItem,
+            resolveTrailer = resolveTrailer,
+            modifier = Modifier.fillMaxSize()
+        )
 
         Column(modifier = Modifier.fillMaxSize().zIndex(2f)) {
             // INFO SECTION
@@ -562,6 +574,7 @@ fun CinematicLayout(
                                     startPadding = startPadding,
                                     onFocusChange = { wrappedOnFocusChange("hero_$it") },
                                     onCurrentItemVisible = onPreviewItemVisible,
+                                    resolveTrailer = resolveTrailer,
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
                                     drawerRequester = drawerRequester,
@@ -1522,4 +1535,60 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
     return sameTitle.ifEmpty { candidates }
         .minWithOrNull(compareBy<Triple<String, String?, Int>> { kotlin.math.abs(it.third - savedIndex) }.thenBy { it.third })
         ?.first
+}
+
+/**
+ * The image underneath stays visible until ExoPlayer reports that the extracted
+ * trailer video is ready. Switching titles cancels resolution and disposes the player.
+ */
+@Composable
+private fun TrailerPreview(
+    item: MetaItem?,
+    resolveTrailer: suspend (MetaItem) -> String?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var ready by remember(item?.id, item?.type) { mutableStateOf(false) }
+    val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
+        value = null
+        if (item != null) {
+            delay(500)
+            value = resolveTrailer(item)
+        }
+    }
+    val player = remember(videoUrl) {
+        videoUrl?.let { url ->
+            ExoPlayer.Builder(context).build().apply {
+                volume = 0f
+                repeatMode = Player.REPEAT_MODE_ONE
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        ready = playbackState == Player.STATE_READY
+                    }
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        ready = false
+                    }
+                })
+                setMediaItem(PlayerMediaItem.fromUri(url))
+                prepare()
+                playWhenReady = true
+            }
+        }
+    }
+    DisposableEffect(player) {
+        onDispose { player?.release() }
+    }
+    if (player != null) {
+        AndroidView(
+            factory = {
+                PlayerView(it).apply {
+                    useController = false
+                    this.player = player
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                }
+            },
+            update = { it.player = player; it.alpha = if (ready) 1f else 0f },
+            modifier = modifier
+        )
+    }
 }
