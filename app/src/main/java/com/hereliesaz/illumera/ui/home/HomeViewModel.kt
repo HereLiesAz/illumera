@@ -52,13 +52,21 @@ class HomeViewModel @Inject constructor(
      * Resolve a trailer through the bundled addon, then extract its YouTube playback URL.
      * A missing, malformed or unavailable trailer never replaces the poster artwork.
      */
+    private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     suspend fun resolveTrailer(item: MetaItem): String? {
         if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        val trailerKey = "${item.type}:${item.id}"
+
         // An addon removed or disabled by the user must never receive trailer requests.
         val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
         if (!trailer.isEnabled) return null
+        trailerUrlCache[trailerKey]?.let { return it }
         return try {
-            kotlinx.coroutines.withTimeout(12_000L) {
+            // Source discovery, YouTube page/player extraction and a reachable
+            // signed media URL are separate network operations. 12 seconds
+            // cancelled working extraction before it could start playback.
+            kotlinx.coroutines.withTimeout(45_000L) {
                 // The trailer addon accepts IMDb IDs. Look up a non-IMDb catalog
                 // item by exact title (and release year when known) before calling it.
                 val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
@@ -83,19 +91,19 @@ class HomeViewModel @Inject constructor(
                 val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
                     stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
                 } ?: return@withTimeout null
-                val uri = android.net.Uri.parse(youtubeLink)
-                val videoId = if (uri.host?.endsWith("youtu.be") == true) {
-                    uri.lastPathSegment
-                } else {
-                    uri.getQueryParameter("v")
-                }?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
-                videoId?.let { youtubeExtractor.extractPlaybackSource(it)?.videoUrl }
+                val source = youtubeExtractor.extractPlaybackSource(youtubeLink)
+                source?.videoUrl?.also { mediaUrl ->
+                    if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+                    trailerUrlCache[trailerKey] = mediaUrl
+                }
             }
-        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+        } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+            Log.w("HomeTrailer", "Trailer resolution timed out for $trailerKey")
             null
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w("HomeTrailer", "Trailer resolution failed for $trailerKey", error)
             null
         }
     }
