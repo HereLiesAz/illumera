@@ -212,7 +212,14 @@ class StremioLibrarySyncManager @Inject constructor(
     private suspend fun applyRemoteItem(item: StremioLibraryItem) {
         val mtimeMs = runCatching { Instant.parse(item.mtime).toEpochMilli() }.getOrNull() ?: return
 
+        val profileId = profileConfigurationManager.activeProfileId.value ?: return
+        val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
+        val watchCountKey = "watch_count_${profileId}_${item.id}"
         if (item.removed) {
+            if (prefs.getBoolean(ownedBookmarkKey, false)) {
+                dao.removeFromWatchlist(profileId, item.id)
+                prefs.edit().remove(ownedBookmarkKey).remove(watchCountKey).apply()
+            }
             if (item.type == "series") {
                 dao.getHistoryItemsForSeries(item.id, "${item.id}:%")
                     .forEach { dao.deleteHistoryItem(it.id) }
@@ -224,7 +231,7 @@ class StremioLibrarySyncManager @Inject constructor(
 
         // A library bookmark is still part of Stremio Library even when its title
         // has never been played (and a series therefore has no videoId).
-        val profileId = profileConfigurationManager.activeProfileId.value ?: return
+        prefs.edit().putInt(watchCountKey, item.state.timesWatched).apply()
         if (item.type == "movie" || item.type == "series") {
             val currentBookmark = dao.getWatchlistItem(profileId, item.id)
             if (currentBookmark == null) {
@@ -241,6 +248,7 @@ class StremioLibrarySyncManager @Inject constructor(
                         addedAt = createdAt
                     )
                 )
+                prefs.edit().putBoolean(ownedBookmarkKey, true).apply()
             }
         }
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
