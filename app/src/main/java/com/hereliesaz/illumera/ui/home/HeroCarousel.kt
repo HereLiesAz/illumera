@@ -61,6 +61,7 @@ fun HeroCarousel(
     startPadding: Dp,
     onFocusChange: (String) -> Unit,
     onCurrentItemVisible: (MetaItem) -> Unit = {},
+    resolveTrailer: (suspend (MetaItem) -> String?)? = null,
     entryRequester: FocusRequester? = null,
     drawerRequester: FocusRequester? = null,
     isFirstItem: Boolean = false,
@@ -302,6 +303,14 @@ fun HeroCarousel(
                     com.hereliesaz.illumera.ui.components.NoiseOverlay()
                 }
             }
+        }
+
+        if (resolveTrailer != null) {
+            TrailerPreview(
+                item = currentItem,
+                resolveTrailer = resolveTrailer,
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         Column(
