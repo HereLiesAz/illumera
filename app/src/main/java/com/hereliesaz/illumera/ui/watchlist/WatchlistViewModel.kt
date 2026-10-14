@@ -62,7 +62,12 @@ class WatchlistViewModel @Inject constructor(
             if (profileId == null) flowOf(emptyList())
             else combine(dao.getWatchlist(profileId), dao.getWatchHistory()) { saved, history ->
                 val historyEntries = history.map { entry ->
-                    val canonicalId = entry.seriesId ?: entry.id
+                    val parts = entry.id.split(':')
+                    val episodeParent = if (
+                        entry.type == "series" && parts.size >= 3 &&
+                        parts.takeLast(2).all { it.toIntOrNull() != null }
+                    ) parts.dropLast(2).joinToString(":") else entry.id
+                    val canonicalId = entry.seriesId ?: episodeParent
                     val mediaType = if (entry.seriesId != null) "series" else entry.type
                     val item = MetaItem(
                         id = canonicalId, type = mediaType, name = entry.title,
