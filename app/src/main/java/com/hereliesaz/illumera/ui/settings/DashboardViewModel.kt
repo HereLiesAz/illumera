@@ -78,7 +78,7 @@ class DashboardViewModel @Inject constructor(
     fun selectedGenres(profileId: Int, screen: String): Set<String> =
         genrePreferences.getStringSet(
             "${profileId}_${screen}",
-            setOf("Action", "Comedy", "Drama")
+            emptySet()
         )?.toSet().orEmpty()
 
     fun toggleGenre(profileId: Int, screen: String, genre: String) {
