@@ -605,6 +605,34 @@ class AddonRepositoryTest {
             .intersect(aggregatedMediaIdentityKeys(differentYear)).isEmpty())
     }
 
+    @Test
+    fun recoversEpisodeIndexWhenCatalogMetaHasNoVideos() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val full = MetaItem(
+            id = "tt1234567", type = "series", name = "Example Show",
+            videos = listOf(
+                MetaVideo(id = "tt1234567:1:2", title = "Second", season = 1, episode = 2),
+                MetaVideo(id = "tt1234567:1:1", title = "First", season = 1, episode = 1)
+            )
+        )
+        coEvery { api.getMeta("https://v3-cinemeta.strem.io/meta/series/tt1234567.json") } returns
+            MetaResponse(full)
+
+        val recovered = AddonRepository(api, dao).recoverSeriesEpisodes("tt1234567")
+        assertEquals(listOf(1, 2), recovered.map { it.episode })
+        assertEquals("First", recovered.first().title)
+    }
+
+    @Test
+    fun unknownSeriesIdentityDoesNotLoadUnrelatedEpisodes() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val recovered = AddonRepository(api, dao).recoverSeriesEpisodes("provider:unknown")
+        assertTrue(recovered.isEmpty())
+        coVerify(exactly = 0) { api.getMeta(any()) }
+    }
+
     private fun meta(id: String, type: String = "movie") = MetaItem(id = id, type = type, name = id)
 
     private fun addon(
