@@ -449,7 +449,7 @@ fun CinematicLayout(
                     // When the continue watching row first appears at index 0, all saved
                     // indices are off by 1 — adjust the initial index to compensate.
                     val verticalListState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = verticalScrollPosition.first + if (heroItems.isNotEmpty()) 0 else historyScrollAdjustment,
+                        initialFirstVisibleItemIndex = verticalScrollPosition.first + if (heroItems.isNotEmpty() && verticalScrollPosition.first == 0) 0 else historyScrollAdjustment,
                         initialFirstVisibleItemScrollOffset = verticalScrollPosition.second
                     )
 
@@ -659,6 +659,9 @@ fun CinematicLayout(
                                         repeatGate = dpadRepeatGate,
                                         isLastRow = index == state.mixedRows.lastIndex,
                                         isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() &&
+                                            historyItems.isEmpty() && index == 0
+                                        ) firstRowPivotRequester else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null
                                     )
                                     }
