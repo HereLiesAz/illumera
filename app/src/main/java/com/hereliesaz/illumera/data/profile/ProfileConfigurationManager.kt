@@ -435,8 +435,32 @@ class ProfileConfigurationManager @Inject constructor(
             )
         }
 
+        // Preinstall the trailer provider for new local profiles, keeping the metadata
+        // baseline available even when the trailer service cannot be reached.
+        val trailerManifestUrl = "https://stremio-trailer-addon.vercel.app/manifest.json"
+        val trailerTransportUrl = trailerManifestUrl.removeSuffix("/manifest.json")
+        val trailerManifest = runCatching {
+            kotlinx.coroutines.withTimeout(5_000L) {
+                addonRepository.fetchManifest(trailerManifestUrl)
+            }
+        }.getOrNull()
+        val trailerAddon = AddonEntity(
+            transportUrl = trailerTransportUrl,
+            id = trailerManifest?.id ?: "stremio-trailer-addon",
+            name = trailerManifest?.name ?: "YouTube Trailers",
+            version = trailerManifest?.version ?: "1.0.1",
+            description = trailerManifest?.description ?: "Trailers supplied by MechanicWB",
+            iconUrl = trailerManifest?.logo,
+            isEnabled = true,
+            catalogsJson = gson.toJson(trailerManifest?.catalogs.orEmpty()),
+            supportsMeta = trailerManifest?.supportsResource("meta") ?: false,
+            supportsStream = trailerManifest?.supportsResource("stream") ?: true,
+            typesJson = gson.toJson(trailerManifest?.types.orEmpty()),
+            sortOrder = 1
+        )
+
         return ProfileRuntimeSnapshot(
-            addons = listOf(addonEntity),
+            addons = listOf(addonEntity, trailerAddon),
             catalogConfigs = configs,
             hubRows = emptyList(),
             hubRowItems = emptyList(),
