@@ -28,3 +28,15 @@ Before describing this as done:
 5. Verify stock addon endpoints in the currently deployed environment. If a provider requires user authentication (especially Stremio Stats), present configuration rather than silently pretending the addon is usable.
 
 All items above still require runtime verification unless an attached successful CI log/device test says otherwise.
+
+## October 14 regression follow-up (same PR)
+
+Reported from an actual device: trailers never auto-play, episode lists absent from both Details and Player, and cinematic panels did not expand with row focus.
+
+Source-level remedies added:
+- The trailer resolver no longer cancels the extractor after 12 seconds; it allows the bounded multi-request extraction pipeline, caches signed URLs briefly, and prefers Android-TV-compatible H.264 previews. The first-frame observer no longer depends on making the player surface invisible, and pause/resume no longer clears the first-frame state. Art stays on screen while the new source loads.
+- Series Details now enriches title-only metadata with a full Cinemeta episode index (only matching IMDb IDs or conservative title/year matches). Episode sidebar retry shows a loading state and an explicit missing-provider message. The same recovery is used by Player after a missing episode-list handoff.
+- Cinematic previews are expanded via AnimatedVisibility directly above the newly focused poster row; active row changes trigger a one-time vertical scroll to reveal the expansion, rather than rendering a single persistent preview at the top.
+- Unit tests cover episode recovery with numbered episodes and unknown IDs.
+
+**Still unverified:** APK build/Media3 lint, actual YouTube extractor availability (the trailer addon can return a *YouTube search page*, not a playable trailer), Android TV video decoding and first-frame overlays, Details/Player on-device D-pad navigation and episode switching. A provider cannot conjure an episode or trailer that its upstream sources do not expose.
