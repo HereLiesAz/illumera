@@ -256,9 +256,18 @@ class StremioLibrarySyncManager @Inject constructor(
         if (item.removed) {
             val importedAt = prefs.getLong(ownedCreatedAtKey, Long.MIN_VALUE)
             val current = dao.getWatchlistItem(profileId, item.id)
-            if (prefs.getBoolean(ownedBookmarkKey, false) &&
-                current != null && current.addedAt == importedAt
-            ) {
+            // Legacy syncs wrote the ownership flag but not the importedAt key.
+            // Use the remote creation date to verify that this is still the exact
+            // imported row; never delete an independently re-added local bookmark.
+            val legacyCreatedAt = item.ctime?.let {
+                runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+            }
+            val matchesImportedRow = current != null && (
+                current.addedAt == importedAt ||
+                    (importedAt == Long.MIN_VALUE && legacyCreatedAt != null &&
+                        current.addedAt == legacyCreatedAt)
+                )
+            if (prefs.getBoolean(ownedBookmarkKey, false) && matchesImportedRow) {
                 dao.removeFromWatchlist(profileId, item.id)
             }
             prefs.edit().remove(ownedBookmarkKey).remove(ownedCreatedAtKey)
