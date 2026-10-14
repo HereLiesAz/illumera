@@ -164,7 +164,7 @@ fun DashboardEditorScreen(
 
             // --- HEADER ---
             Text(
-                "Home Screen Editor",
+                "Screen Editor",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 20.sp
