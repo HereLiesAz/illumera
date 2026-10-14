@@ -58,6 +58,7 @@ class ProfileConfigurationManager @Inject constructor(
         private const val PREFS_FILE = "profile_configuration_prefs"
         private const val KEY_PENDING_SETUP_PROFILES = "pending_setup_profiles"
         private const val KEY_LAST_ACTIVE_PROFILE_ID = "last_active_profile_id"
+        private const val KEY_DEFAULT_SET_SEEDED = "default_addons_v2_"
         private const val SNAPSHOT_DIR = "profile_snapshots"
         private const val DEFAULT_CINEMETA_MANIFEST_URL = "https://v3-cinemeta.strem.io/manifest.json"
         private const val DEFAULT_CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
@@ -177,6 +178,27 @@ class ProfileConfigurationManager @Inject constructor(
                 ProfileRuntimeSnapshot()
             }
         }
+        // One-time additive upgrade for existing profiles: never rewrite an addon
+        // the user already installed, configured, or disabled, and never re-install
+        // something they subsequently remove.
+        val finalSnapshot = if (!needsInitialSetup(profileId) &&
+            !prefs.getBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", false)
+        ) {
+            val defaults = createDefaultRuntimeSnapshot()
+            val installed = snapshot.addons.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
+            val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
+            snapshot.copy(
+                addons = snapshot.addons + defaults.addons.filter {
+                    it.transportUrl.trimEnd('/') !in installed
+                },
+                catalogConfigs = snapshot.catalogConfigs + defaults.catalogConfigs.filter {
+                    it.uniqueId !in configured
+                }
+            ).also {
+                writeSnapshot(profileId, it)
+                prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
+            }
+        } else snapshot
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
         // crash before the last onStop snapshot was written). On a genuine switch
@@ -184,11 +206,11 @@ class ProfileConfigurationManager @Inject constructor(
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
         dao.replaceRuntimeState(
-            addons = snapshot.addons,
-            catalogConfigs = snapshot.catalogConfigs,
-            hubRows = snapshot.hubRows,
-            hubRowItems = snapshot.hubRowItems,
-            watchHistory = snapshot.watchHistory,
+            addons = finalSnapshot.addons,
+            catalogConfigs = finalSnapshot.catalogConfigs,
+            hubRows = finalSnapshot.hubRows,
+            hubRowItems = finalSnapshot.hubRowItems,
+            watchHistory = finalSnapshot.watchHistory,
             mergeWatchHistory = sameProfile,
             ownerProfileId = profileId
         )
@@ -198,6 +220,7 @@ class ProfileConfigurationManager @Inject constructor(
 
     suspend fun initializeFromScratch(profileId: Int) {
         writeSnapshot(profileId, createDefaultRuntimeSnapshot())
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
         clearPendingSetup(profileId)
     }
@@ -251,6 +274,7 @@ class ProfileConfigurationManager @Inject constructor(
      */
     suspend fun initializeFromScratchWithConnectedStremio(profileId: Int): Result<Int> {
         val defaultSnapshot = createDefaultRuntimeSnapshot()
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
         stremioAuthManager.saveCredentialsForProfile(profileId)
         val addonsResult = stremioAuthManager.fetchAddons()
 
@@ -370,6 +394,7 @@ class ProfileConfigurationManager @Inject constructor(
     fun deleteProfileState(profileId: Int) {
         clearPendingSetup(profileId)
         snapshotFile(profileId).delete()
+        prefs.edit().remove("$KEY_DEFAULT_SET_SEEDED$profileId").apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
