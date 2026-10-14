@@ -96,7 +96,7 @@ class HomeViewModel @Inject constructor(
                 val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
                     stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
                 } ?: return@withTimeout null
-                val source = youtubeExtractor.extractPlaybackSource(youtubeLink)
+                val source = youtubeExtractor.extractPlaybackSource(youtubeLink, preferCompatiblePreview = true)
                 source?.videoUrl?.also { mediaUrl ->
                     if (trailerUrlCache.size > 128) trailerUrlCache.clear()
                     trailerUrlCache[trailerKey] = CachedTrailer(mediaUrl, System.currentTimeMillis())
