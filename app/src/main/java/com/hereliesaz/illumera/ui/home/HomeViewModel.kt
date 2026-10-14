@@ -33,6 +33,7 @@ import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.heroFor
+import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -810,14 +811,19 @@ class HomeViewModel @Inject constructor(
                 // Fetch HERO row separately (even if hidden in dashboard).
                 val tabEnum = DashboardTab.fromString(screenName)
                 val heroConfig = currentProfile?.heroFor(tabEnum)
-                val heroRow = if (heroConfig?.categoryId != null) {
-                    initialRows.find { it.configId == heroConfig.categoryId }
-                        ?: repository.getCategoryRowPreview(
-                            configId = heroConfig.categoryId,
-                            maxItems = heroConfig.posterCount,
-                            timeoutMs = initialDashboardTimeoutMs
-                        )
-                } else null
+                val heroRow = when {
+                    heroConfig?.categoryId == HERO_DISABLED_MARKER -> null
+                    heroConfig?.categoryId != null ->
+                        initialRows.find { it.configId == heroConfig.categoryId }
+                            ?: repository.getCategoryRowPreview(
+                                configId = heroConfig.categoryId,
+                                maxItems = heroConfig.posterCount,
+                                timeoutMs = initialDashboardTimeoutMs
+                            )
+                    screenName in setOf("movies", "series") ->
+                        initialRows.find { it.configId == "catalog-aggregate:${if (screenName == "movies") "movie" else "series"}:all" }
+                    else -> null
+                }
 
                 // Prefetch first visible images BEFORE updating state.
                 prefetchFirstVisibleImages(initialRows)
