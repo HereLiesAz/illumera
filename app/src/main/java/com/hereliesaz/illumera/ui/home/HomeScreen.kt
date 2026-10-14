@@ -585,14 +585,6 @@ fun CinematicLayout(
                                         onPositionChanged = { onScrollPositionChange(hubKey, it) }
                                     )
 
-                                    if (effectiveLastFocusedKey?.startsWith("hub_") == true &&
-                                        effectiveLastFocusedKey.substringAfter("hub_").startsWith("${index}_")) {
-                                        FocusedRowCinematicPreview(
-                                            item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
-                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
-                                        )
-                                    }
                                     HubRow(
                                         hubGroup = item,
                                         startPadding = startPadding,
