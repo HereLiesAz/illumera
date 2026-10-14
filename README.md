@@ -44,6 +44,8 @@ import your existing addon collection and sync Continue Watching progress.
 - Click any card to jump straight into that category's content grid
 
 ### Content Discovery
+- Movies and Series show a unified Discover feed assembled from every enabled addon's matching catalogs, deduplicated by canonical IMDb ID or title and release year; catalog providers are traversed lazily rather than selected through nested dropdowns.
+- Genre rows appear before Discover on Movies and Series. Choose each screen's genres in **Settings → Screen Editor**; selections are profile-specific.
 - Customizable dashboard with cinematic and simple layout modes
 - Hero carousel with auto-scrolling featured content
 - Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history
