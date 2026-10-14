@@ -1637,16 +1637,28 @@ internal fun TrailerPreview(
         }
     }
     if (player != null) {
-        AndroidView(
-            factory = {
-                PlayerView(it).apply {
-                    useController = false
-                    this.player = player
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                }
-            },
-            update = { it.player = player; it.alpha = if (ready) 1f else 0f },
-            modifier = modifier
-        )
+        Box(modifier = modifier) {
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        useController = false
+                        this.player = player
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    }
+                },
+                update = { it.player = player; it.alpha = if (ready) 1f else 0f },
+                modifier = Modifier.fillMaxSize()
+            )
+            if (ready) {
+                // Keep the artwork's legibility gradients above moving video.
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+                    colors = listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)
+                )))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                )))
+            }
+        }
     }
 }
