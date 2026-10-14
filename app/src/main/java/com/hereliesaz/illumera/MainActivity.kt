@@ -966,8 +966,7 @@ class MainActivity : ComponentActivity() {
                                     entryRequester = watchlistEntryRequester,
                                     drawerRequester = drawerRequesters.getValue(NavDestination.Watchlist),
                                     watchedIds = watchlistHomeVm.state.collectAsState().value.watchedIds,
-                                    onMovieClick = openDetailsFor,
-                                    onPlayResolvedStream = onPlayResolvedStream
+                                    onMovieClick = openDetailsFor
                                 )
                             } }
                             entry<SettingsKey> { MainRoot(it.destination) {
@@ -984,7 +983,8 @@ class MainActivity : ComponentActivity() {
                                         },
                                         entryRequester = settingsEntryRequester,
                                         drawerRequester = drawerRequesters.getValue(NavDestination.Settings),
-                                        onDashboardChanged = { homeVm.invalidate() }
+                                        onDashboardChanged = { homeVm.invalidate() },
+                                        onPlayResolvedStream = onPlayResolvedStream
                                     )
                                 }
                             } }
