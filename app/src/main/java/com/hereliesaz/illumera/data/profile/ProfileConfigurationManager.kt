@@ -291,6 +291,24 @@ class ProfileConfigurationManager @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 failed++
+                // A transient failure must not silently remove an addon from the
+                // newly created profile. Keep the descriptor so the user can
+                // retry it in Addons; leave disabled until capabilities are known.
+                val descriptor = entry.manifest
+                addons += AddonEntity(
+                    transportUrl = transportUrl,
+                    id = descriptor?.id?.takeIf { it.isNotBlank() } ?: transportUrl,
+                    name = descriptor?.name?.takeIf { it.isNotBlank() } ?: "Unavailable addon",
+                    version = descriptor?.version.orEmpty(),
+                    description = descriptor?.description ?: "Manifest unavailable; retry installation to enable",
+                    iconUrl = descriptor?.logo,
+                    isTrusted = false,
+                    isEnabled = false,
+                    nickname = null,
+                    catalogsJson = "[]",
+                    supportsStream = false
+                )
+                android.util.Log.w(TAG, "Manifest unavailable for an imported Stremio addon", e)
                 return@forEach
             }
             val catalogs = manifest.catalogs.orEmpty()
@@ -332,9 +350,9 @@ class ProfileConfigurationManager @Inject constructor(
         }
 
         if (failed > 0) {
-            // The returned snapshot (and the count reported to the caller) only contains
-            // addons whose manifest loaded; surface the ones that were dropped.
-            AppErrors.e(TAG, "Skipped $failed of ${entries.size} Stremio addons: manifest fetch failed")
+            // Import remains successful: unresolved manifests are retained as
+            // disabled entries instead of being discarded or reported as crashes.
+            android.util.Log.w(TAG, "$failed of ${entries.size} Stremio addon manifests unavailable; entries retained disabled")
         }
         return ProfileRuntimeSnapshot(addons = addons, catalogConfigs = configs)
     }
