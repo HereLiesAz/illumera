@@ -261,7 +261,9 @@ class HomeViewModel @Inject constructor(
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
                     var nextPage = rowFetchOffsets.getOrPut(configId) { 0 }
-                    var next = emptyList<MetaItem>()
+                    val existing = _state.value.rows.firstOrNull { it.configId == configId }
+                        ?.items.orEmpty()
+                    var unique = emptyList<MetaItem>()
                     val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
                     // First visit searches every addon source group in the first layer
                     // so a later provider can populate a row even if earlier addons are empty.
@@ -270,17 +272,13 @@ class HomeViewModel @Inject constructor(
                         firstLayerCount - nextPage
                     } else 4
                     repeat(probes.coerceAtLeast(0)) {
-                        if (next.isEmpty()) {
-                            next = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                        if (unique.isEmpty()) {
+                            val fetched = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                            unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
                     rowFetchOffsets[configId] = nextPage
-                    if (next.isNotEmpty()) {
-                        val existing = _state.value.rows.firstOrNull { it.configId == configId }
-                            ?.items.orEmpty()
-                        val unique = distinctAggregatedMetas(existing, next)
-                        if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
-                    }
+                    if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                 } catch (ce: CancellationException) {
                     throw ce
                 } finally {
