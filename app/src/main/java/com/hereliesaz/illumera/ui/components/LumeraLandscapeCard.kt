@@ -66,10 +66,21 @@ fun LumeraLandscapeCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
     var contextMenuExpanded by remember(mediaItem?.id) { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
     val roundCorners = LocalRoundCorners.current
     val onLongClick: (() -> Unit)? = mediaItem?.let { { contextMenuExpanded = true } }
+
+    androidx.compose.runtime.LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            kotlinx.coroutines.delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered) {
+                dpadLongPressTriggered = true
+                onLongClick?.invoke()
+            }
+        }
+    }
 
     val cardShape = if (roundCorners) RoundedCornerShape(12.dp) else RectangleShape
     val focusedCardShape = if (roundCorners) RoundedCornerShape(16.dp) else RectangleShape
@@ -96,14 +107,12 @@ fun LumeraLandscapeCard(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                onLongClick()
-                            }
+                            // Track the hold; the one-second timer opens the menu independently of key repeats.
+                            dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
@@ -115,7 +124,10 @@ fun LumeraLandscapeCard(
                 }
                 .onFocusChanged {
                     isFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused) {
+                        dpadKeyHeld = false
+                        dpadLongPressTriggered = false
+                    }
                     if (it.isFocused) onFocused?.invoke()
                 },
             shape = ClickableSurfaceDefaults.shape(

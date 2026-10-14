@@ -99,7 +99,7 @@ fun AddonCatalogDialog(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Official, Community, and addon collections — installed through Illumera.",
+                "Official, Community, stremio-addons.net, and collections — installed through Illumera.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.58f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -108,13 +108,13 @@ fun AddonCatalogDialog(
             Spacer(Modifier.height(18.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY).forEach { source ->
+                listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET).forEach { source ->
                     VoidButton(
                         text = source.displayName,
                         onClick = { onSourceSelected(source) },
                         isPrimary = state.catalogSource == source,
                         modifier = Modifier
-                            .width(150.dp)
+                            .width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 180.dp else 130.dp)
                             .then(if (source == AddonCatalogSource.OFFICIAL) Modifier.focusRequester(initialFocusRequester) else Modifier)
                     )
                 }
@@ -123,6 +123,15 @@ fun AddonCatalogDialog(
                     onClick = { addingCollection = !addingCollection },
                     isPrimary = addingCollection,
                     modifier = Modifier.width(170.dp)
+                )
+            }
+
+            if (state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
+                Text(
+                    "Addons sourced from stremio-addons.net — https://stremio-addons.net/",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 10.dp)
                 )
             }
 
