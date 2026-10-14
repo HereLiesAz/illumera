@@ -1,10 +1,10 @@
 # Architecture
 
-## Unified Movies and Series discovery
+## Unified Movies and Series catalogs
 
-The Android `AddonRepository.getUnifiedDiscoveryPage` reads catalog manifests from enabled addon records, requesting small batches of catalogs for either `movie` or `series`. No Stremio source/category dropdown excludes other enabled providers. Sources supporting `skip` can contribute subsequent pages. Genre catalog extras are passed through when advertised; other providers are filtered by the returned metadata's declared genres. Results are deduplicated by IMDb ID, or by normalized title and release year when no IMDb ID exists. `HomeViewModel` appends only unseen titles as the user approaches the end of a row.
+The Android `AddonRepository.getAggregatedCatalogPage` reads catalog manifests from enabled addon records, requesting small batches of catalogs for either `movie` or `series`. No Stremio source/category dropdown excludes other enabled providers. Sources supporting `skip` can contribute subsequent pages. Genre catalog extras are passed through when advertised; other providers are filtered by the returned metadata's declared genres. Results are deduplicated by IMDb ID, or by normalized title and release year when no IMDb ID exists. `HomeViewModel` appends only unseen titles as the user approaches the end of a row.
 
-Movies and Series generate selected genre rows first, followed by a unified Discover row and any existing user-configured rows. Genre row selections are stored per profile in `illumera_screen_genres` SharedPreferences by `DashboardViewModel` and are edited under Settings → Screen Editor. Changes invalidate cached screen data on leaving the editor. Catalog timeouts are isolated to their source; a failing provider does not suppress successful providers.
+Movies and Series generate selected genre rows first, followed by a combined All Movies / All Series row and any existing user-configured rows. Genre row selections are stored per profile in `illumera_screen_genres` SharedPreferences by `DashboardViewModel` and are edited under Settings → Screen Editor. Changes invalidate cached screen data on leaving the editor. Catalog timeouts are isolated to their source; a failing provider does not suppress successful providers.
 
 illumera is a single-Activity Android TV app: Kotlin, Jetpack Compose for
 TV, MVVM with Hilt dependency injection, Room for local persistence.
