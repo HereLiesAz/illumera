@@ -147,7 +147,11 @@ class AddonRepository @Inject constructor(
             sources.drop(offset).take(batchSize).map { (addon, catalog) ->
                 async {
                     val supportsSkip = catalog.extra.orEmpty().any { it.name == "skip" }
-                    val supportsGenre = catalog.extra.orEmpty().any { it.name == "genre" }
+                    val supportsGenre = catalog.extra.orEmpty().any { extra ->
+                        extra.name == "genre" && (genre.isNullOrBlank() ||
+                            extra.options.isNullOrEmpty() ||
+                            extra.options.any { it.equals(genre, ignoreCase = true) })
+                    }
                     if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
                     val extras = buildList {
                         if (!genre.isNullOrBlank() && supportsGenre) {
