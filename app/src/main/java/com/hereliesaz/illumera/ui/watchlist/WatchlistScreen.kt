@@ -81,6 +81,7 @@ fun WatchlistScreen(
     var sortMode by remember(currentProfile?.id) {
         mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
     }
+    var mediaTypeFilter by remember { mutableStateOf("all") }
     val sortedLibrary = remember(library, sortMode) {
         val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
             maxOf(it.addedAt, it.lastWatched)
@@ -216,6 +217,24 @@ fun WatchlistScreen(
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        items(listOf("all" to "All", "movie" to "Movies", "series" to "Series")) { type ->
+                            val selected = mediaTypeFilter == type.first
+                            Text(
+                                type.second,
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = if (selected) 0.14f else 0.05f))
+                                    .clickable { mediaTypeFilter = type.first }
+                                    .focusable()
+                                    .padding(horizontal = 14.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 12.dp)
                     ) {
                         items(modes, key = { it.first }) { mode ->
@@ -251,7 +270,7 @@ fun WatchlistScreen(
                 }
             }
 
-            if (movies.isNotEmpty()) {
+            if (movies.isNotEmpty() && mediaTypeFilter != "series") {
                 item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
@@ -280,7 +299,7 @@ fun WatchlistScreen(
                 }
             }
 
-            if (series.isNotEmpty()) {
+            if (series.isNotEmpty() && mediaTypeFilter != "movie") {
                 item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
