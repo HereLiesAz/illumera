@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.ui.components
 
+import androidx.compose.ui.window.PopupProperties
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -415,6 +417,7 @@ fun MediaCardActionMenu(
     target: MediaActionTarget,
     expanded: Boolean,
     onDismissRequest: () -> Unit,
+    focusable: Boolean = true,
     viewModel: MediaActionsViewModel = hiltViewModel()
 ) {
     var state by remember(target.key) { mutableStateOf<MediaActionState?>(null) }
@@ -436,7 +439,8 @@ fun MediaCardActionMenu(
 
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = onDismissRequest
+        onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = focusable)
     ) {
         DropdownMenuItem(
             text = { Text(watchlistLabel) },
