@@ -3,6 +3,9 @@ package com.hereliesaz.illumera.domain
 import androidx.compose.runtime.Immutable
 import com.hereliesaz.illumera.data.model.ProfileEntity
 
+/** Explicitly disabled; null means automatic unified Hero on Movies/Series. */
+const val HERO_DISABLED_MARKER = "__hero_disabled__"
+
 enum class DashboardTab {
     HOME, MOVIES, SERIES;
 
