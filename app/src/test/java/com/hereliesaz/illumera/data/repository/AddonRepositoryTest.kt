@@ -571,6 +571,40 @@ class AddonRepositoryTest {
         assertEquals(listOf("tt0000006", "tt0000007"), result.map { it.id })
     }
 
+    @Test
+    fun aggregatedUnfilteredFeedIncludesEveryRequiredGenreVariant() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://genre.example").copy(
+                catalogsJson = """[{"type":"movie","id":"top","extra":[{"name":"genre","isRequired":true,"options":["Action","Drama"]}]}]"""
+            )
+        ))
+        coEvery { api.getCatalog("https://genre.example/catalog/movie/top/genre=Action.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234567", type = "movie", name = "Example A")))
+        coEvery { api.getCatalog("https://genre.example/catalog/movie/top/genre=Drama.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt7654321", type = "movie", name = "Example B")))
+
+        val repository = AddonRepository(api, dao)
+        val first = repository.getAggregatedCatalogPage("movie", sourcesPerPage = 1)
+        val second = repository.getAggregatedCatalogPage("movie", page = 1, sourcesPerPage = 1)
+        assertEquals(setOf("tt1234567", "tt7654321"), (first + second).map { it.id }.toSet())
+        coVerify(exactly = 0) { api.getCatalog("https://genre.example/catalog/movie/top.json") }
+    }
+
+    @Test
+    fun aggregatedIdentityMatchesImdbAndAlternateProviderByTitleAndYear() {
+        val imdb = MetaItem(id = "tt1234567", type = "movie", name = "A Fine Film",
+            releaseInfo = "2025")
+        val tmdb = MetaItem(id = "tmdb:100", type = "movie", name = "A Fine Film",
+            releaseInfo = "2025")
+        val differentYear = tmdb.copy(releaseInfo = "2024")
+        assertTrue(aggregatedMediaIdentityKeys(imdb)
+            .intersect(aggregatedMediaIdentityKeys(tmdb)).isNotEmpty())
+        assertTrue(aggregatedMediaIdentityKeys(imdb)
+            .intersect(aggregatedMediaIdentityKeys(differentYear)).isEmpty())
+    }
+
     private fun meta(id: String, type: String = "movie") = MetaItem(id = id, type = type, name = id)
 
     private fun addon(
