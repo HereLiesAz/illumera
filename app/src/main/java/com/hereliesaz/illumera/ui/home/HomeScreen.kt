@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
@@ -1585,6 +1588,7 @@ internal fun TrailerPreview(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var ready by remember(item?.id, item?.type) { mutableStateOf(false) }
     val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
         value = null
@@ -1599,8 +1603,8 @@ internal fun TrailerPreview(
                 volume = 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        ready = playbackState == Player.STATE_READY
+                    override fun onRenderedFirstFrame() {
+                        ready = true
                     }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         ready = false
@@ -1612,8 +1616,25 @@ internal fun TrailerPreview(
             }
         }
     }
-    DisposableEffect(player) {
-        onDispose { player?.release() }
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
+                    player?.pause()
+                    ready = false
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (player != null) player.playWhenReady = true
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player?.pause()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player?.release()
+        }
     }
     if (player != null) {
         AndroidView(
