@@ -216,6 +216,13 @@ class StremioLibrarySyncManager @Inject constructor(
         for (bookmark in dao.getWatchlistOnce(profileId)) {
             if (bookmark.type !in setOf("movie", "series")) continue
             val bookmarkedAt = Instant.ofEpochMilli(bookmark.addedAt).toString()
+            val createdKey = "remote_bookmark_created_${profileId}_${bookmark.id}"
+            val modifiedKey = "remote_bookmark_modified_${profileId}_${bookmark.id}"
+            val remoteOwned = prefs.getBoolean("remote_bookmark_${profileId}_${bookmark.id}", false) &&
+                prefs.getLong(createdKey, Long.MIN_VALUE) == bookmark.addedAt
+            val remoteModified = if (remoteOwned)
+                prefs.getLong(modifiedKey, bookmark.addedAt) else bookmark.addedAt
+            val baselineModifiedAt = Instant.ofEpochMilli(maxOf(bookmark.addedAt, remoteModified)).toString()
             val watched = library[bookmark.id]
             library[bookmark.id] = if (watched == null) {
                 StremioLibraryItem(
@@ -224,7 +231,7 @@ class StremioLibrarySyncManager @Inject constructor(
                     type = bookmark.type,
                     poster = bookmark.poster,
                     ctime = bookmarkedAt,
-                    mtime = bookmarkedAt
+                    mtime = baselineModifiedAt
                 )
             } else {
                 val watchedAt = Instant.parse(watched.mtime).toEpochMilli()
@@ -232,7 +239,7 @@ class StremioLibrarySyncManager @Inject constructor(
                     name = bookmark.title.ifBlank { watched.name },
                     poster = bookmark.poster ?: watched.poster,
                     ctime = bookmarkedAt,
-                    mtime = Instant.ofEpochMilli(maxOf(bookmark.addedAt, watchedAt)).toString()
+                    mtime = Instant.ofEpochMilli(maxOf(remoteModified, bookmarkedAt.let { bookmark.addedAt }, watchedAt)).toString()
                 )
             }
         }
@@ -244,6 +251,7 @@ class StremioLibrarySyncManager @Inject constructor(
 
         val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
         val ownedCreatedAtKey = "remote_bookmark_created_${profileId}_${item.id}"
+        val ownedModifiedAtKey = "remote_bookmark_modified_${profileId}_${item.id}"
         val watchCountKey = "watch_count_${profileId}_${item.id}"
         if (item.removed) {
             val importedAt = prefs.getLong(ownedCreatedAtKey, Long.MIN_VALUE)
@@ -254,7 +262,7 @@ class StremioLibrarySyncManager @Inject constructor(
                 dao.removeFromWatchlist(profileId, item.id)
             }
             prefs.edit().remove(ownedBookmarkKey).remove(ownedCreatedAtKey)
-                .remove(watchCountKey).apply()
+                .remove(ownedModifiedAtKey).remove(watchCountKey).apply()
             if (item.type == "series") {
                 dao.getHistoryItemsForSeries(item.id, "${item.id}:%")
                     .forEach { dao.deleteHistoryItem(it.id) }
@@ -284,7 +292,16 @@ class StremioLibrarySyncManager @Inject constructor(
                     )
                 )
                 prefs.edit().putBoolean(ownedBookmarkKey, true)
-                    .putLong(ownedCreatedAtKey, createdAt).apply()
+                    .putLong(ownedCreatedAtKey, createdAt)
+                    .putLong(ownedModifiedAtKey, mtimeMs).apply()
+            } else if (prefs.getBoolean(ownedBookmarkKey, false) &&
+                (prefs.getLong(ownedCreatedAtKey, Long.MIN_VALUE) == Long.MIN_VALUE ||
+                    prefs.getLong(ownedCreatedAtKey, Long.MIN_VALUE) == currentBookmark.addedAt)
+            ) {
+                // Migrate pre-timestamp remote-owned rows when confirmed by a live
+                // incoming library item; preserve the remote edit clock separately.
+                prefs.edit().putLong(ownedCreatedAtKey, currentBookmark.addedAt)
+                    .putLong(ownedModifiedAtKey, mtimeMs).apply()
             }
         }
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
@@ -347,6 +364,7 @@ class StremioLibrarySyncManager @Inject constructor(
                 prefix,
                 "remote_bookmark_${profileId}_",
                 "remote_bookmark_created_${profileId}_",
+                "remote_bookmark_modified_${profileId}_",
                 "watch_count_${profileId}_"
             )
             prefs.all.keys.filter { key ->
