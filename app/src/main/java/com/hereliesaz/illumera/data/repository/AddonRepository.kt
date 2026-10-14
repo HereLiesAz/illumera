@@ -160,6 +160,8 @@ class AddonRepository @Inject constructor(
                     val url = "${addon.transportUrl.trimEnd('/')}/catalog/$type/${catalog.id}$suffix.json"
                     val result = try {
                         withTimeout(5_000L) { api.getCatalog(url).metas.orEmpty().sanitize() }
+                    } catch (_: TimeoutCancellationException) {
+                        emptyList()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
