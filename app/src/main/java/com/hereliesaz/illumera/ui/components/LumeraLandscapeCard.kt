@@ -107,7 +107,7 @@ fun LumeraLandscapeCard(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
+                            // Track the hold; the one-second timer opens the menu independently of key repeats.
                             dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
