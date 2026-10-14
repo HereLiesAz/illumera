@@ -432,6 +432,7 @@ private fun AddonBadge(label: String) {
 }
 
 private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (state.catalogSource) {
+    AddonCatalogSource.STREMIO_ADDONS_NET -> AddonCatalogSource.STREMIO_ADDONS_NET.displayName
     AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
     AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
     AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName

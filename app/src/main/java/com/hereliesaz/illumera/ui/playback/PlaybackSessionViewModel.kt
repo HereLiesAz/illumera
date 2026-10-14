@@ -179,11 +179,11 @@ class PlaybackSessionViewModel @Inject constructor(
         episodeListRecoveryJob?.cancel()
         episodeListRecoveryJob = viewModelScope.launch {
             try {
-                val meta = repository.resolveMetaDetails("series", seriesId)
+                val meta = addonRepository.resolveMetaDetails("series", seriesId)
                 val recovered = meta?.videos.orEmpty().filter { it.season >= 0 && it.episode > 0 }
                     .ifEmpty {
                         if (!seriesId.startsWith("tt")) emptyList()
-                        else repository.getMetaDetails(
+                        else addonRepository.getMetaDetails(
                             "https://v3-cinemeta.strem.io/meta/series/$seriesId.json"
                         )?.videos.orEmpty()
                     }

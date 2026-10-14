@@ -297,7 +297,7 @@ class YouTubeExtractor @Inject constructor() {
         )
     }
 
-    private fun fetchPlayerResponse(apiKey: String, videoId: String, client: YouTubeClient, visitorData: String?): Map<*, *> {
+    private suspend fun fetchPlayerResponse(apiKey: String, videoId: String, client: YouTubeClient, visitorData: String?): Map<*, *> {
         val endpoint = "https://www.youtube.com/youtubei/v1/player?key=${Uri.encode(apiKey)}"
         val headers = buildMap {
             putAll(DEFAULT_HEADERS)
