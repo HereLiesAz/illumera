@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.ui.watchlist
 
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchlistEntity
+import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import io.mockk.every
@@ -56,6 +57,43 @@ class WatchlistViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun libraryMergesSavedAndSyncedTitlesWithoutDuplicatingSeriesEpisodes() = runTest(dispatcher) {
+        every { dao.getWatchlist(1) } returns flowOf(listOf(
+            WatchlistEntity(1, "tt123", "series", "Series Title", "poster", 1000L),
+            WatchlistEntity(1, "tt456", "movie", "Movie Title", null, 2000L)
+        ))
+        every { dao.getWatchHistory() } returns flowOf(listOf(
+            WatchHistoryEntity(
+                id = "tt123:1:1", title = "Series Title", poster = "poster",
+                seriesId = "tt123", position = 10L, duration = 100L,
+                lastWatched = 3000L, type = "series", watched = false
+            ),
+            WatchHistoryEntity(
+                id = "tt123:1:2", title = "Series Title", poster = "poster",
+                seriesId = "tt123", position = 100L, duration = 100L,
+                lastWatched = 4000L, type = "series", watched = true
+            ),
+            WatchHistoryEntity(
+                id = "tt789", title = "Remote Only", poster = "remote",
+                position = 15L, duration = 100L, lastWatched = 5000L,
+                type = "movie", watched = false
+            )
+        ))
+        val viewModel = WatchlistViewModel(
+            dao = dao, repository = mockk(relaxed = true), profileConfigurationManager = profileManager
+        )
+        val collector = backgroundScope.launch { viewModel.libraryEntries.collect {} }
+        runCurrent()
+        advanceUntilIdle()
+        val entries = viewModel.libraryEntries.value
+        assertEquals(setOf("tt123", "tt456", "tt789"), entries.map { it.item.id }.toSet())
+        assertEquals(4000L, entries.first { it.item.id == "tt123" }.lastWatched)
+        assertTrue(entries.first { it.item.id == "tt123" }.watched)
+        assertEquals("series", entries.first { it.item.id == "tt123" }.item.type)
+        collector.cancel()
     }
 
     @Test

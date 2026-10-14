@@ -42,6 +42,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.ui.addons.AddonsScreen
+import com.hereliesaz.illumera.ui.watchlist.DebridLibraryViewModel
+import com.hereliesaz.illumera.ui.watchlist.DebridLibraryEvent
+import com.hereliesaz.illumera.ui.watchlist.DebridLibrarySection
+import android.widget.Toast
 import com.hereliesaz.illumera.ui.theme.ThemeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,6 +56,7 @@ enum class SettingsSection(val label: String, @DrawableRes val iconRes: Int) {
     Personalization("Personalization", R.drawable.personalization_icon),
     Theme("Theme", R.drawable.palette_icon),
     Dashboard("Screen Editor", R.drawable.home_icon),
+    Watchlist("Watchlist", R.drawable.watchlist_icon),
     Playback("Playback", R.drawable.playback_icon),
     SourcePreferences("Sort & Filter", R.drawable.source_preferences_icon),
     Addons("Addons", R.drawable.puzzle_icon),
@@ -67,6 +72,7 @@ fun SettingsScreen(
     entryRequester: FocusRequester,
     drawerRequester: FocusRequester,
     onDashboardChanged: () -> Unit = {},
+    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit = { _, _, _ -> },
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     var selectedSection by remember { mutableStateOf(SettingsSection.Personalization) }
@@ -250,6 +256,9 @@ fun SettingsScreen(
                         isTopNav = isTopNav,
                         currentProfile = currentProfile
                     )
+                }
+                SettingsSection.Watchlist -> {
+                    WatchlistSettings(currentProfile = currentProfile, onPlayResolvedStream = onPlayResolvedStream)
                 }
                 SettingsSection.Playback -> {
                     PlaybackSettings(
@@ -444,5 +453,81 @@ fun SettingsSidebarItem(
             ), 
             color = contentColor
         )
+    }
+}
+@Composable
+private fun WatchlistSettings(
+    currentProfile: ProfileEntity?,
+    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
+    debridViewModel: DebridLibraryViewModel = hiltViewModel()
+) {
+    val debridProvider by debridViewModel.connectedProvider.collectAsState()
+    val debridState by debridViewModel.uiState.collectAsState()
+    val latestOnPlay by rememberUpdatedState(onPlayResolvedStream)
+    val toastContext = androidx.compose.ui.platform.LocalContext.current
+    DisposableEffect(debridViewModel) {
+        onDispose { debridViewModel.onScreenDisposed() }
+    }
+    LaunchedEffect(debridViewModel) {
+        debridViewModel.events.collect { event ->
+            when (event) {
+                is DebridLibraryEvent.StreamResolved ->
+                    latestOnPlay(event.id, event.url, event.name)
+                is DebridLibraryEvent.Error ->
+                    Toast.makeText(toastContext, event.message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
+    var defaultSort by remember(currentProfile?.id) {
+        mutableStateOf(prefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
+    }
+    val modes = listOf(
+        "recent" to "Recent", "added" to "Recently added",
+        "az" to "A–Z", "za" to "Z–A",
+        "lastwatched" to "Last watched", "watched" to "Watched",
+        "unwatched" to "Not watched", "mostwatched" to "Most watched"
+    )
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Watchlist", style = MaterialTheme.typography.titleLarge, color = Color.White)
+        Text("Your Queue stays at the top of Watchlist. Below it, Library combines saved titles and synchronized Stremio viewing history.",
+            style = MaterialTheme.typography.bodyMedium, color = Color.LightGray)
+        Text("Default Library sorting", style = MaterialTheme.typography.titleMedium, color = Color.White)
+        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(modes) { mode ->
+                val selected = defaultSort == mode.first
+                Text(
+                    text = "${if (selected) "✓  " else ""}${mode.second}",
+                    color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = if (selected) 0.13f else 0.05f))
+                        .clickable {
+                            defaultSort = mode.first
+                            prefs.edit().putString("sort_${currentProfile?.id}", mode.first).apply()
+                        }
+                        .focusable()
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                )
+            }
+            if (debridProvider != null) {
+                item(key = "watchlist_cloud_storage") {
+                    Spacer(Modifier.height(20.dp))
+                    DebridLibrarySection(
+                        provider = debridProvider,
+                        state = debridState,
+                        startPadding = 0.dp,
+                        onPlay = { debridViewModel.play(it) },
+                        onDelete = { debridViewModel.delete(it) }
+                    )
+                }
+            }
+        }
     }
 }

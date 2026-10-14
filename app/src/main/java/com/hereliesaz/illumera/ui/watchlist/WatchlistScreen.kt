@@ -67,35 +67,39 @@ fun WatchlistScreen(
     entryRequester: FocusRequester,
     drawerRequester: FocusRequester,
     onMovieClick: (MetaItem) -> Unit,
-    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
     watchedIds: Set<String> = emptySet(),
-    viewModel: WatchlistViewModel = hiltViewModel(),
-    debridViewModel: DebridLibraryViewModel = hiltViewModel()
+    viewModel: WatchlistViewModel = hiltViewModel()
 ) {
-    val movies by viewModel.movieItems.collectAsState()
-    val series by viewModel.seriesItems.collectAsState()
 
-    val debridProvider by debridViewModel.connectedProvider.collectAsState()
-    val debridState by debridViewModel.uiState.collectAsState()
+    val library by viewModel.libraryEntries.collectAsState()
     val context = LocalContext.current
-
-    // Drop a debrid stream that resolves after the user left, so it can't auto-play on return.
-    DisposableEffect(debridViewModel) {
-        onDispose { debridViewModel.onScreenDisposed() }
+    val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
+    val remoteCounts = remember { context.getSharedPreferences("stremio_library_sync", 0) }
+    var sortMode by remember(currentProfile?.id) {
+        mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
     }
-
-    LaunchedEffect(Unit) {
-        debridViewModel.events.collect { event ->
-            when (event) {
-                is DebridLibraryEvent.StreamResolved -> {
-                    onPlayResolvedStream(event.id, event.url, event.name)
-                }
-                is DebridLibraryEvent.Error -> {
-                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
-                }
-            }
+    var mediaTypeFilter by remember { mutableStateOf("all") }
+    val sortedLibrary = remember(library, sortMode, currentProfile?.id) {
+        val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
+            maxOf(it.addedAt, it.lastWatched)
+        }
+        when (sortMode) {
+            "added" -> library.sortedByDescending { it.addedAt }
+            "az" -> library.sortedBy { it.item.name.lowercase() }
+            "za" -> library.sortedByDescending { it.item.name.lowercase() }
+            "lastwatched" -> library.sortedByDescending { it.lastWatched }
+            "watched" -> library.sortedWith(compareByDescending<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
+            "unwatched" -> library.sortedWith(compareBy<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
+            "mostwatched" -> library.sortedWith(
+                compareByDescending<WatchlistViewModel.LibraryEntry> {
+                    remoteCounts.getInt("watch_count_${currentProfile?.id}_${it.item.id}", it.timesWatched)
+                }.then(recent)
+            )
+            else -> library.sortedWith(recent)
         }
     }
+    val movies = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "movie" }.map { it.item } }
+    val series = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "series" }.map { it.item } }
 
     // Main-screen Back is MainRootBackHandler's: every in-screen Back action (Queue reorder
     // mode, item menus) has its own handler composed later, so it runs first.
@@ -162,6 +166,82 @@ fun WatchlistScreen(
             contentPadding = PaddingValues(top = topPadding + 20.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            item {
+                QueueSection(
+                    entryRequester = entryRequester,
+                    startPadding = startPadding,
+                    requestEntryFocus = lastFocusedKey == null && lastQueueFocusedKey == null,
+                    focusedQueueKey = lastQueueFocusedKey,
+                    restoreEntryFocusWhenFocusedKeyMissing = true,
+                    onQueueFocused = { key ->
+                        lastQueueFocusedKey = key
+                        viewModel.lastQueueFocusedKey = key
+                        if (key != null) {
+                            lastFocusedKey = null
+                            viewModel.lastFocusedKey = null
+                        }
+                    },
+                    onOpenItem = { queueItem: QueueItem ->
+                        onMovieClick(queueItem.toMetaItem())
+                    }
+                )
+            }
+            item(key = "library_sort") {
+                Column(modifier = Modifier.padding(start = startPadding, top = 12.dp, end = 12.dp)) {
+                    Text("Library", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Text("Saved movies and series, including synchronized Stremio history",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.65f))
+                    val modes = listOf(
+                        "recent" to "Recent", "added" to "Recently added",
+                        "az" to "A–Z", "za" to "Z–A",
+                        "lastwatched" to "Last watched", "watched" to "Watched",
+                        "unwatched" to "Not watched", "mostwatched" to "Most watched"
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        items(listOf("all" to "All", "movie" to "Movies", "series" to "Series")) { type ->
+                            val selected = mediaTypeFilter == type.first
+                            Text(
+                                type.second,
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.White.copy(alpha = if (selected) 0.14f else 0.05f))
+                                    .clickable { mediaTypeFilter = type.first }
+                                    .focusable()
+                                    .padding(horizontal = 14.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 12.dp)
+                    ) {
+                        items(modes, key = { it.first }) { mode ->
+                            val selected = sortMode == mode.first
+                            Text(
+                                mode.second,
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) Color.White.copy(alpha = 0.14f)
+                                        else Color.White.copy(alpha = 0.05f))
+                                    .clickable {
+                                        sortMode = mode.first
+                                        watchlistPrefs.edit().putString(
+                                            "sort_${currentProfile?.id}", mode.first
+                                        ).apply()
+                                    }
+                                    .focusable()
+                                    .padding(horizontal = 14.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                }
+            }
             if (!hasWatchlistMedia) {
                 item {
                     Text(
@@ -173,7 +253,7 @@ fun WatchlistScreen(
                 }
             }
 
-            if (movies.isNotEmpty()) {
+            if (movies.isNotEmpty() && mediaTypeFilter != "series") {
                 item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
@@ -193,7 +273,7 @@ fun WatchlistScreen(
                         drawerRequester = drawerRequester,
                         locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true) lastFocusedKey else null,
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = true,
+                        isFirstRow = false, // Queue now precedes Library
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
@@ -202,7 +282,7 @@ fun WatchlistScreen(
                 }
             }
 
-            if (series.isNotEmpty()) {
+            if (series.isNotEmpty() && mediaTypeFilter != "movie") {
                 item {
                     InfiniteLoopRow(
                         startPadding = startPadding,
@@ -222,7 +302,7 @@ fun WatchlistScreen(
                         drawerRequester = drawerRequester,
                         locallyFocusedItemId = if (lastFocusedKey?.startsWith("1_") == true) lastFocusedKey else null,
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = movies.isEmpty(),
+                        isFirstRow = false, // Queue now precedes Library
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
@@ -231,44 +311,13 @@ fun WatchlistScreen(
                 }
             }
 
-            item {
-                QueueSection(
-                    entryRequester = entryRequester,
-                    startPadding = startPadding,
-                    requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
-                    focusedQueueKey = lastQueueFocusedKey,
-                    restoreEntryFocusWhenFocusedKeyMissing = true,
-                    onQueueFocused = { key ->
-                        lastQueueFocusedKey = key
-                        viewModel.lastQueueFocusedKey = key
-                        if (key != null) {
-                            lastFocusedKey = null
-                            viewModel.lastFocusedKey = null
-                        }
-                    },
-                    onOpenItem = { queueItem: QueueItem ->
-                        onMovieClick(queueItem.toMetaItem())
-                    }
-                )
-            }
 
-            if (debridProvider != null) {
-                item {
-                    DebridLibrarySection(
-                        provider = debridProvider,
-                        state = debridState,
-                        startPadding = startPadding,
-                        onPlay = { debridViewModel.play(it) },
-                        onDelete = { debridViewModel.delete(it) }
-                    )
-                }
-            }
         }
     }
 }
 
 @Composable
-private fun DebridLibrarySection(
+internal fun DebridLibrarySection(
     provider: com.hereliesaz.illumera.data.model.debrid.DebridProvider?,
     state: DebridLibraryUiState,
     startPadding: androidx.compose.ui.unit.Dp,
