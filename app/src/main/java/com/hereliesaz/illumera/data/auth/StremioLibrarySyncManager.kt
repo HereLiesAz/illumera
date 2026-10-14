@@ -161,7 +161,7 @@ class StremioLibrarySyncManager @Inject constructor(
             // Network work is finished. Reacquire ownership only for the short local
             // mutation phase, so profile switching is never blocked by remote latency.
             inProfileRuntime(profileId, runtimeHeld) {
-                for (item in remoteItems) applyRemoteItem(item)
+                for (item in remoteItems) applyRemoteItem(profileId, item)
 
                 val refreshedLocal = buildLocalLibraryView()
                     .map { (id, history) -> history.toLibraryItem(id) }
@@ -209,10 +209,9 @@ class StremioLibrarySyncManager @Inject constructor(
         return result
     }
 
-    private suspend fun applyRemoteItem(item: StremioLibraryItem) {
+    private suspend fun applyRemoteItem(profileId: Int, item: StremioLibraryItem) {
         val mtimeMs = runCatching { Instant.parse(item.mtime).toEpochMilli() }.getOrNull() ?: return
 
-        val profileId = profileConfigurationManager.activeProfileId.value ?: return
         val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
         val watchCountKey = "watch_count_${profileId}_${item.id}"
         if (item.removed) {
