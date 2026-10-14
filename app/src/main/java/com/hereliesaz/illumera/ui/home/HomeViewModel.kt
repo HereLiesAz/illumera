@@ -8,6 +8,8 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.remote.StremioApiService
+import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
 import com.hereliesaz.illumera.data.tmdb.TmdbService
 import com.hereliesaz.illumera.domain.HomeRow
@@ -38,8 +40,39 @@ class HomeViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val trailerApi: StremioApiService,
+    private val youtubeExtractor: YouTubeExtractor
 ) : ViewModel() {
+
+    /**
+     * Resolve a trailer through the bundled addon, then extract its YouTube playback URL.
+     * A missing, malformed or unavailable trailer never replaces the poster artwork.
+     */
+    suspend fun resolveTrailer(item: MetaItem): String? {
+        if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        return try {
+            kotlinx.coroutines.withTimeout(12_000L) {
+                val response = trailerApi.getStreams(
+                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/${item.id}.json"
+                )
+                val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
+                    stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
+                } ?: return@withTimeout null
+                val uri = android.net.Uri.parse(youtubeLink)
+                val videoId = if (uri.host?.endsWith("youtu.be") == true) {
+                    uri.lastPathSegment
+                } else {
+                    uri.getQueryParameter("v")
+                }?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
+                videoId?.let { youtubeExtractor.extractPlaybackSource(it)?.videoUrl }
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private var loadJob: kotlinx.coroutines.Job? = null
     private var observedProfileId: Int? = profileConfigurationManager.activeProfileId.value
