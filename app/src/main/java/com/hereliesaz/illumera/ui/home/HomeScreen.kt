@@ -187,7 +187,13 @@ fun HomeScreen(
                 state.history.any { !it.watched } || state.seriesNextUp.any { !it.isComplete }
             }
             if (layoutMode == "cinematic") {
+                val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
+                val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
+                    displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
+                }
                 CinematicLayout(
+                    heroItems = heroItems,
+                    heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     infoTopPadding = infoTopPadding,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
@@ -259,6 +265,8 @@ fun HomeScreen(
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CinematicLayout(
+    heroItems: List<MetaItem>,
+    heroAutoScrollSeconds: Int,
     infoTopPadding: androidx.compose.ui.unit.Dp,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
@@ -545,6 +553,31 @@ fun CinematicLayout(
                         contentPadding = PaddingValues(top = 5.dp, bottom = 400.dp),
                         verticalArrangement = Arrangement.spacedBy((-12).dp)
                     ) {
+                        if (heroItems.isNotEmpty()) {
+                            item(key = "cinematic_hero_carousel", contentType = "hero") {
+                                HeroCarousel(
+                                    items = heroItems,
+                                    autoScrollSeconds = heroAutoScrollSeconds,
+                                    onItemClick = onMovieClick,
+                                    startPadding = startPadding,
+                                    onFocusChange = { wrappedOnFocusChange("hero_$it") },
+                                    onCurrentItemVisible = onPreviewItemVisible,
+                                    entryRequester = if (effectiveLastFocusedKey == null ||
+                                        effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
+                                    drawerRequester = drawerRequester,
+                                    isFirstItem = true,
+                                    isTopNav = isTopNav,
+                                    upKeyDebouncer = upKeyDebouncer,
+                                    repeatGate = dpadRepeatGate,
+                                    restoreItemId = effectiveLastFocusedKey
+                                        ?.takeIf { it.startsWith("hero_") }
+                                        ?.removePrefix("hero_"),
+                                    tmdbEnabled = state.tmdbEnabled,
+                                    tmdbEnrichedIds = state.tmdbEnrichedIds
+                                )
+                            }
+                        }
+
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 // Reset scroll position when focus was redirected (cleared item removed)
