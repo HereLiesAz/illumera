@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
+import com.hereliesaz.illumera.data.model.WatchlistEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import com.hereliesaz.illumera.data.remote.StremioLibraryItem
@@ -221,6 +222,27 @@ class StremioLibrarySyncManager @Inject constructor(
             return
         }
 
+        // A library bookmark is still part of Stremio Library even when its title
+        // has never been played (and a series therefore has no videoId).
+        val profileId = profileConfigurationManager.activeProfileId.value ?: return
+        if (item.type == "movie" || item.type == "series") {
+            val currentBookmark = dao.getWatchlistItem(profileId, item.id)
+            if (currentBookmark == null) {
+                val createdAt = item.ctime?.let {
+                    runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+                } ?: mtimeMs
+                dao.addToWatchlist(
+                    WatchlistEntity(
+                        profileId = profileId,
+                        id = item.id,
+                        type = item.type,
+                        title = item.name,
+                        poster = item.poster,
+                        addedAt = createdAt
+                    )
+                )
+            }
+        }
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
         val existing = dao.getHistoryItem(localId)
         if (existing != null && existing.lastWatched >= mtimeMs) return
