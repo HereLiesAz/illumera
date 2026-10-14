@@ -148,3 +148,12 @@ manifest, from phone to TV), `HubBulkUploadServer` and `AvatarUploadServer`
 (image upload portals for hub cards / profile avatars), `IntegrationServer`
 (remote input for settings flows). Every request must carry the pairing
 token, proving the phone actually scanned the QR code first.
+
+
+## Watchlist and Stremio Library
+
+The main Android Watchlist is a viewing surface: Queue is always first, then Library's Movies and Series rows. The library merges `WatchlistEntity` bookmarks with the active runtime's `WatchHistoryEntity` entries, deduplicating by media type and canonical title ID. Episode history collapses to the parent series ID. Type and sort controls are directly accessible without dropdown menus. Sort selection is saved per profile in `illumera_watchlist_ui`.
+
+Stremio library synchronization now imports unwatched/unplayed remote bookmarks into the local watchlist, including series with no current `videoId`. Imports are profile-scoped and tagged as remote-owned; remote deletion removes only bookmarks previously imported by synchronization, preserving local additions. Watch counts from Stremio are recorded for sorting, with local watch completion used as a fallback when a remote count is absent. The previous cloud-storage management list and its play/delete actions live in Settings → Watchlist.
+
+The existing Stremio Library reconciliation behavior and account requirements remain in place. An unavailable/disconnected Stremio account does not block local watchlist content.

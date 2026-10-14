@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
+import com.hereliesaz.illumera.data.model.WatchlistEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import com.hereliesaz.illumera.data.remote.StremioLibraryItem
@@ -160,7 +161,7 @@ class StremioLibrarySyncManager @Inject constructor(
             // Network work is finished. Reacquire ownership only for the short local
             // mutation phase, so profile switching is never blocked by remote latency.
             inProfileRuntime(profileId, runtimeHeld) {
-                for (item in remoteItems) applyRemoteItem(item)
+                for (item in remoteItems) applyRemoteItem(profileId, item)
 
                 val refreshedLocal = buildLocalLibraryView()
                     .map { (id, history) -> history.toLibraryItem(id) }
@@ -208,10 +209,16 @@ class StremioLibrarySyncManager @Inject constructor(
         return result
     }
 
-    private suspend fun applyRemoteItem(item: StremioLibraryItem) {
+    private suspend fun applyRemoteItem(profileId: Int, item: StremioLibraryItem) {
         val mtimeMs = runCatching { Instant.parse(item.mtime).toEpochMilli() }.getOrNull() ?: return
 
+        val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
+        val watchCountKey = "watch_count_${profileId}_${item.id}"
         if (item.removed) {
+            if (prefs.getBoolean(ownedBookmarkKey, false)) {
+                dao.removeFromWatchlist(profileId, item.id)
+                prefs.edit().remove(ownedBookmarkKey).remove(watchCountKey).apply()
+            }
             if (item.type == "series") {
                 dao.getHistoryItemsForSeries(item.id, "${item.id}:%")
                     .forEach { dao.deleteHistoryItem(it.id) }
@@ -221,6 +228,28 @@ class StremioLibrarySyncManager @Inject constructor(
             return
         }
 
+        // A library bookmark is still part of Stremio Library even when its title
+        // has never been played (and a series therefore has no videoId).
+        prefs.edit().putInt(watchCountKey, item.state.timesWatched).apply()
+        if (item.type == "movie" || item.type == "series") {
+            val currentBookmark = dao.getWatchlistItem(profileId, item.id)
+            if (currentBookmark == null) {
+                val createdAt = item.ctime?.let {
+                    runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
+                } ?: mtimeMs
+                dao.addToWatchlist(
+                    WatchlistEntity(
+                        profileId = profileId,
+                        id = item.id,
+                        type = item.type,
+                        title = item.name,
+                        poster = item.poster,
+                        addedAt = createdAt
+                    )
+                )
+                prefs.edit().putBoolean(ownedBookmarkKey, true).apply()
+            }
+        }
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
         val existing = dao.getHistoryItem(localId)
         if (existing != null && existing.lastWatched >= mtimeMs) return
