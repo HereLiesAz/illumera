@@ -127,7 +127,11 @@ fun HomeScreen(
             }
         }
     }
-    // Movies and Series always combine the hero carousel with the inline cinematic\n    // preview. Home retains its profile-selected layout.\n    val layoutMode = if (tab == DashboardTab.HOME) {\n        currentProfile?.layoutFor(tab) ?: "cinematic"\n    } else "cinematic"
+    // Movies and Series always combine the hero carousel with the inline cinematic
+    // preview. Home retains its profile-selected layout.
+    val layoutMode = if (tab == DashboardTab.HOME) {
+        currentProfile?.layoutFor(tab) ?: "cinematic"
+    } else "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     val infoTopPadding = if (isTopNav) 60.dp else 30.dp
