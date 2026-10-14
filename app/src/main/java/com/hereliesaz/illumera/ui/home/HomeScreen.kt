@@ -422,14 +422,18 @@ fun CinematicLayout(
         }
     }
 
-    fun updatePreviewItem(item: MetaItem?) {
+    fun updatePreviewItem(item: MetaItem?, rowJustChanged: Boolean = false) {
         if (item == null) return
         onPreviewItemVisible(item)
         val now = System.currentTimeMillis()
         val isRapid = verticalFocusTiming.isRapid(RAPID_VERTICAL_NAV_WINDOW_MS)
-        val allowUpdate = !isRapid || now - previewUpdateGate.lastUpdateMs >= RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS
+        // A new row must show its own first poster immediately. Only throttle
+        // rapid lateral moves inside the same poster row.
+        val allowUpdate = rowJustChanged || !isRapid ||
+            now - previewUpdateGate.lastUpdateMs >= RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS
         if (allowUpdate && (instantFocusItem?.id != item.id || instantFocusItem?.type != item.type)) {
             instantFocusItem = item
+            if (rowJustChanged) displayedItem = item
             previewUpdateGate.lastUpdateMs = now
         } else if (allowUpdate) {
             previewUpdateGate.lastUpdateMs = now
@@ -574,8 +578,9 @@ fun CinematicLayout(
                                     onMovieClick = onMovieClick,
                                     onViewMore = { onViewMore("Continue Watching", historyItems, "") },
                                     onFocused = { item: MetaItem?, key: String ->
+                                        val changedRow = activeCinematicRow != "history"
                                         activeCinematicRow = "history"
-                                        updatePreviewItem(item)
+                                        updatePreviewItem(item, rowJustChanged = changedRow)
                                         wrappedOnFocusChange(key)
                                     },
                                     entryRequester = entryRequester,
@@ -718,8 +723,9 @@ fun CinematicLayout(
                                             { onViewMore(item.title, item.items, item.id) }
                                         },
                                         onFocused = { focusItem: MetaItem?, key: String ->
+                                            val changedRow = activeCinematicRow != rowKey
                                             activeCinematicRow = rowKey
-                                            updatePreviewItem(focusItem)
+                                            updatePreviewItem(focusItem, rowJustChanged = changedRow)
                                             wrappedOnFocusChange(key)
                                         },
                                         entryRequester = entryRequester,
