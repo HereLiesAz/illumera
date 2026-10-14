@@ -67,14 +67,10 @@ fun WatchlistScreen(
     entryRequester: FocusRequester,
     drawerRequester: FocusRequester,
     onMovieClick: (MetaItem) -> Unit,
-    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
     watchedIds: Set<String> = emptySet(),
-    viewModel: WatchlistViewModel = hiltViewModel(),
-    debridViewModel: DebridLibraryViewModel = hiltViewModel()
+    viewModel: WatchlistViewModel = hiltViewModel()
 ) {
 
-    val debridProvider by debridViewModel.connectedProvider.collectAsState()
-    val debridState by debridViewModel.uiState.collectAsState()
     val library by viewModel.libraryEntries.collectAsState()
     val context = LocalContext.current
     val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
@@ -104,24 +100,6 @@ fun WatchlistScreen(
     }
     val movies = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "movie" }.map { it.item } }
     val series = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "series" }.map { it.item } }
-
-    // Drop a debrid stream that resolves after the user left, so it can't auto-play on return.
-    DisposableEffect(debridViewModel) {
-        onDispose { debridViewModel.onScreenDisposed() }
-    }
-
-    LaunchedEffect(Unit) {
-        debridViewModel.events.collect { event ->
-            when (event) {
-                is DebridLibraryEvent.StreamResolved -> {
-                    onPlayResolvedStream(event.id, event.url, event.name)
-                }
-                is DebridLibraryEvent.Error -> {
-                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
 
     // Main-screen Back is MainRootBackHandler's: every in-screen Back action (Queue reorder
     // mode, item menus) has its own handler composed later, so it runs first.
@@ -334,23 +312,12 @@ fun WatchlistScreen(
             }
 
 
-            if (debridProvider != null) {
-                item {
-                    DebridLibrarySection(
-                        provider = debridProvider,
-                        state = debridState,
-                        startPadding = startPadding,
-                        onPlay = { debridViewModel.play(it) },
-                        onDelete = { debridViewModel.delete(it) }
-                    )
-                }
-            }
         }
     }
 }
 
 @Composable
-private fun DebridLibrarySection(
+internal fun DebridLibrarySection(
     provider: com.hereliesaz.illumera.data.model.debrid.DebridProvider?,
     state: DebridLibraryUiState,
     startPadding: androidx.compose.ui.unit.Dp,
