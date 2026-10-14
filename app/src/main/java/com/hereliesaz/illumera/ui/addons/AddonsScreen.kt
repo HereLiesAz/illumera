@@ -85,7 +85,7 @@ fun AddonsScreen(
             )
         }
         Text(
-            "Third-party directory: stremio-addons.net. Find an addon there, then paste its manifest or install link below.",
+            "Browse addons from stremio-addons.net inside Illumera, or visit the source directory directly.",
             color = Color.LightGray,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(vertical = 10.dp)
