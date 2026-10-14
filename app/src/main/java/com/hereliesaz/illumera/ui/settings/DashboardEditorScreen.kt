@@ -362,7 +362,7 @@ fun DashboardEditorScreen(
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
                 Text(
-                    "Choose the genres that appear above Discover on the ${if (selectedTab == "movies") "Movies" else "Series"} screen.",
+                    "Choose the genres that appear above the full catalog on the ${if (selectedTab == "movies") "Movies" else "Series"} screen.",
                     color = Color.LightGray,
                     style = MaterialTheme.typography.bodySmall
                 )
