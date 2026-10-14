@@ -288,7 +288,9 @@ fun DashboardEditorScreen(
                 val isSimple = selectedTab == "home" && currentLayout == "simple"
                 val heroConfig = currentProfile.heroFor(dashboardTab)
                 val heroDisabled = heroConfig.categoryId == HERO_DISABLED_MARKER
-                val heroLabel = if (heroConfig.categoryId == null) {
+                val heroLabel = if (heroConfig.categoryId == null ||
+                    heroConfig.categoryId == "catalog-aggregate:${if (dashboardTab == DashboardTab.MOVIES) "movie" else "series"}:all"
+                        && dashboardTab != DashboardTab.HOME) {
                     "Hero Carousel · Automatic"
                 } else if (heroConfig.categoryId != null && !heroDisabled) {
                     val cat = configs.find { it.uniqueId == heroConfig.categoryId }
@@ -1025,7 +1027,7 @@ fun DashboardEditorScreen(
                     DashboardTab.HOME -> null
                 }
                 var selectedCategoryId by remember(tab, heroConfig.categoryId) {
-                    mutableStateOf(heroConfig.categoryId ?: automaticCategory)
+                    mutableStateOf(if (heroConfig.categoryId == automaticCategory) null else heroConfig.categoryId)
                 }
                 var posterCount by remember { mutableFloatStateOf(heroConfig.posterCount.toFloat()) }
                 var autoScrollSeconds by remember { mutableFloatStateOf(heroConfig.autoScrollSeconds.toFloat()) }
@@ -1048,7 +1050,7 @@ fun DashboardEditorScreen(
                         onDismissRequest = { dialogState = DialogState.None },
                         title = "Hero Carousel"
                     ) {
-                    val selectedCatName = if (selectedCategoryId == automaticCategory) {
+                    val selectedCatName = if (selectedCategoryId == null) {
                         if (tab == DashboardTab.HOME) "Automatic (first populated Home row)" else
                             "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
                     } else if (selectedCategoryId != null) {
@@ -1175,7 +1177,7 @@ fun DashboardEditorScreen(
                                     text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
                                         "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
                                     onClick = {
-                                        selectedCategoryId = automaticCategory
+                                        selectedCategoryId = null
                                         showCategoryPicker = false
                                     },
                                     focusRequester = pickerFocusRequester
