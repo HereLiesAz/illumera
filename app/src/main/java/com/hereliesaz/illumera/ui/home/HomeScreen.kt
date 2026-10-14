@@ -198,7 +198,9 @@ fun HomeScreen(
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
                 val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount) {
-                    (displayState.heroRow?.items ?: displayState.rows.firstOrNull()?.items).orEmpty().take(heroConfig.posterCount)
+                    if (heroConfig.categoryId == null) emptyList() else
+                        (displayState.heroRow?.items ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
+                            .orEmpty().take(heroConfig.posterCount)
                 }
                 CinematicLayout(
                     heroItems = heroItems,
@@ -232,7 +234,7 @@ fun HomeScreen(
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
                 val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
-                    displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
+                    if (heroConfig.categoryId == null) emptyList() else displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
                 }
 
                 SimpleLayout(
