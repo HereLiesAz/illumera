@@ -573,6 +573,55 @@ class AddonRepository @Inject constructor(
      * 2. Fall back to all meta addons with type-based priority ordering
      * 3. Last resort: Cinemeta for standard types
      */
+    /**
+     * Rebuild the episode index independently of the winning catalog metadata.
+     * Many catalog/meta addons return title art but no `videos`, while the UI
+     * and playback controller require the complete episode list.
+     *
+     * For non-IMDb ids, only use an exact title/year Cinemeta search match.
+     * A failed lookup must never invent episodes or change the show's identity.
+     */
+    suspend fun recoverSeriesEpisodes(
+        seriesId: String,
+        title: String? = null,
+        releaseInfo: String? = null
+    ): List<com.hereliesaz.illumera.data.model.stremio.MetaVideo> = withContext(Dispatchers.IO) {
+        val preferred = if (seriesId.matches(Regex("^tt[0-9]+$"))) seriesId else null
+        val imdbId = preferred ?: title?.takeIf { it.isNotBlank() }?.let { target ->
+            val nameKey = target.lowercase().filter { it.isLetterOrDigit() }
+            val year = Regex("(?:19|20)[0-9]{2}").find(releaseInfo.orEmpty())?.value
+            try {
+                withTimeout(5_000L) {
+                    searchMovies(target).firstOrNull { candidate ->
+                        candidate.type == "series" &&
+                            candidate.id.matches(Regex("^tt[0-9]+$")) &&
+                            candidate.name.lowercase().filter { it.isLetterOrDigit() } == nameKey &&
+                            (year == null || year == Regex("(?:19|20)[0-9]{2}")
+                                .find(candidate.releaseInfo.orEmpty())?.value)
+                    }?.id
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+        } ?: return@withContext emptyList()
+
+        try {
+            withTimeout(8_000L) {
+                api.getMeta("https://v3-cinemeta.strem.io/meta/series/$imdbId.json")
+                    .meta.sanitize()?.videos.orEmpty()
+                    .filter { it.season > 0 && it.episode > 0 }
+                    .distinctBy { it.season to it.episode }
+                    .sortedWith(compareBy({ it.season }, { it.episode }))
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     suspend fun resolvePreferredMetaDetails(
         type: String,
         id: String,
