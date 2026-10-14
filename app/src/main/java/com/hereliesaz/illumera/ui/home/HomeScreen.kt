@@ -1581,6 +1581,7 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
  * The image underneath stays visible until ExoPlayer reports that the extracted
  * trailer video is ready. Switching titles cancels resolution and disposes the player.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 internal fun TrailerPreview(
     item: MetaItem?,
