@@ -52,7 +52,7 @@ enum class SettingsSection(val label: String, @DrawableRes val iconRes: Int) {
     Personalization("Personalization", R.drawable.personalization_icon),
     Theme("Theme", R.drawable.palette_icon),
     Dashboard("Screen Editor", R.drawable.home_icon),
-    Watchlist("Watchlist", R.drawable.home_icon),
+    Watchlist("Watchlist", R.drawable.watchlist_icon),
     Playback("Playback", R.drawable.playback_icon),
     SourcePreferences("Sort & Filter", R.drawable.source_preferences_icon),
     Addons("Addons", R.drawable.puzzle_icon),
