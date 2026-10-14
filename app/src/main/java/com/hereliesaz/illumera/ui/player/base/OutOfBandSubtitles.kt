@@ -35,7 +35,7 @@ internal class OutOfBandSubtitle private constructor(private val cues: List<Cues
         }
 
         private fun sniffMime(bytes: ByteArray): String {
-            val head = String(bytes, 0, minOf(bytes.size, 512), Charsets.UTF_8).trimStart('﻿', ' ', '\r', '\n', '\t')
+            val head = String(bytes, 0, minOf(bytes.size, 512), Charsets.UTF_8).trimStart('\uFEFF', ' ', '\r', '\n', '\t')
             return when {
                 head.startsWith("WEBVTT") -> MimeTypes.TEXT_VTT
                 head.contains("[Script Info]", ignoreCase = true) -> MimeTypes.TEXT_SSA
