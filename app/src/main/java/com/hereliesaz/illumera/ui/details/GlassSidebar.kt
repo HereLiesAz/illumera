@@ -1118,6 +1118,7 @@ fun RawSourceItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
     val primary = MaterialTheme.colorScheme.primary
     val mainText = stream.description ?: stream.title ?: stream.name ?: "Unknown"
@@ -1125,7 +1126,6 @@ fun RawSourceItem(
         stream.addonDisplayName?.takeIf { it.isNotBlank() }?.let { "[$it]" },
         stream.name?.takeIf { it.isNotBlank() }
     ).joinToString(" ")
-    val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
 
     Box(modifier = modifier.fillMaxWidth()) {
         Card(
