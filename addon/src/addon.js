@@ -84,6 +84,15 @@ export async function streamHandler({ type, id }, { fetchJson, fetchBytes }) {
   return { streams: perItem.flat() }
 }
 
+// Encode untrusted archive descriptions rather than deleting apparent HTML tags:
+ // incomplete tag removal can leave a dangerous string when rendered downstream.
+const escapeHtml = (value) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
 const posterOf = (identifier) => `https://archive.org/services/img/${encodeURIComponent(identifier)}`
 
 function toMetaPreview(doc, type) {
@@ -94,7 +103,7 @@ function toMetaPreview(doc, type) {
     name: title,
     poster: posterOf(doc.identifier),
     releaseInfo: doc.year ? String(doc.year) : undefined,
-    description: typeof doc.description === 'string' ? doc.description.replace(/<[^>]+>/g, '').slice(0, 300) : undefined,
+    description: typeof doc.description === 'string' ? escapeHtml(doc.description.slice(0, 300)) : undefined,
   }
 }
 
@@ -129,7 +138,7 @@ export async function metaHandler({ type, id }, { fetchJson }) {
       poster: posterOf(identifier),
       background: posterOf(identifier),
       releaseInfo: m.year ? String(m.year) : undefined,
-      description: typeof desc === 'string' ? desc.replace(/<[^>]+>/g, '') : undefined,
+      description: typeof desc === 'string' ? escapeHtml(desc) : undefined,
       runtime: m.runtime,
       links: [{ name: 'Internet Archive', category: 'Source', url: `https://archive.org/details/${identifier}` }],
     },
