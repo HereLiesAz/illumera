@@ -242,6 +242,14 @@ class ProfileConfigurationManager @Inject constructor(
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
         // A copied profile inherits any deliberate addon removal/disable choices.
         prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$targetProfileId", true).apply()
+        val sourceGenres = context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
+        val genreEditor = sourceGenres.edit()
+        listOf("movies", "series").forEach { screen ->
+            val genres = sourceGenres.getStringSet("${sourceProfileId}_$screen", null)
+            val key = "${targetProfileId}_$screen"
+            if (genres == null) genreEditor.remove(key) else genreEditor.putStringSet(key, genres.toSet())
+        }
+        genreEditor.apply()
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
         clearPendingSetup(targetProfileId)
@@ -398,6 +406,8 @@ class ProfileConfigurationManager @Inject constructor(
         clearPendingSetup(profileId)
         snapshotFile(profileId).delete()
         prefs.edit().remove("$KEY_DEFAULT_SET_SEEDED$profileId").apply()
+        context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE).edit()
+            .remove("${profileId}_movies").remove("${profileId}_series").apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
