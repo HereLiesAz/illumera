@@ -51,7 +51,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 enum class SettingsSection(val label: String, @DrawableRes val iconRes: Int) {
     Personalization("Personalization", R.drawable.personalization_icon),
     Theme("Theme", R.drawable.palette_icon),
-    Dashboard("Home Screen", R.drawable.home_icon),
+    Dashboard("Screen Editor", R.drawable.home_icon),
     Playback("Playback", R.drawable.playback_icon),
     SourcePreferences("Sort & Filter", R.drawable.source_preferences_icon),
     Addons("Addons", R.drawable.puzzle_icon),
