@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.model.stremio
 enum class AddonCatalogSource(val displayName: String) {
     OFFICIAL("Official"),
     COMMUNITY("Community"),
+    STREMIO_ADDONS_NET("stremio-addons.net"),
     COLLECTION("Collection")
 }
 
