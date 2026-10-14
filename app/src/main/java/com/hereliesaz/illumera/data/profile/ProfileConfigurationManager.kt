@@ -240,6 +240,8 @@ class ProfileConfigurationManager @Inject constructor(
             }
         }
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
+        // A copied profile inherits any deliberate addon removal/disable choices.
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$targetProfileId", true).apply()
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
         clearPendingSetup(targetProfileId)
@@ -262,6 +264,7 @@ class ProfileConfigurationManager @Inject constructor(
                 val defaultSnapshot = createDefaultRuntimeSnapshot()
                 stremioAuthManager.clearCredentialsForProfile(profileId)
                 writeSnapshot(profileId, defaultSnapshot)
+                prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
                 clearPendingSetup(profileId)
                 Result.failure(error)
             }
@@ -316,7 +319,7 @@ class ProfileConfigurationManager @Inject constructor(
 
         entries.forEach { entry ->
             val transportUrl = entry.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
-            // Every fresh profile already gets the default Cinemeta addon — skip a duplicate.
+            // Each fresh profile already receives the stock addon set — skip duplicates.
             if (transportUrl in predefined) return@forEach
 
             val manifest = try {
