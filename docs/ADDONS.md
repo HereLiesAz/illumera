@@ -7,6 +7,11 @@ Everything here reflects the current code. When the code changes, this page chan
 ## Home-screen trailer presentation
 
 The Home cinematic layout renders the Hero Carousel first, followed by poster rows. The cinematic artwork and trailer preview are placed directly above the currently focused poster row, including Continue Watching, rather than in a fixed upper screen panel. Switching rows moves the preview with focus. Poster artwork remains visible while the trailer loads and when playback fails.
+## Managing addons in Illumera
+
+The Android Addons screen manages the active profile locally without requiring a Stremio account. **Browse addons** opens Illumera's catalog with Official, Community, and user-added collection sources. Install a manifest URL or Stremio install link directly, or use **Paste from phone** on a TV. Installing an addon with content catalogs offers controls for whether those catalogs appear in the Home, Movies, and Series views. Installed addons can be removed in the same screen.
+
+**Stremio Addons directory** is available as a labeled native browser source through its public read-only /api/v0/addons endpoint. Its manifest URLs install through Illumera's existing installer. The separate external link opens [stremio-addons.net](https://stremio-addons.net/) externally. The source is visibly credited to the provider. The API is experimental; changes to its response schema may require updates. [Usage terms](https://docs.stremio-addons.net/developers/api) still apply.
 
 ## Contents
 

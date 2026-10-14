@@ -64,12 +64,23 @@ fun LumeraCard(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
     var contextMenuExpanded by remember(mediaItem?.id) { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
     val roundCorners = LocalRoundCorners.current
 
     val effectiveLongClick: (() -> Unit)? = onLongClick ?: mediaItem?.let {
         { contextMenuExpanded = true }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            kotlinx.coroutines.delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered) {
+                dpadLongPressTriggered = true
+                effectiveLongClick?.invoke()
+            }
+        }
     }
 
     val cardShape = if (roundCorners) RoundedCornerShape(12.dp) else RectangleShape
@@ -98,14 +109,12 @@ fun LumeraCard(
 
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                effectiveLongClick()
-                            }
+                            // Track the hold; the one-second timer opens the menu independently of key repeats.
+                            dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
@@ -119,7 +128,10 @@ fun LumeraCard(
                 }
                 .onFocusChanged {
                     isFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused) {
+                        dpadKeyHeld = false
+                        dpadLongPressTriggered = false
+                    }
                     if (it.isFocused) onFocused?.invoke()
                 },
             shape = ClickableSurfaceDefaults.shape(

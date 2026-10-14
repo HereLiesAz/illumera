@@ -60,6 +60,7 @@ class AddonCatalogRepository @Inject constructor(
         val items = when (source) {
             AddonCatalogSource.OFFICIAL -> fetchOfficial()
             AddonCatalogSource.COMMUNITY -> fetchCommunity()
+            AddonCatalogSource.STREMIO_ADDONS_NET -> fetchStremioAddonsNet()
             AddonCatalogSource.COLLECTION -> {
                 requireNotNull(collection) { "Choose an addon collection first" }
                 fetchCollection(collection.url, save = false).addons
@@ -247,6 +248,32 @@ class AddonCatalogRepository @Inject constructor(
         val next = (existing.filterNot { it.url == collection.url } + collection)
             .sortedBy { it.name.lowercase() }
         prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
+    }
+
+    private suspend fun fetchStremioAddonsNet(): List<AddonCatalogItem> {
+        val items = mutableListOf<AddonCatalogItem>()
+        var page = 1
+        do {
+            val json = withTimeout(CATALOG_TIMEOUT_MS) {
+                api.getJson("https://stremio-addons.net/api/v0/addons?page=$page&limit=100")
+            }.asJsonObject
+            json.getAsJsonArray("addons")?.forEach { element ->
+                val entry = element.asJsonObject
+                val url = entry.get("manifestUrl")?.takeIf { it.isJsonPrimitive }?.asString
+                val manifestElement = entry.get("manifest")
+                if (!url.isNullOrBlank() && manifestElement?.isJsonObject == true) {
+                    runCatching {
+                        AddonCatalogItem(
+                            transportUrl = url,
+                            manifest = gson.fromJson(manifestElement, Manifest::class.java)
+                        )
+                    }.getOrNull()?.let(items::add)
+                }
+            }
+            val more = json.getAsJsonObject("pagination")?.get("hasNextPage")?.asBoolean == true
+            page++
+        } while (more && page <= 20)
+        return items
     }
 
     private suspend fun fetchOfficial(): List<AddonCatalogItem> {
