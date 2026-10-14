@@ -72,6 +72,7 @@ import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.domain.HomeRowItem
 import com.hereliesaz.illumera.domain.heroFor
+import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
@@ -201,8 +202,8 @@ fun HomeScreen(
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
                 val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount) {
-                    if (heroConfig.categoryId == null) emptyList() else
-                        (displayState.heroRow?.items ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
+                    if (heroConfig.categoryId == HERO_DISABLED_MARKER || (tab == DashboardTab.HOME && heroConfig.categoryId == null)) emptyList() else
+                        (displayState.heroRow?.items?.takeIf { it.isNotEmpty() } ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
                             .orEmpty().take(heroConfig.posterCount)
                 }
                 CinematicLayout(
