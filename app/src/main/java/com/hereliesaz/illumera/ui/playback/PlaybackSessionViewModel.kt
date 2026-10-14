@@ -163,6 +163,43 @@ class PlaybackSessionViewModel @Inject constructor(
     internal var pendingSourceSelection by mutableStateOf<PendingSourceSelection?>(null)
     var showPlayerChoiceDialog by mutableStateOf(false)
     var currentEpisodeList by mutableStateOf<List<MetaVideo>>(emptyList())
+    private var episodeListRecoveryJob: Job? = null
+
+    /**
+     * Series playback can outlive its Details composable. A missing/partial episode list
+     * must not silently remove the Episodes and Next Episode player controls.
+     * Recover the full list from installed metadata addons, with Cinemeta fallback,
+     * while retaining the exact playback session identity.
+     */
+    private fun recoverEpisodeListIfMissing() {
+        if (!isSeriesPlayback || currentEpisodeList.isNotEmpty()) return
+        val seriesId = playbackSeriesId.takeIf { it.isNotBlank() } ?: return
+        val playbackId = selectedPlaybackId.takeIf { it.isNotBlank() } ?: return
+        if (playbackId.startsWith("trailer_")) return
+        episodeListRecoveryJob?.cancel()
+        episodeListRecoveryJob = viewModelScope.launch {
+            try {
+                val meta = repository.resolveMetaDetails("series", seriesId)
+                val recovered = meta?.videos.orEmpty().filter { it.season >= 0 && it.episode > 0 }
+                    .ifEmpty {
+                        if (!seriesId.startsWith("tt")) emptyList()
+                        else repository.getMetaDetails(
+                            "https://v3-cinemeta.strem.io/meta/series/$seriesId.json"
+                        )?.videos.orEmpty()
+                    }
+                if (playbackSeriesId == seriesId && selectedPlaybackId == playbackId &&
+                    currentEpisodeList.isEmpty() && recovered.isNotEmpty()
+                ) {
+                    currentEpisodeList = recovered
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w("PlaybackSession", "Episode list recovery unavailable", error)
+            }
+        }
+    }
+
     var currentStream by mutableStateOf<Stream?>(null)
     internal var pendingEpisodeSwitch by mutableStateOf<PendingEpisodeSwitch?>(null)
     var isEpisodeSwitchLoading by mutableStateOf(false)
@@ -268,6 +305,7 @@ class PlaybackSessionViewModel @Inject constructor(
         queuePlaybackActive = queueStartPending
         if (!queuePlaybackActive) queueWholeShowActive = false
         queueStartPending = false
+        episodeListRecoveryJob?.cancel()
         currentEpisodeList = episodes
         currentStream = stream
         val subtitlePayload = buildSubtitlePayload(stream, addonSubtitles)
@@ -288,6 +326,7 @@ class PlaybackSessionViewModel @Inject constructor(
             selectedPlayerSubtitles = subtitlePayload
             selectedPlayerSources = sourcePayload
             selectedVideoUrl = videoUrl
+            recoverEpisodeListIfMissing()
         }
         if (url.startsWith("magnet:")) {
             viewModelScope.launch {
@@ -317,6 +356,7 @@ class PlaybackSessionViewModel @Inject constructor(
         queueStartPending = false
         queuePlaybackActive = false
         queueWholeShowActive = false
+        episodeListRecoveryJob?.cancel()
         currentEpisodeList = emptyList()
         currentStream = Stream(url = url, title = title)
         selectedPlayerSubtitles = emptyList()
