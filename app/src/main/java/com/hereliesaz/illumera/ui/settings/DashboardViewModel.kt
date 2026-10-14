@@ -11,6 +11,7 @@ import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import com.hereliesaz.illumera.data.model.HubRowEntity
 import com.hereliesaz.illumera.data.model.HubRowItemEntity
 import com.hereliesaz.illumera.data.model.HubRowWithItems
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubShape
@@ -69,23 +70,28 @@ class DashboardViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
-    private val genrePreferences by lazy {
-        appContext.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
-    }
-    private val _availableGenres = MutableStateFlow<List<String>>(emptyList())
-    val availableGenres: StateFlow<List<String>> = _availableGenres
+    private val _movieGenres = MutableStateFlow(ScreenGenreRows.availableGenres("movie", emptyList()))
+    private val _seriesGenres = MutableStateFlow(ScreenGenreRows.availableGenres("series", emptyList()))
+    fun availableGenres(screen: String): StateFlow<List<String>> =
+        if (screen == "series") _seriesGenres else _movieGenres
 
-    fun selectedGenres(profileId: Int, screen: String): Set<String> =
-        genrePreferences.getStringSet(
-            "${profileId}_${screen}",
-            emptySet()
-        )?.toSet().orEmpty()
+    fun disabledGenres(profileId: Int, screen: String): Set<String> =
+        ScreenGenreRows.disabledGenres(appContext, profileId, screen)
 
     fun toggleGenre(profileId: Int, screen: String, genre: String) {
         if (screen !in setOf("movies", "series")) return
-        val selected = selectedGenres(profileId, screen).toMutableSet()
-        if (!selected.add(genre)) selected.remove(genre)
-        genrePreferences.edit().putStringSet("${profileId}_${screen}", selected).apply()
+        val disabled = disabledGenres(profileId, screen).toMutableSet()
+        val existing = disabled.firstOrNull { it.equals(genre, ignoreCase = true) }
+        if (existing == null) disabled.add(genre) else disabled.remove(existing)
+        ScreenGenreRows.setDisabledGenres(appContext, profileId, screen, disabled)
+        dashboardModified = true
+    }
+
+    fun setAllGenresEnabled(profileId: Int, screen: String, enabled: Boolean) {
+        val all = availableGenres(screen).value
+        ScreenGenreRows.setDisabledGenres(
+            appContext, profileId, screen, if (enabled) emptySet() else all.toSet()
+        )
         dashboardModified = true
     }
 
@@ -126,24 +132,15 @@ class DashboardViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dao.getAllAddons().collect { addons ->
-                val fromManifests = addons.filter { it.isEnabled }.flatMap { addon ->
+                val catalogs = addons.filter { it.isEnabled }.flatMap { addon ->
                     runCatching {
                         com.google.gson.Gson().fromJson(
                             addon.catalogsJson, Array<CatalogManifest>::class.java
                         )?.toList().orEmpty()
-                    }.getOrDefault(emptyList()).flatMap { catalog ->
-                        catalog.genres.orEmpty() +
-                            catalog.extra.orEmpty().filter { it.name == "genre" }
-                                .flatMap { it.options.orEmpty() }
-                    }
+                    }.getOrDefault(emptyList())
                 }
-                _availableGenres.value = (fromManifests + listOf(
-                    "Action", "Adventure", "Animation", "Comedy", "Crime",
-                    "Documentary", "Drama", "Family", "Fantasy", "History",
-                    "Horror", "Music", "Mystery", "Romance", "Science Fiction",
-                    "Thriller", "War", "Western"
-                )).filter { it.isNotBlank() }.distinctBy { it.lowercase() }
-                    .sortedBy { it.lowercase() }
+                _movieGenres.value = ScreenGenreRows.availableGenres("movie", catalogs)
+                _seriesGenres.value = ScreenGenreRows.availableGenres("series", catalogs)
             }
         }
         viewModelScope.launch {
