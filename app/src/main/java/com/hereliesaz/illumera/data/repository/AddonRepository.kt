@@ -147,13 +147,9 @@ class AddonRepository @Inject constructor(
         ScreenGenreRows.availableGenres(type, catalogs)
     }
 
-    suspend fun getAggregatedCatalogPage(
-        type: String,
-        genre: String? = null,
-        page: Int = 0,
-        sourcesPerPage: Int = 4
-    ): List<MetaItem> = withContext(Dispatchers.IO) {
-        require(type == "movie" || type == "series")
+    private suspend fun aggregatedCatalogSources(
+        type: String, genre: String?
+    ): List<Triple<AddonEntity, CatalogManifest, String?>> {
         val addons = dao.getAllAddons().firstOrNull().orEmpty().filter { it.isEnabled }
         val sources = addons.flatMap { addon ->
             val manifests = runCatching {
@@ -192,6 +188,24 @@ class AddonRepository @Inject constructor(
         }.distinctBy { (addon, catalog, sourceGenre) ->
             "${addon.transportUrl}/${catalog.type}/${catalog.id}/${sourceGenre.orEmpty()}"
         }
+
+        return sources
+    }
+
+    /** Number of bounded source batches to probe before concluding a row is empty. */
+    suspend fun aggregatedFirstLayerPageCount(type: String, genre: String?): Int =
+        withContext(Dispatchers.IO) {
+            (aggregatedCatalogSources(type, genre).size + 3) / 4
+        }
+
+    suspend fun getAggregatedCatalogPage(
+        type: String,
+        genre: String? = null,
+        page: Int = 0,
+        sourcesPerPage: Int = 4
+    ): List<MetaItem> = withContext(Dispatchers.IO) {
+        require(type == "movie" || type == "series")
+        val sources = aggregatedCatalogSources(type, genre)
         if (sources.isEmpty()) return@withContext emptyList()
         val batchSize = sourcesPerPage.coerceIn(1, 8)
         val batchCount = (sources.size + batchSize - 1) / batchSize
