@@ -768,6 +768,26 @@ fun EpisodeItem(
     var buttonFocused by remember { mutableStateOf(false) }
     var contextMenuExpanded by remember(mediaActionTarget?.key) { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered && hasContextActions) {
+                dpadLongPressTriggered = true
+                menuExpanded = true
+            }
+        }
+    }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered && mediaActionTarget != null) {
+                dpadLongPressTriggered = true
+                contextMenuExpanded = true
+            }
+        }
+    }
     val isFocused = thumbnailFocused || buttonFocused
     val primary = MaterialTheme.colorScheme.primary
     val thumbnailRequester = remember { FocusRequester() }
@@ -820,7 +840,7 @@ fun EpisodeItem(
                 }
                 .onFocusChanged {
                     thumbnailFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .touchClick(
                     onClick = onClick,
@@ -836,14 +856,11 @@ fun EpisodeItem(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                contextMenuExpanded = true
-                            }
+                            dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
@@ -1123,7 +1140,7 @@ fun RawSourceItem(
                 .fillMaxWidth()
                 .onFocusChanged {
                     isFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .border(
                     if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
@@ -1143,14 +1160,11 @@ fun RawSourceItem(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (hasContextActions && native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                menuExpanded = true
-                            }
+                            if (hasContextActions) dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
