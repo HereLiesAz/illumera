@@ -134,7 +134,18 @@ class AddonRepository @Inject constructor(
                 gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
                     ?.toList().orEmpty()
             }.getOrDefault(emptyList())
-            manifests.filter { it.type == type }.map { catalog -> addon to catalog }
+            manifests.filter { catalog ->
+                catalog.type == type && catalog.extra.orEmpty().none { extra ->
+                    extra.isRequired && when (extra.name) {
+                        "genre" -> genre.isNullOrBlank() || (
+                            !extra.options.isNullOrEmpty() &&
+                            extra.options.none { it.equals(genre, ignoreCase = true) }
+                        )
+                        "skip" -> false
+                        else -> true
+                    }
+                }
+            }.map { catalog -> addon to catalog }
         }.distinctBy { (addon, catalog) ->
             "${addon.transportUrl}/${catalog.type}/${catalog.id}"
         }
@@ -144,7 +155,13 @@ class AddonRepository @Inject constructor(
         val layer = page.coerceAtLeast(0) / batchCount
         val offset = (page.coerceAtLeast(0) % batchCount) * batchSize
         kotlinx.coroutines.coroutineScope {
-            sources.drop(offset).take(batchSize).map { (addon, catalog) ->
+            // A first batch may contain only unavailable or empty catalogs.
+            // Probe the next bounded batch so the row can actually appear.
+            val sourceGroups = if (page == 0) sources.chunked(batchSize) else
+                listOf(sources.drop(offset).take(batchSize))
+            var selected = emptyList<MetaItem>()
+            for (group in sourceGroups) {
+                selected = group.map { (addon, catalog) ->
                 async {
                     val supportsSkip = catalog.extra.orEmpty().any { it.name == "skip" }
                     val supportsGenre = catalog.extra.orEmpty().any { extra ->
@@ -160,7 +177,7 @@ class AddonRepository @Inject constructor(
                         }
                         if (layer > 0) add("skip=${layer * 100}")
                     }
-                    val suffix = if (extras.isEmpty()) "" else "/" + extras.joinToString("/")
+                    val suffix = if (extras.isEmpty()) "" else "/" + extras.joinToString("&")
                     val url = "${addon.transportUrl.trimEnd('/')}/catalog/$type/${catalog.id}$suffix.json"
                     val result = try {
                         withTimeout(5_000L) { api.getCatalog(url).metas.orEmpty().sanitize() }
@@ -179,7 +196,7 @@ class AddonRepository @Inject constructor(
                                 })
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
-            }.awaitAll().flatten()
+                }.awaitAll().flatten()
                 .distinctBy { meta ->
                     // IMDb IDs are canonical across catalogs; title and release
                     // disambiguate providers using their own IDs.
@@ -187,6 +204,9 @@ class AddonRepository @Inject constructor(
                     if (imdb != null) "$type:$imdb"
                     else "$type:${meta.name.lowercase().filter { it.isLetterOrDigit() }}:${meta.releaseInfo.orEmpty().take(4)}"
                 }
+                if (selected.isNotEmpty()) break
+            }
+            selected
         }
     }
 
