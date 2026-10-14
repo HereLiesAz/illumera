@@ -4,6 +4,10 @@ illumera speaks the [Stremio addon protocol](https://github.com/Stremio/stremio-
 
 Everything here reflects the current code. When the code changes, this page changes with it.
 
+## Home-screen trailer presentation
+
+The Home cinematic layout renders the Hero Carousel first, followed by poster rows. The cinematic artwork and trailer preview are placed directly above the currently focused poster row, including Continue Watching, rather than in a fixed upper screen panel. Switching rows moves the preview with focus. Poster artwork remains visible while the trailer loads and when playback fails.
+
 ## Contents
 
 - [What illumera reads that Stremio doesn't](#what-illumera-reads-that-stremio-doesnt)
