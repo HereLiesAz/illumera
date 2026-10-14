@@ -193,7 +193,7 @@ fun HomeScreen(
             }
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
-                val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
+                val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount) {
                     (displayState.heroRow?.items ?: displayState.rows.firstOrNull()?.items).orEmpty().take(heroConfig.posterCount)
                 }
                 CinematicLayout(
