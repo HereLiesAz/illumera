@@ -419,111 +419,9 @@ fun CinematicLayout(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Only show background when TMDB enrichment is done (or disabled) to prevent flash
-        val bgItem = if (!state.tmdbEnabled || renderedPreviewItem == null ||
-            state.tmdbEnrichedIds.contains("${renderedPreviewItem.type}:${renderedPreviewItem.id}")) {
-            renderedPreviewItem
-        } else null
-        CinematicBackground(bgItem)
-        TrailerPreview(
-            item = bgItem,
-            resolveTrailer = resolveTrailer,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        Column(modifier = Modifier.fillMaxSize().zIndex(2f)) {
-            // INFO SECTION
-            Box(
-                modifier = Modifier
-                    .weight(0.45f)
-                    .fillMaxWidth()
-                    .padding(start = startPadding, top = infoTopPadding),
-                contentAlignment = Alignment.TopStart
-            ) {
-                AnimatedContent(
-                    targetState = renderedPreviewItem,
-                    transitionSpec = { fadeIn(tween(400)).togetherWith(fadeOut(tween(200))) },
-                    label = "Info"
-                ) { item ->
-                    if (item != null) {
-                        // Hide info content while waiting for TMDB enrichment
-                        val itemReady = !state.tmdbEnabled || state.tmdbEnrichedIds.contains("${item.type}:${item.id}")
-                        Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
-                            Box(
-                                modifier = Modifier
-                                    // Was a hardcoded 700dp — nearly double a phone's
-                                    // entire screen width. Use the actual available
-                                    // width instead (already correctly constrained by
-                                    // the parent's padding/weight above).
-                                    .fillMaxWidth()
-                                    .height(90.dp),
-                                contentAlignment = Alignment.BottomStart
-                            ) {
-                                if (!item.logo.isNullOrEmpty()) {
-                                    SubcomposeAsyncImage(
-                                        model = item.logo,
-                                        contentDescription = item.name,
-                                        contentScale = ContentScale.Fit,
-                                        alignment = Alignment.BottomStart,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .widthIn(max = 500.dp)
-                                            .heightIn(max = 90.dp),
-                                        error = {
-                                            Text(
-                                                text = item.name,
-                                                style = MaterialTheme.typography.displaySmall.copy(
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    fontSize = 32.sp,
-                                                    lineHeight = 1.05.em
-                                                ),
-                                                color = Color.White,
-                                                maxLines = 2,
-                                                softWrap = true,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    )
-                                } else {
-                                    Text(
-                                        text = item.name,
-                                        style = MaterialTheme.typography.displaySmall.copy(
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 32.sp,
-                                            lineHeight = 1.05.em
-                                        ),
-                                        color = Color.White,
-                                        maxLines = 2,
-                                        softWrap = true,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            HomeMetaStrip(item = item)
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = item.description ?: "",
-                                maxLines = if (isTopNav) 3 else 4,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
-                                color = Color.White.copy(0.85f),
-                                textAlign = TextAlign.Start,
-                                // Same fix as the logo/title Box above — was a fixed
-                                // 450dp, overflowing a phone screen; fillMaxWidth with a
-                                // cap preserves the original comfortable reading width
-                                // on TV while actually fitting on a phone.
-                                modifier = Modifier.fillMaxWidth().widthIn(max = 450.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
+        Column(modifier = Modifier.fillMaxSize()) {
             // LIST SECTION
-            Box(modifier = Modifier.weight(0.55f)) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
                     // Use persisted vertical scroll position for instant restoration.
                     // When the continue watching row first appears at index 0, all saved
@@ -593,6 +491,15 @@ fun CinematicLayout(
 
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
+                                Column {
+                                    if (effectiveLastFocusedKey?.startsWith("-1_") == true) {
+                                        FocusedRowCinematicPreview(
+                                            item = renderedPreviewItem, state = state,
+                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
+                                        )
+                                    }
+
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -637,6 +544,7 @@ fun CinematicLayout(
                                     enrichedItems = state.enrichedMeta,
                                     rowHeight = if (isLandscapeContinueWatching) 140.dp else 210.dp
                                 )
+                                }
                             }
                         }
 
@@ -659,7 +567,7 @@ fun CinematicLayout(
                         ) { index, item ->
                             when (item) {
                                 is HubGroupRow -> {
-
+                                    Column {
                                     // Create list state with saved scroll position for this hub row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val hubKey = "hub_${item.id}"
@@ -677,6 +585,14 @@ fun CinematicLayout(
                                         onPositionChanged = { onScrollPositionChange(hubKey, it) }
                                     )
 
+                                    if (effectiveLastFocusedKey?.startsWith("hub_") == true &&
+                                        effectiveLastFocusedKey.substringAfter("hub_").startsWith("${index}_")) {
+                                        FocusedRowCinematicPreview(
+                                            item = renderedPreviewItem, state = state,
+                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
+                                        )
+                                    }
                                     HubRow(
                                         hubGroup = item,
                                         startPadding = startPadding,
@@ -697,8 +613,10 @@ fun CinematicLayout(
                                         isFirstRow = historyItems.isEmpty() && index == 0,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null
                                     )
+                                    }
                                 }
                                 is CategoryRow -> {
+                                    Column {
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
@@ -734,6 +652,13 @@ fun CinematicLayout(
                                         }
                                     }
 
+                                    if (effectiveLastFocusedKey?.startsWith("${index}_") == true) {
+                                        FocusedRowCinematicPreview(
+                                            item = renderedPreviewItem, state = state,
+                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
+                                        )
+                                    }
                                     InfiniteLoopRow(
                                         startPadding = startPadding,
                                         isTopNav = isTopNav,
@@ -762,12 +687,121 @@ fun CinematicLayout(
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate
                                     )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FocusedRowCinematicPreview(
+    item: MetaItem?,
+    state: HomeViewModel.HomeState,
+    startPadding: androidx.compose.ui.unit.Dp,
+    infoTopPadding: androidx.compose.ui.unit.Dp,
+    isTopNav: Boolean,
+    resolveTrailer: suspend (MetaItem) -> String?
+) {
+    val bgItem = if (!state.tmdbEnabled || item == null ||
+        state.tmdbEnrichedIds.contains("${item.type}:${item.id}")) item else null
+    Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
+        CinematicBackground(bgItem)
+        TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
+        Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth()
+                        .padding(start = startPadding, top = infoTopPadding),
+                    contentAlignment = Alignment.TopStart
+                ) {
+                    AnimatedContent(
+                        targetState = item,
+                        transitionSpec = { fadeIn(tween(400)).togetherWith(fadeOut(tween(200))) },
+                        label = "Info"
+                    ) { item ->
+                        if (item != null) {
+                            // Hide info content while waiting for TMDB enrichment
+                            val itemReady = !state.tmdbEnabled || state.tmdbEnrichedIds.contains("${item.type}:${item.id}")
+                            Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
+                                Box(
+                                    modifier = Modifier
+                                        // Was a hardcoded 700dp — nearly double a phone's
+                                        // entire screen width. Use the actual available
+                                        // width instead (already correctly constrained by
+                                        // the parent's padding/weight above).
+                                        .fillMaxWidth()
+                                        .height(90.dp),
+                                    contentAlignment = Alignment.BottomStart
+                                ) {
+                                    if (!item.logo.isNullOrEmpty()) {
+                                        SubcomposeAsyncImage(
+                                            model = item.logo,
+                                            contentDescription = item.name,
+                                            contentScale = ContentScale.Fit,
+                                            alignment = Alignment.BottomStart,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .widthIn(max = 500.dp)
+                                                .heightIn(max = 90.dp),
+                                            error = {
+                                                Text(
+                                                    text = item.name,
+                                                    style = MaterialTheme.typography.displaySmall.copy(
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 32.sp,
+                                                        lineHeight = 1.05.em
+                                                    ),
+                                                    color = Color.White,
+                                                    maxLines = 2,
+                                                    softWrap = true,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        )
+                                    } else {
+                                        Text(
+                                            text = item.name,
+                                            style = MaterialTheme.typography.displaySmall.copy(
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 32.sp,
+                                                lineHeight = 1.05.em
+                                            ),
+                                            color = Color.White,
+                                            maxLines = 2,
+                                            softWrap = true,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HomeMetaStrip(item = item)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = item.description ?: "",
+                                    maxLines = if (isTopNav) 3 else 4,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
+                                    color = Color.White.copy(0.85f),
+                                    textAlign = TextAlign.Start,
+                                    // Same fix as the logo/title Box above — was a fixed
+                                    // 450dp, overflowing a phone screen; fillMaxWidth with a
+                                    // cap preserves the original comfortable reading width
+                                    // on TV while actually fitting on a phone.
+                                    modifier = Modifier.fillMaxWidth().widthIn(max = 450.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+    
         }
     }
 }
