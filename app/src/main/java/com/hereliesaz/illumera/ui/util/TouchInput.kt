@@ -13,7 +13,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Adds touch tap/long-press handling without changing keyboard/D-pad behavior.
- * A long press fires at the system long-press timeout (haptic tick), then swallows every
+ * A long press fires after one second (haptic tick), then swallows every
  * remaining event of that touch until release, so nothing it opened reacts to the held finger:
  * options are picked with a fresh tap, never by holding and sliding.
  */
@@ -31,7 +31,7 @@ fun Modifier.touchClick(
                 return@awaitEachGesture
             }
             var up: PointerInputChange? = null
-            val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            val released = withTimeoutOrNull(1_000L) {
                 up = waitForUpOrCancellation()
                 true
             }
