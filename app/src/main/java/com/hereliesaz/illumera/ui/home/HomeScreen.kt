@@ -1542,7 +1542,7 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
  * trailer video is ready. Switching titles cancels resolution and disposes the player.
  */
 @Composable
-private fun TrailerPreview(
+internal fun TrailerPreview(
     item: MetaItem?,
     resolveTrailer: suspend (MetaItem) -> String?,
     modifier: Modifier = Modifier
