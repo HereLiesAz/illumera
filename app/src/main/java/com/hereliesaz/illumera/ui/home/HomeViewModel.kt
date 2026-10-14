@@ -57,12 +57,28 @@ class HomeViewModel @Inject constructor(
         // An addon removed or disabled by the user must never receive trailer requests.
         val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
         if (!trailer.isEnabled) return null
-        // The provider only accepts IMDb identifiers. Non-IMDb IDs need mapping.
-        val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value ?: return null
         return try {
             kotlinx.coroutines.withTimeout(12_000L) {
+                // The trailer addon accepts IMDb IDs. Look up a non-IMDb catalog
+                // item by exact title (and release year when known) before calling it.
+                val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
+                    ?: run {
+                        val wantedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
+                        val wantedYear = Regex("(?:19|20)[0-9]{2}")
+                            .find(item.releaseInfo.orEmpty())?.value
+                        kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                            repository.searchMovies(item.name)
+                        }?.firstOrNull { candidate ->
+                            candidate.type == item.type &&
+                                candidate.name.lowercase().filter { it.isLetterOrDigit() } == wantedTitle &&
+                                (wantedYear == null ||
+                                    Regex("(?:19|20)[0-9]{2}")
+                                        .find(candidate.releaseInfo.orEmpty())?.value == wantedYear) &&
+                                Regex("^tt[0-9]+$").matches(candidate.id)
+                        }?.id
+                    } ?: return@withTimeout null
                 val response = trailerApi.getStreams(
-                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/${item.id}.json"
+                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/$imdbId.json"
                 )
                 val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
                     stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
