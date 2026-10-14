@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.repository.aggregatedMediaIdentityKeys
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
@@ -229,19 +230,25 @@ class HomeViewModel @Inject constructor(
                     if (parts.size != 3) return@launch
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
-                    val nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
-                    val next = repository.getAggregatedCatalogPage(type, genre, nextPage)
-                    rowFetchOffsets[configId] = nextPage + 1
+                    var nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
+                    var next = emptyList<MetaItem>()
+                    // Empty/unavailable addons shouldn't prematurely exhaust the content row.
+                    repeat(4) {
+                        if (next.isEmpty()) {
+                            next = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                        }
+                    }
+                    rowFetchOffsets[configId] = nextPage
                     if (next.isNotEmpty()) {
                         val existing = _state.value.rows.firstOrNull { it.configId == configId }
                             ?.items.orEmpty()
-                        val known = existing.mapTo(mutableSetOf()) { item ->
-                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
-                            imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}"
-                        }
+                        val known = existing.flatMapTo(mutableSetOf()) { aggregatedMediaIdentityKeys(it) }
                         val unique = next.filter { item ->
-                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
-                            known.add(imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}")
+                            val keys = aggregatedMediaIdentityKeys(item)
+                            if (keys.any { it in known }) false else {
+                                known.addAll(keys)
+                                true
+                            }
                         }
                         if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                     }
@@ -791,9 +798,19 @@ class HomeViewModel @Inject constructor(
                     kotlinx.coroutines.coroutineScope {
                         requests.mapIndexed { index, genre ->
                             async {
-                                val metas = repository.getAggregatedCatalogPage(type, genre)
+                                // Page 0 can be an empty/failed addon. Probe successive
+                                // source batches lazily until the first populated page.
+                                var metas = emptyList<MetaItem>()
+                                var nextPage = 0
+                                repeat(4) {
+                                    if (metas.isEmpty()) {
+                                        metas = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                                    }
+                                }
+                                val key = "catalog-aggregate:$type:${genre ?: "all"}"
+                                rowFetchOffsets[key] = nextPage
                                 if (metas.isEmpty()) null else HomeRow(
-                                    configId = "catalog-aggregate:$type:${genre ?: "all"}",
+                                    configId = key,
                                     title = genre ?: if (type == "movie") "All Movies" else "All Series",
                                     items = metas,
                                     isInfiniteScrollingEnabled = true,
