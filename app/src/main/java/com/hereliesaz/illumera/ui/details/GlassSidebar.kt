@@ -768,23 +768,13 @@ fun EpisodeItem(
     var buttonFocused by remember { mutableStateOf(false) }
     var contextMenuExpanded by remember(mediaActionTarget?.key) { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
     LaunchedEffect(contextMenuExpanded) {
         if (!contextMenuExpanded) {
             dpadKeyHeld = false
             dpadLongPressTriggered = false
         }
     }
-    var dpadKeyHeld by remember { mutableStateOf(false) }
-    LaunchedEffect(dpadKeyHeld) {
-        if (dpadKeyHeld) {
-            delay(1_000L)
-            if (dpadKeyHeld && !dpadLongPressTriggered && hasContextActions) {
-                dpadLongPressTriggered = true
-                menuExpanded = true
-            }
-        }
-    }
-    var dpadKeyHeld by remember { mutableStateOf(false) }
     LaunchedEffect(dpadKeyHeld) {
         if (dpadKeyHeld) {
             delay(1_000L)
@@ -1126,10 +1116,20 @@ fun RawSourceItem(
     var menuExpanded by remember { mutableStateOf(false) }
     val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
     LaunchedEffect(menuExpanded) {
         if (!menuExpanded) {
             dpadKeyHeld = false
             dpadLongPressTriggered = false
+        }
+    }
+    LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered && hasContextActions) {
+                dpadLongPressTriggered = true
+                menuExpanded = true
+            }
         }
     }
     val primary = MaterialTheme.colorScheme.primary
