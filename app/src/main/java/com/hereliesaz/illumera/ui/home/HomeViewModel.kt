@@ -8,7 +8,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
-import com.hereliesaz.illumera.data.repository.aggregatedMediaIdentityKeys
+import com.hereliesaz.illumera.data.repository.distinctAggregatedMetas
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
@@ -278,14 +278,7 @@ class HomeViewModel @Inject constructor(
                     if (next.isNotEmpty()) {
                         val existing = _state.value.rows.firstOrNull { it.configId == configId }
                             ?.items.orEmpty()
-                        val known = existing.flatMapTo(mutableSetOf()) { aggregatedMediaIdentityKeys(it) }
-                        val unique = next.filter { item ->
-                            val keys = aggregatedMediaIdentityKeys(item)
-                            if (keys.any { it in known }) false else {
-                                known.addAll(keys)
-                                true
-                            }
-                        }
+                        val unique = distinctAggregatedMetas(existing, next)
                         if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                     }
                 } catch (ce: CancellationException) {
