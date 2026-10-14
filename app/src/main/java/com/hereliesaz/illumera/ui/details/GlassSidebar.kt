@@ -57,7 +57,11 @@ sealed class SidebarState {
     /** [initialFocusEpisodeId] is a durably-remembered "last browsed" episode (a
      *  `":$season:$episode"` suffix, matched the same way as [currentEpisodeId] in
      *  [GlassSidebar]) used only on a fresh open with nothing currently playing. */
-    data class Episodes(val videos: List<MetaVideo>, val initialFocusEpisodeId: String? = null) : SidebarState()
+    data class Episodes(
+        val videos: List<MetaVideo>,
+        val initialFocusEpisodeId: String? = null,
+        val isLoading: Boolean = false
+    ) : SidebarState()
     data class Sources(val streamTitle: String, val streams: List<Stream>?, val selectedStreamId: String? = null) : SidebarState()
 }
 
@@ -206,6 +210,7 @@ fun GlassSidebar(
             when (current) {
                 is SidebarState.Episodes -> EpisodesContent(
                     videos = current.videos,
+                    isLoading = current.isLoading,
                     listState = episodesListState,
                     savedSeason = savedSeason,
                     savedIndex = savedIndex,
@@ -268,7 +273,8 @@ fun EpisodesContent(
     focusRequester: FocusRequester,
     onEpisodeClick: (MetaVideo, Int, Int) -> Unit,
     onSeasonChange: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isLoading: Boolean = false
 ) {
     val seasons = remember(videos) { episodesBySeason(videos) }
     var selectedSeason by remember(savedSeason) {
@@ -406,7 +412,13 @@ fun EpisodesContent(
                     )
             ) {
                 if (episodes.isEmpty()) {
-                    item { Text("No episodes found.", color = Color.Gray) }
+                    item {
+                        Text(
+                            if (isLoading) "Loading episodes…" else
+                                "No episodes available from the installed metadata providers.",
+                            color = Color.Gray
+                        )
+                    }
                 } else {
                     itemsIndexed(
                         episodes,
