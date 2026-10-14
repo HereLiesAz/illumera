@@ -115,7 +115,7 @@ fun ThemeScreen(
             } else false
         }
 
-        // --- TABS (Same style as Home Screen Editor) ---
+        // --- TABS (Same style as Screen Editor) ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()

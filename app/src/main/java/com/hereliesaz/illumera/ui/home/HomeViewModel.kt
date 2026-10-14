@@ -214,6 +214,38 @@ class HomeViewModel @Inject constructor(
      * only fetching from the API when the buffer is empty.
      */
     fun loadMoreItems(configId: String) {
+        if (configId.startsWith("catalog-aggregate:")) {
+            if (!loadingMoreRows.add(configId)) return
+            viewModelScope.launch {
+                try {
+                    val parts = configId.split(':', limit = 3)
+                    if (parts.size != 3) return@launch
+                    val type = parts[1]
+                    val genre = parts[2].takeUnless { it == "all" }
+                    val nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
+                    val next = repository.getAggregatedCatalogPage(type, genre, nextPage)
+                    rowFetchOffsets[configId] = nextPage + 1
+                    if (next.isNotEmpty()) {
+                        val existing = _state.value.rows.firstOrNull { it.configId == configId }
+                            ?.items.orEmpty()
+                        val known = existing.mapTo(mutableSetOf()) { item ->
+                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
+                            imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}"
+                        }
+                        val unique = next.filter { item ->
+                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
+                            known.add(imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}")
+                        }
+                        if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
+                    }
+                } catch (ce: CancellationException) {
+                    throw ce
+                } finally {
+                    loadingMoreRows.remove(configId)
+                }
+            }
+            return
+        }
         if (configId in loadingMoreRows) return // Already loading
 
         // Find the row in the current state
@@ -742,7 +774,30 @@ class HomeViewModel @Inject constructor(
                 }
                 val hubRowsDeferred = async { repository.getHubRows(screenName) }
 
-                val initialRows = initialRowsDeferred.await()
+                val configuredRows = initialRowsDeferred.await()
+                val aggregatedRows = if (screenName in setOf("movies", "series")) {
+                    val type = if (screenName == "movies") "movie" else "series"
+                    val genres = context.getSharedPreferences(
+                        "illumera_screen_genres", Context.MODE_PRIVATE
+                    ).getStringSet("${currentProfileId}_${screenName}", emptySet()).orEmpty().toList().sorted()
+                    val requests = genres.map { it as String? } + listOf(null)
+                    kotlinx.coroutines.coroutineScope {
+                        requests.mapIndexed { index, genre ->
+                            async {
+                                val metas = repository.getAggregatedCatalogPage(type, genre)
+                                if (metas.isEmpty()) null else HomeRow(
+                                    configId = "catalog-aggregate:$type:${genre ?: "all"}",
+                                    title = genre ?: if (type == "movie") "All Movies" else "All Series",
+                                    items = metas,
+                                    isInfiniteScrollingEnabled = true,
+                                    supportsSkip = true,
+                                    order = -1000 + index
+                                )
+                            }
+                        }.awaitAll().filterNotNull()
+                    }
+                } else emptyList()
+                val initialRows = aggregatedRows + configuredRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 

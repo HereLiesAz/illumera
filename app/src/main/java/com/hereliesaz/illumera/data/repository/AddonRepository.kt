@@ -115,6 +115,81 @@ class AddonRepository @Inject constructor(
         return catalog.extra?.any { it.name == "skip" } ?: false
     }
 
+    /**
+     * One lazily browsed aggregated catalog per media type, without Stremio's catalog selector.
+     * Every enabled addon's matching catalog is a candidate. Page numbers advance across
+     * catalog sources before fetching subsequent skip-enabled pages, keeping requests bounded.
+     * Deduplication within a page happens here; the caller deduplicates across pages.
+     */
+    suspend fun getAggregatedCatalogPage(
+        type: String,
+        genre: String? = null,
+        page: Int = 0,
+        sourcesPerPage: Int = 4
+    ): List<MetaItem> = withContext(Dispatchers.IO) {
+        require(type == "movie" || type == "series")
+        val addons = dao.getAllAddons().firstOrNull().orEmpty().filter { it.isEnabled }
+        val sources = addons.flatMap { addon ->
+            val manifests = runCatching {
+                gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
+                    ?.toList().orEmpty()
+            }.getOrDefault(emptyList())
+            manifests.filter { it.type == type }.map { catalog -> addon to catalog }
+        }.distinctBy { (addon, catalog) ->
+            "${addon.transportUrl}/${catalog.type}/${catalog.id}"
+        }
+        if (sources.isEmpty()) return@withContext emptyList()
+        val batchSize = sourcesPerPage.coerceIn(1, 8)
+        val batchCount = (sources.size + batchSize - 1) / batchSize
+        val layer = page.coerceAtLeast(0) / batchCount
+        val offset = (page.coerceAtLeast(0) % batchCount) * batchSize
+        kotlinx.coroutines.coroutineScope {
+            sources.drop(offset).take(batchSize).map { (addon, catalog) ->
+                async {
+                    val supportsSkip = catalog.extra.orEmpty().any { it.name == "skip" }
+                    val supportsGenre = catalog.extra.orEmpty().any { extra ->
+                        extra.name == "genre" && (genre.isNullOrBlank() ||
+                            extra.options.isNullOrEmpty() ||
+                            extra.options.any { it.equals(genre, ignoreCase = true) })
+                    }
+                    if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
+                    val extras = buildList {
+                        if (!genre.isNullOrBlank() && supportsGenre) {
+                            val encoded = java.net.URLEncoder.encode(genre, "UTF-8").replace("+", "%20")
+                            add("genre=$encoded")
+                        }
+                        if (layer > 0) add("skip=${layer * 100}")
+                    }
+                    val suffix = if (extras.isEmpty()) "" else "/" + extras.joinToString("/")
+                    val url = "${addon.transportUrl.trimEnd('/')}/catalog/$type/${catalog.id}$suffix.json"
+                    val result = try {
+                        withTimeout(5_000L) { api.getCatalog(url).metas.orEmpty().sanitize() }
+                    } catch (_: TimeoutCancellationException) {
+                        emptyList()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    result.asSequence().filter { it.type == type }
+                        .filter { meta ->
+                            genre.isNullOrBlank() ||
+                                (supportsGenre || meta.genres.orEmpty().any {
+                                    it.equals(genre, ignoreCase = true)
+                                })
+                        }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
+                }
+            }.awaitAll().flatten()
+                .distinctBy { meta ->
+                    // IMDb IDs are canonical across catalogs; title and release
+                    // disambiguate providers using their own IDs.
+                    val imdb = Regex("tt[0-9]+").find(meta.id)?.value
+                    if (imdb != null) "$type:$imdb"
+                    else "$type:${meta.name.lowercase().filter { it.isLetterOrDigit() }}:${meta.releaseInfo.orEmpty().take(4)}"
+                }
+        }
+    }
+
     suspend fun getDashboardRows(
         screen: String,
         skipConfigs: Int = 0,
