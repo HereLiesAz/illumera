@@ -16,6 +16,9 @@ import com.hereliesaz.illumera.data.remote.StremioAddonEntry
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -277,13 +280,20 @@ class ProfileConfigurationManager @Inject constructor(
     private suspend fun buildSnapshotFromStremioAddons(entries: List<StremioAddonEntry>): ProfileRuntimeSnapshot {
         val addons = mutableListOf<AddonEntity>()
         val configs = mutableListOf<CatalogConfigEntity>()
+        val predefined = setOf(
+            DEFAULT_CINEMETA_TRANSPORT_URL,
+            "https://stremio-trailer-addon.vercel.app",
+            "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
+            "https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
+            "https://seedsphere.fly.dev",
+            "https://stremiostats.stream"
+        )
         var failed = 0
 
         entries.forEach { entry ->
             val transportUrl = entry.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
             // Every fresh profile already gets the default Cinemeta addon — skip a duplicate.
-            if (transportUrl == DEFAULT_CINEMETA_TRANSPORT_URL ||
-                transportUrl == "https://stremio-trailer-addon.vercel.app") return@forEach
+            if (transportUrl in predefined) return@forEach
 
             val manifest = try {
                 addonRepository.fetchManifest("$transportUrl/manifest.json")
@@ -478,9 +488,76 @@ class ProfileConfigurationManager @Inject constructor(
             sortOrder = 1
         )
 
+        // Default addons requested for fresh Illumera profiles. Fetch manifests
+        // concurrently; unreachable providers retain an install entry but expose no
+        // imaginary metadata or streaming capabilities until they respond.
+        data class DefaultAddon(val url: String, val name: String, val stream: Boolean)
+        val defaults = listOf(
+            DefaultAddon("https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
+                "Streaming Catalogs", false),
+            DefaultAddon("https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
+                "The Movie Database Addon", false),
+            DefaultAddon("https://seedsphere.fly.dev", "SeedSphere", true),
+            // Stremio Stats requires a personally configured manifest for
+            // account-backed statistics; an unconfigured install has no user data.
+            DefaultAddon("https://stremiostats.stream", "Stremio Stats", false)
+        )
+        val additional = coroutineScope {
+            defaults.mapIndexed { index, entry ->
+                async {
+                    val manifest = try {
+                        withTimeout(5_000L) { addonRepository.fetchManifest("${entry.url}/manifest.json") }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val addonCatalogs = manifest?.catalogs.orEmpty()
+                    val entity = AddonEntity(
+                        transportUrl = entry.url,
+                        id = manifest?.id ?: entry.name.lowercase().replace(' ', '-'),
+                        name = manifest?.name ?: entry.name,
+                        version = manifest?.version ?: "0",
+                        description = manifest?.description ?: if (entry.name == "Stremio Stats") {
+                            "Configure with your Stremio account to enable personal statistics"
+                        } else "Manifest unavailable; capabilities load when the provider is reachable",
+                        iconUrl = manifest?.logo,
+                        isEnabled = true,
+                        catalogsJson = gson.toJson(addonCatalogs),
+                        supportsMeta = manifest?.supportsResource("meta") ?: false,
+                        supportsStream = manifest?.supportsResource("stream") ?: false,
+                        typesJson = gson.toJson(manifest?.types.orEmpty()),
+                        sortOrder = index + 2
+                    )
+                    val addonConfigs = addonCatalogs.mapIndexed { catalogIndex, catalog ->
+                        val isMovie = catalog.type == "movie"
+                        val isSeries = catalog.type == "series"
+                        CatalogConfigEntity(
+                            uniqueId = "${entry.url}/${catalog.type}/${catalog.id}",
+                            transportUrl = entry.url,
+                            addonName = entity.name,
+                            catalogType = catalog.type,
+                            catalogId = catalog.id,
+                            catalogName = catalog.name,
+                            customTitle = null,
+                            showInHome = isMovie || isSeries,
+                            showInMovies = isMovie,
+                            showInSeries = isSeries,
+                            homeOrder = 20 + index * 100 + catalogIndex,
+                            moviesOrder = if (isMovie) 20 + catalogIndex else 999,
+                            seriesOrder = if (isSeries) 20 + catalogIndex else 999
+                        )
+                    }
+                    entity to addonConfigs
+                }
+            }.map { it.await() }
+        }
+
         return ProfileRuntimeSnapshot(
-            addons = listOf(addonEntity, trailerAddon),
-            catalogConfigs = configs,
+            addons = (listOf(addonEntity, trailerAddon) + additional.map { it.first })
+                .distinctBy { it.transportUrl },
+            catalogConfigs = (configs + additional.flatMap { it.second })
+                .distinctBy { it.uniqueId },
             hubRows = emptyList(),
             hubRowItems = emptyList(),
             watchHistory = emptyList()
