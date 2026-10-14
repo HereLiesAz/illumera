@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
@@ -127,7 +130,11 @@ fun HomeScreen(
             }
         }
     }
-    // Movies and Series always combine the hero carousel with the inline cinematic\n    // preview. Home retains its profile-selected layout.\n    val layoutMode = if (tab == DashboardTab.HOME) {\n        currentProfile?.layoutFor(tab) ?: "cinematic"\n    } else "cinematic"
+    // Movies and Series always combine the hero carousel with the inline cinematic
+    // preview. Home retains its profile-selected layout.
+    val layoutMode = if (tab == DashboardTab.HOME) {
+        currentProfile?.layoutFor(tab) ?: "cinematic"
+    } else "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     val infoTopPadding = if (isTopNav) 60.dp else 30.dp
@@ -194,7 +201,9 @@ fun HomeScreen(
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
                 val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount) {
-                    (displayState.heroRow?.items ?: displayState.rows.firstOrNull()?.items).orEmpty().take(heroConfig.posterCount)
+                    if (heroConfig.categoryId == null) emptyList() else
+                        (displayState.heroRow?.items ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
+                            .orEmpty().take(heroConfig.posterCount)
                 }
                 CinematicLayout(
                     heroItems = heroItems,
@@ -228,7 +237,7 @@ fun HomeScreen(
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
                 val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
-                    displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
+                    if (heroConfig.categoryId == null) emptyList() else displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
                 }
 
                 SimpleLayout(
@@ -356,10 +365,12 @@ fun CinematicLayout(
 
     // Focus the remembered item (entryRequester follows it) once there is something to focus:
     // on resume, and again if a refresh takes the focused card away.
+    val firstRowPivotRequester = remember { FocusRequester() }
+
     RestoreFocusOnResume(
         memory = focusMemory,
         fallback = entryRequester,
-        enabled = historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
+        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
         neighbour = { resolveHomeFocusNeighbour(it, focusMemory.registeredKeys) }
     )
 
@@ -427,7 +438,7 @@ fun CinematicLayout(
                     // When the continue watching row first appears at index 0, all saved
                     // indices are off by 1 — adjust the initial index to compensate.
                     val verticalListState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = verticalScrollPosition.first + historyScrollAdjustment,
+                        initialFirstVisibleItemIndex = verticalScrollPosition.first + if (heroItems.isNotEmpty()) 0 else historyScrollAdjustment,
                         initialFirstVisibleItemScrollOffset = verticalScrollPosition.second
                     )
 
@@ -473,6 +484,7 @@ fun CinematicLayout(
                                     onFocusChange = { wrappedOnFocusChange("hero_$it") },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
+                                    onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
                                     drawerRequester = drawerRequester,
@@ -533,7 +545,8 @@ fun CinematicLayout(
                                     drawerRequester = drawerRequester,
                                     locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("-1_") == true) effectiveLastFocusedKey else null,
                                     isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                    isFirstRow = true,
+                                    isFirstRow = heroItems.isEmpty(),
+                                    pivotFocusRequester = if (heroItems.isNotEmpty()) firstRowPivotRequester else null,
                                     isInfiniteLoopEnabled = false,
                                     visibleItemCount = 15,
                                     isInfiniteScrollingEnabled = true,
@@ -602,7 +615,7 @@ fun CinematicLayout(
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
                                         isLastRow = index == state.mixedRows.lastIndex,
-                                        isFirstRow = historyItems.isEmpty() && index == 0,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null
                                     )
                                     }
@@ -671,7 +684,8 @@ fun CinematicLayout(
                                         drawerRequester = drawerRequester,
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                        isFirstRow = historyItems.isEmpty() && index == 0,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == 0) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
@@ -1574,6 +1588,7 @@ internal fun TrailerPreview(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var ready by remember(item?.id, item?.type) { mutableStateOf(false) }
     val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
         value = null
@@ -1588,8 +1603,8 @@ internal fun TrailerPreview(
                 volume = 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        ready = playbackState == Player.STATE_READY
+                    override fun onRenderedFirstFrame() {
+                        ready = true
                     }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         ready = false
@@ -1601,20 +1616,49 @@ internal fun TrailerPreview(
             }
         }
     }
-    DisposableEffect(player) {
-        onDispose { player?.release() }
+    DisposableEffect(player, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
+                    player?.pause()
+                    ready = false
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (player != null) player.playWhenReady = true
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player?.pause()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            player?.release()
+        }
     }
     if (player != null) {
-        AndroidView(
-            factory = {
-                PlayerView(it).apply {
-                    useController = false
-                    this.player = player
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                }
-            },
-            update = { it.player = player; it.alpha = if (ready) 1f else 0f },
-            modifier = modifier
-        )
+        Box(modifier = modifier) {
+            AndroidView(
+                factory = {
+                    PlayerView(it).apply {
+                        useController = false
+                        this.player = player
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    }
+                },
+                update = { it.player = player; it.alpha = if (ready) 1f else 0f },
+                modifier = Modifier.fillMaxSize()
+            )
+            if (ready) {
+                // Keep the artwork's legibility gradients above moving video.
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+                    colors = listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)
+                )))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                )))
+            }
+        }
     }
 }

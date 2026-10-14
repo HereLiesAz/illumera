@@ -455,7 +455,7 @@ class ProfileConfigurationManager @Inject constructor(
             isEnabled = true,
             catalogsJson = gson.toJson(trailerManifest?.catalogs.orEmpty()),
             supportsMeta = trailerManifest?.supportsResource("meta") ?: false,
-            supportsStream = trailerManifest?.supportsResource("stream") ?: true,
+            supportsStream = false, // Trailers are for previews, never full-title playback sources
             typesJson = gson.toJson(trailerManifest?.types.orEmpty()),
             sortOrder = 1
         )

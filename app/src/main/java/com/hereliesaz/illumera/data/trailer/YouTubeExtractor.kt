@@ -13,6 +13,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Response
+import java.io.IOException
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -311,7 +318,7 @@ class YouTubeExtractor @Inject constructor() {
         return gson.fromJson(response.body, Map::class.java) ?: emptyMap<String, Any>()
     }
 
-    private fun parseHlsManifest(manifestUrl: String): ManifestBestVariant? {
+    private suspend fun parseHlsManifest(manifestUrl: String): ManifestBestVariant? {
         val response = performRequest(manifestUrl, "GET", DEFAULT_HEADERS)
         if (!response.ok) throw IllegalStateException("Failed to fetch HLS manifest (${response.status})")
 
@@ -412,24 +419,56 @@ class YouTubeExtractor @Inject constructor() {
         .followRedirects(true).followSslRedirects(true)
         .build()
 
-    private fun isUrlReachable(url: String) = runCatching {
-        val request = Request.Builder().url(url).get().header("Range", "bytes=0-0").headers(buildHeaders(DEFAULT_HEADERS)).build()
-        probeClient.newCall(request).execute().use { it.code == 200 || it.code == 206 }
-    }.getOrDefault(false)
+    private suspend fun isUrlReachable(url: String): Boolean {
+        val request = Request.Builder().url(url).get().header("Range", "bytes=0-0")
+            .headers(buildHeaders(DEFAULT_HEADERS)).build()
+        return try {
+            awaitResponse(probeClient.newCall(request)).status in listOf(200, 206)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     private fun absolutizeUrl(baseUrl: String, maybeRelative: String) =
         runCatching { URL(URL(baseUrl), maybeRelative).toString() }.getOrElse { maybeRelative }
 
-    private fun performRequest(url: String, method: String, headers: Map<String, String>, body: String? = null): RequestResponse {
+    private suspend fun performRequest(
+        url: String, method: String, headers: Map<String, String>, body: String? = null
+    ): RequestResponse {
         val rb = Request.Builder().url(url).headers(buildHeaders(headers))
         when (method.uppercase()) {
             "POST" -> rb.post((body ?: "").toRequestBody())
             else -> rb.get()
         }
-        httpClient.newCall(rb.build()).execute().use { r ->
-            return RequestResponse(r.isSuccessful, r.code, r.message, r.request.url.toString(), r.body?.string().orEmpty())
-        }
+        return awaitResponse(httpClient.newCall(rb.build()))
     }
+
+    private suspend fun awaitResponse(call: Call): RequestResponse =
+        suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.use { r ->
+                        val result = runCatching {
+                            RequestResponse(
+                                r.isSuccessful, r.code, r.message,
+                                r.request.url.toString(), r.body?.string().orEmpty()
+                            )
+                        }
+                        if (continuation.isActive) {
+                            result.onSuccess { continuation.resume(it) }
+                                .onFailure { continuation.resumeWithException(it) }
+                        }
+                    }
+                }
+            })
+        }
 
     private fun buildHeaders(source: Map<String, String>): Headers {
         val b = Headers.Builder()
