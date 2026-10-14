@@ -1170,18 +1170,16 @@ fun DashboardEditorScreen(
                             modifier = Modifier.heightIn(max = 300.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            {
-                                item(key = "unified_hero") {
-                                    VoidSimpleItem(
-                                        text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
-                                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
-                                        onClick = {
-                                            selectedCategoryId = automaticCategory
-                                            showCategoryPicker = false
-                                        },
-                                        focusRequester = pickerFocusRequester
-                                    )
-                                }
+                            item(key = "unified_hero") {
+                                VoidSimpleItem(
+                                    text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
+                                        "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
+                                    onClick = {
+                                        selectedCategoryId = automaticCategory
+                                        showCategoryPicker = false
+                                    },
+                                    focusRequester = pickerFocusRequester
+                                )
                             }
                             itemsIndexed(visibleConfigs) { index, config ->
                                 val baseTitle = config.customTitle ?: config.catalogName ?: config.addonName
