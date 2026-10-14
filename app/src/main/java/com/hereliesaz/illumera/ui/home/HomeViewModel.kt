@@ -214,7 +214,7 @@ class HomeViewModel @Inject constructor(
      * only fetching from the API when the buffer is empty.
      */
     fun loadMoreItems(configId: String) {
-        if (configId.startsWith("discover:")) {
+        if (configId.startsWith("catalog-aggregate:")) {
             if (!loadingMoreRows.add(configId)) return
             viewModelScope.launch {
                 try {
@@ -223,7 +223,7 @@ class HomeViewModel @Inject constructor(
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
                     val nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
-                    val next = repository.getUnifiedDiscoveryPage(type, genre, nextPage)
+                    val next = repository.getAggregatedCatalogPage(type, genre, nextPage)
                     rowFetchOffsets[configId] = nextPage + 1
                     if (next.isNotEmpty()) {
                         val existing = _state.value.rows.firstOrNull { it.configId == configId }
@@ -775,7 +775,7 @@ class HomeViewModel @Inject constructor(
                 val hubRowsDeferred = async { repository.getHubRows(screenName) }
 
                 val configuredRows = initialRowsDeferred.await()
-                val discoveryRows = if (screenName in setOf("movies", "series")) {
+                val aggregatedRows = if (screenName in setOf("movies", "series")) {
                     val type = if (screenName == "movies") "movie" else "series"
                     val genres = context.getSharedPreferences(
                         "illumera_screen_genres", Context.MODE_PRIVATE
@@ -784,10 +784,10 @@ class HomeViewModel @Inject constructor(
                     kotlinx.coroutines.coroutineScope {
                         requests.mapIndexed { index, genre ->
                             async {
-                                val metas = repository.getUnifiedDiscoveryPage(type, genre)
+                                val metas = repository.getAggregatedCatalogPage(type, genre)
                                 if (metas.isEmpty()) null else HomeRow(
-                                    configId = "discover:$type:${genre ?: "all"}",
-                                    title = genre ?: "Discover",
+                                    configId = "catalog-aggregate:$type:${genre ?: "all"}",
+                                    title = genre ?: if (type == "movie") "All Movies" else "All Series",
                                     items = metas,
                                     isInfiniteScrollingEnabled = true,
                                     supportsSkip = true,
@@ -797,7 +797,7 @@ class HomeViewModel @Inject constructor(
                         }.awaitAll().filterNotNull()
                     }
                 } else emptyList()
-                val initialRows = discoveryRows + configuredRows
+                val initialRows = aggregatedRows + configuredRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
