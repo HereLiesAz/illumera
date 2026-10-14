@@ -26,6 +26,18 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Cross-provider identity candidates, retaining IMDb plus year-qualified title matching. */
+fun aggregatedMediaIdentityKeys(meta: MetaItem): Set<String> {
+    val imdb = Regex("tt[0-9]+").find(meta.id)?.value
+    val title = meta.name.lowercase().filter { it.isLetterOrDigit() }
+    val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
+    return buildSet {
+        if (imdb != null) add("${meta.type}:imdb:$imdb")
+        if (title.isNotBlank() && year != null) add("${meta.type}:title:$title:$year")
+        if (isEmpty()) add("${meta.type}:id:${meta.id}")
+    }
+}
+
 @Singleton
 class AddonRepository @Inject constructor(
     private val api: StremioApiService,
@@ -134,20 +146,26 @@ class AddonRepository @Inject constructor(
                 gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
                     ?.toList().orEmpty()
             }.getOrDefault(emptyList())
-            manifests.filter { catalog ->
-                catalog.type == type && catalog.extra.orEmpty().none { extra ->
-                    extra.isRequired && when (extra.name) {
-                        "genre" -> genre.isNullOrBlank() || (
-                            !extra.options.isNullOrEmpty() &&
-                            extra.options.none { it.equals(genre, ignoreCase = true) }
-                        )
-                        "skip" -> false
-                        else -> true
+            manifests.filter { it.type == type }.flatMap { catalog ->
+                val extras = catalog.extra.orEmpty()
+                if (extras.any { it.isRequired && it.name !in setOf("genre", "skip") }) {
+                    emptyList()
+                } else {
+                    val genreExtra = extras.firstOrNull { it.name == "genre" }
+                    val options = genreExtra?.options.orEmpty()
+                    val sourceGenres: List<String?> = when {
+                        !genre.isNullOrBlank() && genreExtra?.isRequired == true &&
+                            options.isNotEmpty() && options.none { it.equals(genre, ignoreCase = true) } ->
+                            emptyList()
+                        !genre.isNullOrBlank() && genreExtra != null -> listOf(genre)
+                        genreExtra?.isRequired == true -> options.distinct().map { it }
+                        else -> listOf(null)
                     }
+                    sourceGenres.map { sourceGenre -> Triple(addon, catalog, sourceGenre) }
                 }
-            }.map { catalog -> addon to catalog }
-        }.distinctBy { (addon, catalog) ->
-            "${addon.transportUrl}/${catalog.type}/${catalog.id}"
+            }
+        }.distinctBy { (addon, catalog, sourceGenre) ->
+            "${addon.transportUrl}/${catalog.type}/${catalog.id}/${sourceGenre.orEmpty()}"
         }
         if (sources.isEmpty()) return@withContext emptyList()
         val batchSize = sourcesPerPage.coerceIn(1, 8)
@@ -155,24 +173,18 @@ class AddonRepository @Inject constructor(
         val layer = page.coerceAtLeast(0) / batchCount
         val offset = (page.coerceAtLeast(0) % batchCount) * batchSize
         kotlinx.coroutines.coroutineScope {
-            // A first batch may contain only unavailable or empty catalogs.
-            // Probe the next bounded batch so the row can actually appear.
-            val sourceGroups = if (page == 0) sources.chunked(batchSize) else
-                listOf(sources.drop(offset).take(batchSize))
+            val sourceGroups = listOf(sources.drop(offset).take(batchSize))
             var selected = emptyList<MetaItem>()
+            val seenKeys = mutableSetOf<String>()
             for (group in sourceGroups) {
-                selected = group.map { (addon, catalog) ->
+                selected = group.map { (addon, catalog, sourceGenre) ->
                 async {
                     val supportsSkip = catalog.extra.orEmpty().any { it.name == "skip" }
-                    val supportsGenre = catalog.extra.orEmpty().any { extra ->
-                        extra.name == "genre" && (genre.isNullOrBlank() ||
-                            extra.options.isNullOrEmpty() ||
-                            extra.options.any { it.equals(genre, ignoreCase = true) })
-                    }
+                    val supportsGenre = catalog.extra.orEmpty().any { it.name == "genre" }
                     if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
                     val extras = buildList {
-                        if (!genre.isNullOrBlank() && supportsGenre) {
-                            val encoded = java.net.URLEncoder.encode(genre, "UTF-8").replace("+", "%20")
+                        if (!sourceGenre.isNullOrBlank() && supportsGenre) {
+                            val encoded = java.net.URLEncoder.encode(sourceGenre, "UTF-8").replace("+", "%20")
                             add("genre=$encoded")
                         }
                         if (layer > 0) add("skip=${layer * 100}")
@@ -196,13 +208,12 @@ class AddonRepository @Inject constructor(
                                 })
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
-                }.awaitAll().flatten()
-                .distinctBy { meta ->
-                    // IMDb IDs are canonical across catalogs; title and release
-                    // disambiguate providers using their own IDs.
-                    val imdb = Regex("tt[0-9]+").find(meta.id)?.value
-                    if (imdb != null) "$type:$imdb"
-                    else "$type:${meta.name.lowercase().filter { it.isLetterOrDigit() }}:${meta.releaseInfo.orEmpty().take(4)}"
+                }.awaitAll().flatten().filter { meta ->
+                    val keys = aggregatedMediaIdentityKeys(meta)
+                    if (keys.any { it in seenKeys }) false else {
+                        seenKeys.addAll(keys)
+                        true
+                    }
                 }
                 if (selected.isNotEmpty()) break
             }
