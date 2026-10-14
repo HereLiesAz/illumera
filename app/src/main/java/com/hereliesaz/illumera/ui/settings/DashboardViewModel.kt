@@ -1,8 +1,10 @@
 package com.hereliesaz.illumera.ui.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
@@ -15,6 +17,7 @@ import com.hereliesaz.illumera.domain.HubShape
 import com.hereliesaz.illumera.domain.withHero
 import com.hereliesaz.illumera.domain.withLayout
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,8 +65,29 @@ sealed interface DialogState {
 class DashboardViewModel @Inject constructor(
     private val dao: AddonDao,
     private val profileConfigurationManager: ProfileConfigurationManager,
-    private val profileMutationCoordinator: ProfileMutationCoordinator
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
+
+    private val genrePreferences by lazy {
+        appContext.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
+    }
+    private val _availableGenres = MutableStateFlow<List<String>>(emptyList())
+    val availableGenres: StateFlow<List<String>> = _availableGenres
+
+    fun selectedGenres(profileId: Int, screen: String): Set<String> =
+        genrePreferences.getStringSet(
+            "${profileId}_${screen}",
+            setOf("Action", "Comedy", "Drama")
+        )?.toSet().orEmpty()
+
+    fun toggleGenre(profileId: Int, screen: String, genre: String) {
+        if (screen !in setOf("movies", "series")) return
+        val selected = selectedGenres(profileId, screen).toMutableSet()
+        if (!selected.add(genre)) selected.remove(genre)
+        genrePreferences.edit().putStringSet("${profileId}_${screen}", selected).apply()
+        dashboardModified = true
+    }
 
     /**
      * Set whenever a dashboard write lands; the editor consumes it on exit to invalidate the
@@ -98,6 +122,28 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             dao.getAllCatalogConfigs().collect { list ->
                 _configs.value = list
+            }
+        }
+        viewModelScope.launch {
+            dao.getAllAddons().collect { addons ->
+                val fromManifests = addons.filter { it.isEnabled }.flatMap { addon ->
+                    runCatching {
+                        com.google.gson.Gson().fromJson(
+                            addon.catalogsJson, Array<CatalogManifest>::class.java
+                        )?.toList().orEmpty()
+                    }.getOrDefault(emptyList()).flatMap { catalog ->
+                        catalog.genres.orEmpty() +
+                            catalog.extra.orEmpty().filter { it.name == "genre" }
+                                .flatMap { it.options.orEmpty() }
+                    }
+                }
+                _availableGenres.value = (fromManifests + listOf(
+                    "Action", "Adventure", "Animation", "Comedy", "Crime",
+                    "Documentary", "Drama", "Family", "Fantasy", "History",
+                    "Horror", "Music", "Mystery", "Romance", "Science Fiction",
+                    "Thriller", "War", "Western"
+                )).filter { it.isNotBlank() }.distinctBy { it.lowercase() }
+                    .sortedBy { it.lowercase() }
             }
         }
         viewModelScope.launch {
