@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.data.auth
 
 import android.content.Context
 import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.model.WatchlistEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import io.mockk.coEvery
@@ -50,11 +51,30 @@ class StremioLibrarySyncManagerTest {
             secondArg<suspend () -> Any?>().invoke()
         }
         coEvery { dao.getAllWatchHistoryOnce() } returns emptyList()
+        coEvery { dao.getWatchlistOnce(any()) } returns emptyList()
     }
 
     @After
     fun tearDown() {
         context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test
+    fun unplayedSavedMovieIsPushedToStremioLibrary() = runTest {
+        coEvery { dao.getWatchlistOnce(1) } returns listOf(
+            WatchlistEntity(1, "tt1234567", "movie", "Saved Film", "https://poster", 1_600_000_000_000L)
+        )
+        coEvery { authService.datastoreMeta("auth-1") } returns emptyMap()
+        val manager = newManager()
+        manager.syncLibrary()
+        coVerify(exactly = 1) {
+            authService.datastorePut("auth-1", match { entries ->
+                entries.size == 1 &&
+                    entries.single().id == "tt1234567" &&
+                    entries.single().name == "Saved Film" &&
+                    entries.single().type == "movie"
+            })
+        }
     }
 
     @Test
