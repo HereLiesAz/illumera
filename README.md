@@ -53,6 +53,13 @@ import your existing addon collection and sync Continue Watching progress.
 - Dashboard row/category reordering (D-pad up/down or tap ▲▼ in reorder mode)
 - Row display modes: infinite scroll, finite with a "View More" card that opens a grid, or linear
 
+### Watchlist and Stremio Library
+- Watchlist opens with the Queue row first, followed by Library sections for Movies and Series.
+- Library combines manually bookmarked titles with locally synchronized Stremio Library entries, including unplayed Stremio bookmarks.
+- Direct type selectors (All, Movies, Series) and sorting choices (Recent, Recently added, A–Z, Z–A, Last watched, Watched, Not watched, Most watched), without dropdown menus.
+- The default Library sort is saved separately for each profile under **Settings → Watchlist**. Connected cloud-storage item management is located there as well.
+- Stremio-sourced bookmarks are tracked so removing a remote item does not inadvertently delete a bookmark the user created locally. Watch counts reported by Stremio are used for Most watched when available.
+
 ### Advanced Video Player
 - Adaptive streaming (HLS, DASH, HTTP progressive)
 - Multiple audio track and subtitle selection, defaulting to English when a
