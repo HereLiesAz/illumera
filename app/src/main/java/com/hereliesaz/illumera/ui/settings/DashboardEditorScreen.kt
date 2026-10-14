@@ -73,6 +73,7 @@ fun DashboardEditorScreen(
     }
     val configs by viewModel.configs.collectAsState()
     val hubRows by viewModel.hubRows.collectAsState()
+    val availableGenres by viewModel.availableGenres.collectAsState()
     var selectedTab by remember { mutableStateOf("home") }
     var focusedTab by remember { mutableStateOf("home") }
 
@@ -347,6 +348,42 @@ fun DashboardEditorScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+            }
+
+            if (currentProfile != null && selectedTab in setOf("movies", "series")) {
+                var genreSelectionVersion by remember(currentProfile.id, selectedTab) { mutableIntStateOf(0) }
+                val selectedGenres = remember(currentProfile.id, selectedTab, genreSelectionVersion) {
+                    viewModel.selectedGenres(currentProfile.id, selectedTab)
+                }
+                Text(
+                    "Genre rows",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+                Text(
+                    "Choose the genres that appear above Discover on the ${if (selectedTab == "movies") "Movies" else "Series"} screen.",
+                    color = Color.LightGray,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                ) {
+                    items(availableGenres.size) { index ->
+                        val genre = availableGenres[index]
+                        val checked = genre in selectedGenres
+                        VoidButton(
+                            text = "${if (checked) "✓ " else ""}$genre",
+                            onClick = {
+                                viewModel.toggleGenre(currentProfile.id, selectedTab, genre)
+                                genreSelectionVersion++
+                            },
+                            isPrimary = checked,
+                            modifier = Modifier.width(158.dp)
+                        )
+                    }
+                }
             }
 
             // --- REORDER BANNER ---
