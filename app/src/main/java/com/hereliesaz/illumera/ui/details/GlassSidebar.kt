@@ -1246,7 +1246,8 @@ fun RawSourceItem(
 
         DropdownMenu(
             expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
+            properties = PopupProperties(focusable = !dpadKeyHeld),
+            onDismissRequest = { if (!dpadKeyHeld) menuExpanded = false }
         ) {
             if (onToggleExcluded != null) {
                 DropdownMenuItem(
