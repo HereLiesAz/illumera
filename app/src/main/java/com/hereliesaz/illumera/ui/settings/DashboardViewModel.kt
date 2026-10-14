@@ -52,6 +52,7 @@ sealed interface EditorListItem {
 
 sealed interface DialogState {
     data object None : DialogState
+    data class ManageGenres(val screen: String) : DialogState
     data class ManageCategory(val config: CatalogConfigEntity) : DialogState
     data class RenameCategory(val config: CatalogConfigEntity, val currentName: String) : DialogState
     data class LayoutSettings(val config: CatalogConfigEntity) : DialogState
