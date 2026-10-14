@@ -287,10 +287,9 @@ fun DashboardEditorScreen(
                 val currentLayout = currentProfile.layoutFor(dashboardTab)
                 val isSimple = selectedTab == "home" && currentLayout == "simple"
                 val heroConfig = currentProfile.heroFor(dashboardTab)
-                val heroDisabled = heroConfig.categoryId == HERO_DISABLED_MARKER ||
-                    (dashboardTab == DashboardTab.HOME && heroConfig.categoryId == null)
-                val heroLabel = if (heroConfig.categoryId == null && dashboardTab != DashboardTab.HOME) {
-                    "Hero Carousel · All ${if (dashboardTab == DashboardTab.MOVIES) "Movies" else "Series"} (automatic)"
+                val heroDisabled = heroConfig.categoryId == HERO_DISABLED_MARKER
+                val heroLabel = if (heroConfig.categoryId == null) {
+                    "Hero Carousel · Automatic"
                 } else if (heroConfig.categoryId != null && !heroDisabled) {
                     val cat = configs.find { it.uniqueId == heroConfig.categoryId }
                     val catName = cat?.customTitle ?: cat?.catalogName ?: cat?.addonName ?: "Unknown"
@@ -1049,8 +1048,9 @@ fun DashboardEditorScreen(
                         onDismissRequest = { dialogState = DialogState.None },
                         title = "Hero Carousel"
                     ) {
-                    val selectedCatName = if (selectedCategoryId == automaticCategory && automaticCategory != null) {
-                        "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
+                    val selectedCatName = if (selectedCategoryId == automaticCategory) {
+                        if (tab == DashboardTab.HOME) "Automatic (first populated Home row)" else
+                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
                     } else if (selectedCategoryId != null) {
                         val cat = configs.find { it.uniqueId == selectedCategoryId }
                         if (cat != null) {
@@ -1108,7 +1108,7 @@ fun DashboardEditorScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         VoidButton("Disable", {
                             showDisableConfirm = true
-                        }, Modifier.weight(1f), isDestructive = true, enabled = !(heroConfig.categoryId == HERO_DISABLED_MARKER || (tab == DashboardTab.HOME && heroConfig.categoryId == null)))
+                        }, Modifier.weight(1f), isDestructive = true, enabled = heroConfig.categoryId != HERO_DISABLED_MARKER)
                         VoidButton("Save", {
                             viewModel.updateTabHero(
                                 currentProfile.id,
@@ -1117,7 +1117,7 @@ fun DashboardEditorScreen(
                             )
                             dialogState = DialogState.None
                             showSnackbar("Hero carousel updated")
-                        }, Modifier.weight(1f), isPrimary = true, enabled = selectedCategoryId != null)
+                        }, Modifier.weight(1f), isPrimary = true, enabled = true)
                     }
                     }
                 } else {
@@ -1146,7 +1146,7 @@ fun DashboardEditorScreen(
                                     viewModel.updateTabHero(
                                         currentProfile.id,
                                         tab,
-                                        HeroConfig(if (tab == DashboardTab.HOME) null else HERO_DISABLED_MARKER, 10, 0)
+                                        HeroConfig(HERO_DISABLED_MARKER, 10, 0)
                                     )
                                     dialogState = DialogState.None
                                     showSnackbar("Hero carousel disabled")
@@ -1170,10 +1170,11 @@ fun DashboardEditorScreen(
                             modifier = Modifier.heightIn(max = 300.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (automaticCategory != null) {
+                            {
                                 item(key = "unified_hero") {
                                     VoidSimpleItem(
-                                        text = "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
+                                        text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
+                                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
                                         onClick = {
                                             selectedCategoryId = automaticCategory
                                             showCategoryPicker = false
@@ -1191,7 +1192,7 @@ fun DashboardEditorScreen(
                                         selectedCategoryId = config.uniqueId
                                         showCategoryPicker = false
                                     },
-                                    focusRequester = if (index == 0 && automaticCategory == null) pickerFocusRequester else null
+                                    focusRequester = null
                                 )
                             }
                         }
