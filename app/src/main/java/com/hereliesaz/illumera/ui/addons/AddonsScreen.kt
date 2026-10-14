@@ -132,7 +132,7 @@ fun AddonsScreen(
         AddonCatalogDialog(
             state = state,
             onDismissRequest = { showCatalog = false },
-            onLoad = viewModel::loadCatalog,
+            onLoad = { viewModel.loadCatalog() },
             onSourceSelected = viewModel::selectCatalogSource,
             onAddCollection = viewModel::addCollection,
             onCollectionSelected = viewModel::selectCollection,
