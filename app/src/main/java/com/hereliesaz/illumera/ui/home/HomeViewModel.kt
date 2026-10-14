@@ -67,6 +67,8 @@ class HomeViewModel @Inject constructor(
                 }?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
                 videoId?.let { youtubeExtractor.extractPlaybackSource(it)?.videoUrl }
             }
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            null
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
