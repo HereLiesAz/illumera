@@ -157,6 +157,11 @@ fun WatchlistScreen(
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
     val hasWatchlistMedia = movies.isNotEmpty() || series.isNotEmpty()
+    val hasFilteredMedia = when (mediaTypeFilter) {
+        "movie" -> movies.isNotEmpty()
+        "series" -> series.isNotEmpty()
+        else -> hasWatchlistMedia
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(
         com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
@@ -204,14 +209,17 @@ fun WatchlistScreen(
                     ) {
                         items(listOf("all" to "All", "movie" to "Movies", "series" to "Series")) { type ->
                             val selected = mediaTypeFilter == type.first
+                            val interaction = remember { MutableInteractionSource() }
+                            val focused by interaction.collectIsFocusedAsState()
                             Text(
                                 type.second,
-                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = if (selected) 0.14f else 0.05f))
+                                    .background(Color.White.copy(alpha = if (selected || focused) 0.18f else 0.05f))
+                                    .border(if (focused) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
                                     .clickable { mediaTypeFilter = type.first }
-                                    .focusable()
+                                    .focusable(interactionSource = interaction)
                                     .padding(horizontal = 14.dp, vertical = 11.dp)
                             )
                         }
@@ -222,9 +230,11 @@ fun WatchlistScreen(
                     ) {
                         items(modes, key = { it.first }) { mode ->
                             val selected = sortMode == mode.first
+                            val interaction = remember { MutableInteractionSource() }
+                            val focused by interaction.collectIsFocusedAsState()
                             Text(
                                 mode.second,
-                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (selected) Color.White.copy(alpha = 0.14f)
@@ -235,17 +245,17 @@ fun WatchlistScreen(
                                             "sort_${currentProfile?.id}", mode.first
                                         ).apply()
                                     }
-                                    .focusable()
+                                    .focusable(interactionSource = interaction)
                                     .padding(horizontal = 14.dp, vertical = 11.dp)
                             )
                         }
                     }
                 }
             }
-            if (!hasWatchlistMedia) {
+            if (!hasFilteredMedia) {
                 item {
                     Text(
-                        text = "Your watchlist is empty",
+                        text = if (hasWatchlistMedia) "No ${if (mediaTypeFilter == "movie") "movies" else "series"} in your Library" else "Your watchlist is empty",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.5f),
                         modifier = Modifier.padding(start = startPadding, top = 12.dp, bottom = 4.dp)
