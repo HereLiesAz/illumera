@@ -72,12 +72,32 @@ fun WatchlistScreen(
     viewModel: WatchlistViewModel = hiltViewModel(),
     debridViewModel: DebridLibraryViewModel = hiltViewModel()
 ) {
-    val movies by viewModel.movieItems.collectAsState()
-    val series by viewModel.seriesItems.collectAsState()
 
     val debridProvider by debridViewModel.connectedProvider.collectAsState()
     val debridState by debridViewModel.uiState.collectAsState()
+    val library by viewModel.libraryEntries.collectAsState()
     val context = LocalContext.current
+    val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
+    var sortMode by remember(currentProfile?.id) {
+        mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
+    }
+    val sortedLibrary = remember(library, sortMode) {
+        val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
+            maxOf(it.addedAt, it.lastWatched)
+        }
+        when (sortMode) {
+            "added" -> library.sortedByDescending { it.addedAt }
+            "az" -> library.sortedBy { it.item.name.lowercase() }
+            "za" -> library.sortedByDescending { it.item.name.lowercase() }
+            "lastwatched" -> library.sortedByDescending { it.lastWatched }
+            "watched" -> library.sortedWith(compareByDescending<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
+            "unwatched" -> library.sortedWith(compareBy<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
+            "mostwatched" -> library.sortedWith(compareByDescending<WatchlistViewModel.LibraryEntry> { it.timesWatched }.then(recent))
+            else -> library.sortedWith(recent)
+        }
+    }
+    val movies = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "movie" }.map { it.item } }
+    val series = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "series" }.map { it.item } }
 
     // Drop a debrid stream that resolves after the user left, so it can't auto-play on return.
     DisposableEffect(debridViewModel) {
@@ -162,6 +182,64 @@ fun WatchlistScreen(
             contentPadding = PaddingValues(top = topPadding + 20.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            item {
+                QueueSection(
+                    entryRequester = entryRequester,
+                    startPadding = startPadding,
+                    requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
+                    focusedQueueKey = lastQueueFocusedKey,
+                    restoreEntryFocusWhenFocusedKeyMissing = true,
+                    onQueueFocused = { key ->
+                        lastQueueFocusedKey = key
+                        viewModel.lastQueueFocusedKey = key
+                        if (key != null) {
+                            lastFocusedKey = null
+                            viewModel.lastFocusedKey = null
+                        }
+                    },
+                    onOpenItem = { queueItem: QueueItem ->
+                        onMovieClick(queueItem.toMetaItem())
+                    }
+                )
+            }
+            item(key = "library_sort") {
+                Column(modifier = Modifier.padding(start = startPadding, top = 12.dp, end = 12.dp)) {
+                    Text("Library", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Text("Saved movies and series, including synchronized Stremio history",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.65f))
+                    val modes = listOf(
+                        "recent" to "Recent", "added" to "Recently added",
+                        "az" to "A–Z", "za" to "Z–A",
+                        "lastwatched" to "Last watched", "watched" to "Watched",
+                        "unwatched" to "Not watched", "mostwatched" to "Most watched"
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 12.dp)
+                    ) {
+                        items(modes, key = { it.first }) { mode ->
+                            val selected = sortMode == mode.first
+                            Text(
+                                mode.second,
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) Color.White.copy(alpha = 0.14f)
+                                        else Color.White.copy(alpha = 0.05f))
+                                    .clickable {
+                                        sortMode = mode.first
+                                        watchlistPrefs.edit().putString(
+                                            "sort_${currentProfile?.id}", mode.first
+                                        ).apply()
+                                    }
+                                    .focusable()
+                                    .padding(horizontal = 14.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                }
+            }
             if (!hasWatchlistMedia) {
                 item {
                     Text(
@@ -231,26 +309,6 @@ fun WatchlistScreen(
                 }
             }
 
-            item {
-                QueueSection(
-                    entryRequester = entryRequester,
-                    startPadding = startPadding,
-                    requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
-                    focusedQueueKey = lastQueueFocusedKey,
-                    restoreEntryFocusWhenFocusedKeyMissing = true,
-                    onQueueFocused = { key ->
-                        lastQueueFocusedKey = key
-                        viewModel.lastQueueFocusedKey = key
-                        if (key != null) {
-                            lastFocusedKey = null
-                            viewModel.lastFocusedKey = null
-                        }
-                    },
-                    onOpenItem = { queueItem: QueueItem ->
-                        onMovieClick(queueItem.toMetaItem())
-                    }
-                )
-            }
 
             if (debridProvider != null) {
                 item {
