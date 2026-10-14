@@ -170,7 +170,7 @@ fun WatchlistScreen(
                 QueueSection(
                     entryRequester = entryRequester,
                     startPadding = startPadding,
-                    requestEntryFocus = !hasWatchlistMedia && lastQueueFocusedKey == null,
+                    requestEntryFocus = lastFocusedKey == null && lastQueueFocusedKey == null,
                     focusedQueueKey = lastQueueFocusedKey,
                     restoreEntryFocusWhenFocusedKeyMissing = true,
                     onQueueFocused = { key ->
@@ -273,7 +273,7 @@ fun WatchlistScreen(
                         drawerRequester = drawerRequester,
                         locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true) lastFocusedKey else null,
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = true,
+                        isFirstRow = false, // Queue now precedes Library
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
@@ -302,7 +302,7 @@ fun WatchlistScreen(
                         drawerRequester = drawerRequester,
                         locallyFocusedItemId = if (lastFocusedKey?.startsWith("1_") == true) lastFocusedKey else null,
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = movies.isEmpty(),
+                        isFirstRow = false, // Queue now precedes Library
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
