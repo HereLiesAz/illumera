@@ -645,6 +645,27 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun overlappingGenresKeepDifferentCanonicalIdsWithSameTitleAndYear() {
+        val first = MetaItem(
+            id = "tt1230001", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        val second = MetaItem(
+            id = "tt1230002", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        assertEquals(listOf(first, second), distinctAggregatedMetas(emptyList(), listOf(first, second)))
+    }
+
+    @Test
+    fun duplicateWithoutImdbMatchesCanonicalTitleAndYear() {
+        val imdb = MetaItem(
+            id = "tt1230001", type = "movie", name = "The Return", releaseInfo = "2024"
+        )
+        val tmdb = imdb.copy(id = "tmdb:123")
+        assertTrue(distinctAggregatedMetas(listOf(imdb), listOf(tmdb)).isEmpty())
+        assertTrue(distinctAggregatedMetas(listOf(tmdb), listOf(imdb)).isEmpty())
+    }
+
+    @Test
     fun aggregatedIdentityMatchesImdbAndAlternateProviderByTitleAndYear() {
         val imdb = MetaItem(id = "tt1234567", type = "movie", name = "A Fine Film",
             releaseInfo = "2025")
