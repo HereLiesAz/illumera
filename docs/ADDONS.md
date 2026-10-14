@@ -130,12 +130,12 @@ The stream list shows `description`, falling back to `title` and then `name`, wi
 
 Stremio keeps each addon's own order. illumera re-sorts every stream from every addon, in this order:
 
-1. Closeness to a target size. Defaults are 3000 MB for movies and 750 MB for episodes, and users can change them. **Streams with no readable size sort last.**
-2. Seeders below the user's minimum (default 5) sort lower. Unknown seeders count as fine.
-3. The user's addon order.
-4. Quality, then size, then seeders.
+1. **Availability:** streams falling below the user's minimum-seeders threshold (default 5) rank lower, proportional to the shortfall. Unknown seeder counts are neutral, not automatically penalized.
+2. **Target-size band:** size proximity to the user's movie/episode target (3000 MB and 750 MB by default) is grouped into quarter-target bands, not ordered by exact byte distance. Streams without readable size rank after known-size streams when a target is configured.
+3. **Addon order:** the configured preference breaks ties before quality.
+4. **Quality, then size, then seeders:** user sort priorities and remaining tie-breakers apply within equally ranked availability/size bands.
 
-Because size comes first, an addon that reports size well does better than one that only reports quality.
+This order is shared across Android, web and Roku. Reporting accurate size and seed counts improves ranking without letting tiny size differences outrank a source that can actually play.
 
 ## Behavior hints
 
