@@ -162,7 +162,9 @@ class StremioLibrarySyncManager @Inject constructor(
             // Network work is finished. Reacquire ownership only for the short local
             // mutation phase, so profile switching is never blocked by remote latency.
             inProfileRuntime(profileId, runtimeHeld) {
-                for (item in remoteItems) applyRemoteItem(profileId, item)
+                for (item in remoteItems) {
+                    applyRemoteItem(profileId, item, previousLocal[item.id])
+                }
 
                 val refreshedLocal = buildLocalLibraryView(profileId)
                 saveLocalSnapshot(profileId, authKey, refreshedLocal.values.toList())
@@ -246,7 +248,10 @@ class StremioLibrarySyncManager @Inject constructor(
         return library
     }
 
-    private suspend fun applyRemoteItem(profileId: Int, item: StremioLibraryItem) {
+    private suspend fun applyRemoteItem(
+        profileId: Int, item: StremioLibraryItem,
+        previousLocal: StremioLibraryItem? = null
+    ) {
         val mtimeMs = runCatching { Instant.parse(item.mtime).toEpochMilli() }.getOrNull() ?: return
 
         val ownedBookmarkKey = "remote_bookmark_${profileId}_${item.id}"
@@ -259,7 +264,7 @@ class StremioLibrarySyncManager @Inject constructor(
             // Legacy syncs wrote the ownership flag but not the importedAt key.
             // Use the remote creation date to verify that this is still the exact
             // imported row; never delete an independently re-added local bookmark.
-            val legacyCreatedAt = item.ctime?.let {
+            val legacyCreatedAt = (item.ctime ?: previousLocal?.ctime)?.let {
                 runCatching { Instant.parse(it).toEpochMilli() }.getOrNull()
             }
             val matchesImportedRow = current != null && (
