@@ -86,7 +86,11 @@ function SortStreams(streams as Object, mediaType as String, ranking as Object, 
             if target > 0 then
                 bandWidth = target / 4#
                 if bandWidth < 1 then bandWidth = 1#
-                gapBand = Fix(gap / bandWidth)
+                if info.sizeBytes = invalid then
+                    gapBand = 1e18
+                else
+                    gapBand = Fix(gap / bandWidth)
+                end if
             end if
             ranked.Push({ stream: stream, info: info, gap: gap, gapBand: gapBand, seedGap: seedGap, order: order, index: i })
         end if
