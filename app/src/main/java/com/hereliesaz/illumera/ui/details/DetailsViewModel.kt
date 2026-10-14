@@ -228,7 +228,7 @@ class DetailsViewModel @Inject constructor(
                 } else id
                 val preferredId = if (!addonBaseUrl.isNullOrBlank()) id else canonicalFallbackId
 
-                val details = if (!addonBaseUrl.isNullOrBlank() && preferredId != canonicalFallbackId) {
+                var details = if (!addonBaseUrl.isNullOrBlank() && preferredId != canonicalFallbackId) {
                     // The origin addon gets one fast chance with its private catalog ID.
                     // If that misses, fan out immediately with the canonical ID instead of
                     // spending every addon timeout on an ID they cannot understand.
@@ -238,6 +238,16 @@ class DetailsViewModel @Inject constructor(
                     repository.resolveMetaDetails(type, preferredId, addonBaseUrl)
                 } ?: throw Exception("No meta found")
                 if (requestVersion != loadRequestVersion) return@launch
+                // A meta response can contain a poster/title yet no episode index.
+                // Fill it before publishing so the Details Episodes sidebar, Play,
+                // stream prefetch and the player all receive the same complete list.
+                if (details.type == "series" && details.videos.isNullOrEmpty()) {
+                    val recovered = repository.recoverSeriesEpisodes(
+                        canonicalFallbackId, details.name, details.releaseInfo
+                    )
+                    if (requestVersion != loadRequestVersion) return@launch
+                    if (recovered.isNotEmpty()) details = details.copy(videos = recovered)
+                }
                 loadedContentKey = requestKey
 
                 // Canonical identity owns history/watchlist/Trakt and cross-addon lookup.
