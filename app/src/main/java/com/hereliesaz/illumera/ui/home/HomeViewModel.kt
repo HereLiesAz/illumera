@@ -251,8 +251,13 @@ class HomeViewModel @Inject constructor(
      * Uses UI batching: reveals ROW_BATCH_SIZE items at a time from a pending buffer,
      * only fetching from the API when the buffer is empty.
      */
+    private var screenDataGeneration = 0L
+
     fun loadMoreItems(configId: String) {
         if (configId.startsWith("catalog-aggregate:")) {
+            val generation = screenDataGeneration
+            val initiatingProfileId = _state.value.loadedProfileId
+            val initiatingScreen = _state.value.loadedScreen
             if (!loadingMoreRows.add(configId)) return
             viewModelScope.launch {
                 try {
@@ -277,12 +282,19 @@ class HomeViewModel @Inject constructor(
                             unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
+                    // Never let an old profile's in-flight catalogs contaminate a
+                    // newly loaded profile with the same genre row IDs.
+                    if (generation != screenDataGeneration ||
+                        _state.value.loadedProfileId != initiatingProfileId ||
+                        _state.value.loadedScreen != initiatingScreen ||
+                        profileConfigurationManager.activeProfileId.value != initiatingProfileId
+                    ) return@launch
                     rowFetchOffsets[configId] = nextPage
                     if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                 } catch (ce: CancellationException) {
                     throw ce
                 } finally {
-                    loadingMoreRows.remove(configId)
+                    if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
                 }
             }
             return
@@ -756,6 +768,8 @@ class HomeViewModel @Inject constructor(
         }
 
         loadJob?.cancel()
+        screenDataGeneration++
+        loadingMoreRows.clear()
         loadJob = viewModelScope.launch {
             // Clear 'rows' immediately so the UI doesn't show "Ghost Data" from the previous tab
             pendingRowItems.clear()
