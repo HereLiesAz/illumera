@@ -283,7 +283,7 @@ fun DashboardEditorScreen(
             if (currentProfile != null) {
                 val dashboardTab = DashboardTab.fromString(selectedTab)
                 val currentLayout = currentProfile.layoutFor(dashboardTab)
-                val isSimple = currentLayout == "simple"
+                val isSimple = selectedTab == "home" && currentLayout == "simple"
                 val heroConfig = currentProfile.heroFor(dashboardTab)
                 val heroLabel = if (heroConfig.categoryId != null) {
                     val cat = configs.find { it.uniqueId == heroConfig.categoryId }
@@ -295,8 +295,7 @@ fun DashboardEditorScreen(
                 }
                 val heroSubtitle = when {
                     heroConfig.categoryId != null -> "${heroConfig.posterCount} posters"
-                    isSimple -> "Tap to configure"
-                    else -> "Switch to Simple to configure"
+                    else -> "Tap to configure"
                 }
 
                 Box(
@@ -307,21 +306,18 @@ fun DashboardEditorScreen(
                     VoidEditorRow(
                         title = heroLabel,
                         subtitle = heroSubtitle,
-                        isEnabled = heroConfig.categoryId != null && isSimple,
+                        isEnabled = heroConfig.categoryId != null,
                         onClick = {
-                            if (isSimple) {
-                                dialogState = DialogState.HeroCarouselConfig(dashboardTab)
-                            }
+                            dialogState = DialogState.HeroCarouselConfig(dashboardTab)
                         },
-                        interactive = isSimple,
+                        interactive = true,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(end = layoutControlsWidth + heroToControlsGap)
-                            .then(if (!isSimple) Modifier.alpha(0.8f) else Modifier)
-                            .then(if (isSimple) goBackModifier else Modifier)
+                            .padding(end = if (selectedTab == "home") layoutControlsWidth + heroToControlsGap else 0.dp)
+                            .then(goBackModifier)
                     )
 
-                    Row(
+                    if (selectedTab == "home") Row(
                         modifier = Modifier
                             .width(layoutControlsWidth)
                             .align(Alignment.CenterEnd),
