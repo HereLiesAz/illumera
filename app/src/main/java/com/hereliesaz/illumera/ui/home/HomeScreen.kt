@@ -310,7 +310,7 @@ fun CinematicLayout(
 ) {
     // Track the *currently* focused row rather than relying on a previously
     // restored poster key. The preview expands immediately above its own row.
-    var activeCinematicRow by remember { mutableStateOf<String?>(null) }
+    var activeCinematicRow by remember(state.loadedScreen) { mutableStateOf<String?>(null) }
     var instantFocusItem by remember { mutableStateOf<MetaItem?>(null) }
     var displayedItem by remember { mutableStateOf<MetaItem?>(null) }
     val previewUpdateGate = remember { PreviewUpdateGate() }
@@ -461,7 +461,7 @@ fun CinematicLayout(
                     // The expanded panel belongs ABOVE the focused poster row,
                     // so bring its header into view on vertical row transitions.
                     // Do not re-scroll when navigating between posters in one row.
-                    LaunchedEffect(activeCinematicRow, state.mixedRows, heroItems.size, historyItems.size) {
+                    LaunchedEffect(activeCinematicRow) {
                         val focused = activeCinematicRow ?: return@LaunchedEffect
                         val index = when (focused) {
                             "history" -> if (historyItems.isNotEmpty()) (if (heroItems.isNotEmpty()) 1 else 0) else -1
