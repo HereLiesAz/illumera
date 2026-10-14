@@ -1633,7 +1633,6 @@ internal fun TrailerPreview(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var ready by remember(item?.id, item?.type) { mutableStateOf(false) }
     val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
         value = null
         if (item != null) {
@@ -1641,7 +1640,8 @@ internal fun TrailerPreview(
             value = resolveTrailer(item)
         }
     }
-    val player = remember(videoUrl) {
+    var ready by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
+    val player = remember(videoUrl, item?.id, item?.type) {
         videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
                 volume = 0f
@@ -1664,8 +1664,10 @@ internal fun TrailerPreview(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
+                    // Pausing does not invalidate the already rendered first frame.
+                    // Clearing ready here hid the video permanently on resume:
+                    // onRenderedFirstFrame isn't guaranteed to fire a second time.
                     player?.pause()
-                    ready = false
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     if (player != null) player.playWhenReady = true
@@ -1691,9 +1693,20 @@ internal fun TrailerPreview(
                         setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                     }
                 },
-                update = { it.player = player; it.alpha = if (ready) 1f else 0f },
+                update = { it.player = player },
                 modifier = Modifier.fillMaxSize()
             )
+            if (!ready) {
+                // Don't hide the SurfaceView: alpha=0 can prevent a first-frame
+                // callback on some Android TV devices. Cover it with the poster
+                // until a decoded frame has really appeared.
+                AsyncImage(
+                    model = item?.background ?: item?.poster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             if (ready) {
                 // Keep the artwork's legibility gradients above moving video.
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
