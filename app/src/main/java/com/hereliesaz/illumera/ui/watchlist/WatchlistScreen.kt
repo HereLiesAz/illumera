@@ -78,11 +78,12 @@ fun WatchlistScreen(
     val library by viewModel.libraryEntries.collectAsState()
     val context = LocalContext.current
     val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
+    val remoteCounts = remember { context.getSharedPreferences("stremio_library_sync", 0) }
     var sortMode by remember(currentProfile?.id) {
         mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
     }
     var mediaTypeFilter by remember { mutableStateOf("all") }
-    val sortedLibrary = remember(library, sortMode) {
+    val sortedLibrary = remember(library, sortMode, currentProfile?.id) {
         val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
             maxOf(it.addedAt, it.lastWatched)
         }
@@ -93,7 +94,11 @@ fun WatchlistScreen(
             "lastwatched" -> library.sortedByDescending { it.lastWatched }
             "watched" -> library.sortedWith(compareByDescending<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
             "unwatched" -> library.sortedWith(compareBy<WatchlistViewModel.LibraryEntry> { it.watched }.then(recent))
-            "mostwatched" -> library.sortedWith(compareByDescending<WatchlistViewModel.LibraryEntry> { it.timesWatched }.then(recent))
+            "mostwatched" -> library.sortedWith(
+                compareByDescending<WatchlistViewModel.LibraryEntry> {
+                    remoteCounts.getInt("watch_count_${currentProfile?.id}_${it.item.id}", it.timesWatched)
+                }.then(recent)
+            )
             else -> library.sortedWith(recent)
         }
     }
