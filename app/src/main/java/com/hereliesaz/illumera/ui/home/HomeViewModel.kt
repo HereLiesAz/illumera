@@ -839,7 +839,8 @@ class HomeViewModel @Inject constructor(
                             )
                     screenName in setOf("movies", "series") ->
                         initialRows.find { it.configId == "catalog-aggregate:${if (screenName == "movies") "movie" else "series"}:all" }
-                    else -> null
+                            ?: initialRows.firstOrNull { it.items.isNotEmpty() }
+                    else -> initialRows.firstOrNull { it.items.isNotEmpty() }
                 }
 
                 // Prefetch first visible images BEFORE updating state.
