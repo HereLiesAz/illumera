@@ -184,7 +184,12 @@ class ProfileConfigurationManager @Inject constructor(
         val finalSnapshot = if (!needsInitialSetup(profileId) &&
             !prefs.getBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", false)
         ) {
-            val defaults = createDefaultRuntimeSnapshot()
+            // Never hold the runtime-switch lock indefinitely on external manifests.
+            // An interrupted upgrade remains unseeded and can retry on next load.
+            val defaults = kotlinx.coroutines.withTimeoutOrNull(8_000L) {
+                createDefaultRuntimeSnapshot()
+            }
+            if (defaults == null) snapshot else {
             val installed = snapshot.addons.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
             val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
             snapshot.copy(
@@ -197,6 +202,7 @@ class ProfileConfigurationManager @Inject constructor(
             ).also {
                 writeSnapshot(profileId, it)
                 prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
+            }
             }
         } else snapshot
         // Merging (keep-newest) watch history only makes sense when reloading the
