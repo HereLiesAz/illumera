@@ -201,7 +201,7 @@ fun HomeScreen(
             }
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
-                val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount) {
+                val heroItems = remember(displayState.heroRow, displayState.rows, heroConfig.posterCount, heroConfig.categoryId) {
                     if (heroConfig.categoryId == HERO_DISABLED_MARKER) emptyList() else
                         (displayState.heroRow?.items?.takeIf { it.isNotEmpty() } ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
                             .orEmpty().take(heroConfig.posterCount)
@@ -237,7 +237,7 @@ fun HomeScreen(
                 )
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
-                val heroItems = remember(displayState.heroRow, heroConfig.posterCount) {
+                val heroItems = remember(displayState.heroRow, heroConfig.posterCount, heroConfig.categoryId) {
                     if (heroConfig.categoryId == HERO_DISABLED_MARKER) emptyList() else displayState.heroRow?.items?.take(heroConfig.posterCount) ?: emptyList()
                 }
 
@@ -714,8 +714,9 @@ private fun FocusedRowCinematicPreview(
     isTopNav: Boolean,
     resolveTrailer: suspend (MetaItem) -> String?
 ) {
-    val bgItem = if (!state.tmdbEnabled || item == null ||
-        state.tmdbEnrichedIds.contains("${item.type}:${item.id}")) item else null
+    // Keep the original artwork visible immediately; enriching the text
+    // must never blank the backdrop while the trailer is still resolving.
+    val bgItem = item
     Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
         CinematicBackground(bgItem)
         TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
