@@ -35,6 +35,7 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -259,10 +260,16 @@ class HomeViewModel @Inject constructor(
                     if (parts.size != 3) return@launch
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
-                    var nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
+                    var nextPage = rowFetchOffsets.getOrPut(configId) { 0 }
                     var next = emptyList<MetaItem>()
-                    // Empty/unavailable addons shouldn't prematurely exhaust the content row.
-                    repeat(4) {
+                    val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
+                    // First visit searches every addon source group in the first layer
+                    // so a later provider can populate a row even if earlier addons are empty.
+                    // Subsequent horizontal browsing fetches source batches lazily.
+                    val probes = if (nextPage < firstLayerCount) {
+                        firstLayerCount - nextPage
+                    } else 4
+                    repeat(probes.coerceAtLeast(0)) {
                         if (next.isEmpty()) {
                             next = repository.getAggregatedCatalogPage(type, genre, nextPage++)
                         }
@@ -358,9 +365,15 @@ class HomeViewModel @Inject constructor(
                 } else item
             }
 
+            val automaticHero = current.heroRow ?: if (
+                current.loadedScreen in setOf("movies", "series") &&
+                tmdbProfileCache?.heroFor(DashboardTab.fromString(current.loadedScreen!!))
+                    ?.categoryId != HERO_DISABLED_MARKER
+            ) updatedRows.firstOrNull { it.items.isNotEmpty() } else null
             current.copy(
                 rows = updatedRows,
-                mixedRows = updatedMixed
+                mixedRows = updatedMixed,
+                heroRow = automaticHero
             )
         }
     }
@@ -808,49 +821,40 @@ class HomeViewModel @Inject constructor(
             try {
                 // Stage 1: Load only a small first batch so the screen opens quickly.
                 val initialRowsDeferred = async {
-                    repository.getDashboardRows(
+                    if (screenName == "home") repository.getDashboardRows(
                         screen = screenName,
                         skipConfigs = 0,
                         maxConfigs = initialDashboardBatchSize,
                         catalogTimeoutMs = initialDashboardTimeoutMs
-                    )
+                    ) else emptyList<HomeRow>()
                 }
-                val hubRowsDeferred = async { repository.getHubRows(screenName) }
+                val hubRowsDeferred = async {
+                    if (screenName == "home") repository.getHubRows(screenName)
+                    else emptyList()
+                }
 
                 val configuredRows = initialRowsDeferred.await()
-                val aggregatedRows = if (screenName in setOf("movies", "series")) {
+                // Movies and Series are entirely genre-first browsing surfaces:
+                // every enabled Stremio genre gets its own independently paginated
+                // row; the old unfiltered All Movies / All Series row is removed.
+                val genreRows = if (screenName in setOf("movies", "series")) {
                     val type = if (screenName == "movies") "movie" else "series"
-                    val genres = context.getSharedPreferences(
-                        "illumera_screen_genres", Context.MODE_PRIVATE
-                    ).getStringSet("${currentProfileId}_${screenName}", emptySet()).orEmpty().toList().sorted()
-                    val requests = genres.map { it as String? } + listOf(null)
-                    kotlinx.coroutines.coroutineScope {
-                        requests.mapIndexed { index, genre ->
-                            async {
-                                // Page 0 can be an empty/failed addon. Probe successive
-                                // source batches lazily until the first populated page.
-                                var metas = emptyList<MetaItem>()
-                                var nextPage = 0
-                                repeat(4) {
-                                    if (metas.isEmpty()) {
-                                        metas = repository.getAggregatedCatalogPage(type, genre, nextPage++)
-                                    }
-                                }
-                                val key = "catalog-aggregate:$type:${genre ?: "all"}"
-                                rowFetchOffsets[key] = nextPage
-                                if (metas.isEmpty()) null else HomeRow(
-                                    configId = key,
-                                    title = genre ?: if (type == "movie") "All Movies" else "All Series",
-                                    items = metas,
-                                    isInfiniteScrollingEnabled = true,
-                                    supportsSkip = true,
-                                    order = -1000 + index
-                                )
-                            }
-                        }.awaitAll().filterNotNull()
+                    val available = repository.availableScreenGenres(type)
+                    val enabled = ScreenGenreRows.enabledGenres(
+                        context, currentProfileId, screenName, available
+                    )
+                    enabled.mapIndexed { index, genre ->
+                        HomeRow(
+                            configId = "catalog-aggregate:$type:$genre",
+                            title = genre,
+                            items = emptyList(),
+                            isInfiniteScrollingEnabled = true,
+                            supportsSkip = true,
+                            order = -1000 + index
+                        )
                     }
                 } else emptyList()
-                val initialRows = aggregatedRows + configuredRows
+                val initialRows = if (screenName == "home") configuredRows else genreRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
@@ -877,8 +881,7 @@ class HomeViewModel @Inject constructor(
                                 timeoutMs = initialDashboardTimeoutMs
                             )
                     screenName in setOf("movies", "series") ->
-                        initialRows.find { it.configId == "catalog-aggregate:${if (screenName == "movies") "movie" else "series"}:all" }
-                            ?: initialRows.firstOrNull { it.items.isNotEmpty() }
+                        initialRows.firstOrNull { it.items.isNotEmpty() }
                     else -> initialRows.firstOrNull { it.items.isNotEmpty() }
                 }
 
@@ -907,8 +910,15 @@ class HomeViewModel @Inject constructor(
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Stage 2: Load remaining categories in the background and append.
-                launch {
+                // Only the first visible genre rows start fetching initially. Others
+                // are fetched when they enter the LazyColumn viewport; never start
+                // dozens of genre network requests on one screen open.
+                if (screenName in setOf("movies", "series")) {
+                    initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                }
+
+                // Home alone retains its individually configured addon/hub rows.
+                if (screenName == "home") launch {
                     val remainingRows = repository.getDashboardRows(
                         screen = screenName,
                         skipConfigs = initialDashboardBatchSize
