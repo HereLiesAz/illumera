@@ -60,6 +60,7 @@ fun LumeraCard(
     hasNewEpisode: Boolean = false,
     onFocused: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onRemotePressChanged: ((Boolean) -> Unit)? = null,
     mediaItem: MetaItem? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -111,10 +112,12 @@ fun LumeraCard(
                         KeyEvent.ACTION_DOWN -> {
                             // Track the hold; the one-second timer opens the menu independently of key repeats.
                             dpadKeyHeld = true
+                            onRemotePressChanged?.invoke(true)
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
                             dpadKeyHeld = false
+                            onRemotePressChanged?.invoke(false)
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
@@ -130,7 +133,7 @@ fun LumeraCard(
                     isFocused = it.isFocused
                     if (!it.isFocused) {
                         dpadKeyHeld = false
-                        dpadLongPressTriggered = false
+                        if (!contextMenuExpanded) dpadLongPressTriggered = false
                     }
                     if (it.isFocused) onFocused?.invoke()
                 },
@@ -243,7 +246,8 @@ fun LumeraCard(
             MediaCardActionMenu(
                 target = MediaActionTarget.fromMeta(mediaItem),
                 expanded = contextMenuExpanded,
-                onDismissRequest = { contextMenuExpanded = false }
+                focusable = !dpadKeyHeld,
+                onDismissRequest = { if (!dpadKeyHeld) contextMenuExpanded = false }
             )
         }
     }
