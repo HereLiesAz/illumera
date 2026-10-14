@@ -75,6 +75,7 @@ fun DashboardEditorScreen(
     val configs by viewModel.configs.collectAsState()
     val hubRows by viewModel.hubRows.collectAsState()
     var selectedTab by remember { mutableStateOf("home") }
+    var genreChanges by remember(currentProfile?.id) { mutableIntStateOf(0) }
     val availableGenres by viewModel.availableGenres(selectedTab).collectAsState()
     var focusedTab by remember { mutableStateOf("home") }
 
@@ -353,10 +354,7 @@ fun DashboardEditorScreen(
             }
 
             if (currentProfile != null && selectedTab in setOf("movies", "series")) {
-                var genreVisibilityVersion by remember(currentProfile.id, selectedTab) {
-                    mutableIntStateOf(0)
-                }
-                val hidden = remember(currentProfile.id, selectedTab, genreVisibilityVersion) {
+                val hidden = remember(currentProfile.id, selectedTab, genreChanges) {
                     viewModel.disabledGenres(currentProfile.id, selectedTab)
                 }
                 Text(
@@ -576,8 +574,7 @@ fun DashboardEditorScreen(
         is DialogState.ManageGenres -> {
             if (currentProfile != null) {
                 val genres by viewModel.availableGenres(state.screen).collectAsState()
-                var revision by remember(currentProfile.id, state.screen) { mutableIntStateOf(0) }
-                val hidden = remember(currentProfile.id, state.screen, revision) {
+                val hidden = remember(currentProfile.id, state.screen, genreChanges) {
                     viewModel.disabledGenres(currentProfile.id, state.screen)
                 }
                 val requester = remember { FocusRequester() }
@@ -598,11 +595,11 @@ fun DashboardEditorScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         VoidButton("Enable All", {
                             viewModel.setAllGenresEnabled(currentProfile.id, state.screen, true)
-                            revision++
+                            genreChanges++
                         }, Modifier.weight(1f), focusRequester = requester)
                         VoidButton("Disable All", {
                             viewModel.setAllGenresEnabled(currentProfile.id, state.screen, false)
-                            revision++
+                            genreChanges++
                         }, Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(10.dp))
@@ -617,7 +614,7 @@ fun DashboardEditorScreen(
                                 text = "${if (enabled) "✓  " else "○  "}$genre",
                                 onClick = {
                                     viewModel.toggleGenre(currentProfile.id, state.screen, genre)
-                                    revision++
+                                    genreChanges++
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 isPrimary = enabled
