@@ -379,6 +379,9 @@ fun DashboardEditorScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
+            // Only Home uses individually managed addon rows. Movies/Series
+            // are generated entirely from enabled genres.
+            if (selectedTab == "home") {
             // --- REORDER BANNER ---
             if (isReorderActive) {
                 Box(
@@ -545,6 +548,7 @@ fun DashboardEditorScreen(
                     }
                 }
             }
+            } // End Home-only catalog editor.
         }
 
         // --- SNACKBAR ---
@@ -1103,7 +1107,7 @@ fun DashboardEditorScreen(
                     ) {
                     val selectedCatName = if (selectedCategoryId == null) {
                         if (tab == DashboardTab.HOME) "Automatic (first populated Home row)" else
-                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
+                            "Automatic (first enabled genre row)"
                     } else if (selectedCategoryId != null) {
                         val cat = configs.find { it.uniqueId == selectedCategoryId }
                         if (cat != null) {
@@ -1226,7 +1230,7 @@ fun DashboardEditorScreen(
                             item(key = "unified_hero") {
                                 VoidSimpleItem(
                                     text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
-                                        "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
+                                        "Automatic (first enabled genre row)",
                                     onClick = {
                                         selectedCategoryId = null
                                         showCategoryPicker = false
