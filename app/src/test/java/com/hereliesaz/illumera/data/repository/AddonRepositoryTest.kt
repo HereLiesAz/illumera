@@ -485,6 +485,92 @@ class AddonRepositoryTest {
         assertEquals("$goodUrl/movie/top", rows.single().configId)
     }
 
+
+    @Test
+    fun unifiedDiscoverCombinesEnabledCatalogsAndDeduplicatesTitles() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val catalog = """[{"type":"movie","id":"top","name":"Top"}]"""
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://first.example").copy(catalogsJson = catalog),
+            addon("https://second.example").copy(catalogsJson = catalog),
+            addon("https://disabled.example", enabled = false).copy(catalogsJson = catalog)
+        ))
+        coEvery { api.getCatalog("https://first.example/catalog/movie/top.json") } returns CatalogResponse(
+            listOf(
+                MetaItem(id = "tt0000001", type = "movie", name = "First Film"),
+                MetaItem(id = "tt0000002", type = "movie", name = "Second Film")
+            )
+        )
+        coEvery { api.getCatalog("https://second.example/catalog/movie/top.json") } returns CatalogResponse(
+            listOf(
+                MetaItem(id = "tt0000001", type = "movie", name = "Duplicate"),
+                MetaItem(id = "tt0000003", type = "movie", name = "Third Film"),
+                MetaItem(id = "tt0000004", type = "series", name = "Wrong Type")
+            )
+        )
+
+        val result = AddonRepository(api, dao).getUnifiedDiscoveryPage("movie", sourcesPerPage = 8)
+
+        assertEquals(listOf("tt0000001", "tt0000002", "tt0000003"), result.map { it.id })
+        coVerify(exactly = 0) { api.getCatalog("https://disabled.example/catalog/movie/top.json") }
+    }
+
+    @Test
+    fun unifiedDiscoverPagesSourcesBeforeRequestingSkipLayers() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val paginated = """[{"type":"movie","id":"top","extra":[{"name":"skip"}]}]"""
+        val fixed = """[{"type":"movie","id":"latest"}]"""
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://paged.example").copy(catalogsJson = paginated),
+            addon("https://fixed.example").copy(catalogsJson = fixed)
+        ))
+        coEvery { api.getCatalog(any()) } returns CatalogResponse(listOf(meta("tt0000005")))
+
+        val repository = AddonRepository(api, dao)
+        repository.getUnifiedDiscoveryPage("movie", page = 0, sourcesPerPage = 1)
+        repository.getUnifiedDiscoveryPage("movie", page = 1, sourcesPerPage = 1)
+        repository.getUnifiedDiscoveryPage("movie", page = 2, sourcesPerPage = 1)
+        repository.getUnifiedDiscoveryPage("movie", page = 3, sourcesPerPage = 1)
+
+        coVerify(exactly = 1) { api.getCatalog("https://paged.example/catalog/movie/top.json") }
+        coVerify(exactly = 1) { api.getCatalog("https://fixed.example/catalog/movie/latest.json") }
+        coVerify(exactly = 1) { api.getCatalog("https://paged.example/catalog/movie/top/skip=100.json") }
+        coVerify(exactly = 3) { api.getCatalog(any()) }
+    }
+
+    @Test
+    fun unifiedGenreUsesCatalogExtraAndChecksGenresForOtherSources() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://filtered.example").copy(
+                catalogsJson = """[{"type":"series","id":"top","extra":[{"name":"genre","options":["Science Fiction"]}]}]"""
+            ),
+            addon("https://unfiltered.example").copy(
+                catalogsJson = """[{"type":"series","id":"top"}]"""
+            )
+        ))
+        coEvery {
+            api.getCatalog("https://filtered.example/catalog/series/top/genre=Science%20Fiction.json")
+        } returns CatalogResponse(listOf(
+            MetaItem(id = "tt0000006", type = "series", name = "Sci-Fi One")
+        ))
+        coEvery { api.getCatalog("https://unfiltered.example/catalog/series/top.json") } returns CatalogResponse(
+            listOf(
+                MetaItem(id = "tt0000007", type = "series", name = "Sci-Fi Two", genres = listOf("Science Fiction")),
+                MetaItem(id = "tt0000008", type = "series", name = "Drama", genres = listOf("Drama"))
+            )
+        )
+
+        val result = AddonRepository(api, dao).getUnifiedDiscoveryPage(
+            "series", genre = "Science Fiction", sourcesPerPage = 4
+        )
+
+        assertEquals(listOf("tt0000006", "tt0000007"), result.map { it.id })
+    }
+
     private fun meta(id: String, type: String = "movie") = MetaItem(id = id, type = type, name = id)
 
     private fun addon(
