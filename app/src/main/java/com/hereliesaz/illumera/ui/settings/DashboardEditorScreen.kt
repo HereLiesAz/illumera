@@ -46,6 +46,7 @@ import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubShape
 import com.hereliesaz.illumera.domain.heroFor
+import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.domain.withHero
 import com.hereliesaz.illumera.ui.addons.VoidButton
@@ -286,7 +287,12 @@ fun DashboardEditorScreen(
                 val currentLayout = currentProfile.layoutFor(dashboardTab)
                 val isSimple = selectedTab == "home" && currentLayout == "simple"
                 val heroConfig = currentProfile.heroFor(dashboardTab)
-                val heroLabel = if (heroConfig.categoryId != null) {
+                val heroDisabled = heroConfig.categoryId == HERO_DISABLED_MARKER
+                val heroLabel = if (heroConfig.categoryId == null ||
+                    heroConfig.categoryId == "catalog-aggregate:${if (dashboardTab == DashboardTab.MOVIES) "movie" else "series"}:all"
+                        && dashboardTab != DashboardTab.HOME) {
+                    "Hero Carousel · Automatic"
+                } else if (heroConfig.categoryId != null && !heroDisabled) {
                     val cat = configs.find { it.uniqueId == heroConfig.categoryId }
                     val catName = cat?.customTitle ?: cat?.catalogName ?: cat?.addonName ?: "Unknown"
                     val catType = cat?.catalogType?.replaceFirstChar { it.uppercase() } ?: ""
@@ -295,7 +301,7 @@ fun DashboardEditorScreen(
                     "Hero Carousel · Disabled"
                 }
                 val heroSubtitle = when {
-                    heroConfig.categoryId != null -> "${heroConfig.posterCount} posters"
+                    !heroDisabled -> "${heroConfig.posterCount} posters"
                     else -> "Tap to configure"
                 }
 
@@ -307,7 +313,7 @@ fun DashboardEditorScreen(
                     VoidEditorRow(
                         title = heroLabel,
                         subtitle = heroSubtitle,
-                        isEnabled = heroConfig.categoryId != null,
+                        isEnabled = !heroDisabled,
                         onClick = {
                             dialogState = DialogState.HeroCarouselConfig(dashboardTab)
                         },
@@ -1015,7 +1021,14 @@ fun DashboardEditorScreen(
             if (currentProfile != null) {
                 val tab = state.tab
                 val heroConfig = currentProfile.heroFor(tab)
-                var selectedCategoryId by remember { mutableStateOf(heroConfig.categoryId) }
+                val automaticCategory = when (tab) {
+                    DashboardTab.MOVIES -> "catalog-aggregate:movie:all"
+                    DashboardTab.SERIES -> "catalog-aggregate:series:all"
+                    DashboardTab.HOME -> null
+                }
+                var selectedCategoryId by remember(tab, heroConfig.categoryId) {
+                    mutableStateOf(if (heroConfig.categoryId == automaticCategory) null else heroConfig.categoryId)
+                }
                 var posterCount by remember { mutableFloatStateOf(heroConfig.posterCount.toFloat()) }
                 var autoScrollSeconds by remember { mutableFloatStateOf(heroConfig.autoScrollSeconds.toFloat()) }
                 val focusRequester = remember { FocusRequester() }
@@ -1037,7 +1050,10 @@ fun DashboardEditorScreen(
                         onDismissRequest = { dialogState = DialogState.None },
                         title = "Hero Carousel"
                     ) {
-                    val selectedCatName = if (selectedCategoryId != null) {
+                    val selectedCatName = if (selectedCategoryId == null) {
+                        if (tab == DashboardTab.HOME) "Automatic (first populated Home row)" else
+                            "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)"
+                    } else if (selectedCategoryId != null) {
                         val cat = configs.find { it.uniqueId == selectedCategoryId }
                         if (cat != null) {
                             val baseTitle = cat.customTitle ?: cat.catalogName ?: cat.addonName
@@ -1094,7 +1110,7 @@ fun DashboardEditorScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         VoidButton("Disable", {
                             showDisableConfirm = true
-                        }, Modifier.weight(1f), isDestructive = true, enabled = heroConfig.categoryId != null)
+                        }, Modifier.weight(1f), isDestructive = true, enabled = heroConfig.categoryId != HERO_DISABLED_MARKER)
                         VoidButton("Save", {
                             viewModel.updateTabHero(
                                 currentProfile.id,
@@ -1103,7 +1119,7 @@ fun DashboardEditorScreen(
                             )
                             dialogState = DialogState.None
                             showSnackbar("Hero carousel updated")
-                        }, Modifier.weight(1f), isPrimary = true, enabled = selectedCategoryId != null)
+                        }, Modifier.weight(1f), isPrimary = true, enabled = true)
                     }
                     }
                 } else {
@@ -1132,7 +1148,7 @@ fun DashboardEditorScreen(
                                     viewModel.updateTabHero(
                                         currentProfile.id,
                                         tab,
-                                        HeroConfig(null, 10, 0)
+                                        HeroConfig(HERO_DISABLED_MARKER, 10, 0)
                                     )
                                     dialogState = DialogState.None
                                     showSnackbar("Hero carousel disabled")
@@ -1156,6 +1172,17 @@ fun DashboardEditorScreen(
                             modifier = Modifier.heightIn(max = 300.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            item(key = "unified_hero") {
+                                VoidSimpleItem(
+                                    text = if (tab == DashboardTab.HOME) "Automatic Home Carousel" else
+                                        "All ${if (tab == DashboardTab.MOVIES) "Movies" else "Series"} (unified)",
+                                    onClick = {
+                                        selectedCategoryId = null
+                                        showCategoryPicker = false
+                                    },
+                                    focusRequester = pickerFocusRequester
+                                )
+                            }
                             itemsIndexed(visibleConfigs) { index, config ->
                                 val baseTitle = config.customTitle ?: config.catalogName ?: config.addonName
                                 val configTitle = "$baseTitle - ${config.catalogType.replaceFirstChar { it.uppercase() }}"
@@ -1165,7 +1192,7 @@ fun DashboardEditorScreen(
                                         selectedCategoryId = config.uniqueId
                                         showCategoryPicker = false
                                     },
-                                    focusRequester = if (index == 0) pickerFocusRequester else null
+                                    focusRequester = null
                                 )
                             }
                         }

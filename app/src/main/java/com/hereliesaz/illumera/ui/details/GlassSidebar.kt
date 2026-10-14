@@ -57,7 +57,11 @@ sealed class SidebarState {
     /** [initialFocusEpisodeId] is a durably-remembered "last browsed" episode (a
      *  `":$season:$episode"` suffix, matched the same way as [currentEpisodeId] in
      *  [GlassSidebar]) used only on a fresh open with nothing currently playing. */
-    data class Episodes(val videos: List<MetaVideo>, val initialFocusEpisodeId: String? = null) : SidebarState()
+    data class Episodes(
+        val videos: List<MetaVideo>,
+        val initialFocusEpisodeId: String? = null,
+        val isLoading: Boolean = false
+    ) : SidebarState()
     data class Sources(val streamTitle: String, val streams: List<Stream>?, val selectedStreamId: String? = null) : SidebarState()
 }
 
@@ -206,6 +210,7 @@ fun GlassSidebar(
             when (current) {
                 is SidebarState.Episodes -> EpisodesContent(
                     videos = current.videos,
+                    isLoading = current.isLoading,
                     listState = episodesListState,
                     savedSeason = savedSeason,
                     savedIndex = savedIndex,
@@ -268,7 +273,8 @@ fun EpisodesContent(
     focusRequester: FocusRequester,
     onEpisodeClick: (MetaVideo, Int, Int) -> Unit,
     onSeasonChange: (Int) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    isLoading: Boolean = false
 ) {
     val seasons = remember(videos) { episodesBySeason(videos) }
     var selectedSeason by remember(savedSeason) {
@@ -406,7 +412,13 @@ fun EpisodesContent(
                     )
             ) {
                 if (episodes.isEmpty()) {
-                    item { Text("No episodes found.", color = Color.Gray) }
+                    item {
+                        Text(
+                            if (isLoading) "Loading episodes…" else
+                                "No episodes available from the installed metadata providers.",
+                            color = Color.Gray
+                        )
+                    }
                 } else {
                     itemsIndexed(
                         episodes,
@@ -768,6 +780,22 @@ fun EpisodeItem(
     var buttonFocused by remember { mutableStateOf(false) }
     var contextMenuExpanded by remember(mediaActionTarget?.key) { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(contextMenuExpanded) {
+        if (!contextMenuExpanded) {
+            dpadKeyHeld = false
+            dpadLongPressTriggered = false
+        }
+    }
+    LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered && mediaActionTarget != null) {
+                dpadLongPressTriggered = true
+                contextMenuExpanded = true
+            }
+        }
+    }
     val isFocused = thumbnailFocused || buttonFocused
     val primary = MaterialTheme.colorScheme.primary
     val thumbnailRequester = remember { FocusRequester() }
@@ -820,7 +848,7 @@ fun EpisodeItem(
                 }
                 .onFocusChanged {
                     thumbnailFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .touchClick(
                     onClick = onClick,
@@ -836,14 +864,11 @@ fun EpisodeItem(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                contextMenuExpanded = true
-                            }
+                            dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false
@@ -1101,14 +1126,30 @@ fun RawSourceItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
+    var dpadKeyHeld by remember { mutableStateOf(false) }
+    LaunchedEffect(menuExpanded) {
+        if (!menuExpanded) {
+            dpadKeyHeld = false
+            dpadLongPressTriggered = false
+        }
+    }
+    LaunchedEffect(dpadKeyHeld) {
+        if (dpadKeyHeld) {
+            delay(1_000L)
+            if (dpadKeyHeld && !dpadLongPressTriggered && hasContextActions) {
+                dpadLongPressTriggered = true
+                menuExpanded = true
+            }
+        }
+    }
     val primary = MaterialTheme.colorScheme.primary
     val mainText = stream.description ?: stream.title ?: stream.name ?: "Unknown"
     val subText = listOfNotNull(
         stream.addonDisplayName?.takeIf { it.isNotBlank() }?.let { "[$it]" },
         stream.name?.takeIf { it.isNotBlank() }
     ).joinToString(" ")
-    val hasContextActions = onToggleExcluded != null || onToggleSourceListDisabled != null
 
     Box(modifier = modifier.fillMaxWidth()) {
         Card(
@@ -1123,7 +1164,7 @@ fun RawSourceItem(
                 .fillMaxWidth()
                 .onFocusChanged {
                     isFocused = it.isFocused
-                    if (!it.isFocused) dpadLongPressTriggered = false
+                    if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .border(
                     if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
@@ -1143,14 +1184,11 @@ fun RawSourceItem(
                     if (!activation) return@onPreviewKeyEvent false
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
-                            // Held past the first key repeat: open the menu now, not on release.
-                            if (hasContextActions && native.repeatCount > 0 && !dpadLongPressTriggered) {
-                                dpadLongPressTriggered = true
-                                menuExpanded = true
-                            }
+                            if (hasContextActions) dpadKeyHeld = true
                             dpadLongPressTriggered
                         }
                         KeyEvent.ACTION_UP -> {
+                            dpadKeyHeld = false
                             if (dpadLongPressTriggered) {
                                 // The menu already opened while held; the release is not a click.
                                 dpadLongPressTriggered = false

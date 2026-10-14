@@ -55,7 +55,8 @@ private data class WatchConfig(val apiKey: String?, val visitorData: String?)
 private data class StreamCandidate(
     val client: String, val priority: Int, val url: String,
     val score: Double, val hasN: Boolean, val itag: String,
-    val height: Int, val fps: Int, val ext: String
+    val height: Int, val fps: Int, val ext: String,
+    val codec: String = ""
 )
 
 private data class ManifestBestVariant(
@@ -122,13 +123,16 @@ class YouTubeExtractor @Inject constructor() {
         .followSslRedirects(true)
         .build()
 
-    suspend fun extractPlaybackSource(youtubeKey: String): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
+    suspend fun extractPlaybackSource(
+        youtubeKey: String,
+        preferCompatiblePreview: Boolean = false
+    ): TrailerPlaybackSource? = withContext(Dispatchers.IO) {
         if (youtubeKey.isBlank()) return@withContext null
 
         Log.d(TAG, "Extracting playback source for key: $youtubeKey")
         try {
             withTimeout(EXTRACTOR_TIMEOUT_MS) {
-                extractInternal(youtubeKey)
+                extractInternal(youtubeKey, preferCompatiblePreview)
             }
         } catch (e: TimeoutCancellationException) {
             Log.w(TAG, "Extraction timed out for $youtubeKey")
@@ -141,7 +145,9 @@ class YouTubeExtractor @Inject constructor() {
         }
     }
 
-    private suspend fun extractInternal(videoKey: String): TrailerPlaybackSource? {
+    private suspend fun extractInternal(
+        videoKey: String, preferCompatiblePreview: Boolean
+    ): TrailerPlaybackSource? {
         val videoId = extractVideoId(videoKey) ?: return null
 
         val watchUrl = "https://www.youtube.com/watch?v=$videoId&hl=en"
@@ -178,7 +184,8 @@ class YouTubeExtractor @Inject constructor() {
                     progressive += StreamCandidate(
                         client.key, client.priority, url, videoScore(height, fps, bitrate),
                         hasNParam(url), format.stringValue("itag").orEmpty(),
-                        height, fps, if (mimeType.contains("webm")) "webm" else "mp4"
+                        height, fps, if (mimeType.contains("webm")) "webm" else "mp4",
+                        mimeType
                     )
                 }
 
@@ -195,7 +202,8 @@ class YouTubeExtractor @Inject constructor() {
                         adaptiveVideo += StreamCandidate(
                             client.key, client.priority, url, videoScore(height, fps, bitrate),
                             hasNParam(url), format.stringValue("itag").orEmpty(),
-                            height, fps, if (mimeType.contains("webm")) "webm" else "mp4"
+                            height, fps, if (mimeType.contains("webm")) "webm" else "mp4",
+                            mimeType
                         )
                     } else if (mimeType.contains("audio/")) {
                         val bitrate = format.numberValue("bitrate") ?: format.numberValue("averageBitrate") ?: 0.0
@@ -238,8 +246,27 @@ class YouTubeExtractor @Inject constructor() {
             }
         }
 
-        val bestProgressive = sortCandidates(progressive).firstOrNull()
-        val bestVideo = pickBestForClient(adaptiveVideo, PREFERRED_SEPARATE_CLIENT)
+        // TV background previews should prefer hardware-friendly AVC MP4 at
+        // 1080p or below. The full-screen trailer player retains its normal
+        // high-quality selection. Unsupported AV1/4K streams previously failed
+        // to render even when extraction succeeded.
+        val compatibleProgressive = progressive.filter {
+            it.codec.contains("avc1", ignoreCase = true) &&
+                it.height in 1..1080
+        }
+        val compatibleAdaptive = adaptiveVideo.filter {
+            it.codec.contains("avc1", ignoreCase = true) &&
+                it.height in 1..1080
+        }
+        val bestProgressive = sortCandidates(
+            if (preferCompatiblePreview && compatibleProgressive.isNotEmpty()) compatibleProgressive
+            else progressive
+        ).firstOrNull()
+        val bestVideo = pickBestForClient(
+            if (preferCompatiblePreview && compatibleAdaptive.isNotEmpty()) compatibleAdaptive
+            else adaptiveVideo,
+            PREFERRED_SEPARATE_CLIENT
+        )
         val bestAudio = pickBestForClient(adaptiveAudio, PREFERRED_SEPARATE_CLIENT)
 
         // Prefer adaptive video+audio (highest quality) with MergingMediaSource.

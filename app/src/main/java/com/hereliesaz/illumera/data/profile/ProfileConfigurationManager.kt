@@ -16,6 +16,9 @@ import com.hereliesaz.illumera.data.remote.StremioAddonEntry
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +58,7 @@ class ProfileConfigurationManager @Inject constructor(
         private const val PREFS_FILE = "profile_configuration_prefs"
         private const val KEY_PENDING_SETUP_PROFILES = "pending_setup_profiles"
         private const val KEY_LAST_ACTIVE_PROFILE_ID = "last_active_profile_id"
+        private const val KEY_DEFAULT_SET_SEEDED = "default_addons_v2_"
         private const val SNAPSHOT_DIR = "profile_snapshots"
         private const val DEFAULT_CINEMETA_MANIFEST_URL = "https://v3-cinemeta.strem.io/manifest.json"
         private const val DEFAULT_CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
@@ -174,6 +178,27 @@ class ProfileConfigurationManager @Inject constructor(
                 ProfileRuntimeSnapshot()
             }
         }
+        // One-time additive upgrade for existing profiles: never rewrite an addon
+        // the user already installed, configured, or disabled, and never re-install
+        // something they subsequently remove.
+        val finalSnapshot = if (!needsInitialSetup(profileId) &&
+            !prefs.getBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", false)
+        ) {
+            val defaults = createDefaultRuntimeSnapshot()
+            val installed = snapshot.addons.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
+            val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
+            snapshot.copy(
+                addons = snapshot.addons + defaults.addons.filter {
+                    it.transportUrl.trimEnd('/') !in installed
+                },
+                catalogConfigs = snapshot.catalogConfigs + defaults.catalogConfigs.filter {
+                    it.uniqueId !in configured
+                }
+            ).also {
+                writeSnapshot(profileId, it)
+                prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
+            }
+        } else snapshot
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
         // crash before the last onStop snapshot was written). On a genuine switch
@@ -181,11 +206,11 @@ class ProfileConfigurationManager @Inject constructor(
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
         dao.replaceRuntimeState(
-            addons = snapshot.addons,
-            catalogConfigs = snapshot.catalogConfigs,
-            hubRows = snapshot.hubRows,
-            hubRowItems = snapshot.hubRowItems,
-            watchHistory = snapshot.watchHistory,
+            addons = finalSnapshot.addons,
+            catalogConfigs = finalSnapshot.catalogConfigs,
+            hubRows = finalSnapshot.hubRows,
+            hubRowItems = finalSnapshot.hubRowItems,
+            watchHistory = finalSnapshot.watchHistory,
             mergeWatchHistory = sameProfile,
             ownerProfileId = profileId
         )
@@ -195,6 +220,7 @@ class ProfileConfigurationManager @Inject constructor(
 
     suspend fun initializeFromScratch(profileId: Int) {
         writeSnapshot(profileId, createDefaultRuntimeSnapshot())
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
         clearPendingSetup(profileId)
     }
@@ -214,6 +240,16 @@ class ProfileConfigurationManager @Inject constructor(
             }
         }
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
+        // A copied profile inherits any deliberate addon removal/disable choices.
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$targetProfileId", true).apply()
+        val sourceGenres = context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
+        val genreEditor = sourceGenres.edit()
+        listOf("movies", "series").forEach { screen ->
+            val genres = sourceGenres.getStringSet("${sourceProfileId}_$screen", null)
+            val key = "${targetProfileId}_$screen"
+            if (genres == null) genreEditor.remove(key) else genreEditor.putStringSet(key, genres.toSet())
+        }
+        genreEditor.apply()
         stremioAuthManager.copyCredentialsBetweenProfiles(sourceProfileId, targetProfileId)
         copyProfileDisplayAndDashboardConfig(targetProfileId, sourceProfileId)
         clearPendingSetup(targetProfileId)
@@ -236,6 +272,7 @@ class ProfileConfigurationManager @Inject constructor(
                 val defaultSnapshot = createDefaultRuntimeSnapshot()
                 stremioAuthManager.clearCredentialsForProfile(profileId)
                 writeSnapshot(profileId, defaultSnapshot)
+                prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
                 clearPendingSetup(profileId)
                 Result.failure(error)
             }
@@ -248,6 +285,7 @@ class ProfileConfigurationManager @Inject constructor(
      */
     suspend fun initializeFromScratchWithConnectedStremio(profileId: Int): Result<Int> {
         val defaultSnapshot = createDefaultRuntimeSnapshot()
+        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
         stremioAuthManager.saveCredentialsForProfile(profileId)
         val addonsResult = stremioAuthManager.fetchAddons()
 
@@ -277,13 +315,20 @@ class ProfileConfigurationManager @Inject constructor(
     private suspend fun buildSnapshotFromStremioAddons(entries: List<StremioAddonEntry>): ProfileRuntimeSnapshot {
         val addons = mutableListOf<AddonEntity>()
         val configs = mutableListOf<CatalogConfigEntity>()
+        val predefined = setOf(
+            DEFAULT_CINEMETA_TRANSPORT_URL,
+            "https://stremio-trailer-addon.vercel.app",
+            "https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
+            "https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
+            "https://seedsphere.fly.dev",
+            "https://stremiostats.stream"
+        )
         var failed = 0
 
         entries.forEach { entry ->
             val transportUrl = entry.transportUrl.removeSuffix("/manifest.json").trimEnd('/')
-            // Every fresh profile already gets the default Cinemeta addon — skip a duplicate.
-            if (transportUrl == DEFAULT_CINEMETA_TRANSPORT_URL ||
-                transportUrl == "https://stremio-trailer-addon.vercel.app") return@forEach
+            // Each fresh profile already receives the stock addon set — skip duplicates.
+            if (transportUrl in predefined) return@forEach
 
             val manifest = try {
                 addonRepository.fetchManifest("$transportUrl/manifest.json")
@@ -360,6 +405,9 @@ class ProfileConfigurationManager @Inject constructor(
     fun deleteProfileState(profileId: Int) {
         clearPendingSetup(profileId)
         snapshotFile(profileId).delete()
+        prefs.edit().remove("$KEY_DEFAULT_SET_SEEDED$profileId").apply()
+        context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE).edit()
+            .remove("${profileId}_movies").remove("${profileId}_series").apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {
@@ -478,9 +526,76 @@ class ProfileConfigurationManager @Inject constructor(
             sortOrder = 1
         )
 
+        // Default addons requested for fresh Illumera profiles. Fetch manifests
+        // concurrently; unreachable providers retain an install entry but expose no
+        // imaginary metadata or streaming capabilities until they respond.
+        data class DefaultAddon(val url: String, val name: String, val stream: Boolean)
+        val defaults = listOf(
+            DefaultAddon("https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
+                "Streaming Catalogs", false),
+            DefaultAddon("https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
+                "The Movie Database Addon", false),
+            DefaultAddon("https://seedsphere.fly.dev", "SeedSphere", true),
+            // Stremio Stats requires a personally configured manifest for
+            // account-backed statistics; an unconfigured install has no user data.
+            DefaultAddon("https://stremiostats.stream", "Stremio Stats", false)
+        )
+        val additional = coroutineScope {
+            defaults.mapIndexed { index, entry ->
+                async {
+                    val manifest = try {
+                        withTimeout(5_000L) { addonRepository.fetchManifest("${entry.url}/manifest.json") }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val addonCatalogs = manifest?.catalogs.orEmpty()
+                    val entity = AddonEntity(
+                        transportUrl = entry.url,
+                        id = manifest?.id ?: entry.name.lowercase().replace(' ', '-'),
+                        name = manifest?.name ?: entry.name,
+                        version = manifest?.version ?: "0",
+                        description = manifest?.description ?: if (entry.name == "Stremio Stats") {
+                            "Configure with your Stremio account to enable personal statistics"
+                        } else "Manifest unavailable; capabilities load when the provider is reachable",
+                        iconUrl = manifest?.logo,
+                        isEnabled = true,
+                        catalogsJson = gson.toJson(addonCatalogs),
+                        supportsMeta = manifest?.supportsResource("meta") ?: false,
+                        supportsStream = manifest?.supportsResource("stream") ?: false,
+                        typesJson = gson.toJson(manifest?.types.orEmpty()),
+                        sortOrder = index + 2
+                    )
+                    val addonConfigs = addonCatalogs.mapIndexed { catalogIndex, catalog ->
+                        val isMovie = catalog.type == "movie"
+                        val isSeries = catalog.type == "series"
+                        CatalogConfigEntity(
+                            uniqueId = "${entry.url}/${catalog.type}/${catalog.id}",
+                            transportUrl = entry.url,
+                            addonName = entity.name,
+                            catalogType = catalog.type,
+                            catalogId = catalog.id,
+                            catalogName = catalog.name,
+                            customTitle = null,
+                            showInHome = isMovie || isSeries,
+                            showInMovies = isMovie,
+                            showInSeries = isSeries,
+                            homeOrder = 20 + index * 100 + catalogIndex,
+                            moviesOrder = if (isMovie) 20 + catalogIndex else 999,
+                            seriesOrder = if (isSeries) 20 + catalogIndex else 999
+                        )
+                    }
+                    entity to addonConfigs
+                }
+            }.map { it.await() }
+        }
+
         return ProfileRuntimeSnapshot(
-            addons = listOf(addonEntity, trailerAddon),
-            catalogConfigs = configs,
+            addons = (listOf(addonEntity, trailerAddon) + additional.map { it.first })
+                .distinctBy { it.transportUrl },
+            catalogConfigs = (configs + additional.flatMap { it.second })
+                .distinctBy { it.uniqueId },
             hubRows = emptyList(),
             hubRowItems = emptyList(),
             watchHistory = emptyList()

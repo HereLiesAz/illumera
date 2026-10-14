@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.repository.aggregatedMediaIdentityKeys
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
@@ -33,6 +34,7 @@ import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.domain.DashboardTab
 import com.hereliesaz.illumera.domain.heroFor
+import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -50,34 +52,63 @@ class HomeViewModel @Inject constructor(
      * Resolve a trailer through the bundled addon, then extract its YouTube playback URL.
      * A missing, malformed or unavailable trailer never replaces the poster artwork.
      */
+    private data class CachedTrailer(val url: String, val fetchedAtMs: Long)
+    private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedTrailer>()
+
     suspend fun resolveTrailer(item: MetaItem): String? {
         if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        val trailerKey = "${item.type}:${item.id}"
+
         // An addon removed or disabled by the user must never receive trailer requests.
         val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
         if (!trailer.isEnabled) return null
-        // The provider only accepts IMDb identifiers. Non-IMDb IDs need mapping.
-        val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value ?: return null
+        trailerUrlCache[trailerKey]?.let { cached ->
+            // Googlevideo URLs are signed and expire. Never permanently cache one.
+            if (System.currentTimeMillis() - cached.fetchedAtMs < 5 * 60_000L) return cached.url
+            trailerUrlCache.remove(trailerKey)
+        }
         return try {
-            kotlinx.coroutines.withTimeout(12_000L) {
+            // Source discovery, YouTube page/player extraction and a reachable
+            // signed media URL are separate network operations. 12 seconds
+            // cancelled working extraction before it could start playback.
+            kotlinx.coroutines.withTimeout(45_000L) {
+                // The trailer addon accepts IMDb IDs. Look up a non-IMDb catalog
+                // item by exact title (and release year when known) before calling it.
+                val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
+                    ?: run {
+                        val wantedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
+                        val wantedYear = Regex("(?:19|20)[0-9]{2}")
+                            .find(item.releaseInfo.orEmpty())?.value
+                        kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                            repository.searchMovies(item.name)
+                        }?.firstOrNull { candidate ->
+                            candidate.type == item.type &&
+                                candidate.name.lowercase().filter { it.isLetterOrDigit() } == wantedTitle &&
+                                (wantedYear == null ||
+                                    Regex("(?:19|20)[0-9]{2}")
+                                        .find(candidate.releaseInfo.orEmpty())?.value == wantedYear) &&
+                                Regex("^tt[0-9]+$").matches(candidate.id)
+                        }?.id
+                    } ?: return@withTimeout null
                 val response = trailerApi.getStreams(
-                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/${item.id}.json"
+                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/$imdbId.json"
                 )
                 val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
                     stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
                 } ?: return@withTimeout null
-                val uri = android.net.Uri.parse(youtubeLink)
-                val videoId = if (uri.host?.endsWith("youtu.be") == true) {
-                    uri.lastPathSegment
-                } else {
-                    uri.getQueryParameter("v")
-                }?.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
-                videoId?.let { youtubeExtractor.extractPlaybackSource(it)?.videoUrl }
+                val source = youtubeExtractor.extractPlaybackSource(youtubeLink, preferCompatiblePreview = true)
+                source?.videoUrl?.also { mediaUrl ->
+                    if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+                    trailerUrlCache[trailerKey] = CachedTrailer(mediaUrl, System.currentTimeMillis())
+                }
             }
-        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+        } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+            Log.w("HomeTrailer", "Trailer resolution timed out for $trailerKey")
             null
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            Log.w("HomeTrailer", "Trailer resolution failed for $trailerKey", error)
             null
         }
     }
@@ -228,19 +259,25 @@ class HomeViewModel @Inject constructor(
                     if (parts.size != 3) return@launch
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
-                    val nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
-                    val next = repository.getAggregatedCatalogPage(type, genre, nextPage)
-                    rowFetchOffsets[configId] = nextPage + 1
+                    var nextPage = rowFetchOffsets.getOrPut(configId) { 1 }
+                    var next = emptyList<MetaItem>()
+                    // Empty/unavailable addons shouldn't prematurely exhaust the content row.
+                    repeat(4) {
+                        if (next.isEmpty()) {
+                            next = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                        }
+                    }
+                    rowFetchOffsets[configId] = nextPage
                     if (next.isNotEmpty()) {
                         val existing = _state.value.rows.firstOrNull { it.configId == configId }
                             ?.items.orEmpty()
-                        val known = existing.mapTo(mutableSetOf()) { item ->
-                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
-                            imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}"
-                        }
+                        val known = existing.flatMapTo(mutableSetOf()) { aggregatedMediaIdentityKeys(it) }
                         val unique = next.filter { item ->
-                            val imdb = Regex("tt[0-9]+").find(item.id)?.value
-                            known.add(imdb ?: "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}:${item.releaseInfo.orEmpty().take(4)}")
+                            val keys = aggregatedMediaIdentityKeys(item)
+                            if (keys.any { it in known }) false else {
+                                known.addAll(keys)
+                                true
+                            }
                         }
                         if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                     }
@@ -790,9 +827,19 @@ class HomeViewModel @Inject constructor(
                     kotlinx.coroutines.coroutineScope {
                         requests.mapIndexed { index, genre ->
                             async {
-                                val metas = repository.getAggregatedCatalogPage(type, genre)
+                                // Page 0 can be an empty/failed addon. Probe successive
+                                // source batches lazily until the first populated page.
+                                var metas = emptyList<MetaItem>()
+                                var nextPage = 0
+                                repeat(4) {
+                                    if (metas.isEmpty()) {
+                                        metas = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                                    }
+                                }
+                                val key = "catalog-aggregate:$type:${genre ?: "all"}"
+                                rowFetchOffsets[key] = nextPage
                                 if (metas.isEmpty()) null else HomeRow(
-                                    configId = "catalog-aggregate:$type:${genre ?: "all"}",
+                                    configId = key,
                                     title = genre ?: if (type == "movie") "All Movies" else "All Series",
                                     items = metas,
                                     isInfiniteScrollingEnabled = true,
@@ -810,14 +857,30 @@ class HomeViewModel @Inject constructor(
                 // Fetch HERO row separately (even if hidden in dashboard).
                 val tabEnum = DashboardTab.fromString(screenName)
                 val heroConfig = currentProfile?.heroFor(tabEnum)
-                val heroRow = if (heroConfig?.categoryId != null) {
-                    initialRows.find { it.configId == heroConfig.categoryId }
-                        ?: repository.getCategoryRowPreview(
-                            configId = heroConfig.categoryId,
-                            maxItems = heroConfig.posterCount,
-                            timeoutMs = initialDashboardTimeoutMs
-                        )
-                } else null
+                val automaticAggregateId = when (screenName) {
+                    "movies" -> "catalog-aggregate:movie:all"
+                    "series" -> "catalog-aggregate:series:all"
+                    else -> null
+                }
+                val heroRow = when {
+                    heroConfig?.categoryId == HERO_DISABLED_MARKER -> null
+                    // Older editor versions persisted the synthetic aggregate ID.
+                    // Treat it as automatic rather than making a failed catalog lookup.
+                    automaticAggregateId != null && heroConfig?.categoryId == automaticAggregateId ->
+                        initialRows.find { it.configId == automaticAggregateId }
+                            ?: initialRows.firstOrNull { it.items.isNotEmpty() }
+                    heroConfig?.categoryId != null ->
+                        initialRows.find { it.configId == heroConfig.categoryId }
+                            ?: repository.getCategoryRowPreview(
+                                configId = heroConfig.categoryId,
+                                maxItems = heroConfig.posterCount,
+                                timeoutMs = initialDashboardTimeoutMs
+                            )
+                    screenName in setOf("movies", "series") ->
+                        initialRows.find { it.configId == "catalog-aggregate:${if (screenName == "movies") "movie" else "series"}:all" }
+                            ?: initialRows.firstOrNull { it.items.isNotEmpty() }
+                    else -> initialRows.firstOrNull { it.items.isNotEmpty() }
+                }
 
                 // Prefetch first visible images BEFORE updating state.
                 prefetchFirstVisibleImages(initialRows)

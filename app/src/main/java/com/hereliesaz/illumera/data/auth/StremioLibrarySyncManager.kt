@@ -100,7 +100,7 @@ class StremioLibrarySyncManager @Inject constructor(
             // Capture the initiating profile's local view while ownership is guaranteed,
             // then release the runtime lock before any network call.
             val localItems = inProfileRuntime(profileId, runtimeHeld) {
-                buildLocalLibraryView()
+                buildLocalLibraryView(profileId)
             }
             // The baseline belongs to both the profile and the Stremio account. A profile
             // can sign out of account A and into B; sharing A's baseline with B can otherwise
@@ -137,9 +137,10 @@ class StremioLibrarySyncManager @Inject constructor(
 
             for ((id, local) in localItems) {
                 val remoteMtime = remoteMtimes[id]
+                val localMtime = Instant.parse(local.mtime).toEpochMilli()
                 when {
-                    remoteMtime == null || local.lastWatched > remoteMtime -> toPush += local.toLibraryItem(id)
-                    remoteMtime > local.lastWatched -> idsToPull += id
+                    remoteMtime == null || localMtime > remoteMtime -> toPush += local
+                    remoteMtime > localMtime -> idsToPull += id
                 }
             }
             for (id in remoteMtimes.keys) {
@@ -163,9 +164,8 @@ class StremioLibrarySyncManager @Inject constructor(
             inProfileRuntime(profileId, runtimeHeld) {
                 for (item in remoteItems) applyRemoteItem(profileId, item)
 
-                val refreshedLocal = buildLocalLibraryView()
-                    .map { (id, history) -> history.toLibraryItem(id) }
-                saveLocalSnapshot(profileId, authKey, refreshedLocal)
+                val refreshedLocal = buildLocalLibraryView(profileId)
+                saveLocalSnapshot(profileId, authKey, refreshedLocal.values.toList())
             }
 
             Log.i(TAG, "Library sync: pushed=${toPush.size}, pulled=${idsToPull.distinct().size}, deleted=${locallyDeletedIds.size}")
@@ -194,19 +194,49 @@ class StremioLibrarySyncManager @Inject constructor(
         }
     }
 
-    /** One entry per movie, plus the latest episode for each canonical parent series. */
-    private suspend fun buildLocalLibraryView(): Map<String, WatchHistoryEntity> {
-        val result = LinkedHashMap<String, WatchHistoryEntity>()
+    /**
+     * Stremio Library contains saved titles even before playback. Previously this returned
+     * only watch history, silently excluding bookmarks from pushes and sync baselines.
+     * Combining both sources also prevents the next sync from treating imported,
+     * unplayed titles as local deletions.
+     */
+    private suspend fun buildLocalLibraryView(profileId: Int): Map<String, StremioLibraryItem> {
+        val mostRecentHistory = LinkedHashMap<String, WatchHistoryEntity>()
         for (item in dao.getAllWatchHistoryOnce()) {
-            if (item.type == "series") {
-                val parentId = item.seriesId ?: parseSeriesId(item.id) ?: continue
-                val current = result[parentId]
-                if (current == null || item.lastWatched > current.lastWatched) result[parentId] = item
-            } else {
-                result[item.id] = item
+            val libraryId = if (item.type == "series") {
+                item.seriesId ?: parseSeriesId(item.id) ?: continue
+            } else item.id
+            val previous = mostRecentHistory[libraryId]
+            if (previous == null || item.lastWatched > previous.lastWatched) {
+                mostRecentHistory[libraryId] = item
             }
         }
-        return result
+        val library = LinkedHashMap<String, StremioLibraryItem>()
+        for ((id, history) in mostRecentHistory) library[id] = history.toLibraryItem(id)
+        for (bookmark in dao.getWatchlistOnce(profileId)) {
+            if (bookmark.type !in setOf("movie", "series")) continue
+            val bookmarkedAt = Instant.ofEpochMilli(bookmark.addedAt).toString()
+            val watched = library[bookmark.id]
+            library[bookmark.id] = if (watched == null) {
+                StremioLibraryItem(
+                    id = bookmark.id,
+                    name = bookmark.title,
+                    type = bookmark.type,
+                    poster = bookmark.poster,
+                    ctime = bookmarkedAt,
+                    mtime = bookmarkedAt
+                )
+            } else {
+                val watchedAt = Instant.parse(watched.mtime).toEpochMilli()
+                watched.copy(
+                    name = bookmark.title.ifBlank { watched.name },
+                    poster = bookmark.poster ?: watched.poster,
+                    ctime = bookmarkedAt,
+                    mtime = Instant.ofEpochMilli(maxOf(bookmark.addedAt, watchedAt)).toString()
+                )
+            }
+        }
+        return library
     }
 
     private suspend fun applyRemoteItem(profileId: Int, item: StremioLibraryItem) {
