@@ -51,6 +51,11 @@ class HomeViewModel @Inject constructor(
      */
     suspend fun resolveTrailer(item: MetaItem): String? {
         if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        // An addon removed or disabled by the user must never receive trailer requests.
+        val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
+        if (!trailer.isEnabled) return null
+        // The provider only accepts IMDb identifiers. Non-IMDb IDs need mapping.
+        val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value ?: return null
         return try {
             kotlinx.coroutines.withTimeout(12_000L) {
                 val response = trailerApi.getStreams(
