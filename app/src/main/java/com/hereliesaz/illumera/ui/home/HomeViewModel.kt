@@ -779,9 +779,7 @@ class HomeViewModel @Inject constructor(
                     val type = if (screenName == "movies") "movie" else "series"
                     val genres = context.getSharedPreferences(
                         "illumera_screen_genres", Context.MODE_PRIVATE
-                    ).getStringSet("${currentProfileId}_${screenName}", setOf(
-                        "Action", "Comedy", "Drama"
-                    )).orEmpty().toList().sorted()
+                    ).getStringSet("${currentProfileId}_${screenName}", emptySet()).orEmpty().toList().sorted()
                     val requests = genres.map { it as String? } + listOf(null)
                     kotlinx.coroutines.coroutineScope {
                         requests.mapIndexed { index, genre ->
