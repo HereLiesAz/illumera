@@ -39,6 +39,46 @@ fun aggregatedMediaIdentityKeys(meta: MetaItem): Set<String> {
     }
 }
 
+/**
+ * Cross-addon deduplication: canonical IMDb identifiers win when present.
+ * Only collapse by title/year when at least one side lacks an IMDb ID.
+ * Two films with distinct IMDb IDs must survive even if titles and years match.
+ */
+fun distinctAggregatedMetas(
+    existing: List<MetaItem>, incoming: List<MetaItem>
+): List<MetaItem> {
+    val seenIds = mutableSetOf<String>()
+    val imdbIds = mutableSetOf<String>()
+    val titleIdentities = mutableMapOf<String, MutableSet<String?>>()
+    val imdbRegex = Regex("^tt[0-9]+$")
+    fun titleKey(meta: MetaItem): String? {
+        val title = meta.name.lowercase().filter { it.isLetterOrDigit() }
+        val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
+        return if (title.isNotEmpty() && year != null) "${meta.type}:$title:$year" else null
+    }
+    fun register(meta: MetaItem) {
+        seenIds.add("${meta.type}:${meta.id}")
+        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        if (imdb != null) imdbIds.add("${meta.type}:$imdb")
+        titleKey(meta)?.let { title ->
+            titleIdentities.getOrPut(title) { mutableSetOf() }.add(imdb)
+        }
+    }
+    existing.forEach(::register)
+    return incoming.filter { meta ->
+        val id = "${meta.type}:${meta.id}"
+        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        val title = titleKey(meta)
+        val old = title?.let { titleIdentities[it] }
+        val duplicate = id in seenIds ||
+            (imdb != null && "${meta.type}:$imdb" in imdbIds) ||
+            (title != null && old != null &&
+                (imdb == null || null in old))
+        if (!duplicate) register(meta)
+        !duplicate
+    }
+}
+
 @Singleton
 class AddonRepository @Inject constructor(
     private val api: StremioApiService,
@@ -214,7 +254,7 @@ class AddonRepository @Inject constructor(
         kotlinx.coroutines.coroutineScope {
             val sourceGroups = listOf(sources.drop(offset).take(batchSize))
             var selected = emptyList<MetaItem>()
-            val seenKeys = mutableSetOf<String>()
+
             for (group in sourceGroups) {
                 selected = group.map { (addon, catalog, sourceGenre) ->
                 async {
@@ -257,13 +297,7 @@ class AddonRepository @Inject constructor(
                                 }
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
-                }.awaitAll().flatten().filter { meta ->
-                    val keys = aggregatedMediaIdentityKeys(meta)
-                    if (keys.any { it in seenKeys }) false else {
-                        seenKeys.addAll(keys)
-                        true
-                    }
-                }
+                }.awaitAll().flatten().let { distinctAggregatedMetas(emptyList(), it) }
                 if (selected.isNotEmpty()) break
             }
             selected
