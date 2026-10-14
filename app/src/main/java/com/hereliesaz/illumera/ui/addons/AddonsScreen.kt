@@ -64,24 +64,24 @@ fun AddonsScreen(
             color = Color.LightGray
         )
         Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             VoidButton(
                 text = "Browse addons",
                 onClick = { showCatalog = true },
                 isPrimary = true,
-                modifier = Modifier.width(190.dp)
+                modifier = Modifier.fillMaxWidth()
             )
             VoidButton(
                 text = "Stremio Addons directory",
                 onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(THIRD_PARTY_ADDONS_URL)))
                 },
-                modifier = Modifier.width(260.dp)
+                modifier = Modifier.fillMaxWidth()
             )
             VoidButton(
                 text = "Paste from phone",
                 onClick = { showRemotePaste = true },
-                modifier = Modifier.width(190.dp)
+                modifier = Modifier.fillMaxWidth()
             )
         }
         Text(
