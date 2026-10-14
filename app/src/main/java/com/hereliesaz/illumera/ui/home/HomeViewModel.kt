@@ -52,7 +52,8 @@ class HomeViewModel @Inject constructor(
      * Resolve a trailer through the bundled addon, then extract its YouTube playback URL.
      * A missing, malformed or unavailable trailer never replaces the poster artwork.
      */
-    private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private data class CachedTrailer(val url: String, val fetchedAtMs: Long)
+    private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedTrailer>()
 
     suspend fun resolveTrailer(item: MetaItem): String? {
         if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
@@ -61,7 +62,11 @@ class HomeViewModel @Inject constructor(
         // An addon removed or disabled by the user must never receive trailer requests.
         val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
         if (!trailer.isEnabled) return null
-        trailerUrlCache[trailerKey]?.let { return it }
+        trailerUrlCache[trailerKey]?.let { cached ->
+            // Googlevideo URLs are signed and expire. Never permanently cache one.
+            if (System.currentTimeMillis() - cached.fetchedAtMs < 5 * 60_000L) return cached.url
+            trailerUrlCache.remove(trailerKey)
+        }
         return try {
             // Source discovery, YouTube page/player extraction and a reachable
             // signed media URL are separate network operations. 12 seconds
@@ -94,7 +99,7 @@ class HomeViewModel @Inject constructor(
                 val source = youtubeExtractor.extractPlaybackSource(youtubeLink)
                 source?.videoUrl?.also { mediaUrl ->
                     if (trailerUrlCache.size > 128) trailerUrlCache.clear()
-                    trailerUrlCache[trailerKey] = mediaUrl
+                    trailerUrlCache[trailerKey] = CachedTrailer(mediaUrl, System.currentTimeMillis())
                 }
             }
         } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
