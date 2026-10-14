@@ -9,6 +9,7 @@ import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.remote.StremioApiService
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 import com.hereliesaz.illumera.domain.HomeRow
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.HubItem
@@ -133,6 +134,19 @@ class AddonRepository @Inject constructor(
      * catalog sources before fetching subsequent skip-enabled pages, keeping requests bounded.
      * Deduplication within a page happens here; the caller deduplicates across pages.
      */
+    /** Official Stremio genre dropdown plus real genres advertised by enabled addons. */
+    suspend fun availableScreenGenres(type: String): List<String> = withContext(Dispatchers.IO) {
+        val catalogs = dao.getAllAddons().firstOrNull().orEmpty()
+            .filter { it.isEnabled }
+            .flatMap { addon ->
+                runCatching {
+                    gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
+                        ?.toList().orEmpty()
+                }.getOrDefault(emptyList())
+            }
+        ScreenGenreRows.availableGenres(type, catalogs)
+    }
+
     suspend fun getAggregatedCatalogPage(
         type: String,
         genre: String? = null,
@@ -154,10 +168,21 @@ class AddonRepository @Inject constructor(
                     val genreExtra = extras.firstOrNull { it.name == "genre" }
                     val options = genreExtra?.options.orEmpty()
                     val sourceGenres: List<String?> = when {
-                        !genre.isNullOrBlank() && genreExtra?.isRequired == true &&
-                            options.isNotEmpty() && options.none { it.equals(genre, ignoreCase = true) } ->
-                            emptyList()
-                        !genre.isNullOrBlank() && genreExtra != null -> listOf(genre)
+                        !genre.isNullOrBlank() && genreExtra != null -> {
+                            val matchingOption = options.firstOrNull {
+                                ScreenGenreRows.canonicalGenre(it).equals(
+                                    ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                )
+                            }
+                            when {
+                                matchingOption != null -> listOf(matchingOption)
+                                options.isEmpty() -> listOf(genre)
+                                genreExtra.isRequired -> emptyList()
+                                // Optional genre unsupported by this addon. Fetch unfiltered,
+                                // then match actual metadata genres on the client.
+                                else -> listOf(null)
+                            }
+                        }
                         genreExtra?.isRequired == true -> options.distinct().map { it }
                         else -> listOf(null)
                     }
@@ -203,9 +228,19 @@ class AddonRepository @Inject constructor(
                     result.asSequence().filter { it.type == type }
                         .filter { meta ->
                             genre.isNullOrBlank() ||
-                                (supportsGenre || meta.genres.orEmpty().any {
-                                    it.equals(genre, ignoreCase = true)
-                                })
+                                // Trust an addon to filter only when a supported
+                                // genre value was actually supplied in its request.
+                                (!sourceGenre.isNullOrBlank() &&
+                                    (meta.genres.isNullOrEmpty() || meta.genres.orEmpty().any {
+                                        ScreenGenreRows.canonicalGenre(it).equals(
+                                            ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                        )
+                                    })) ||
+                                meta.genres.orEmpty().any {
+                                    ScreenGenreRows.canonicalGenre(it).equals(
+                                        ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
+                                    )
+                                }
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
                 }.awaitAll().flatten().filter { meta ->
