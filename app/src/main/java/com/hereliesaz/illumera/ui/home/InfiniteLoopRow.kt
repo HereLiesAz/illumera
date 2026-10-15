@@ -141,7 +141,7 @@ internal fun closestCinematicCardLeft(
 )?.first
 
 /** Coordinates only the visible cards of adjacent cinematic media rows. */
-internal class CinematicVerticalFocusCoordinator {
+class CinematicVerticalFocusCoordinator {
     var orderedRowIndices: List<Int> = emptyList()
 
     private data class Target(val left: Float, val requester: FocusRequester)
@@ -183,7 +183,7 @@ private fun rememberCinematicVerticalFocusModifier(
 ): Modifier {
     val requester = remember(rowIndex, itemKey) { FocusRequester() }
     DisposableEffect(coordinator, rowIndex, itemKey, requester) {
-        onDispose { coordinator.unregister(rowIndex, itemKey, requester) }
+        onDispose { coordinator?.unregister(rowIndex, itemKey, requester) }
     }
     if (coordinator == null) return Modifier
     return Modifier
