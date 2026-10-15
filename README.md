@@ -47,8 +47,8 @@ import your existing addon collection and sync Continue Watching progress.
 
 ### Content Discovery
 - Movies and Series show a unified content catalog assembled from every enabled addon's matching catalogs, deduplicated by canonical IMDb ID or title and release year; catalog providers are traversed lazily rather than selected through nested dropdowns.
-- Movies and Series are genre-first: one independently browsable row for **every** official Stremio genre, plus genuine genres offered by enabled addons. There is no combined All Movies / All Series poster row. All genre rows are enabled by default. Disable individual rows (or use Enable All / Disable All) separately under **Settings → Screen Editor → Movies/Series → Manage Genres**; preferences are profile-specific.
-- Home uses cinematic previews above focused poster rows and a Hero Carousel at the top; Movies and Series use the same dual cinematic layout. Hero sources default to the first populated row or unified media catalog and can be explicitly disabled in Screen Editor.
+- Movies and Series are genre-first: one independently browsable row for **every** official Stremio genre, plus recognized genuine genres offered by enabled addons (not languages, countries, resolution tiers or release-date filters). There is no combined All Movies / All Series poster row. All genre rows are enabled by default. Disable individual rows (or use Enable All / Disable All) separately under **Settings → Screen Editor → Movies/Series → Manage Genres**; preferences are profile-specific.
+- Home uses cinematic previews directly above focused horizontal 16:9 card rows and a Hero Carousel at the top; Movies and Series use the same dual cinematic layout. Continue Watching and custom Hub cards are landscape in cinematic mode. Hero sources default to the first populated row or unified media catalog and can be explicitly disabled in Screen Editor.
 - Hero carousel with auto-scrolling featured content
 - Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history
 - Continue watching with progress tracking and auto-resume
