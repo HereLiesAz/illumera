@@ -39,6 +39,7 @@ class WatchlistViewModel @Inject constructor(
     private val resolveFailureCooldownMs = 5 * 60_000L
 
     var lastFocusedKey: String? = null
+    var lastFocusedMediaType: String? = null
     var lastQueueFocusedKey: String? = null
 
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
@@ -131,6 +132,23 @@ class WatchlistViewModel @Inject constructor(
                         if (existing != null) {
                             dao.addToWatchlist(existing.copy(poster = poster))
                             succeeded = true
+                        } else {
+                            // History-only Library items have no bookmark row.
+                            // Persist artwork against their underlying episode/title
+                            // history IDs so the Flow re-emits the resolved card.
+                            val history = dao.getAllWatchHistoryOnce().filter { entry ->
+                                entry.id == item.id || entry.seriesId == item.id ||
+                                    (entry.type in setOf("series", "tv", "episode") &&
+                                        entry.id.substringBeforeLast(':').substringBeforeLast(':') == item.id)
+                            }
+                            history.forEach { entry ->
+                                dao.updateHistoryImages(
+                                    entry.id, poster,
+                                    meta.background?.takeIf { it.isNotBlank() } ?: entry.background,
+                                    meta.logo?.takeIf { it.isNotBlank() } ?: entry.logo
+                                )
+                            }
+                            succeeded = history.isNotEmpty()
                         }
                     }
                 }
@@ -176,10 +194,10 @@ internal fun aggregateLibraryEntries(
             if (oldImdb != null && newImdb != null) return@indexOfFirst false
             val oldYear = year(old)
             val newYear = year(item)
+            // Matching only a name when release years are unknown collapses
+            // different adaptations/remakes. Never perform that unsafe merge.
             norm(old).isNotEmpty() && norm(old) == norm(item) &&
-                (oldYear == null || newYear == null || oldYear == newYear) &&
-                (oldImdb != null || newImdb != null ||
-                    (oldYear != null && newYear != null))
+                oldYear != null && oldYear == newYear
         }
         if (matchingIndex < 0) {
             result.add(incoming)
@@ -196,9 +214,12 @@ internal fun aggregateLibraryEntries(
             val alternate = if (preferred === old) incoming else old
             result[matchingIndex] = preferred.copy(
                 item = preferred.item.copy(
-                    poster = preferred.item.poster ?: alternate.item.poster,
-                    background = preferred.item.background ?: alternate.item.background,
-                    logo = preferred.item.logo ?: alternate.item.logo,
+                    poster = preferred.item.poster?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.poster?.takeIf { it.isNotBlank() },
+                    background = preferred.item.background?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.background?.takeIf { it.isNotBlank() },
+                    logo = preferred.item.logo?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.logo?.takeIf { it.isNotBlank() },
                     releaseInfo = preferred.item.releaseInfo ?: alternate.item.releaseInfo
                 ),
                 addedAt = maxOf(old.addedAt, incoming.addedAt),
