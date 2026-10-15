@@ -368,7 +368,15 @@ fun CinematicLayout(
             )
         } else original
     }
-    val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
+    // Return to Hero from the first row with an actual focus target, not
+    // an empty genre shell that has no poster to receive a D-pad event.
+    val firstVisibleRowIndex = visibleMixedRows.firstOrNull { indexed ->
+        when (val row = indexed.value) {
+            is CategoryRow -> row.items.isNotEmpty()
+            is HubGroupRow -> true
+            else -> false
+        }
+    }?.index
     // All visible rows (including Hub spacers) participate in vertical order.
     // Only media rails register cards, so navigation into a Hub/Hero keeps its
     // original focus behavior instead of jumping over that row.
@@ -457,8 +465,14 @@ fun CinematicLayout(
                         ) {
                             heroReturnScope.launch {
                                 verticalListState.scrollToItem(0)
-                                withFrameNanos { }
-                                runCatching { heroReturnRequester.requestFocus() }
+                                // A LazyColumn can need another frame before its
+                                // previously offscreen Hero focus node is attached.
+                                repeat(5) {
+                                    withFrameNanos { }
+                                    if (runCatching { heroReturnRequester.requestFocus() }.getOrDefault(false)) {
+                                        return@launch
+                                    }
+                                }
                             }
                             true
                         } else false
