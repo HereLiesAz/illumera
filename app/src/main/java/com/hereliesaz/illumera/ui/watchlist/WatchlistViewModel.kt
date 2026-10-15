@@ -41,8 +41,8 @@ class WatchlistViewModel @Inject constructor(
     var lastFocusedKey: String? = null
     var lastQueueFocusedKey: String? = null
 
-    // Single mixed library rail: preserve one horizontal scroll/focus position
-    // across sorting and title updates, regardless of the title's media type.
+    val movieRowState = androidx.compose.foundation.lazy.LazyListState()
+    val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
     val libraryRowState = androidx.compose.foundation.lazy.LazyListState()
 
     data class LibraryEntry(
@@ -65,11 +65,13 @@ class WatchlistViewModel @Inject constructor(
                 val historyEntries = history.map { entry ->
                     val parts = entry.id.split(':')
                     val episodeParent = if (
-                        entry.type == "series" && parts.size >= 3 &&
+                        entry.type in setOf("series", "tv", "episode") && parts.size >= 3 &&
                         parts.takeLast(2).all { it.toIntOrNull() != null }
                     ) parts.dropLast(2).joinToString(":") else entry.id
-                    val canonicalId = entry.seriesId ?: episodeParent
-                    val mediaType = if (entry.seriesId != null) "series" else entry.type
+                    val canonicalId = entry.seriesId?.takeIf { it.isNotBlank() } ?: episodeParent
+                    val mediaType = if (entry.seriesId != null ||
+                        entry.type in setOf("series", "tv", "episode")
+                    ) "series" else entry.type
                     val item = MetaItem(
                         id = canonicalId, type = mediaType, name = entry.title,
                         poster = entry.poster, background = entry.background, logo = entry.logo
@@ -79,7 +81,7 @@ class WatchlistViewModel @Inject constructor(
                 val savedEntries = saved.map { item ->
                     LibraryEntry(item.toMetaItem(), item.addedAt, 0L, false, 0)
                 }
-                mergeLibraryEntries(savedEntries + historyEntries)
+                aggregateLibraryEntries(savedEntries + historyEntries)
             }
         }.stateIn(
             viewModelScope,
@@ -147,58 +149,66 @@ class WatchlistViewModel @Inject constructor(
 }
 
 /**
- * Deduplicates as saved titles and Stremio-synced history are merged.
- * Preserve movie/series type in every identity: a film and TV adaptation
- * with the same title must remain separate entries.
- * A title/year match is used only when at least one provider lacks IMDb ID.
+ * Deduplicate saved, synchronized and locally watched entries in one Library.
+ * Never merge movies with TV series or distinct canonical IMDb IDs, even if
+ * two titles happen to share a name. Alternative provider IDs can match by
+ * normalized title and compatible release year when one has a canonical ID.
  */
-internal fun mergeLibraryEntries(
+internal fun aggregateLibraryEntries(
     entries: List<WatchlistViewModel.LibraryEntry>
 ): List<WatchlistViewModel.LibraryEntry> {
-    val groups = mutableListOf<MutableList<WatchlistViewModel.LibraryEntry>>()
-    val imdbRegex = Regex("tt[0-9]+")
-    fun imdb(item: MetaItem): String? = imdbRegex.find(item.id)?.value
-    fun titleYear(item: MetaItem): String? {
-        val title = item.name.lowercase().filter { it.isLetterOrDigit() }
-        val year = Regex("(?:19|20)[0-9]{2}").find(item.releaseInfo.orEmpty())?.value
-        return if (title.isNotBlank() && year != null) "$title:$year" else null
-    }
-    for (entry in entries) {
-        val duplicateGroup = groups.firstOrNull { group ->
-            group.any { candidate ->
-                val original = candidate.item
-                val incoming = entry.item
-                if (original.type != incoming.type) false
-                else {
-                    val leftImdb = imdb(original)
-                    val rightImdb = imdb(incoming)
-                    (original.id == incoming.id) ||
-                        (leftImdb != null && leftImdb == rightImdb) ||
-                        (titleYear(original) != null &&
-                            titleYear(original) == titleYear(incoming) &&
-                            (leftImdb == null || rightImdb == null))
-                }
-            }
+    val result = mutableListOf<WatchlistViewModel.LibraryEntry>()
+    val imdbPattern = Regex("^tt[0-9]+$")
+    val yearPattern = Regex("(?:19|20)[0-9]{2}")
+    fun norm(item: MetaItem) = item.name.lowercase().filter { it.isLetterOrDigit() }
+    fun year(item: MetaItem) =
+        yearPattern.find(item.releaseInfo ?: item.name)?.value
+
+    entries.forEach { incoming ->
+        val item = incoming.item
+        if (item.type !in setOf("movie", "series")) return@forEach
+        val matchingIndex = result.indexOfFirst { existing ->
+            val old = existing.item
+            if (old.type != item.type) return@indexOfFirst false
+            if (old.id == item.id) return@indexOfFirst true
+            val oldImdb = old.id.takeIf { imdbPattern.matches(it) }
+            val newImdb = item.id.takeIf { imdbPattern.matches(it) }
+            if (oldImdb != null && newImdb != null) return@indexOfFirst false
+            val oldYear = year(old)
+            val newYear = year(item)
+            norm(old).isNotEmpty() && norm(old) == norm(item) &&
+                (oldYear == null || newYear == null || oldYear == newYear) &&
+                (oldImdb != null || newImdb != null ||
+                    (oldYear != null && newYear != null))
         }
-        if (duplicateGroup == null) groups.add(mutableListOf(entry))
-        else duplicateGroup.add(entry)
+        if (matchingIndex < 0) {
+            result.add(incoming)
+        } else {
+            val old = result[matchingIndex]
+            // Preserve an actionable saved-bookmark ID when available; otherwise
+            // prefer an IMDb identity for cross-addon metadata and playback.
+            val preferred = when {
+                old.addedAt > 0L && incoming.addedAt == 0L -> old
+                incoming.addedAt > 0L && old.addedAt == 0L -> incoming
+                imdbPattern.matches(incoming.item.id) && !imdbPattern.matches(old.item.id) -> incoming
+                else -> old
+            }
+            val alternate = if (preferred === old) incoming else old
+            result[matchingIndex] = preferred.copy(
+                item = preferred.item.copy(
+                    poster = preferred.item.poster ?: alternate.item.poster,
+                    background = preferred.item.background ?: alternate.item.background,
+                    logo = preferred.item.logo ?: alternate.item.logo,
+                    releaseInfo = preferred.item.releaseInfo ?: alternate.item.releaseInfo
+                ),
+                addedAt = maxOf(old.addedAt, incoming.addedAt),
+                lastWatched = maxOf(old.lastWatched, incoming.lastWatched),
+                watched = old.watched || incoming.watched,
+                timesWatched = old.timesWatched + incoming.timesWatched
+            )
+        }
     }
-    return groups.map { sameTitle ->
-        // Prefer a saved title over an episode's name from watch history, but
-        // fill any missing artwork from whichever provider has it.
-        val preferred = sameTitle.firstOrNull { it.addedAt > 0 } ?: sameTitle.first()
-        preferred.copy(
-            item = preferred.item.copy(
-                poster = preferred.item.poster ?: sameTitle.firstNotNullOfOrNull { it.item.poster },
-                background = preferred.item.background ?: sameTitle.firstNotNullOfOrNull { it.item.background },
-                logo = preferred.item.logo ?: sameTitle.firstNotNullOfOrNull { it.item.logo }
-            ),
-            addedAt = sameTitle.maxOf { it.addedAt },
-            lastWatched = sameTitle.maxOf { it.lastWatched },
-            watched = sameTitle.any { it.watched },
-            timesWatched = sameTitle.sumOf { it.timesWatched }
-        )
-    }
+    return result
 }
 
 private fun WatchlistEntity.toMetaItem() = MetaItem(

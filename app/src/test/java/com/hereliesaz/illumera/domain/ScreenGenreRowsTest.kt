@@ -47,6 +47,68 @@ class ScreenGenreRowsTest {
         assertFalse("2026" in genres)
     }
 
+    @Test fun addonDiscoverFiltersMustNotCreateFakeGenreRows() {
+        val manifest = CatalogManifest(
+            type = "movie", id = "top",
+            genres = listOf(
+                "English", "French", "Hindi", "Japanese", "United States",
+                "India", "UK", "4K", "1080p", "720p", "HDR", "Dolby Vision",
+                "2026", "2020s", "Last 7 Days", "Last Month", "This Week",
+                "Recently Added", "New Releases", "Trending", "Popular",
+                "Animation", "Horror", "Film Noir", "True Crime"
+            ),
+            extra = listOf(CatalogExtra(
+                name = "genre", options = listOf(
+                    "English", "USA", "Germany", "BluRay", "2160p", "2025",
+                    "Past Year", "30 days", "Action", "Science Fiction"
+                )
+            ))
+        )
+        val result = ScreenGenreRows.availableGenres("movie", listOf(manifest))
+        assertTrue(result.containsAll(listOf("Action", "Animation", "Horror", "Sci-Fi", "Film-Noir", "True Crime")))
+        assertEquals(1, result.count { it == "Sci-Fi" })
+        for (notGenre in listOf(
+            "English", "French", "Hindi", "Japanese", "United States",
+            "India", "UK", "4K", "1080p", "720p", "HDR", "Dolby Vision",
+            "2026", "2020s", "Last 7 Days", "Last Month", "This Week",
+            "Recently Added", "New Releases", "Trending", "Popular",
+            "USA", "Germany", "BluRay", "2160p", "2025", "Past Year", "30 days"
+        )) {
+            assertFalse("Non-genre filter created a poster row: $notGenre", result.contains(notGenre))
+        }
+    }
+
+    @Test fun seriesNonGenreFiltersAreNotAddedEither() {
+        val manifest = CatalogManifest(
+            type = "series", id = "top",
+            genres = listOf("English", "4K", "Last Month", "Korea", "Talk Show", "Anime")
+        )
+        val result = ScreenGenreRows.availableGenres("series", listOf(manifest))
+        assertTrue(result.containsAll(listOf("Talk-Show", "Anime")))
+        assertFalse(result.contains("English"))
+        assertFalse(result.contains("4K"))
+        assertFalse(result.contains("Korea"))
+        assertFalse(result.contains("Last Month"))
+    }
+
+    @Test fun recognizesGenuineProviderGenresOutsideOriginalList() {
+        val catalogs = listOf(CatalogManifest(
+            type = "series", id = "provider",
+            extra = listOf(CatalogExtra(
+                name = "genre", isRequired = true,
+                options = listOf("Soap", "TV Movie", "Action & Adventure", "English", "2160p")
+            ))
+        ))
+        val result = ScreenGenreRows.availableGenres("series", catalogs)
+        assertTrue(result.containsAll(listOf("Soap", "TV Movie", "Action & Adventure")))
+        assertFalse(result.contains("English"))
+        assertFalse(result.contains("2160p"))
+        assertEquals("Film-Noir", ScreenGenreRows.canonicalGenre("Film Noir"))
+        assertEquals("True Crime", ScreenGenreRows.canonicalGenre("True-Crime"))
+        assertEquals("Martial Arts", ScreenGenreRows.canonicalGenre("Martial-Arts"))
+        assertEquals("Slice of Life", ScreenGenreRows.canonicalGenre("Slice-of-Life"))
+    }
+
     @Test fun sourceGenreNamesUseTheOfficialAlias() {
         assertEquals("Sci-Fi", ScreenGenreRows.canonicalGenre("Science Fiction"))
         assertEquals("Reality-TV", ScreenGenreRows.canonicalGenre("Reality TV"))

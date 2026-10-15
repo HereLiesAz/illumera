@@ -54,3 +54,19 @@ Home must preserve one row per distinct category, merging paired movies and seri
 In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Series Library row, keeping saved titles and synchronized Stremio history together with its existing sort modes.
 
 **Acceptance checks:** Distinct Latest/Popular/Trending/Netflix/HBO Max rows remain distinct; each contains both media types when available; same-title duplicates across addon sources appear once; a movie and series adaptation never collapse into one item; one-sided categories still appear; paginating one category does not modify another; Watchlist maintains one sortable combined rail and restores D-pad focus after removing a title. Build and on-device verification remain outstanding.
+
+## Cinematic aspect ratio, gap and genre-filter regression
+
+- Cinematic Home, Movies and Series content rows all render horizontal 16:9 cards, including Continue Watching and custom Hub rows. The Simple layout retains its own preferences.
+- The row-local cinematic preview has been shortened from 360dp to 282dp, its title/description is bottom-aligned, and the landscape poster rail reserves 122dp rather than an unused 210dp; heading spacing is tighter.
+- Movie/Series genre rows are restricted to genuine film/TV genres. Addon-supplied language, country, video-quality and release-recency options are not genres and must not appear as rows or Screen Editor choices. Separate regression tests cover these examples.
+- Watchlist itself has Queue, Movies and Series Library rows, not a discover/genre-row source. No Watchlist titles should be removed to solve this issue.
+
+Check the focused panel-to-card distance with short and long descriptions and with a TV remote. Android build/device validation is still outstanding.
+
+## Paired Home categories and mixed Watchlist acceptance
+
+- Home does **not** display one giant Movies & Series row. Latest Movies + Latest Series produce one **Latest** row; Popular Movies + Popular Series produce one **Popular** row; Netflix Movie + Netflix Series produce one **Netflix** row, etc. Unrelated categories and providers remain separate.
+- Every paired row preserves the two original catalog URLs and its own pagination progress per source, deduplicates provider aliases and retains each item's original movie/series type.
+- Watchlist Queue remains above a **single combined Library row**, which keeps the Stremio sorting controls and optional type filter. Series episode history must become one show card; movie and show with the same name must not merge.
+- Acceptance requires CI plus Android TV focus, paging, sorting and profile-switch verification. These changes are committed but not runtime-verified.

@@ -141,7 +141,6 @@ fun HomeScreen(
     } else "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
-    val infoTopPadding = if (isTopNav) 60.dp else 30.dp
     // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
     // wide/TV screen; on a phone that margin alone eats a third of the available width,
     // so trim it down there while still clearing the drawer.
@@ -213,7 +212,6 @@ fun HomeScreen(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
-                    infoTopPadding = infoTopPadding,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
                     state = displayState,
@@ -235,8 +233,7 @@ fun HomeScreen(
                     onFocusChange = { viewModel.setLastFocusedKey(it) },
                     onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos) },
                     onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory) },
-                    onPreviewItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) },
-                    isLandscapeContinueWatching = isLandscapeContinueWatching
+                    onPreviewItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) }
                 )
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
@@ -287,7 +284,6 @@ fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
-    infoTopPadding: androidx.compose.ui.unit.Dp,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     state: HomeViewModel.HomeState,
@@ -305,8 +301,7 @@ fun CinematicLayout(
     onFocusChange: (String) -> Unit,
     onScrollPositionChange: (String, Pair<Int, Int>) -> Unit,
     onVerticalScrollChange: (Pair<Int, Int>) -> Unit,
-    onPreviewItemVisible: (MetaItem) -> Unit,
-    isLandscapeContinueWatching: Boolean = false
+    onPreviewItemVisible: (MetaItem) -> Unit
 ) {
     // Track the *currently* focused row rather than relying on a previously
     // restored poster key. The preview expands immediately above its own row.
@@ -549,7 +544,7 @@ fun CinematicLayout(
                                     ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            startPadding = startPadding,
                                             isTopNav = isTopNav, resolveTrailer = resolveTrailer
                                         )
                                     }
@@ -595,9 +590,11 @@ fun CinematicLayout(
                                     externalListState = historyRowState,
                                     upKeyDebouncer = upKeyDebouncer,
                                     repeatGate = dpadRepeatGate,
-                                    isLandscapeCards = isLandscapeContinueWatching,
+                                    // Cinematic panels always pair with 16:9 landscape cards,
+                                    // regardless of the separate simple-layout Watch History setting.
+                                    isLandscapeCards = true,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = if (isLandscapeContinueWatching) 140.dp else 210.dp
+                                    rowHeight = 122.dp
                                 )
                                 }
                             }
@@ -662,7 +659,8 @@ fun CinematicLayout(
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
                                             historyItems.isEmpty() && index == 0
                                         ) firstRowPivotRequester else null,
-                                        isGlobalFocusPresent = effectiveLastFocusedKey != null
+                                        isGlobalFocusPresent = effectiveLastFocusedKey != null,
+                                        forceLandscape = true
                                     )
                                     }
                                 }
@@ -721,7 +719,7 @@ fun CinematicLayout(
                                     ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            startPadding = startPadding,
                                             isTopNav = isTopNav, resolveTrailer = resolveTrailer
                                         )
                                     }
@@ -752,7 +750,10 @@ fun CinematicLayout(
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
                                         externalListState = rowListState,
                                         upKeyDebouncer = upKeyDebouncer,
-                                        repeatGate = dpadRepeatGate
+                                        repeatGate = dpadRepeatGate,
+                                        isLandscapeCards = true,
+                                        enrichedItems = state.enrichedMeta,
+                                        rowHeight = 122.dp
                                     )
                                     }
                                 }
@@ -770,14 +771,16 @@ private fun FocusedRowCinematicPreview(
     item: MetaItem?,
     state: HomeViewModel.HomeState,
     startPadding: androidx.compose.ui.unit.Dp,
-    infoTopPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     resolveTrailer: suspend (MetaItem) -> String?
 ) {
     // Keep the original artwork visible immediately; enriching the text
     // must never blank the backdrop while the trailer is still resolving.
     val bgItem = item
-    Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
+    // The old 360dp panel, followed by a 210dp row reserved for 107dp cards,
+    // left a large blank band between the preview information and the posters.
+    // This compact panel ends just above the next row's heading.
+    Box(modifier = Modifier.fillMaxWidth().height(282.dp)) {
         CinematicBackground(bgItem)
         TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
         Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
@@ -785,8 +788,11 @@ private fun FocusedRowCinematicPreview(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth()
-                        .padding(start = startPadding, top = infoTopPadding),
-                    contentAlignment = Alignment.TopStart
+                        // Anchor the title/description to the bottom of the
+                        // preview so short descriptions cannot leave a tall
+                        // empty band before the row's heading and landscape cards.
+                        .padding(start = startPadding, top = 12.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.BottomStart
                 ) {
                     AnimatedContent(
                         targetState = item,

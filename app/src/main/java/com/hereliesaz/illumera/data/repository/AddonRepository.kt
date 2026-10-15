@@ -208,7 +208,8 @@ class AddonRepository @Inject constructor(
                             val matchingOption = options.firstOrNull {
                                 ScreenGenreRows.canonicalGenre(it).equals(
                                     ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
-                                )
+                                ) || (ScreenGenreRows.canonicalGenre(it) == "Action & Adventure" &&
+                                    ScreenGenreRows.canonicalGenre(genre) in setOf("Action", "Adventure"))
                             }
                             when {
                                 matchingOption != null -> listOf(matchingOption)
@@ -306,6 +307,10 @@ class AddonRepository @Inject constructor(
         }
     }
 
+    /**
+     * Merge each enabled addon's movie/series catalog PAIR within the same
+     * semantic category; never collapse Latest, Trending, Netflix etc. together.
+     */
     /**
      * One Home row per *category pair*, e.g. Trending Movies + Trending Series
      * become Trending. Matching labels across enabled addons also contribute to
@@ -448,67 +453,115 @@ class AddonRepository @Inject constructor(
         maxConfigs: Int = Int.MAX_VALUE,
         catalogTimeoutMs: Long = CATALOG_TIMEOUT_MS
     ): List<HomeRow> = withContext(Dispatchers.IO) {
-        val addons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled } ?: emptyList()
-        val configs = dao.getAllCatalogConfigs().firstOrNull() ?: emptyList()
+        val addons = dao.getAllAddons().firstOrNull().orEmpty().filter { it.isEnabled }
+        val configs = dao.getAllCatalogConfigs().firstOrNull().orEmpty()
         val addonMap = addons.associateBy { it.transportUrl }
-
-        val filteredConfigs = configs
-            .filter { config ->
-                when(screen) {
-                    "home" -> config.showInHome
-                    "movies" -> config.showInMovies
-                    "series" -> config.showInSeries
-                    else -> false
-                }
+        val ordered = configs.filter { config ->
+            addonMap.containsKey(config.transportUrl) && when (screen) {
+                "home" -> config.showInHome
+                "movies" -> config.showInMovies
+                "series" -> config.showInSeries
+                else -> false
             }
-            .sortedBy { config ->
-                when(screen) {
-                    "home" -> config.homeOrder
-                    "movies" -> config.moviesOrder
-                    "series" -> config.seriesOrder
-                    else -> 0
-                }
-            }
-            .drop(skipConfigs.coerceAtLeast(0))
-            .let { sliced ->
-                if (maxConfigs == Int.MAX_VALUE) sliced else sliced.take(maxConfigs.coerceAtLeast(0))
-            }
-
-        val deferredJobs = filteredConfigs.mapNotNull { config ->
-            val addon = addonMap[config.transportUrl] ?: return@mapNotNull null
-            async {
-                try {
-                    val url = "${config.transportUrl}/catalog/${config.catalogType}/${config.catalogId}.json"
-                    // Fetch only the first page for fast initial load
-                    // A timed-out catalog contributes nothing; it must not abort the other rows.
-                    val rawMetas = try { withTimeout(catalogTimeoutMs) { api.getCatalog(url) }.metas.orEmpty().sanitize() } catch (_: TimeoutCancellationException) { emptyList() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() }
-                    if (rawMetas.isNotEmpty()) {
-                        val metas = rawMetas.map { it.copy(addonBaseUrl = config.transportUrl) }
-                        val typeSuffix = config.catalogType.replaceFirstChar { it.uppercase() }
-                        val defaultTitle = if (config.catalogName != null) "${config.catalogName} - ${typeSuffix}" else "${config.addonName} - ${config.catalogId.replaceFirstChar { it.uppercase() }}"
-                        val finalTitle = config.customTitle ?: defaultTitle
-                        HomeRow(
-                            configId = config.uniqueId,
-                            title = finalTitle,
-                            items = metas,
-                            catalogUrl = url,
-                            isInfiniteLoopEnabled = config.isInfiniteLoopEnabled,
-                            visibleItemCount = config.visibleItemCount,
-                            isInfiniteScrollingEnabled = config.isInfiniteScrollingEnabled,
-                            order = when(screen) {
-                                "home" -> config.homeOrder
-                                "movies" -> config.moviesOrder
-                                "series" -> config.seriesOrder
-                                else -> 999
-                            },
-                            supportsSkip = catalogSupportsSkip(addon, config.catalogType, config.catalogId)
-                        )
-                    } else null
-                } catch (e: CancellationException) { throw e
-                } catch (e: Exception) { null }
+        }.sortedBy { config ->
+            when (screen) {
+                "home" -> config.homeOrder
+                "movies" -> config.moviesOrder
+                "series" -> config.seriesOrder
+                else -> 0
             }
         }
-        deferredJobs.awaitAll().filterNotNull()
+
+        // A category may call its halves "Popular Movies" and "Popular Series".
+        // Pairing requires the SAME provider and opposite media types.
+        fun categoryKey(value: String): String = value.trim().lowercase()
+            .replace(Regex("""[-_: ]+(?:tv[ -]?shows?|tv[ -]?series|movies?|series|shows?|tv)$"""), "")
+            .replace(Regex("""[^a-z0-9]+"""), "")
+        fun matches(a: CatalogConfigEntity, b: CatalogConfigEntity): Boolean {
+            if (a.transportUrl != b.transportUrl ||
+                setOf(a.catalogType, b.catalogType) != setOf("movie", "series")) return false
+            val aid = categoryKey(a.catalogId)
+            val bid = categoryKey(b.catalogId)
+            val aname = categoryKey(a.catalogName ?: a.catalogId)
+            val bname = categoryKey(b.catalogName ?: b.catalogId)
+            return (aid.isNotEmpty() && aid == bid) ||
+                (aname.isNotEmpty() && aname == bname)
+        }
+        val groups = mutableListOf<MutableList<CatalogConfigEntity>>()
+        for (config in ordered) {
+            val paired = if (screen == "home") groups.firstOrNull {
+                it.size == 1 && matches(it.first(), config)
+            } else null
+            if (paired == null) groups.add(mutableListOf(config)) else paired.add(config)
+        }
+        val chosen = groups.drop(skipConfigs.coerceAtLeast(0)).let {
+            if (maxConfigs == Int.MAX_VALUE) it else it.take(maxConfigs.coerceAtLeast(0))
+        }
+        kotlinx.coroutines.coroutineScope {
+            chosen.map { group -> async {
+                val sorted = group.sortedBy { if (it.catalogType == "movie") 0 else 1 }
+                val primary = sorted.first()
+                val secondary = sorted.getOrNull(1)
+                val addon = addonMap[primary.transportUrl] ?: return@async null
+
+                suspend fun retrieve(config: CatalogConfigEntity): Pair<String, List<MetaItem>> {
+                    val url = "${config.transportUrl.trimEnd('/')}/catalog/${config.catalogType}/${config.catalogId}.json"
+                    val items = try {
+                        withTimeout(catalogTimeoutMs) {
+                            api.getCatalog(url).metas.orEmpty().sanitize()
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    return url to items.filter { it.type == config.catalogType }
+                        .map { it.copy(addonBaseUrl = config.transportUrl) }
+                }
+
+                val primaryJob = async { retrieve(primary) }
+                val secondaryJob = secondary?.let { async { retrieve(it) } }
+                val (primaryUrl, moviesOrSeries) = primaryJob.await()
+                val (secondaryUrl, secondType) = secondaryJob?.await() ?: ("" to emptyList<MetaItem>())
+                if (moviesOrSeries.isEmpty() && secondType.isEmpty()) return@async null
+                val mixed = buildList {
+                    for (index in 0 until maxOf(moviesOrSeries.size, secondType.size)) {
+                        moviesOrSeries.getOrNull(index)?.let(::add)
+                        secondType.getOrNull(index)?.let(::add)
+                    }
+                }
+                val categoryTitle = (primary.customTitle ?: secondary?.customTitle
+                    ?: primary.catalogName ?: primary.catalogId)
+                    .replace(Regex("""[-_: ]+(?:TV[ -]?Shows?|TV[ -]?Series|Movies?|Series|Shows?|TV)$""",
+                        RegexOption.IGNORE_CASE), "")
+                HomeRow(
+                    configId = primary.uniqueId,
+                    title = categoryTitle,
+                    items = distinctAggregatedMetas(emptyList(), mixed),
+                    catalogUrl = primaryUrl,
+                    isInfiniteLoopEnabled = primary.isInfiniteLoopEnabled,
+                    visibleItemCount = primary.visibleItemCount,
+                    isInfiniteScrollingEnabled = primary.isInfiniteScrollingEnabled,
+                    order = when (screen) {
+                        "home" -> group.minOf { it.homeOrder }
+                        "movies" -> primary.moviesOrder
+                        "series" -> primary.seriesOrder
+                        else -> 999
+                    },
+                    supportsSkip = catalogSupportsSkip(addon, primary.catalogType, primary.catalogId) ||
+                        (secondary?.let {
+                            catalogSupportsSkip(addon, it.catalogType, it.catalogId)
+                        } ?: false),
+                    secondCatalogUrl = secondaryUrl.takeIf { secondary != null },
+                    secondSupportsSkip = secondary?.let {
+                        catalogSupportsSkip(addon, it.catalogType, it.catalogId)
+                    } ?: false,
+                    fetchedPrimaryCount = moviesOrSeries.size,
+                    fetchedSecondCount = secondType.size,
+                    primarySupportsSkip = catalogSupportsSkip(addon, primary.catalogType, primary.catalogId)
+                )
+            } }.awaitAll().filterNotNull()
+        }
     }
 
     /**

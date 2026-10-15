@@ -78,7 +78,7 @@ class WatchlistViewModelTest {
             entry("tt0000033", "series", "The Return", 200L, 0L, year = "2024"),
             entry("tt0000044", "movie", "Another Return", 300L, 0L, year = "2024")
         )
-        val merged = mergeLibraryEntries(input)
+        val merged = aggregateLibraryEntries(input)
         assertEquals(3, merged.size)
         val film = merged.first { it.item.type == "movie" && it.item.id == "tt0000033" }
         assertEquals("artwork", film.item.poster)
@@ -99,7 +99,7 @@ class WatchlistViewModelTest {
                 addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
             )
         }
-        assertEquals(2, mergeLibraryEntries(originals).size)
+        assertEquals(2, aggregateLibraryEntries(originals).size)
     }
 
     @Test
@@ -137,6 +137,44 @@ class WatchlistViewModelTest {
         assertTrue(entries.first { it.item.id == "tt123" }.watched)
         assertEquals("series", entries.first { it.item.id == "tt123" }.item.type)
         collector.cancel()
+    }
+
+    @Test
+    fun combinedLibraryDeduplicatesSourcesAndKeepsMoviesAndSeriesTogether() {
+        fun entry(id: String, type: String, name: String, added: Long, watched: Long = 0L) =
+            WatchlistViewModel.LibraryEntry(
+                item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = type, name = name, releaseInfo = "2024"
+                ),
+                addedAt = added, lastWatched = watched,
+                watched = watched > 0L, timesWatched = if (watched > 0L) 1 else 0
+            )
+        val merged = aggregateLibraryEntries(listOf(
+            entry("tmdb:101", "movie", "Shared Title", 10L),
+            entry("tt0000101", "movie", "Shared Title", 0L, 45L),
+            entry("tt0000202", "series", "Shared Title", 40L),
+            entry("tt0000202", "series", "Shared Title", 0L, 60L),
+            entry("tt0000303", "movie", "Other Film", 30L)
+        ))
+        assertEquals(3, merged.size)
+        assertEquals(setOf("movie", "series"), merged.map { it.item.type }.toSet())
+        val sharedMovie = merged.single { it.item.type == "movie" && it.item.name == "Shared Title" }
+        assertEquals("tmdb:101", sharedMovie.item.id) // saved bookmark stays actionable
+        assertEquals(45L, sharedMovie.lastWatched)
+        assertTrue(sharedMovie.watched)
+        assertEquals(60L, merged.single { it.item.type == "series" }.lastWatched)
+    }
+
+    @Test
+    fun matchingNamesWithDistinctCanonicalImdbIdsAreNotCollapsed() {
+        val entries = listOf("tt1234561", "tt1234562").map { id ->
+            WatchlistViewModel.LibraryEntry(
+                com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = "movie", name = "The Remake", releaseInfo = "2024"
+                ), 1L, 0L, false, 0
+            )
+        }
+        assertEquals(2, aggregateLibraryEntries(entries).size)
     }
 
     @Test
