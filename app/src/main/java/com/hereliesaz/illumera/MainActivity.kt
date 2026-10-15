@@ -756,7 +756,7 @@ class MainActivity : ComponentActivity() {
             // Dismiss the currently offered version only; new releases re-open the popup.
             var updateDismissedFor by rememberSaveable { mutableStateOf<String?>(null) }
             // "Later" hides the prompt for that version only; a newer release asks again.
-            var playUpdateDismissedFor by rememberSaveable { mutableStateOf<Int?>(null) }
+            var playUpdateDismissedFor by rememberSaveable { mutableStateOf<String?>(null) }
             val updateScope = rememberCoroutineScope()
             LaunchedEffect(Unit) {
                 when {
@@ -1419,12 +1419,16 @@ class MainActivity : ComponentActivity() {
                     // the actual download/install UX.
                     if (BuildConfig.USE_PLAY_UPDATES && _splashFinished.value) {
                         when (val playState = playUpdateState) {
-                            is PlayStoreUpdateState.UpdateAvailable -> if (playUpdateDismissedFor != playState.versionCode) {
+                            is PlayStoreUpdateState.UpdateAvailable -> if (
+                                playUpdateDismissedFor != "${playState.versionCode}:${playState.announcedVersion.orEmpty()}"
+                            ) {
                                 PlayStoreUpdateAvailableDialog(
                                     fromPlay = playState.fromPlay,
                                     announcedVersion = playState.announcedVersion,
                                     onUpdate = { playStoreUpdateManager.startUpdate(playUpdateLauncher) },
-                                    onDismiss = { playUpdateDismissedFor = playState.versionCode }
+                                    onDismiss = {
+                                        playUpdateDismissedFor = "${playState.versionCode}:${playState.announcedVersion.orEmpty()}"
+                                    }
                                 )
                             }
                             else -> Unit
