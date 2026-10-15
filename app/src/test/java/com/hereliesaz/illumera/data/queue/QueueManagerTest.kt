@@ -172,6 +172,28 @@ class QueueManagerTest {
     }
 
     @Test
+    fun inFlightRefreshCannotRestoreSuggestionsFromANowDisabledSource() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        val gate = CompletableDeferred<Unit>()
+        coEvery { addonDao.getAllWatchHistoryOnce() } coAnswers {
+            gate.await()
+            historyOf("tt-stale")
+        }
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+        queue.setSuggestionSource(QueueSuggestionSource.TRAKT, false)
+
+        val loading = launch { queue.refreshSuggestions() }
+        runCurrent()
+        queue.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, false)
+        gate.complete(Unit)
+        loading.join()
+
+        assertTrue(queue.state.value.suggestions.isEmpty())
+        assertFalse(queue.state.value.isRefreshingSuggestions)
+    }
+
+    @Test
     fun manualQueueIsIsolatedAcrossProfileSwitches() {
         manager.add(QueueItem(id = "profile-one", type = "movie", title = "One"))
 
