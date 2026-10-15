@@ -201,9 +201,11 @@ fun WatchlistScreen(
         }
     }
 
+    val libraryWatchedIds = remember(watchedIds, sortedLibrary) {
+        watchedIds + sortedLibrary.filter { it.watched }.map { it.item.id }
+    }
     androidx.compose.runtime.CompositionLocalProvider(
-        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides
-            (watchedIds + sortedLibrary.filter { it.watched }.map { it.item.id })
+        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides libraryWatchedIds
     ) {
         LazyColumn(
             state = viewModel.watchlistColumnState,
@@ -306,7 +308,7 @@ fun WatchlistScreen(
                                     posterUrl = media.poster,
                                     mediaItem = media,
                                     onClick = { onMovieClick(media) },
-                                    isWatched = media.id in watchedIds,
+                                    isWatched = media.id in libraryWatchedIds,
                                     hasNewEpisode = media.hasNewEpisode,
                                     onFocused = {
                                         media.takeIf(::shouldEnrich)?.let(viewModel::resolvePosterIfNeeded)
