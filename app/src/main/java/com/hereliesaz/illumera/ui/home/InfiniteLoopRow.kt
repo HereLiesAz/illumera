@@ -195,7 +195,7 @@ fun InfiniteLoopRow(
 
     // Calculate the max valid index based on current mode
     val maxValidIndex = when {
-        isLandscapeCards || !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
+        !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
         !isInfiniteScrollingEnabled -> visibleItemCount // visibleItemCount items + 1 ViewMore
         else -> Int.MAX_VALUE
     }
@@ -475,6 +475,7 @@ private fun LinearContent(
                         mediaItem = item,
                         progress = item.progress,
                         hasNewEpisode = item.hasNewEpisode,
+                        isWatched = rowIndex != -1 && item.id in LocalWatchedIds.current,
                         onFocused = {
                             ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
                             onFocused(item, uniqueKey)
@@ -573,7 +574,14 @@ private fun InfiniteGridContent(
     val totalItems = sectionSize * INFINITE_LOOP_GENERATIONS
 
     // Prefetch image URLs list
-    val imageUrls = remember(truncatedMovies) { truncatedMovies.map { it.poster } }
+    val imageUrls = remember(truncatedMovies, isLandscapeCards) {
+        truncatedMovies.map { item ->
+            if (isLandscapeCards)
+                item.background?.takeIf { it.isNotBlank() }
+                    ?: item.poster?.takeIf { it.isNotBlank() }
+            else item.poster?.takeIf { it.isNotBlank() }
+        }
+    }
     
     // Track focused index for ViewMore card's directional alpha
     var currentFocusedIndex by remember(listState) { 
