@@ -404,13 +404,19 @@ class AddonRepository @Inject constructor(
                         addon, config.catalogType, config.catalogId
                     )
                     if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
+                    val requiresSkip = runCatching {
+                        gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
+                            ?.firstOrNull {
+                                it.type == config.catalogType && it.id == config.catalogId
+                            }?.extra.orEmpty().any { it.name == "skip" && it.isRequired }
+                    }.getOrDefault(false)
                     val url = buildString {
                         append(config.transportUrl.trimEnd('/'))
                         append("/catalog/")
                         append(config.catalogType)
                         append("/")
                         append(config.catalogId)
-                        if (layer > 0) append("/skip=${layer * 100}")
+                        if (layer > 0 || requiresSkip) append("/skip=${layer * 100}")
                         append(".json")
                     }
                     try {
