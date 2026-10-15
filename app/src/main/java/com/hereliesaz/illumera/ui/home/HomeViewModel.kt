@@ -1166,25 +1166,10 @@ class HomeViewModel @Inject constructor(
                             ?: if (screenName == "home")
                                 repository.getHomePairRowForConfig(heroConfig.categoryId)
                             else null
-                        if (screenName == "home" && configured?.configId?.startsWith("catalog-home:") == true &&
-                            configured.items.isEmpty()
-                        ) {
-                            // A user-selected Hero may be outside the first two lazily
-                            // warmed rows. Fetch its content independently now rather
-                            // than displaying a permanently empty row shell.
-                            val pages = repository.homePairFirstLayerPageCount(configured.configId)
-                            var items = emptyList<MetaItem>()
-                            for (page in 0 until pages) {
-                                if (items.isEmpty()) {
-                                    items = repository.getHomePairCatalogPage(configured.configId, page)
-                                }
-                            }
-                            configured.copy(items = items.take(heroConfig.posterCount))
-                        } else configured ?: repository.getCategoryRowPreview(
-                            configId = heroConfig.categoryId,
-                            maxItems = heroConfig.posterCount,
-                            timeoutMs = initialDashboardTimeoutMs
-                        )
+                        // Do not wait for hero network content before showing
+                        // the screen and accepting focus. A selected Hero source
+                        // is filled after the first composition below.
+                        configured
                     }
                     screenName in setOf("movies", "series") ->
                         initialRows.firstOrNull { it.items.isNotEmpty() }
@@ -1211,6 +1196,51 @@ class HomeViewModel @Inject constructor(
                         loadedProfileId = currentProfileId,
                         tmdbEnabled = currentProfile?.tmdbEnabled == true
                     )
+                }
+
+                // Resolve an explicitly chosen Hero after the rest of the
+                // screen is interactive. An addon/network timeout must not
+                // delay the browse surface or first DPAD event.
+                val selectedHeroId = heroConfig?.categoryId
+                if (selectedHeroId != null && selectedHeroId != HERO_DISABLED_MARKER &&
+                    heroRow?.items?.isNotEmpty() != true
+                ) {
+                    val generation = screenDataGeneration
+                    launch {
+                        val loadedHero = try {
+                            if (screenName == "home" &&
+                                heroRow?.configId?.startsWith("catalog-home:") == true
+                            ) {
+                                val pages = repository.homePairFirstLayerPageCount(heroRow.configId)
+                                var items = emptyList<MetaItem>()
+                                for (page in 0 until pages) {
+                                    if (items.isEmpty()) {
+                                        items = repository.getHomePairCatalogPage(heroRow.configId, page)
+                                    }
+                                }
+                                heroRow.copy(items = items.take(heroConfig.posterCount))
+                            } else repository.getCategoryRowPreview(
+                                configId = selectedHeroId,
+                                maxItems = heroConfig.posterCount,
+                                timeoutMs = initialDashboardTimeoutMs
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (loadedHero != null &&
+                            generation == screenDataGeneration &&
+                            profileConfigurationManager.activeProfileId.value == currentProfileId
+                        ) {
+                            _state.update { current ->
+                                if (current.loadedScreen == screenName &&
+                                    current.loadedProfileId == currentProfileId &&
+                                    current.heroRow?.items?.isNotEmpty() != true
+                                ) current.copy(heroRow = loadedHero) else current
+                            }
+                        }
+                    }
                 }
 
                 // Start a tiny metadata warmup pass for items likely to render first.
