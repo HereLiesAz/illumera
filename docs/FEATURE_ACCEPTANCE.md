@@ -161,3 +161,14 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - Idempotent catalog batches preserve unchanged HomeRow object references and do not emit a new StateFlow value. A fallback page cannot reintroduce an item already classified into its primary row.
 - Aggregate genres are initially probed only by the ViewModel's bounded lanes; remounting a visible LazyColumn item no longer retriggers empty-genre fetches. Horizontal paging is not restarted by changed item counts; a new visible scroll index must cross the end threshold. A failed source logs a warning instead of terminating the screen coroutine.
 - Regression fixtures assert canonical moves, unchanged unrelated rows, duplicate-batch replay, fallback suppression, and provider aliases. Additional TV checks: open Movies and Series, allow all genres to populate, navigate between rows in either direction, verify active portrait/inactive landscape switching, inspect empty/late rows, and leave/re-enter via drawer without crashing or repeated reloads.
+
+## Genre row stability and crash prevention (October 15, 2026)
+
+- Genre reclassification must update every row by its **own** config ID. Never copy the destination row into unrelated mixed rows; the old implementation did so when canonical classification arrived, making rows repeatedly disappear/reappear and invalidating D-pad focus identities.
+- Source-page identities are remembered even if their titles are classified into other genre rows. A full source layer returning no unseen candidates marks that row exhausted until the screen is invalidated (profile change, screen reload, catalog settings change). No sources means immediate exhaustion. Empty-row visibility/recomposition cannot automatically retry these pages.
+- The ViewModel warms enabled genre rows once in bounded lanes. Later fetches require focusing a card near the **end** of the horizontal row; initial layoutInfo emission must not automatically fetch more. A stable row ID retains the same LazyColumn key while other rows populate.
+- Three pure unit regressions assert canonical reclassification does not clone titles into unrelated genres, repeated updates do not change rows, and noncanonical source discoveries leave existing genres unchanged.
+- **Remaining release gates:** FOSS Debug/Release Gradle unit tests, installed-device focus switching, and full Movies/Series scrolling with slow/failing addons. Avoid claiming the crash is fixed on-device without logcat.
+
+
+**Merged conflict resolution:** Main's catalog exhaustion tracking and regression fixtures are retained alongside the active/inactive cinematic row focus work in PR #250. Android device validation is still required.
