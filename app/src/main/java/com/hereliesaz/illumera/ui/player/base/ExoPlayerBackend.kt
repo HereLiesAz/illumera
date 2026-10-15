@@ -160,6 +160,14 @@ class ExoPlayerBackend(
 
     private val _playerReady = MutableStateFlow<ExoPlayer?>(null)
 
+    private var playbackVolume = 1f
+
+    /** Apply volume to the current player and to one created after source warmup. */
+    fun setVolume(volume: Float) {
+        playbackVolume = volume.coerceIn(0f, 1f)
+        exoPlayer?.volume = playbackVolume
+    }
+
     private var released = false
     private var loadToken = 0L
     private var sourceSelectionGeneration = 0L
@@ -1405,7 +1413,7 @@ class ExoPlayerBackend(
             .setLoadControl(loadControl)
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
-            .build()
+            .build().apply { volume = playbackVolume }
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
