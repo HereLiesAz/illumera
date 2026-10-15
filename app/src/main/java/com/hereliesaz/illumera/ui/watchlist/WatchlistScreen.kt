@@ -78,7 +78,6 @@ fun WatchlistScreen(
     var sortMode by remember(currentProfile?.id) {
         mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
     }
-    var mediaTypeFilter by remember { mutableStateOf("all") }
     val sortedLibrary = remember(library, sortMode, currentProfile?.id) {
         val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
             maxOf(it.addedAt, it.lastWatched)
@@ -98,8 +97,8 @@ fun WatchlistScreen(
             else -> library.sortedWith(recent)
         }
     }
-    val movies = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "movie" }.map { it.item } }
-    val series = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "series" }.map { it.item } }
+    // One sorted rail contains both movies and series, including synced history.
+    val libraryItems = remember(sortedLibrary) { sortedLibrary.map { it.item } }
 
     // Main-screen Back is MainRootBackHandler's: every in-screen Back action (Queue reorder
     // mode, item menus) has its own handler composed later, so it runs first.
@@ -115,38 +114,29 @@ fun WatchlistScreen(
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
     var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
 
-    LaunchedEffect(movies, series) {
+    LaunchedEffect(libraryItems) {
         val key = lastFocusedKey ?: return@LaunchedEffect
-        val parts = key.split("_")
-        val rowIndex = parts.getOrNull(0)?.toIntOrNull()
-        val itemId = parts.getOrNull(1)
-        if (itemId == null) return@LaunchedEffect
-
-        val rowItems = if (rowIndex == 0) movies else series
-        val stillExists = rowItems.any { it.id == itemId }
-        if (!stillExists && rowItems.isNotEmpty()) {
-            // Removed (e.g. taken off the watchlist from its details page): focus its nearest
-            // remaining neighbour at the same position, not the end or start of the row.
-            val fallbackIndex = resolveRowRestoreIndex(key, rowIndex ?: 0, rowItems.map { it.id })
-                ?: rowItems.lastIndex
-            val fallbackItem = rowItems[fallbackIndex]
-            lastFocusedKey = "${rowIndex}_${fallbackItem.id}_$fallbackIndex"
+        val rememberedId = key.substringAfter('_', "")
+            .substringBeforeLast('_', "")
+        val exists = libraryItems.any { it.id == rememberedId }
+        if (libraryItems.isEmpty()) {
+            lastFocusedKey = null
+            viewModel.lastFocusedKey = null
+        } else if (!exists || !key.startsWith("0_")) {
+            // Older releases used a separate Series row (index 1). Redirect
+            // that stored focus into the single mixed library row.
+            val target = if (exists) libraryItems.indexOfFirst { it.id == rememberedId }
+            else resolveRowRestoreIndex(key, 0, libraryItems.map { it.id })
+                ?: libraryItems.lastIndex
+            val item = libraryItems[target.coerceIn(0, libraryItems.lastIndex)]
+            lastFocusedKey = "0_${item.id}_${target}"
             viewModel.lastFocusedKey = lastFocusedKey
-        } else if (!stillExists && rowItems.isEmpty()) {
-            val otherItems = if (rowIndex == 0) series else movies
-            if (otherItems.isNotEmpty()) {
-                val otherRow = if (rowIndex == 0) 1 else 0
-                lastFocusedKey = "${otherRow}_${otherItems.first().id}_0"
-                viewModel.lastFocusedKey = lastFocusedKey
-            } else {
-                lastFocusedKey = null
-                viewModel.lastFocusedKey = null
-            }
         }
     }
 
-    LaunchedEffect(movies) { movies.forEach { viewModel.resolvePosterIfNeeded(it) } }
-    LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
+    LaunchedEffect(libraryItems) {
+        libraryItems.forEach { viewModel.resolvePosterIfNeeded(it) }
+    }
 
     val isTopNav = currentProfile?.navPosition == "top"
     val isCompactWatchlist = LocalConfiguration.current.screenWidthDp < 600
@@ -156,12 +146,7 @@ fun WatchlistScreen(
         else -> 120.dp
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
-    val hasWatchlistMedia = movies.isNotEmpty() || series.isNotEmpty()
-    val hasFilteredMedia = when (mediaTypeFilter) {
-        "movie" -> movies.isNotEmpty()
-        "series" -> series.isNotEmpty()
-        else -> hasWatchlistMedia
-    }
+    val hasWatchlistMedia = libraryItems.isNotEmpty()
 
     androidx.compose.runtime.CompositionLocalProvider(
         com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
@@ -205,27 +190,6 @@ fun WatchlistScreen(
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
-                        items(listOf("all" to "All", "movie" to "Movies", "series" to "Series")) { type ->
-                            val selected = mediaTypeFilter == type.first
-                            val interaction = remember { MutableInteractionSource() }
-                            val focused by interaction.collectIsFocusedAsState()
-                            Text(
-                                type.second,
-                                color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = if (selected || focused) 0.18f else 0.05f))
-                                    .border(if (focused) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                                    .clickable { mediaTypeFilter = type.first }
-                                    .focusable(interactionSource = interaction)
-                                    .padding(horizontal = 14.dp, vertical = 11.dp)
-                            )
-                        }
-                    }
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 12.dp)
                     ) {
                         items(modes, key = { it.first }) { mode ->
@@ -258,10 +222,10 @@ fun WatchlistScreen(
                     }
                 }
             }
-            if (!hasFilteredMedia) {
+            if (!hasWatchlistMedia) {
                 item {
                     Text(
-                        text = if (hasWatchlistMedia) "No ${if (mediaTypeFilter == "movie") "movies" else "series"} in your Library" else "Your watchlist is empty",
+                        text = "Your Library is empty",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.5f),
                         modifier = Modifier.padding(start = startPadding, top = 12.dp, bottom = 4.dp)
@@ -269,14 +233,14 @@ fun WatchlistScreen(
                 }
             }
 
-            if (movies.isNotEmpty() && mediaTypeFilter != "series") {
-                item {
+            if (libraryItems.isNotEmpty()) {
+                item(key = "mixed_library") {
                     InfiniteLoopRow(
                         startPadding = startPadding,
                         isTopNav = isTopNav,
                         rowIndex = 0,
-                        title = "Movies",
-                        items = movies,
+                        title = "Movies & Series",
+                        items = libraryItems,
                         onMovieClick = onMovieClick,
                         onViewMore = {},
                         onFocused = { _: MetaItem?, key: String ->
@@ -287,46 +251,16 @@ fun WatchlistScreen(
                         },
                         entryRequester = entryRequester,
                         drawerRequester = drawerRequester,
-                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true) lastFocusedKey else null,
+                        locallyFocusedItemId = lastFocusedKey?.takeIf { it.startsWith("0_") },
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = false, // Queue now precedes Library
+                        isFirstRow = false, // Queue remains above Library
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
-                        externalListState = viewModel.movieRowState
+                        externalListState = viewModel.libraryRowState
                     )
                 }
             }
-
-            if (series.isNotEmpty() && mediaTypeFilter != "movie") {
-                item {
-                    InfiniteLoopRow(
-                        startPadding = startPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = 1,
-                        title = "Series",
-                        items = series,
-                        onMovieClick = onMovieClick,
-                        onViewMore = {},
-                        onFocused = { _: MetaItem?, key: String ->
-                            lastFocusedKey = key
-                            viewModel.lastFocusedKey = key
-                            lastQueueFocusedKey = null
-                            viewModel.lastQueueFocusedKey = null
-                        },
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("1_") == true) lastFocusedKey else null,
-                        isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = false, // Queue now precedes Library
-                        isInfiniteLoopEnabled = false,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = dpadRepeatGate,
-                        externalListState = viewModel.seriesRowState
-                    )
-                }
-            }
-
 
         }
     }
