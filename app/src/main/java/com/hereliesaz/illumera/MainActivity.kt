@@ -975,9 +975,7 @@ class MainActivity : ComponentActivity() {
                             } }
                             entry<AddonsKey> { MainRoot(it.destination) {
                                 AddonsScreen(
-                                    onBack = { BackStackOps.navigateToMainRoot(backStack, NavDestination.Home) },
                                     entryRequester = addonsEntryRequester,
-                                    drawerRequester = drawerRequesters.getValue(NavDestination.Addons),
                                     isTopNav = navPosition == "top"
                                 )
                             } }
