@@ -85,6 +85,44 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun verticalFocusFollowsExpandedPreviewLeftEdgeNotItsCenter() {
+        // A 373dp-wide active preview starts at 120dp. Center-based
+        // focus would choose the second 190dp-wide landscape card.
+        assertEquals(
+            "first",
+            closestCinematicCardLeft(
+                120f,
+                listOf("first" to 120f, "second" to 330f, "third" to 540f)
+            )
+        )
+        assertEquals(
+            "second",
+            closestCinematicCardLeft(
+                330f,
+                listOf("first" to 120f, "second" to 330f, "third" to 540f)
+            )
+        )
+    }
+
+    @Test
+    fun verticalFocusUsesNearestLeftEdgeAcrossDifferentCardWidths() {
+        // Source and destination can have different horizontal scroll offsets
+        // and independently sized cards; never match by their list indices.
+        assertEquals(
+            "aligned",
+            closestCinematicCardLeft(
+                405f,
+                listOf("left" to 181f, "aligned" to 410f, "right" to 612f)
+            )
+        )
+        assertEquals(
+            "left",
+            closestCinematicCardLeft(120f, listOf("right" to 330f, "left" to 120f))
+        )
+        assertEquals(null, closestCinematicCardLeft(100f, emptyList()))
+    }
+
+    @Test
     fun nothingComposedInTheRowGivesNull() {
         assertNull(resolveHomeFocusNeighbour("3_tt3_2", listOf("4_tt1_0", "hero")))
         assertNull(resolveHomeFocusNeighbour("hero", listOf("3_tt1_0")))
