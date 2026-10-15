@@ -195,13 +195,13 @@ fun InfiniteLoopRow(
 
     // Calculate the max valid index based on current mode
     val maxValidIndex = when {
-        !isInfiniteLoopEnabled -> items.size - 1
+        isLandscapeCards || !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
         !isInfiniteScrollingEnabled -> visibleItemCount // visibleItemCount items + 1 ViewMore
         else -> Int.MAX_VALUE
     }
 
     // SAFETY: Reset scroll position when switching modes
-    LaunchedEffect(isInfiniteLoopEnabled, isInfiniteScrollingEnabled) {
+    LaunchedEffect(isLandscapeCards, isInfiniteLoopEnabled, isInfiniteScrollingEnabled, items.size) {
         if (listState.firstVisibleItemIndex > maxValidIndex) {
             listState.scrollToItem(0)
         }
@@ -212,7 +212,10 @@ fun InfiniteLoopRow(
             text = title,
             color = Color.White.copy(0.9f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(start = startPadding, bottom = 12.dp)
+            modifier = Modifier.padding(
+                start = startPadding,
+                bottom = if (isLandscapeCards) 4.dp else 12.dp
+            )
         )
 
         // Stable reference to avoid recomposition from lambda re-allocation
@@ -221,7 +224,10 @@ fun InfiniteLoopRow(
         when {
             // CASE A: Grid View OFF - Standard linear list
             // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
-            !isInfiniteLoopEnabled -> {
+            // Cinematic landscape rails must not revert to portrait when a
+            // catalog is configured as an infinite or finite grid.
+            // A standard LazyRow also supports per-genre incremental paging.
+            isLandscapeCards || !isInfiniteLoopEnabled -> {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
                     LinearContent(
                         listState = listState,
@@ -347,7 +353,7 @@ private fun LinearContent(
         if (isLandscapeCards) {
             items.map { item ->
                 val enriched = enrichedItems["${item.type}:${item.id}"]
-                enriched?.background ?: enriched?.poster ?: item.poster
+                enriched?.background ?: item.background ?: enriched?.poster ?: item.poster
             }
         } else {
             items.map { it.poster }
@@ -455,9 +461,9 @@ private fun LinearContent(
                     val enriched = enrichedItems["${item.type}:${item.id}"]
                     LumeraLandscapeCard(
                         title = item.name,
-                        backdropUrl = enriched?.background,
-                        logoUrl = enriched?.logo,
-                        posterUrl = item.poster,
+                        backdropUrl = enriched?.background ?: item.background,
+                        logoUrl = enriched?.logo ?: item.logo,
+                        posterUrl = enriched?.poster ?: item.poster,
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,

@@ -157,6 +157,7 @@ class HomeViewModel @Inject constructor(
                 pendingRowItems.clear()
                 allFetchedRowIds.clear()
                 rowFetchOffsets.clear()
+                pairedRowFetchOffsets.clear()
                 loadingMoreRows.clear()
                 metadataRequestsInFlight.clear()
                 tmdbEnrichmentInFlight.clear()
@@ -233,6 +234,7 @@ class HomeViewModel @Inject constructor(
     // Raw number of items fetched per row (including duplicates) — used as the catalog skip
     // so repeated items across pages don't cause the same page to be refetched forever.
     private val rowFetchOffsets = mutableMapOf<String, Int>()
+    private val pairedRowFetchOffsets = mutableMapOf<String, Int>()
 
     private data class MetadataFallback(
         val poster: String?,
@@ -269,7 +271,9 @@ class HomeViewModel @Inject constructor(
                     val existing = _state.value.rows.firstOrNull { it.configId == configId }
                         ?.items.orEmpty()
                     var unique = emptyList<MetaItem>()
-                    val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
+                    val firstLayerCount = if (type == "mixed")
+                        repository.mixedCatalogFirstLayerPageCount()
+                    else repository.aggregatedFirstLayerPageCount(type, genre)
                     // First visit searches every addon source group in the first layer
                     // so a later provider can populate a row even if earlier addons are empty.
                     // Subsequent horizontal browsing fetches source batches lazily.
@@ -278,7 +282,9 @@ class HomeViewModel @Inject constructor(
                     } else 4
                     repeat(probes.coerceAtLeast(0)) {
                         if (unique.isEmpty()) {
-                            val fetched = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                            val fetched = if (type == "mixed")
+                                repository.getMixedCatalogPage(nextPage++)
+                            else repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
@@ -325,13 +331,34 @@ class HomeViewModel @Inject constructor(
                     row.items.map { "${it.type}:${it.id}" }.toMutableSet()
                 }
 
-                // Skip = total fetched count for this row
-                val nextSkip = rowFetchOffsets.getOrPut(configId) { fetchedIds.size }
-                val newItems = repository.fetchNextCatalogPage(row.catalogUrl, nextSkip)
-                rowFetchOffsets[configId] = nextSkip + newItems.size
+                // Movie and series halves have independent pagination cursors.
+                // Using the visible deduplicated card count for either skip
+                // causes repeats and drops unseen titles from the other half.
+                val firstOffset = rowFetchOffsets.getOrPut(configId) {
+                    row.fetchedPrimaryCount
+                }
+                val secondOffset = pairedRowFetchOffsets.getOrPut(configId) {
+                    row.fetchedSecondCount
+                }
+                val firstItems = if (row.primarySupportsSkip)
+                    repository.fetchNextCatalogPage(row.catalogUrl, firstOffset)
+                else emptyList()
+                val secondItems = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
+                    repository.fetchNextCatalogPage(row.secondCatalogUrl, secondOffset)
+                else emptyList()
+                rowFetchOffsets[configId] = firstOffset + firstItems.size
+                pairedRowFetchOffsets[configId] = secondOffset + secondItems.size
 
-                // Deduplicate against all previously fetched items
-                val newUniqueItems = newItems.filter { item ->
+                val candidates = buildList {
+                    for (index in 0 until maxOf(firstItems.size, secondItems.size)) {
+                        firstItems.getOrNull(index)?.let(::add)
+                        secondItems.getOrNull(index)?.let(::add)
+                    }
+                }
+                // IMDb and provider aliases are deduplicated within the merged
+                // category while the movie and series type distinction survives.
+                val newUniqueItems = distinctAggregatedMetas(row.items, candidates)
+                newUniqueItems.forEach { item ->
                     fetchedIds.add("${item.type}:${item.id}")
                 }
 
@@ -368,11 +395,20 @@ class HomeViewModel @Inject constructor(
                 } else item
             }
 
-            val automaticHero = current.heroRow ?: if (
-                current.loadedScreen in setOf("movies", "series") &&
-                tmdbProfileCache?.heroFor(DashboardTab.fromString(current.loadedScreen!!))
-                    ?.categoryId != HERO_DISABLED_MARKER
-            ) updatedRows.firstOrNull { it.items.isNotEmpty() } else null
+            val configuredHero = current.loadedScreen?.let { screen ->
+                tmdbProfileCache?.heroFor(DashboardTab.fromString(screen))
+            }
+            val automaticHero = when {
+                configuredHero?.categoryId == HERO_DISABLED_MARKER -> null
+                current.loadedScreen == "home" && configuredHero?.categoryId == null ->
+                    updatedRows.firstOrNull {
+                        it.configId == "catalog-aggregate:mixed:all" && it.items.isNotEmpty()
+                    } ?: current.heroRow
+                current.heroRow != null -> current.heroRow
+                current.loadedScreen in setOf("movies", "series") ->
+                    updatedRows.firstOrNull { it.items.isNotEmpty() }
+                else -> null
+            }
             current.copy(
                 rows = updatedRows,
                 mixedRows = updatedMixed,
@@ -389,6 +425,7 @@ class HomeViewModel @Inject constructor(
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
+        pairedRowFetchOffsets.clear()
         _state.value = _state.value.copy(
             loadedScreen = null,
             loadedProfileId = null
@@ -859,6 +896,8 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                 } else emptyList()
+                // A Home category is now one row per addon/category pair (movie + TV),
+                // not a single global feed. Repository groups BEFORE pagination.
                 val initialRows = if (screenName == "home") configuredRows else genreRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch

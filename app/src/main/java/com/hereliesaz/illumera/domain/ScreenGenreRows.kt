@@ -18,11 +18,33 @@ object ScreenGenreRows {
     )
     private val seriesExtra = listOf("Game-Show", "Reality-TV", "Talk-Show")
 
+    // Stremio addons often overload the manifest's "genre" options with
+    // discover filters: spoken language, country, 4K/1080p, year, recently
+    // released, or popularity. Those are NOT genres and must never become
+    // poster rows. Keep official Stremio genres plus recognized cinematic
+    // genres, rather than treating every arbitrary option as a genre.
+    private val additionalRealGenres = listOf(
+        "Anime", "Children", "Cult", "Experimental", "Film-Noir",
+        "Independent", "Kids", "Martial Arts", "Music", "Musical",
+        "News", "Noir", "Psychological", "Short", "Slice of Life",
+        "Superhero", "Suspense", "True Crime"
+    )
+    private val recognizedGenreLabels =
+        (movieDefaults + seriesExtra + additionalRealGenres)
+            .associateBy { it.lowercase() }
+
+
     fun canonicalGenre(value: String): String = when (value.trim().lowercase()) {
         "science fiction", "science-fiction", "scifi", "sci fi" -> "Sci-Fi"
         "game show", "game show tv" -> "Game-Show"
         "reality tv", "reality television" -> "Reality-TV"
         "talk show" -> "Talk-Show"
+        "film noir", "film_noir" -> "Film-Noir"
+        "martial-arts", "martialarts" -> "Martial Arts"
+        "true-crime", "truecrime" -> "True Crime"
+        "slice-of-life", "sliceoflife" -> "Slice of Life"
+        "sports" -> "Sport"
+        "children's", "childrens" -> "Children"
         else -> value.trim()
     }
 
@@ -38,9 +60,10 @@ object ScreenGenreRows {
                         .flatMap { it.options.orEmpty() }).asSequence()
             }
             .map(::canonicalGenre)
-            .filter { genre ->
-                genre.isNotBlank() && !genre.matches(Regex("\\d{4}")) &&
-                    genre.lowercase() !in setOf("all", "all genres", "none")
+            .mapNotNull { genre ->
+                // A whitelist also rejects country/language labels, resolution
+                // values and relative release-age buckets such as "Last 7 days".
+                recognizedGenreLabels[genre.lowercase()]
             }.toList()
         return (defaults + extra).distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
     }

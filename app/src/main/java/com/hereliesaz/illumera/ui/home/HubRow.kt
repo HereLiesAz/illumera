@@ -83,8 +83,12 @@ fun HubRow(
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
-    isGlobalFocusPresent: Boolean = false
+    isGlobalFocusPresent: Boolean = false,
+    forceLandscape: Boolean = false
 ) {
+    val effectiveShape = if (forceLandscape) {
+        com.hereliesaz.illumera.domain.HubShape.HORIZONTAL
+    } else hubGroup.shape
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
 
@@ -126,7 +130,7 @@ fun HubRow(
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     
-    val itemWidth = when (hubGroup.shape) {
+    val itemWidth = when (effectiveShape) {
         com.hereliesaz.illumera.domain.HubShape.HORIZONTAL -> 190.dp
         com.hereliesaz.illumera.domain.HubShape.VERTICAL -> 120.dp
         com.hereliesaz.illumera.domain.HubShape.SQUARE -> 140.dp
@@ -139,7 +143,7 @@ fun HubRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
+            .padding(bottom = if (forceLandscape) 0.dp else 12.dp)
             .graphicsLayer { clip = false }
     ) {
         // Row Title
@@ -147,7 +151,7 @@ fun HubRow(
             text = hubGroup.title,
             color = Color.White.copy(0.9f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(start = startPadding, bottom = 12.dp)
+            modifier = Modifier.padding(start = startPadding, bottom = if (forceLandscape) 4.dp else 12.dp)
         )
         
         // Hub Cards Row
@@ -241,7 +245,7 @@ fun HubRow(
                     ) {
                         HubCard(
                             hubItem = hubItem,
-                            shape = hubGroup.shape,
+                            shape = effectiveShape,
                             onClick = { onHubClick(hubItem) },
                             onFocused = {
                                 onFocused?.invoke(hubItem, uniqueKey)
@@ -255,7 +259,7 @@ fun HubRow(
         
         // Bottom spacing - matches standard row height reduction (210dp -> 193dp = 17dp delta)
         // Standard rows are spaced by 15dp in LazyColumn, hub rows use internal spacer to mimic this visual gap + row height difference
-        val bottomSpacerHeight = if (isTopNav && isLastRow) 0.dp else 17.dp
+        val bottomSpacerHeight = if (forceLandscape || (isTopNav && isLastRow)) 0.dp else 17.dp
         Spacer(modifier = Modifier.height(bottomSpacerHeight))
     }
 }

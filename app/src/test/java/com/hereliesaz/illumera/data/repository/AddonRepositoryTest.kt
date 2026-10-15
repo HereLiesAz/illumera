@@ -517,6 +517,91 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun homePairsMovieAndSeriesPerCategoryWithoutCollapsingCategories() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val url = "https://catalog.example"
+        val configs = listOf("latest", "trending", "netflix").flatMapIndexed { order, category ->
+            listOf("movie", "series").mapIndexed { half, type ->
+                CatalogConfigEntity(
+                    uniqueId = "$url/$type/$category",
+                    transportUrl = url,
+                    addonName = "Catalog",
+                    catalogType = type,
+                    catalogId = category,
+                    catalogName = category.replaceFirstChar { it.uppercase() },
+                    showInHome = true,
+                    homeOrder = order * 2 + half
+                )
+            }
+        }
+        every { dao.getAllAddons() } returns flowOf(listOf(addon(url)))
+        every { dao.getAllCatalogConfigs() } returns flowOf(configs)
+        for ((i, category) in listOf("latest", "trending", "netflix").withIndex()) {
+            for ((j, type) in listOf("movie", "series").withIndex()) {
+                coEvery {
+                    api.getCatalog("$url/catalog/$type/$category.json")
+                } returns CatalogResponse(listOf(
+                    MetaItem(
+                        id = "tt00000${i + 1}${j + 1}",
+                        type = type,
+                        name = "$category $type"
+                    )
+                ))
+            }
+        }
+        val repository = AddonRepository(api, dao)
+        val result = repository.getDashboardRows("home")
+        assertEquals(listOf("Latest", "Trending", "Netflix"), result.map { it.title })
+        assertEquals(3, result.size)
+        assertTrue(result.all { row ->
+            row.items.size == 2 &&
+                row.items.map { it.type }.toSet() == setOf("movie", "series") &&
+                row.secondCatalogUrl != null
+        })
+        // Pagination counts paired ROWS, not the six underlying catalogs.
+        val second = repository.getDashboardRows("home", skipConfigs = 1, maxConfigs = 1)
+        assertEquals(listOf("Trending"), second.map { it.title })
+        assertEquals(2, second.single().items.size)
+    }
+
+    @Test
+    fun homeDoesNotPairDifferentAddonProvidersOrUnrelatedCategories() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val configs = listOf(
+            CatalogConfigEntity(
+                uniqueId = "a-m", transportUrl = "https://a.example",
+                addonName = "A", catalogType = "movie",
+                catalogId = "popular", showInHome = true
+            ),
+            CatalogConfigEntity(
+                uniqueId = "b-s", transportUrl = "https://b.example",
+                addonName = "B", catalogType = "series",
+                catalogId = "popular", showInHome = true
+            ),
+            CatalogConfigEntity(
+                uniqueId = "a-s", transportUrl = "https://a.example",
+                addonName = "A", catalogType = "series",
+                catalogId = "latest", showInHome = true
+            )
+        )
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://a.example"), addon("https://b.example")
+        ))
+        every { dao.getAllCatalogConfigs() } returns flowOf(configs)
+        coEvery { api.getCatalog("https://a.example/catalog/movie/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234561", type = "movie", name = "Film")))
+        coEvery { api.getCatalog("https://b.example/catalog/series/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234562", type = "series", name = "Show")))
+        coEvery { api.getCatalog("https://a.example/catalog/series/latest.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234563", type = "series", name = "Latest Show")))
+        val result = AddonRepository(api, dao).getDashboardRows("home")
+        assertEquals(3, result.size)
+        assertTrue(result.all { it.secondCatalogUrl == null })
+    }
+
+    @Test
     fun aggregatedCatalogPagesSourcesBeforeRequestingSkipLayers() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
