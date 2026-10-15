@@ -552,7 +552,7 @@ fun DashboardEditorScreen(
                     onDismissRequest = { dialogState = DialogState.None }
                 ) {
                     Text(
-                        "All Stremio genres are enabled by default. Choose a genre to hide or restore its row.",
+                        "Toggle genre visibility or cycle its title sort order. Row order follows viewing and watchlist preferences.",
                         color = Color.LightGray,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -575,15 +575,28 @@ fun DashboardEditorScreen(
                         items(genres.size) { index ->
                             val genre = genres[index]
                             val enabled = hidden.none { it.equals(genre, ignoreCase = true) }
-                            VoidButton(
-                                text = "${if (enabled) "✓  " else "○  "}$genre",
-                                onClick = {
-                                    viewModel.toggleGenre(currentProfile.id, state.screen, genre)
-                                    genreChanges++
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                isPrimary = enabled
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                VoidButton(
+                                    text = "${if (enabled) "✓  " else "○  "}$genre",
+                                    onClick = {
+                                        viewModel.toggleGenre(currentProfile.id, state.screen, genre)
+                                        genreChanges++
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    isPrimary = enabled,
+                                    compact = true
+                                )
+                                val titleOrder = viewModel.titleOrder(currentProfile.id, state.screen, genre)
+                                VoidButton(
+                                    text = titleOrder.label,
+                                    onClick = {
+                                        viewModel.cycleTitleOrder(currentProfile.id, state.screen, genre)
+                                        genreChanges++
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    compact = true
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(12.dp))
