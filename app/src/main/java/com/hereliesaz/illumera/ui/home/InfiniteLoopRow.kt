@@ -708,9 +708,12 @@ private fun InfiniteGridContent(
 
             when (item) {
                 is GridRowItem.MovieItem -> {
+                    val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                     Box(
                         modifier = Modifier
-                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
+                            .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                                inlineCinematicWidth
+                            } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -760,7 +763,6 @@ private fun InfiniteGridContent(
                                 } else false
                             }
                     ) {
-                        val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
                             title = item.movie.name,
@@ -769,6 +771,9 @@ private fun InfiniteGridContent(
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
                             enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -946,7 +951,9 @@ private fun FiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
+                            .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                                inlineCinematicWidth
+                            } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -998,6 +1005,9 @@ private fun FiniteGridContent(
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
                             enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -1169,6 +1179,9 @@ private fun GridMediaCard(
     isWatched: Boolean,
     isLandscapeCards: Boolean,
     enrichedItems: Map<String, MetaItem>,
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)?,
+    inlineCinematicExpanded: Boolean,
+    inlineCinematicWidth: Dp,
     onFocused: () -> Unit,
     modifier: Modifier
 ) {
@@ -1199,6 +1212,9 @@ private fun GridMediaCard(
             progress = progress,
             isWatched = isWatched,
             hasNewEpisode = mediaItem.hasNewEpisode,
+            inlineCinematicPreview = inlineCinematicPreview,
+            inlineCinematicExpanded = inlineCinematicExpanded,
+            inlineCinematicWidth = inlineCinematicWidth,
             onFocused = onFocused,
             modifier = modifier
         )
