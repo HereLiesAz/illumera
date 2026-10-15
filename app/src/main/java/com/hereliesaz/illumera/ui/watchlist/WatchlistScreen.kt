@@ -275,7 +275,7 @@ fun WatchlistScreen(
                     }
                 }
             }
-            if (!hasFilteredMedia) {
+            if (libraryItems.isEmpty()) {
                 item {
                     Text(
                         text = "Your watchlist is empty",
