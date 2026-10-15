@@ -126,7 +126,7 @@ fun WatchlistScreen(
             // Older releases used a separate Series row (index 1). Redirect
             // that stored focus into the single mixed library row.
             val target = if (exists) libraryItems.indexOfFirst { it.id == rememberedId }
-            else resolveRowRestoreIndex(key, 0, libraryItems.map { it.id })
+            else resolveRowRestoreIndex(key.replaceFirst(Regex("^[01]_"), "0_"), 0, libraryItems.map { it.id })
                 ?: libraryItems.lastIndex
             val item = libraryItems[target.coerceIn(0, libraryItems.lastIndex)]
             lastFocusedKey = "0_${item.id}_${target}"
