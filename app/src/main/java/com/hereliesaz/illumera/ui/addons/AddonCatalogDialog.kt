@@ -65,6 +65,10 @@ fun AddonCatalogContent(
     onInstall: (AddonCatalogItem) -> Unit,
     onRemove: (AddonCatalogItem) -> Unit,
     onConfigure: (AddonCatalogItem) -> Unit,
+    showingInstalled: Boolean = false,
+    onInstalledSelected: () -> Unit = {},
+    onRemoveInstalled: (String) -> Unit = {},
+    onInstallUrl: () -> Unit = {},
     modifier: Modifier = Modifier,
     entryRequester: FocusRequester? = null
 ) {
@@ -77,6 +81,14 @@ fun AddonCatalogContent(
     // header (or the user-selected catalog item) on every remount.
     LaunchedEffect(Unit) { onLoad() }
 
+    val filteredInstalled = remember(state.addons, query) {
+        val needle = query.trim()
+        state.addons.filter { addon ->
+            needle.isEmpty() || addon.name.contains(needle, true) ||
+                addon.nickname.orEmpty().contains(needle, true) ||
+                addon.transportUrl.contains(needle, true)
+        }
+    }
     val filteredItems = remember(state.catalogItems, query) {
         val needle = query.trim().lowercase()
         if (needle.isEmpty()) {
@@ -113,18 +125,34 @@ fun AddonCatalogContent(
 
             Spacer(Modifier.height(18.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item(key = "all") {
+                    VoidButton(
+                        text = "All",
+                        onClick = { onSourceSelected(AddonCatalogSource.ALL) },
+                        isPrimary = !showingInstalled && state.catalogSource == AddonCatalogSource.ALL,
+                        modifier = Modifier.width(66.dp).focusRequester(entryRequester ?: initialFocusRequester),
+                        compact = true
+                    )
+                }
+                item(key = "installed") {
+                    VoidButton(
+                        text = "Installed (${state.addons.size})",
+                        onClick = onInstalledSelected,
+                        isPrimary = showingInstalled,
+                        modifier = Modifier.width(120.dp),
+                        compact = true
+                    )
+                }
                 listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET).forEach { source ->
                     item(key = source.name) {
-                    VoidButton(
-                        text = source.displayName,
-                        onClick = { onSourceSelected(source) },
-                        isPrimary = state.catalogSource == source,
-                        modifier = Modifier
-                            .width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 142.dp else 130.dp)
-                            .then(if (source == AddonCatalogSource.OFFICIAL)
-                                Modifier.focusRequester(entryRequester ?: initialFocusRequester) else Modifier)
-                    )
+                        VoidButton(
+                            text = source.displayName,
+                            onClick = { onSourceSelected(source) },
+                            isPrimary = !showingInstalled && state.catalogSource == source,
+                            modifier = Modifier.width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 98.dp else 90.dp),
+                            compact = true
+                        )
                     }
                 }
                 item(key = "add_collection") {
@@ -132,12 +160,21 @@ fun AddonCatalogContent(
                         text = "+ Collection",
                         onClick = { addingCollection = !addingCollection },
                         isPrimary = addingCollection,
-                        modifier = Modifier.width(170.dp)
+                        modifier = Modifier.width(110.dp),
+                        compact = true
+                    )
+                }
+                item(key = "install_url") {
+                    VoidButton(
+                        text = "Install URL",
+                        onClick = onInstallUrl,
+                        modifier = Modifier.width(106.dp),
+                        compact = true
                     )
                 }
             }
 
-            if (state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
+            if (!showingInstalled && state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
                 Text(
                     "Addons sourced from stremio-addons.net — https://stremio-addons.net/",
                     color = MaterialTheme.colorScheme.primary,
@@ -181,7 +218,7 @@ fun AddonCatalogContent(
                 )
             }
 
-            if (state.savedCollections.isNotEmpty()) {
+            if (!showingInstalled && state.savedCollections.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Collections",
@@ -216,18 +253,40 @@ fun AddonCatalogContent(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
             VoidInput(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = "Search addons",
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                compact = true
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
 
-            when {
+            if (showingInstalled) {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(filteredInstalled, key = { it.transportUrl }) { addon ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(addon.nickname ?: addon.name, color = Color.White)
+                                Text(addon.transportUrl, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                            }
+                            AddonIconAction(
+                                icon = { Icon(Icons.Default.Delete, contentDescription = "Uninstall ${addon.nickname ?: addon.name}") },
+                                label = "Uninstall ${addon.nickname ?: addon.name}",
+                                onClick = { onRemoveInstalled(addon.transportUrl) }
+                            )
+                        }
+                    }
+                }
+            } else when {
                 state.isCatalogLoading && state.catalogItems.isEmpty() -> {
                     Box(
                         modifier = Modifier
@@ -455,6 +514,7 @@ private fun AddonBadge(label: String) {
 }
 
 private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (state.catalogSource) {
+    AddonCatalogSource.ALL -> AddonCatalogSource.ALL.displayName
     AddonCatalogSource.STREMIO_ADDONS_NET -> AddonCatalogSource.STREMIO_ADDONS_NET.displayName
     AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
     AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
