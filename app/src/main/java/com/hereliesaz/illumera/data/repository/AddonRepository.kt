@@ -112,12 +112,14 @@ class AddonRepository @Inject constructor(
 
         val imdbId = directId ?: try {
             kotlinx.coroutines.withTimeoutOrNull(4_000L) {
+                // No year means a title-only search could pick an unrelated remake.
+                if (year == null) return@withTimeoutOrNull null
                 searchMovies(meta.name).firstOrNull { candidate ->
                     candidate.type == meta.type &&
                         candidate.name.lowercase(java.util.Locale.ROOT)
                             .filter { it.isLetterOrDigit() } == title &&
-                        (year == null || Regex("(?:19|20)[0-9]{2}")
-                            .find(candidate.releaseInfo.orEmpty())?.value == year) &&
+                        Regex("(?:19|20)[0-9]{2}")
+                            .find(candidate.releaseInfo.orEmpty())?.value == year &&
                         Regex("^tt[0-9]+$").matches(candidate.id)
                 }?.id
             }
