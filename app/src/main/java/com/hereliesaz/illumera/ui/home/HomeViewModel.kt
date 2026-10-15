@@ -157,6 +157,7 @@ class HomeViewModel @Inject constructor(
                 pendingRowItems.clear()
                 allFetchedRowIds.clear()
                 rowFetchOffsets.clear()
+                pairedRowFetchOffsets.clear()
                 loadingMoreRows.clear()
                 metadataRequestsInFlight.clear()
                 tmdbEnrichmentInFlight.clear()
@@ -233,6 +234,7 @@ class HomeViewModel @Inject constructor(
     // Raw number of items fetched per row (including duplicates) — used as the catalog skip
     // so repeated items across pages don't cause the same page to be refetched forever.
     private val rowFetchOffsets = mutableMapOf<String, Int>()
+    private val pairedRowFetchOffsets = mutableMapOf<String, Int>()
 
     private data class MetadataFallback(
         val poster: String?,
@@ -329,13 +331,34 @@ class HomeViewModel @Inject constructor(
                     row.items.map { "${it.type}:${it.id}" }.toMutableSet()
                 }
 
-                // Skip = total fetched count for this row
-                val nextSkip = rowFetchOffsets.getOrPut(configId) { fetchedIds.size }
-                val newItems = repository.fetchNextCatalogPage(row.catalogUrl, nextSkip)
-                rowFetchOffsets[configId] = nextSkip + newItems.size
+                // Movie and series halves have independent pagination cursors.
+                // Using the visible deduplicated card count for either skip
+                // causes repeats and drops unseen titles from the other half.
+                val firstOffset = rowFetchOffsets.getOrPut(configId) {
+                    row.fetchedPrimaryCount
+                }
+                val secondOffset = pairedRowFetchOffsets.getOrPut(configId) {
+                    row.fetchedSecondCount
+                }
+                val firstItems = if (row.primarySupportsSkip)
+                    repository.fetchNextCatalogPage(row.catalogUrl, firstOffset)
+                else emptyList()
+                val secondItems = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
+                    repository.fetchNextCatalogPage(row.secondCatalogUrl, secondOffset)
+                else emptyList()
+                rowFetchOffsets[configId] = firstOffset + firstItems.size
+                pairedRowFetchOffsets[configId] = secondOffset + secondItems.size
 
-                // Deduplicate against all previously fetched items
-                val newUniqueItems = newItems.filter { item ->
+                val candidates = buildList {
+                    for (index in 0 until maxOf(firstItems.size, secondItems.size)) {
+                        firstItems.getOrNull(index)?.let(::add)
+                        secondItems.getOrNull(index)?.let(::add)
+                    }
+                }
+                // IMDb and provider aliases are deduplicated within the merged
+                // category while the movie and series type distinction survives.
+                val newUniqueItems = distinctAggregatedMetas(row.items, candidates)
+                newUniqueItems.forEach { item ->
                     fetchedIds.add("${item.type}:${item.id}")
                 }
 
@@ -402,6 +425,7 @@ class HomeViewModel @Inject constructor(
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
+        pairedRowFetchOffsets.clear()
         _state.value = _state.value.copy(
             loadedScreen = null,
             loadedProfileId = null
