@@ -216,7 +216,7 @@ internal fun aggregateLibraryEntries(
     entries: List<WatchlistViewModel.LibraryEntry>
 ): List<WatchlistViewModel.LibraryEntry> {
     val result = mutableListOf<WatchlistViewModel.LibraryEntry>()
-    val imdbPattern = Regex("^tt[0-9]+$")
+    val imdbPattern = Regex("tt[0-9]+")
     val yearPattern = Regex("(?:19|20)[0-9]{2}")
     fun norm(item: MetaItem) = item.name.lowercase().filter { it.isLetterOrDigit() }
     fun year(item: MetaItem) =
@@ -229,9 +229,11 @@ internal fun aggregateLibraryEntries(
             val old = existing.item
             if (old.type != item.type) return@indexOfFirst false
             if (old.id == item.id) return@indexOfFirst true
-            val oldImdb = old.id.takeIf { imdbPattern.matches(it) }
-            val newImdb = item.id.takeIf { imdbPattern.matches(it) }
-            if (oldImdb != null && newImdb != null) return@indexOfFirst false
+            val oldImdb = imdbPattern.find(old.id)?.value
+            val newImdb = imdbPattern.find(item.id)?.value
+            // Equivalent Stremio/third-party IMDb prefixes must merge even if
+            // their display names or release-year metadata differ.
+            if (oldImdb != null && newImdb != null) return@indexOfFirst oldImdb == newImdb
             val oldYear = year(old)
             val newYear = year(item)
             // Matching only a name when release years are unknown collapses
