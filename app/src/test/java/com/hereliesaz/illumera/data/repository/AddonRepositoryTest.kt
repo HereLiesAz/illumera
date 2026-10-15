@@ -517,49 +517,86 @@ class AddonRepositoryTest {
     }
 
     @Test
-    fun mixedHomeCatalogInterleavesMoviesAndSeriesWithoutDroppingMediaTypes() = runTest {
+    fun homePairsMovieAndSeriesPerCategoryWithoutCollapsingCategories() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
-        every { dao.getAllAddons() } returns flowOf(listOf(
-            addon("https://mixed.example").copy(catalogsJson =
-                """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]""")
-        ))
-        coEvery { api.getCatalog("https://mixed.example/catalog/movie/top.json") } returns
-            CatalogResponse(listOf(
-                MetaItem(id = "tt1000001", type = "movie", name = "Movie A", releaseInfo = "2024"),
-                MetaItem(id = "tt1000001", type = "movie", name = "Movie A Duplicate", releaseInfo = "2024")
-            ))
-        coEvery { api.getCatalog("https://mixed.example/catalog/series/top.json") } returns
-            CatalogResponse(listOf(
-                MetaItem(id = "tt2000002", type = "series", name = "Series B", releaseInfo = "2025")
-            ))
-
-        val repo = AddonRepository(api, dao)
-        val page = repo.getMixedCatalogPage(page = 0)
-        assertEquals(listOf("movie", "series"), page.map { it.type })
-        assertEquals(listOf("tt1000001", "tt2000002"), page.map { it.id })
-        assertEquals(1, repo.mixedCatalogFirstLayerPageCount())
+        val url = "https://catalog.example"
+        val configs = listOf("latest", "trending", "netflix").flatMapIndexed { order, category ->
+            listOf("movie", "series").mapIndexed { half, type ->
+                CatalogConfigEntity(
+                    uniqueId = "$url/$type/$category",
+                    transportUrl = url,
+                    addonName = "Catalog",
+                    catalogType = type,
+                    catalogId = category,
+                    catalogName = category.replaceFirstChar { it.uppercase() },
+                    showInHome = true,
+                    homeOrder = order * 2 + half
+                )
+            }
+        }
+        every { dao.getAllAddons() } returns flowOf(listOf(addon(url)))
+        every { dao.getAllCatalogConfigs() } returns flowOf(configs)
+        for ((i, category) in listOf("latest", "trending", "netflix").withIndex()) {
+            for ((j, type) in listOf("movie", "series").withIndex()) {
+                coEvery {
+                    api.getCatalog("$url/catalog/$type/$category.json")
+                } returns CatalogResponse(listOf(
+                    MetaItem(
+                        id = "tt00000${i + 1}${j + 1}",
+                        type = type,
+                        name = "$category $type"
+                    )
+                ))
+            }
+        }
+        val repository = AddonRepository(api, dao)
+        val result = repository.getDashboardRows("home")
+        assertEquals(listOf("Latest", "Trending", "Netflix"), result.map { it.title })
+        assertEquals(3, result.size)
+        assertTrue(result.all { row ->
+            row.items.size == 2 &&
+                row.items.map { it.type }.toSet() == setOf("movie", "series") &&
+                row.secondCatalogUrl != null
+        })
+        // Pagination counts paired ROWS, not the six underlying catalogs.
+        val second = repository.getDashboardRows("home", skipConfigs = 1, maxConfigs = 1)
+        assertEquals(listOf("Trending"), second.map { it.title })
+        assertEquals(2, second.single().items.size)
     }
 
     @Test
-    fun mixedHomeCatalogKeepsMovieAndSeriesWithSameTitle() = runTest {
+    fun homeDoesNotPairDifferentAddonProvidersOrUnrelatedCategories() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
+        val configs = listOf(
+            CatalogConfigEntity(
+                uniqueId = "a-m", transportUrl = "https://a.example",
+                addonName = "A", catalogType = "movie",
+                catalogId = "popular", showInHome = true
+            ),
+            CatalogConfigEntity(
+                uniqueId = "b-s", transportUrl = "https://b.example",
+                addonName = "B", catalogType = "series",
+                catalogId = "popular", showInHome = true
+            ),
+            CatalogConfigEntity(
+                uniqueId = "a-s", transportUrl = "https://a.example",
+                addonName = "A", catalogType = "series",
+                catalogId = "latest", showInHome = true
+            )
+        )
         every { dao.getAllAddons() } returns flowOf(listOf(
-            addon("https://same.example").copy(catalogsJson =
-                """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]""")
+            addon("https://a.example"), addon("https://b.example")
         ))
-        coEvery { api.getCatalog("https://same.example/catalog/movie/top.json") } returns
-            CatalogResponse(listOf(MetaItem(
-                id = "tt1000003", type = "movie", name = "Shared Title", releaseInfo = "2022"
-            )))
-        coEvery { api.getCatalog("https://same.example/catalog/series/top.json") } returns
-            CatalogResponse(listOf(MetaItem(
-                id = "tt2000004", type = "series", name = "Shared Title", releaseInfo = "2022"
-            )))
-        val results = AddonRepository(api, dao).getMixedCatalogPage(0)
-        assertEquals(2, results.size)
-        assertEquals(setOf("movie", "series"), results.map { it.type }.toSet())
+        every { dao.getAllCatalogConfigs() } returns flowOf(configs)
+        coEvery { api.getCatalog(any()) } answers {
+            val type = if (firstArg<String>().contains("/series/")) "series" else "movie"
+            CatalogResponse(listOf(MetaItem(id = "tt1234567", type = type, name = "Title")))
+        }
+        val result = AddonRepository(api, dao).getDashboardRows("home")
+        assertEquals(3, result.size)
+        assertTrue(result.all { it.secondCatalogUrl == null })
     }
 
     @Test
