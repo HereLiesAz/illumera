@@ -232,7 +232,10 @@ fun MainShell(
                         currentDestination = currentDestination,
                         currentProfile = currentProfile,
                         topNavRequesters = menuRequesters,
-                        onNavigate = onNavigate,
+                        onNavigate = { destination ->
+                            state.closeMenu()
+                            onNavigate(destination)
+                        },
                         onEnterContent = onEnterContent,
                         onLogout = onLogout,
                         onExit = onExit,
@@ -244,7 +247,10 @@ fun MainShell(
                         currentDestination = currentDestination,
                         currentProfile = currentProfile,
                         drawerRequesters = menuRequesters,
-                        onNavigate = onNavigate,
+                        onNavigate = { destination ->
+                            state.closeMenu()
+                            onNavigate(destination)
+                        },
                         onClose = onEnterContent,
                         onBack = state::onMenuBack,
                         onSwipeOpen = { state.pendingOpener = MenuOpener.Swipe }
