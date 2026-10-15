@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -1523,6 +1525,20 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
         ?.first
 }
 
+/**
+ * Measure a 16:9 video *larger* than a wide/short viewport, then clip its
+ * centered overflow. A PlayerView zoom flag alone cannot fix a view measured
+ * smaller than the viewport. The same geometry serves Hero and poster previews.
+ */
+internal fun cinematicVideoCoverSize(
+    viewportWidth: Dp,
+    viewportHeight: Dp
+): Pair<Dp, Dp> {
+    val videoRatio = 16f / 9f
+    return maxOf(viewportWidth, viewportHeight * videoRatio) to
+        maxOf(viewportHeight, viewportWidth / videoRatio)
+}
+
 /** Do not resolve media or start a player for a disabled/offscreen preview. */
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
@@ -1603,7 +1619,11 @@ internal fun TrailerPreview(
         }
     }
     if (player != null) {
-        Box(modifier = modifier) {
+        BoxWithConstraints(
+            modifier = modifier.clipToBounds(),
+            contentAlignment = Alignment.Center
+        ) {
+            val (coverWidth, coverHeight) = cinematicVideoCoverSize(maxWidth, maxHeight)
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
@@ -1623,7 +1643,10 @@ internal fun TrailerPreview(
                     }
                 },
                 update = { it.player = player },
-                modifier = Modifier.fillMaxSize()
+                // Explicitly oversize the video surface when the carousel is
+                // wider than 16:9. The *center* stays visible; top and bottom
+                // are cut off by the viewport's clipping bounds.
+                modifier = Modifier.requiredSize(coverWidth, coverHeight)
             )
             if (!ready) {
                 // Don't hide the SurfaceView: alpha=0 can prevent a first-frame
