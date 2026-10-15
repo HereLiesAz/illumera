@@ -517,6 +517,52 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun mixedHomeCatalogInterleavesMoviesAndSeriesWithoutDroppingMediaTypes() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://mixed.example").copy(catalogsJson =
+                """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]""")
+        ))
+        coEvery { api.getCatalog("https://mixed.example/catalog/movie/top.json") } returns
+            CatalogResponse(listOf(
+                MetaItem(id = "tt1000001", type = "movie", name = "Movie A", releaseInfo = "2024"),
+                MetaItem(id = "tt1000001", type = "movie", name = "Movie A Duplicate", releaseInfo = "2024")
+            ))
+        coEvery { api.getCatalog("https://mixed.example/catalog/series/top.json") } returns
+            CatalogResponse(listOf(
+                MetaItem(id = "tt2000002", type = "series", name = "Series B", releaseInfo = "2025")
+            ))
+
+        val repo = AddonRepository(api, dao)
+        val page = repo.getMixedCatalogPage(page = 0)
+        assertEquals(listOf("movie", "series"), page.map { it.type })
+        assertEquals(listOf("tt1000001", "tt2000002"), page.map { it.id })
+        assertEquals(1, repo.mixedCatalogFirstLayerPageCount())
+    }
+
+    @Test
+    fun mixedHomeCatalogKeepsMovieAndSeriesWithSameTitle() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(
+            addon("https://same.example").copy(catalogsJson =
+                """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]""")
+        ))
+        coEvery { api.getCatalog("https://same.example/catalog/movie/top.json") } returns
+            CatalogResponse(listOf(MetaItem(
+                id = "tt1000003", type = "movie", name = "Shared Title", releaseInfo = "2022"
+            )))
+        coEvery { api.getCatalog("https://same.example/catalog/series/top.json") } returns
+            CatalogResponse(listOf(MetaItem(
+                id = "tt2000004", type = "series", name = "Shared Title", releaseInfo = "2022"
+            )))
+        val results = AddonRepository(api, dao).getMixedCatalogPage(0)
+        assertEquals(2, results.size)
+        assertEquals(setOf("movie", "series"), results.map { it.type }.toSet())
+    }
+
+    @Test
     fun aggregatedCatalogPagesSourcesBeforeRequestingSkipLayers() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
