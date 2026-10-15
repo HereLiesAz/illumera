@@ -327,12 +327,14 @@ class AddonRepository @Inject constructor(
         val candidate = config.customTitle?.takeIf { it.isNotBlank() }
             ?: config.catalogName?.takeIf { it.isNotBlank() }
             ?: config.catalogId.replace('-', ' ').replace('_', ' ')
-        val mediaSuffix = "(?:movies?|films?|series|tv(?:\\s*shows?)?|shows?)"
+        // Whole-label generic names must pair ("Movies" + "Series").
+        // Match TV Shows before plain Shows so no stray "TV" grouping remains.
+        val mediaSuffix = "(?:tv\\\\s*shows?|tv\\\\s*series|movies?|films?|series|shows?|tv)"
         val withoutParen = candidate.replace(
-            Regex("(?i)\\s*\\($mediaSuffix\\)\\s*$"), ""
+            Regex("(?i)\\\\s*\\\\($mediaSuffix\\\\)\\\\s*$"), ""
         )
         val normalized = withoutParen.replace(
-            Regex("(?i)\\s*(?:[-:/]|\\s)\\s*$mediaSuffix\\s*$"), ""
+            Regex("(?i)(?:^|[-:/\\\\s]+)$mediaSuffix\\\\s*$"), ""
         ).trim()
         return normalized.ifBlank { config.addonName }
     }
