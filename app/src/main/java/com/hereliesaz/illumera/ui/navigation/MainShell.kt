@@ -102,6 +102,15 @@ class MainShellState {
     }
 }
 
+/** Platform navigation clicks, kept separate from play/pause and selection. */
+internal fun soundForNavigationKey(key: Key): Int? = when (key) {
+    Key.DirectionLeft -> SoundEffectConstants.NAVIGATION_LEFT
+    Key.DirectionRight -> SoundEffectConstants.NAVIGATION_RIGHT
+    Key.DirectionUp -> SoundEffectConstants.NAVIGATION_UP
+    Key.DirectionDown -> SoundEffectConstants.NAVIGATION_DOWN
+    else -> null
+}
+
 /** The [MainShellState] over the current back-stack entry; null outside [MainShell]. */
 val LocalMainShellState = staticCompositionLocalOf<MainShellState?> { null }
 
@@ -190,13 +199,7 @@ fun MainShell(
     Box(
         modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
             if (audioPreferences.navigationSounds && event.type == KeyEventType.KeyDown) {
-                val sound = when (event.key) {
-                    Key.DirectionLeft -> SoundEffectConstants.NAVIGATION_LEFT
-                    Key.DirectionRight -> SoundEffectConstants.NAVIGATION_RIGHT
-                    Key.DirectionUp -> SoundEffectConstants.NAVIGATION_UP
-                    Key.DirectionDown -> SoundEffectConstants.NAVIGATION_DOWN
-                    else -> null
-                }
+                val sound = soundForNavigationKey(event.key)
                 if (sound != null) {
                     val now = SystemClock.uptimeMillis()
                     if (now - previousNavigationSoundAt >= 110L) {
