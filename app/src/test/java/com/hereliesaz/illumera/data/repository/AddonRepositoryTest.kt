@@ -507,6 +507,40 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun normalizedImdbPrefixDedupWorksRegardlessOfProviderOrder() {
+        val imdb = MetaItem(id = "tt1234567", type = "movie", name = "Unknown Title")
+        val prefixed = imdb.copy(id = "imdb:tt1234567", name = "Different provider title")
+        assertEquals(1, distinctAggregatedMetas(emptyList(), listOf(imdb, prefixed)).size)
+        assertEquals(1, distinctAggregatedMetas(emptyList(), listOf(prefixed, imdb)).size)
+    }
+
+    @Test
+    fun keepsConfiguredTvAndChannelCatalogsAsStandaloneHomeRows() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val provider = addon("https://live.example")
+        every { dao.getAllAddons() } returns flowOf(listOf(provider))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://live.example", "movie", "popular", "Popular Movies", 1),
+            config("https://live.example", "series", "popular", "Popular Series", 2),
+            config("https://live.example", "tv", "live", "Live TV", 3),
+            config("https://live.example", "channel", "music", "Music Channels", 4)
+        ))
+        every { dao.getAddon("https://live.example") } returns provider
+        coEvery { api.getCatalog("https://live.example/catalog/tv/live.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tv:one", type = "tv", name = "Live One")))
+        coEvery { api.getCatalog("https://live.example/catalog/channel/music.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "channel:one", type = "channel", name = "Music One")))
+        val repository = AddonRepository(api, dao)
+        val rows = repository.getHomePairedRows()
+        assertEquals(listOf("Popular", "Live TV", "Music Channels"), rows.map { it.title })
+        val tvRow = rows.single { it.title == "Live TV" }
+        val channelsRow = rows.single { it.title == "Music Channels" }
+        assertEquals("tv:one", repository.getHomePairCatalogPage(tvRow.configId, 0).single().id)
+        assertEquals("channel:one", repository.getHomePairCatalogPage(channelsRow.configId, 0).single().id)
+    }
+
+    @Test
     fun homePairsPopularMoviesAndSeriesWithoutMergingTrendingOrNetflix() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
