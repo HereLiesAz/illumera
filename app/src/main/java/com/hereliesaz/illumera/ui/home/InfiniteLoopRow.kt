@@ -227,7 +227,7 @@ fun InfiniteLoopRow(
             // Cinematic landscape rails must not revert to portrait when a
             // catalog is configured as an infinite or finite grid.
             // A standard LazyRow also supports per-genre incremental paging.
-            isLandscapeCards || !isInfiniteLoopEnabled -> {
+            !isInfiniteLoopEnabled -> {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
                     LinearContent(
                         listState = listState,
@@ -278,7 +278,8 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards
                     )
                 }
             }
@@ -305,7 +306,8 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards
                     )
                 }
             }
@@ -353,7 +355,10 @@ private fun LinearContent(
         if (isLandscapeCards) {
             items.map { item ->
                 val enriched = enrichedItems["${item.type}:${item.id}"]
-                enriched?.background ?: item.background ?: enriched?.poster ?: item.poster
+                enriched?.background?.takeIf { it.isNotBlank() }
+                    ?: item.background?.takeIf { it.isNotBlank() }
+                    ?: enriched?.poster?.takeIf { it.isNotBlank() }
+                    ?: item.poster?.takeIf { it.isNotBlank() }
             }
         } else {
             items.map { it.poster }
@@ -461,9 +466,11 @@ private fun LinearContent(
                     val enriched = enrichedItems["${item.type}:${item.id}"]
                     LumeraLandscapeCard(
                         title = item.name,
-                        backdropUrl = enriched?.background ?: item.background,
+                        backdropUrl = enriched?.background?.takeIf { it.isNotBlank() }
+                            ?: item.background?.takeIf { it.isNotBlank() },
                         logoUrl = enriched?.logo ?: item.logo,
-                        posterUrl = enriched?.poster ?: item.poster,
+                        posterUrl = enriched?.poster?.takeIf { it.isNotBlank() }
+                            ?: item.poster?.takeIf { it.isNotBlank() },
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
@@ -547,7 +554,8 @@ private fun InfiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -654,7 +662,7 @@ private fun InfiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -706,6 +714,31 @@ private fun InfiniteGridContent(
                     ) {
                         val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                         val watchedIds = LocalWatchedIds.current
+                        if (isLandscapeCards) {
+                        LumeraLandscapeCard(
+                            title = item.movie.name,
+                            backdropUrl = item.movie.background?.takeIf { it.isNotBlank() },
+                            logoUrl = item.movie.logo?.takeIf { it.isNotBlank() },
+                            posterUrl = item.movie.poster?.takeIf { it.isNotBlank() },
+                            onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
+                            progress = item.movie.progress,
+                            isWatched = rowIndex != -1 && item.movie.id in watchedIds,
+                            onFocused = {
+                                currentFocusedIndex = scrollIndex
+                                val logicalIndex = scrollIndex % sectionSize
+                                if (logicalIndex < imageUrls.size) {
+                                    ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
+                                }
+                                onFocused(item.movie, uniqueKey)
+                            },
+                            modifier = Modifier.then(
+                                if (shouldRequestFocus) Modifier.focusRequester(entryRequester)
+                                else if (pivotFocusRequester != null && scrollIndex == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)
+                                else Modifier
+                            ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
+                        )
+                        } else {
                         LumeraCard(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
@@ -727,6 +760,7 @@ private fun InfiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        }
                     }
                 }
 
@@ -801,7 +835,8 @@ private fun FiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false
 ) {
     val context = LocalContext.current
     
@@ -874,7 +909,7 @@ private fun FiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -919,6 +954,27 @@ private fun FiniteGridContent(
                             }
                     ) {
                         val watchedIds = LocalWatchedIds.current
+                        if (isLandscapeCards) {
+                        LumeraLandscapeCard(
+                            title = item.movie.name,
+                            backdropUrl = item.movie.background?.takeIf { it.isNotBlank() },
+                            logoUrl = item.movie.logo?.takeIf { it.isNotBlank() },
+                            posterUrl = item.movie.poster?.takeIf { it.isNotBlank() },
+                            onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
+                            progress = item.movie.progress,
+                            isWatched = rowIndex != -1 && item.movie.id in watchedIds,
+                            onFocused = {
+                                ImagePrefetcher.prefetchAround(context, imageUrls, index)
+                                onFocused(item.movie, uniqueKey)
+                            },
+                            modifier = Modifier.then(
+                                if (shouldRequestFocus) Modifier.focusRequester(entryRequester)
+                                else if (pivotFocusRequester != null && index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)
+                                else Modifier
+                            ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
+                        )
+                        } else {
                         LumeraCard(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
@@ -936,6 +992,7 @@ private fun FiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        }
                     }
                 }
 
