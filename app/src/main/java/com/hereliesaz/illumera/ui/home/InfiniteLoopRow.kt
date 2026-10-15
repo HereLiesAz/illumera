@@ -220,6 +220,13 @@ internal fun cinematicInlineWidth(screenWidth: Dp, startPadding: Dp): Dp =
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
+/** Cinematic geometry has one owner: inactive rows cannot display portraits. */
+internal fun useLandscapeMediaCard(
+    hasInlinePreview: Boolean,
+    isActiveCinematicRow: Boolean,
+    configuredLandscape: Boolean
+): Boolean = if (hasInlinePreview) !isActiveCinematicRow else configuredLandscape
+
 fun InfiniteLoopRow(
     startPadding: Dp,
     isTopNav: Boolean,
@@ -251,11 +258,9 @@ fun InfiniteLoopRow(
 ) {
     // Only the focused cinematic row can use portraits. This rule is enforced
     // inside the renderer, independently of stale caller landscape flags.
-    val renderLandscapeCards = if (inlineCinematicPreview != null) {
-        !isInlineRowActive
-    } else {
-        isLandscapeCards
-    }
+    val renderLandscapeCards = useLandscapeMediaCard(
+        inlineCinematicPreview != null, isInlineRowActive, isLandscapeCards
+    )
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
     
