@@ -60,6 +60,19 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun watchlistGridFitsTwoPortraitPostersOnCompactScreens() {
+        assertEquals(2, watchlistGridColumnCount(393, 96, 122))
+        assertEquals(1, watchlistGridColumnCount(260, 96, 122))
+    }
+
+    @Test
+    fun watchlistGridUsesAvailableWidthWithoutOverflowingTheNav() {
+        assertEquals(3, watchlistGridColumnCount(600, 96, 122))
+        assertEquals(11, watchlistGridColumnCount(1920, 120, 140))
+        assertEquals(1, watchlistGridColumnCount(120, 96, 122))
+    }
+
+    @Test
     fun differentProviderTitleWithUnknownYearIsNotAssumedDuplicate() {
         fun e(id: String, year: String? = null, poster: String? = null) =
             WatchlistViewModel.LibraryEntry(

@@ -45,6 +45,7 @@ import com.hereliesaz.illumera.ui.addons.AddonsScreen
 import com.hereliesaz.illumera.ui.watchlist.DebridLibraryViewModel
 import com.hereliesaz.illumera.ui.watchlist.DebridLibraryEvent
 import com.hereliesaz.illumera.ui.watchlist.DebridLibrarySection
+import com.hereliesaz.illumera.ui.queue.QueuePreferencesSettings
 import android.widget.Toast
 import com.hereliesaz.illumera.ui.theme.ThemeManager
 import kotlinx.coroutines.delay
@@ -495,10 +496,18 @@ private fun WatchlistSettings(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Watchlist", style = MaterialTheme.typography.titleLarge, color = Color.White)
-        Text("Your Queue stays at the top of Watchlist. Below it, Library combines saved titles and synchronized Stremio viewing history.",
+        Text("Suggested Next appears first, then Queue, then the Library grid.",
             style = MaterialTheme.typography.bodyMedium, color = Color.LightGray)
-        Text("Default Library sorting", style = MaterialTheme.typography.titleMedium, color = Color.White)
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            item(key = "queue_preferences") {
+                Text("Queue & suggestions", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                QueuePreferencesSettings()
+                Spacer(Modifier.height(14.dp))
+            }
+            item(key = "default_library_sort_header") {
+                Text("Default Library sorting", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            }
             items(modes) { mode ->
                 val selected = defaultSort == mode.first
                 Text(

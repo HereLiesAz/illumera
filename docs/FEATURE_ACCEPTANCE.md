@@ -17,6 +17,8 @@ This is the source-of-truth checklist for the requested Home, Movies, Series, Ad
 | Watchlist setup under Settings → Watchlist | Cloud-storage controls and default sort moved | Verify cloud play/delete routing, D-pad access |
 | Two-way Stremio Library sync includes unplayed saved-only titles | PR #234 includes bookmarks in outbound reconciliation and baseline snapshots | Stremio sign-in and multi-profile integration tests, remote deletes, and local re-add protection |
 
+**Current Watchlist order (October 15):** Suggested Next → Queue → compact Library sorting → poster grid; earlier Queue-first/Library-rail descriptions below are historical and superseded by the October 15 Watchlist follow-up.
+
 ## Release gate
 
 Before describing this as done:
@@ -102,6 +104,26 @@ Android compilation and TV D-pad/end-of-row focus require device verification be
 - Trailer extraction gives at most one addon candidate, one TMDB candidate, and two Cinemeta candidates 15 seconds each, preserving time for later sources within the resolver deadline.
 
 These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
+
+## Watchlist reorganization (October 15, 2026) — awaiting device verification
+
+- Suggested Next, with **Refresh** directly beside the heading, is the first screen element. It remains visible even when there are no suggestions; the refresh control still accepts focus when suggestions are disabled and explains where to enable them.
+- Queue follows Suggested Next, preserving manual reordering and removal. Suggestion thumbs, moving, dismissals, and refresh behavior are unchanged. All seven queue option controls formerly above the cards (enabled, movie, episode, whole-show, play-history, Trakt and unseen-only toggles) now live in Settings → Watchlist; the same QueueManager updates them.
+- Library uses a responsive **vertical grid** of posters in the parent LazyColumn rather than a horizontal rail, with 122dp poster slots on compact screens and 140dp on TV. The sort buttons above the Library are smaller (11sp labels, 8dp horizontal × 5dp vertical padding), keeping all existing sort modes.
+- Profile sorting, mixed movie/series identities, watched badges, lazy metadata enrichment, card actions and saved focus keys must remain intact. The parent vertical scroll state is retained in WatchlistViewModel.
+- Unit assertions cover column capacity for small phone, ordinary phone, compact tablet and TV widths; expected values are fixed independently from implementation arithmetic.
+
+**Still required:** Android build, FOSS variant unit tests, cold adversarial GLEE review, Android TV/device D-pad and focus restoration, empty/disabled-suggestions scenarios, large libraries and sort changes. Do not treat this as device-verified completion.
+
+### PR #246 review follow-ups
+
+- QueueManager persists empty suggestions as soon as a source, unseen-only, or allowed-content preference changes; Watchlist `ensureSuggestions` reconstructs the row after Settings is dismissed, even when a view-local coroutine was cancelled and the previous row had ten suggestions. Existing manual Queue items and per-profile preferences remain intact.
+- Left-arrow navigation in the poster grid shares one repeat debounce across cells. Reaching column zero by holding Left does not immediately escape to the drawer; a fresh deliberate press does.
+- Grid children are composed with stable `key(media.type, media.id)` identities, preserving card/long-press state across reorders or deduplication within a row.
+- QueueManager regression tests cover persisted invalidation, manual-queue retention, and in-flight refresh results rejected after a preference switch; the old async request cannot resurrect titles from a now-disabled source. Full Android builds and remote-device verification remain required.
+
+- Review follow-up: Suggested Next and Refresh stack vertically on compact screens while retaining a horizontal header on TV.
+- Review follow-up: disabled suggestions retain a visibly focused Refresh control; last Library card consumes Right when top navigation is active.
 
 ## Follow-up to the post-merge #244 adversarial review
 

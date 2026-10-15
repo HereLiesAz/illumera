@@ -50,6 +50,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -136,6 +138,7 @@ fun QueueSection(
 ) {
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(state.preferences.enabled, state.preferences.suggestionSources) {
         if (state.preferences.enabled) {
@@ -168,7 +171,7 @@ fun QueueSection(
             val neighbour = queueFocusNeighbour(
                 key = key,
                 previousRows = listOf(previousRows[0], previousRows[1]),
-                currentRows = listOf(manualKeys, suggestionKeys)
+                currentRows = listOf(suggestionKeys, manualKeys)
             )
             if (neighbour != null) {
                 onQueueFocused(neighbour) // the card's own LaunchedEffect focuses it
@@ -180,42 +183,200 @@ fun QueueSection(
                 }
             }
         }
-        previousRows[0] = manualKeys
-        previousRows[1] = suggestionKeys
+        previousRows[0] = suggestionKeys
+        previousRows[1] = manualKeys
     }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(modifier = Modifier.padding(start = startPadding, end = 32.dp)) {
+        // Compact layouts retain a visible Refresh action rather than crushing
+        // the adjacent controls into a 132dp-wide row.
+        val headerContent: @Composable () -> Unit = {
             Text(
-                text = "Queue",
+                text = "Suggested Next",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
+            val refreshInteraction = remember { MutableInteractionSource() }
+            val refreshFocused by refreshInteraction.collectIsFocusedAsState()
+            val refreshColors = buttonColors(focused = refreshFocused, enabled = true)
+            Button(
+                onClick = {
+                    if (state.preferences.enabled) {
+                        scope.launch { queueManager.refreshSuggestions(rotate = true) }
+                    } else {
+                        Toast.makeText(context, "Enable suggestions in Settings → Watchlist", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                // Disabled buttons cannot take TV focus; leave it focusable so
+                // the initial Watchlist entry always has a real target.
+                enabled = true,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = refreshColors.container,
+                    contentColor = refreshColors.content,
+                    disabledContainerColor = refreshColors.container,
+                    disabledContentColor = refreshColors.content
+                ),
+                border = BorderStroke(refreshColors.borderWidth, refreshColors.border),
+                interactionSource = refreshInteraction,
+                modifier = (if (requestEntryFocus) Modifier.focusRequester(entryRequester) else Modifier)
+                    .height(38.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Refresh suggested next",
+                    tint = refreshColors.content,
+                    modifier = Modifier.width(17.dp).height(17.dp)
+                )
+                Text(
+                    if (state.isRefreshingSuggestions) " Refreshing…" else " Refresh",
+                    color = refreshColors.content,
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        val compactHeader = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 540
+        if (compactHeader) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = startPadding, end = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                headerContent()
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = startPadding, end = 32.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                headerContent()
+            }
+        }
+
+        if (!state.preferences.enabled) {
             Text(
-                text = "Your lineup, followed by suggestions.",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .62f)
+                text = "Enable suggestions in Settings → Watchlist.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .6f),
+                modifier = Modifier.padding(start = startPadding)
+            )
+        } else if (state.suggestions.isEmpty() && !state.isRefreshingSuggestions) {
+            Text(
+                text = "No suggestions available.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .55f),
+                modifier = Modifier.padding(start = startPadding)
             )
         }
 
-        Column(
-            modifier = Modifier
-                .padding(start = startPadding, end = 32.dp)
-                .fillMaxWidth()
-                .background(
-                    MaterialTheme.colorScheme.surface.copy(alpha = .5f),
-                    RoundedCornerShape(14.dp)
-                )
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
+        if (state.suggestions.isNotEmpty()) {
+            QueueCardRow(
+                title = "Suggested next",
+                showTitle = false,
+                items = state.suggestions,
+                startPadding = startPadding,
+                onOpenItem = onOpenItem,
+                focusedKey = focusedQueueKey,
+                onFocused = onQueueFocused,
+                onMoveSuggestion = { item, targetIndex ->
+                    queueManager.moveSuggestion(item.stableKey, targetIndex)
+                },
+                onRemoveSuggestion = { item ->
+                    scope.launch {
+                        queueManager.removeSuggestion(item.stableKey)
+                        queueManager.ensureSuggestions()
+                    }
+                },
+                actions = { item, _ ->
+                    VoidIconButton(
+                        icon = Icons.Default.ThumbDown,
+                        contentDescription = "Less like this",
+                        onClick = {
+                            scope.launch {
+                                queueManager.rateSuggestion(item.stableKey, -1)
+                                queueManager.removeSuggestion(item.stableKey)
+                                queueManager.ensureSuggestions()
+                            }
+                        },
+                        isActive = item.rating < 0
+                    )
+                    VoidIconButton(
+                        icon = Icons.Default.ThumbUp,
+                        contentDescription = "More like this",
+                        onClick = { queueManager.rateSuggestion(item.stableKey, 1) },
+                        isActive = item.rating > 0
+                    )
+                }
+            )
+        }
+
+        Text(
+            text = "Queue",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = startPadding)
+        )
+        if (state.manualItems.isEmpty()) {
+            Text(
+                text = "Nothing queued yet.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .55f),
+                modifier = Modifier.padding(start = startPadding)
+            )
+        } else {
+            QueueCardRow(
+                title = "Queue",
+                showTitle = false,
+                items = state.manualItems,
+                startPadding = startPadding,
+                onOpenItem = onOpenItem,
+                focusedKey = focusedQueueKey,
+                onFocused = onQueueFocused,
+                actions = { item, index ->
+                    VoidIconButton(
+                        icon = Icons.Default.ArrowUpward,
+                        contentDescription = "Move up",
+                        onClick = { queueManager.move(item.stableKey, -1) },
+                        enabled = index > 0
+                    )
+                    VoidIconButton(
+                        icon = Icons.Default.ArrowDownward,
+                        contentDescription = "Move down",
+                        onClick = { queueManager.move(item.stableKey, 1) },
+                        enabled = index < state.manualItems.lastIndex
+                    )
+                    VoidIconButton(
+                        icon = Icons.Default.Delete,
+                        contentDescription = "Remove",
+                        onClick = { queueManager.remove(item.stableKey) }
+                    )
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun QueuePreferencesSettings(
+    queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager
+) {
+    val state by queueManager.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surface.copy(alpha = .5f),
+                RoundedCornerShape(14.dp)
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
             QueueOption(
                 label = "Queue enabled",
                 checked = state.preferences.enabled,
-                onCheckedChange = queueManager::setEnabled,
-                modifier = if (requestEntryFocus) Modifier.focusRequester(entryRequester) else Modifier
+                onCheckedChange = queueManager::setEnabled
             )
 
             Text(
@@ -268,106 +429,6 @@ fun QueueSection(
                     scope.launch { queueManager.refreshSuggestions() }
                 }
             )
-
-            val refreshInteraction = remember { MutableInteractionSource() }
-            val refreshFocused by refreshInteraction.collectIsFocusedAsState()
-            val refreshColors = buttonColors(focused = refreshFocused, enabled = state.preferences.enabled)
-            // Stays enabled while refreshing: disabling the button the viewer just pressed took
-            // focus away from under them. Pressing again restarts the refresh (newest wins).
-            Button(
-                // Keeps removed titles removed, and brings in titles not already showing.
-                onClick = { scope.launch { queueManager.refreshSuggestions(rotate = true) } },
-                enabled = state.preferences.enabled,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = refreshColors.container,
-                    contentColor = refreshColors.content,
-                    disabledContainerColor = refreshColors.container,
-                    disabledContentColor = refreshColors.content
-                ),
-                border = BorderStroke(refreshColors.borderWidth, refreshColors.border),
-                interactionSource = refreshInteraction,
-                modifier = Modifier.padding(start = 8.dp, top = 6.dp)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = refreshColors.content)
-                Text(if (state.isRefreshingSuggestions) " Refreshing…" else " Refresh suggestions", color = refreshColors.content)
-            }
-        }
-
-        if (state.manualItems.isEmpty()) {
-            Text(
-                text = "Nothing queued yet.",
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = .55f),
-                modifier = Modifier.padding(start = startPadding)
-            )
-        } else {
-            QueueCardRow(
-                title = "Your lineup",
-                items = state.manualItems,
-                startPadding = startPadding,
-                onOpenItem = onOpenItem,
-                focusedKey = focusedQueueKey,
-                onFocused = onQueueFocused,
-                actions = { item, index ->
-                    VoidIconButton(
-                        icon = Icons.Default.ArrowUpward,
-                        contentDescription = "Move up",
-                        onClick = { queueManager.move(item.stableKey, -1) },
-                        enabled = index > 0
-                    )
-                    VoidIconButton(
-                        icon = Icons.Default.ArrowDownward,
-                        contentDescription = "Move down",
-                        onClick = { queueManager.move(item.stableKey, 1) },
-                        enabled = index < state.manualItems.lastIndex
-                    )
-                    VoidIconButton(
-                        icon = Icons.Default.Delete,
-                        contentDescription = "Remove",
-                        onClick = { queueManager.remove(item.stableKey) }
-                    )
-                }
-            )
-        }
-
-        if (state.suggestions.isNotEmpty()) {
-            QueueCardRow(
-                title = "Suggested next",
-                items = state.suggestions,
-                startPadding = startPadding,
-                onOpenItem = onOpenItem,
-                focusedKey = focusedQueueKey,
-                onFocused = onQueueFocused,
-                onMoveSuggestion = { item, targetIndex ->
-                    queueManager.moveSuggestion(item.stableKey, targetIndex)
-                },
-                onRemoveSuggestion = { item ->
-                    scope.launch {
-                        queueManager.removeSuggestion(item.stableKey)
-                        queueManager.ensureSuggestions()
-                    }
-                },
-                actions = { item, _ ->
-                    VoidIconButton(
-                        icon = Icons.Default.ThumbDown,
-                        contentDescription = "Less like this",
-                        onClick = {
-                            scope.launch {
-                                queueManager.rateSuggestion(item.stableKey, -1)
-                                queueManager.removeSuggestion(item.stableKey)
-                                queueManager.ensureSuggestions()
-                            }
-                        },
-                        isActive = item.rating < 0
-                    )
-                    VoidIconButton(
-                        icon = Icons.Default.ThumbUp,
-                        contentDescription = "More like this",
-                        onClick = { queueManager.rateSuggestion(item.stableKey, 1) },
-                        isActive = item.rating > 0
-                    )
-                }
-            )
-        }
     }
 }
 
@@ -429,6 +490,7 @@ private fun QueueOption(
 private fun QueueCardRow(
     title: String,
     items: List<QueueItem>,
+    showTitle: Boolean = true,
     startPadding: Dp,
     onOpenItem: (QueueItem) -> Unit,
     focusedKey: String? = null,
@@ -441,12 +503,14 @@ private fun QueueCardRow(
     BackHandler(enabled = movingKey != null) { movingKey = null }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        if (showTitle) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = startPadding, bottom = 12.dp)
         )
+        }
 
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(20.dp),
