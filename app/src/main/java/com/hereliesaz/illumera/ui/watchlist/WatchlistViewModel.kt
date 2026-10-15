@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
@@ -37,8 +39,10 @@ class WatchlistViewModel @Inject constructor(
     // resolvePosterIfNeeded for every previously-failed item every time).
     private val lastResolveFailureAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val resolveFailureCooldownMs = 5 * 60_000L
+    private val enrichedLibraryMetas = MutableStateFlow<Map<String, MetaItem>>(emptyMap())
 
     var lastFocusedKey: String? = null
+    var lastFocusedMediaType: String? = null
     var lastQueueFocusedKey: String? = null
 
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
@@ -61,9 +65,28 @@ class WatchlistViewModel @Inject constructor(
     val libraryEntries: StateFlow<List<LibraryEntry>> = profileConfigurationManager.activeProfileId
         .flatMapLatest { profileId ->
             if (profileId == null) flowOf(emptyList())
-            else combine(dao.getWatchlist(profileId), dao.getWatchHistory()) { saved, history ->
-                val historyEntries = history.map { entry ->
+            else combine(
+                dao.getWatchlist(profileId), dao.getWatchHistory(), enrichedLibraryMetas
+            ) { saved, history, enrichment ->
+                fun enriched(item: MetaItem): MetaItem {
+                    val extra = enrichment["$profileId:${item.type}:${item.id}"] ?: return item
+                    return item.copy(
+                        releaseInfo = item.releaseInfo ?: extra.releaseInfo,
+                        poster = item.poster?.takeIf { it.isNotBlank() }
+                            ?: extra.poster?.takeIf { it.isNotBlank() },
+                        background = item.background?.takeIf { it.isNotBlank() }
+                            ?: extra.background?.takeIf { it.isNotBlank() },
+                        logo = item.logo?.takeIf { it.isNotBlank() }
+                            ?: extra.logo?.takeIf { it.isNotBlank() }
+                    )
+                }
+                val historyEntries = history.mapNotNull { entry ->
+                    if (entry.type !in setOf("movie", "series", "tv", "episode")) return@mapNotNull null
                     val parts = entry.id.split(':')
+                    if (entry.type == "episode" && entry.seriesId.isNullOrBlank() &&
+                        (parts.size < 3 ||
+                            parts.takeLast(2).any { it.toIntOrNull() == null })
+                    ) return@mapNotNull null
                     val episodeParent = if (
                         entry.type in setOf("series", "tv", "episode") && parts.size >= 3 &&
                         parts.takeLast(2).all { it.toIntOrNull() != null }
@@ -76,10 +99,10 @@ class WatchlistViewModel @Inject constructor(
                         id = canonicalId, type = mediaType, name = entry.title,
                         poster = entry.poster, background = entry.background, logo = entry.logo
                     )
-                    LibraryEntry(item, 0L, entry.lastWatched, entry.watched, if (entry.watched) 1 else 0)
+                    LibraryEntry(enriched(item), 0L, entry.lastWatched, entry.watched, if (entry.watched) 1 else 0)
                 }
                 val savedEntries = saved.map { item ->
-                    LibraryEntry(item.toMetaItem(), item.addedAt, 0L, false, 0)
+                    LibraryEntry(enriched(item.toMetaItem()), item.addedAt, 0L, false, 0)
                 }
                 aggregateLibraryEntries(savedEntries + historyEntries)
             }
@@ -110,7 +133,7 @@ class WatchlistViewModel @Inject constructor(
      * Updates the DB so the poster persists — the Flow will re-emit automatically.
      */
     fun resolvePosterIfNeeded(item: MetaItem) {
-        if (!item.poster.isNullOrBlank()) return
+        if (!item.poster.isNullOrBlank() && !item.releaseInfo.isNullOrBlank()) return
         val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
         val requestKey = "$ownerProfileId:${item.type}:${item.id}"
         val lastFailure = lastResolveFailureAt[requestKey]
@@ -124,6 +147,17 @@ class WatchlistViewModel @Inject constructor(
                 // Network resolution must not hold the profile runtime lock. A slow addon
                 // should never block loadRuntimeState() during a profile switch.
                 val meta = repository.resolveMetaDetails(item.type, item.id)
+                if (meta != null &&
+                    profileConfigurationManager.activeProfileId.value == ownerProfileId
+                ) {
+                    enrichedLibraryMetas.update { current ->
+                        // Release year and alternate-provider images become visible
+                        // immediately; no schema migration or local bookmark is needed.
+                        if (current.size > 400) emptyMap<String, MetaItem>() + (requestKey to meta)
+                        else current + (requestKey to meta)
+                    }
+                    succeeded = true
+                }
                 val poster = meta?.poster?.takeIf { it.isNotBlank() }
                 if (poster != null) {
                     profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
@@ -131,6 +165,23 @@ class WatchlistViewModel @Inject constructor(
                         if (existing != null) {
                             dao.addToWatchlist(existing.copy(poster = poster))
                             succeeded = true
+                        } else {
+                            // History-only Library items have no bookmark row.
+                            // Persist artwork against their underlying episode/title
+                            // history IDs so the Flow re-emits the resolved card.
+                            val history = dao.getAllWatchHistoryOnce().filter { entry ->
+                                entry.id == item.id || entry.seriesId == item.id ||
+                                    (entry.type in setOf("series", "tv", "episode") &&
+                                        entry.id.substringBeforeLast(':').substringBeforeLast(':') == item.id)
+                            }
+                            history.forEach { entry ->
+                                dao.updateHistoryImages(
+                                    entry.id, poster,
+                                    meta.background?.takeIf { it.isNotBlank() } ?: entry.background,
+                                    meta.logo?.takeIf { it.isNotBlank() } ?: entry.logo
+                                )
+                            }
+                            succeeded = history.isNotEmpty()
                         }
                     }
                 }
@@ -176,10 +227,10 @@ internal fun aggregateLibraryEntries(
             if (oldImdb != null && newImdb != null) return@indexOfFirst false
             val oldYear = year(old)
             val newYear = year(item)
+            // Matching only a name when release years are unknown collapses
+            // different adaptations/remakes. Never perform that unsafe merge.
             norm(old).isNotEmpty() && norm(old) == norm(item) &&
-                (oldYear == null || newYear == null || oldYear == newYear) &&
-                (oldImdb != null || newImdb != null ||
-                    (oldYear != null && newYear != null))
+                oldYear != null && oldYear == newYear
         }
         if (matchingIndex < 0) {
             result.add(incoming)
@@ -196,9 +247,12 @@ internal fun aggregateLibraryEntries(
             val alternate = if (preferred === old) incoming else old
             result[matchingIndex] = preferred.copy(
                 item = preferred.item.copy(
-                    poster = preferred.item.poster ?: alternate.item.poster,
-                    background = preferred.item.background ?: alternate.item.background,
-                    logo = preferred.item.logo ?: alternate.item.logo,
+                    poster = preferred.item.poster?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.poster?.takeIf { it.isNotBlank() },
+                    background = preferred.item.background?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.background?.takeIf { it.isNotBlank() },
+                    logo = preferred.item.logo?.takeIf { it.isNotBlank() }
+                        ?: alternate.item.logo?.takeIf { it.isNotBlank() },
                     releaseInfo = preferred.item.releaseInfo ?: alternate.item.releaseInfo
                 ),
                 addedAt = maxOf(old.addedAt, incoming.addedAt),

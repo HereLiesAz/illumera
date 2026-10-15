@@ -152,7 +152,7 @@ token, proving the phone actually scanned the QR code first.
 
 ## Watchlist and Stremio Library
 
-The main Android Watchlist is a viewing surface: Queue is always first, then Library's Movies and Series rows. The library merges `WatchlistEntity` bookmarks with the active runtime's `WatchHistoryEntity` entries, deduplicating by media type and canonical title ID. Episode history collapses to the parent series ID. Type and sort controls are directly accessible without dropdown menus. Sort selection is saved per profile in `illumera_watchlist_ui`.
+The main Android Watchlist is a viewing surface: Queue is always first, then one mixed Movies & Series Library rail. `WatchlistEntity` bookmarks and active `WatchHistoryEntity` entries are merged and deduplicated by media type, canonical IMDb ID, or title/year when one side has a non-IMDb ID. Episode history collapses to the parent series ID, while different movie/series adaptations remain separate. Library sorting controls are directly accessible without dropdown menus. Sort selection is saved per profile in `illumera_watchlist_ui`.
 
 Stremio library synchronization now imports unwatched/unplayed remote bookmarks into the local watchlist, including series with no current `videoId`. Imports are profile-scoped and tagged as remote-owned; remote deletion removes only bookmarks previously imported by synchronization, preserving local additions. Watch counts from Stremio are recorded for sorting, with local watch completion used as a fallback when a remote count is absent. The previous cloud-storage management list and its play/delete actions live in Settings → Watchlist.
 
@@ -168,6 +168,15 @@ Movies and Series aggregate the enabled catalog variants across addon manifests 
 Default profile snapshots now carry Cinemeta, YouTube Trailers, Streaming Catalogs, TMDB, SeedSphere and Stremio Stats. Existing profiles are upgraded additively once, preserving disabled, removed and customized entries thereafter. Provider manifests are fetched with isolated timeouts; a missing manifest does not imply imaginary catalogs or stream support. Stremio Stats requires an individually configured, authenticated manifest before personal statistics can work.
 
 The Stremio Library sync baseline now includes saved-only `WatchlistEntity` titles as well as watch history. The latest watched episode is collapsed under its parent series for Stremio synchronization. Disabling/deleting stock addons remains under user control.
+
+
+## Home category-pair aggregation
+
+Home retains **separate category/provider groupings**: Latest, Popular, Trending, Netflix, HBO Max and every other configured Home catalog title. For each matching category, the movie and series variants (and enabled addon sources with the same normalized category label) are combined into one `catalog-home:<category>` row. Each pair is deduplicated by media type, canonical IMDb ID, or title/year when one side has a provider-specific ID, and its source batches are fetched lazily. Home does **not** aggregate all categories into a single catch-all row. A category without a paired media type still appears on its own.
+
+The Home Hero Carousel uses the first populated merged category by default; Continue Watching and custom Hub rows remain separate. Existing user-selected Hero category previews continue to work. Movies and Series remain genre-first and do not receive catch-all rows.
+
+The Watchlist Library now presents a single sorted collection containing both media types, preserving type-specific details navigation and per-profile sorting. The old two-row focus key migrates into row zero and one remembered horizontal scroll position is used for the mixed rail.
 
 
 ### Cinematic rail geometry

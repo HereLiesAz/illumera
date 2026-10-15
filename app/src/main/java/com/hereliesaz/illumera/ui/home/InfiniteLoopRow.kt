@@ -750,6 +750,7 @@ private fun InfiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        }
                     }
                 }
 
@@ -972,6 +973,7 @@ private fun FiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        }
                     }
                 }
 
