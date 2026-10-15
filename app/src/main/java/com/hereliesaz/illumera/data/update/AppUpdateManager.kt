@@ -366,7 +366,7 @@ class AppUpdateManager @Inject constructor(
          */
         internal fun githubReleaseVersion(tagName: String, assetName: String): String {
             val tag = tagName.removePrefix("v")
-            val assetVersion = Regex("""^illumera-(\\d+\\.\\d+\\.\\d+\\.\\d+)-release\\.apk$""",
+            val assetVersion = Regex("""^illumera-(\d+\.\d+\.\d+\.\d+)-release\.apk$""",
                 RegexOption.IGNORE_CASE).matchEntire(assetName)?.groupValues?.get(1)
                 ?: return tag
             return if (assetVersion.substringBeforeLast('.') == tag || assetVersion == tag) {
