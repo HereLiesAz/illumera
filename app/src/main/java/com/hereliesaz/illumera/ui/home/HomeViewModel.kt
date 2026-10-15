@@ -1216,24 +1216,27 @@ class HomeViewModel @Inject constructor(
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Genre shells are hidden until populated. Probe ALL enabled genres
-                // with bounded concurrency: otherwise empty first rows prevent users
-                // ever scrolling far enough to trigger later rows' lazy loading.
+                // Present the scrollable screen first. Then fill the earliest
+                // focusable genre rows before probing later rows. A shared queue
+                // avoids a slow provider holding its entire fixed-index lane
+                // hostage while other workers have already finished.
                 if (screenName in setOf("movies", "series")) {
                     val generation = screenDataGeneration
-                    repeat(3) { lane ->
+                    val queuedRows = java.util.ArrayDeque(initialRows)
+                    repeat(minOf(3, initialRows.size)) {
                         launch {
-                            initialRows.filterIndexed { index, _ -> index % 3 == lane }
-                                .forEach { row ->
-                                    if (generation != screenDataGeneration) return@launch
-                                    loadMoreItems(row.configId)
-                                    while (row.configId in loadingMoreRows &&
-                                        generation == screenDataGeneration
-                                    ) kotlinx.coroutines.delay(80)
-                                }
+                            while (queuedRows.isNotEmpty() && generation == screenDataGeneration) {
+                                val row = queuedRows.removeFirst()
+                                loadMoreItems(row.configId)
+                                while (row.configId in loadingMoreRows &&
+                                    generation == screenDataGeneration
+                                ) kotlinx.coroutines.delay(80)
+                            }
                         }
                     }
                 } else {
+                    // Render the page before beginning network discovery. Only
+                    // its first two Home rails need a warm cache immediately.
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
                 }
             } catch (cancelled: CancellationException) {
