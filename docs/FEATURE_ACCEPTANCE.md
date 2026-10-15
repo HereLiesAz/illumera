@@ -79,3 +79,9 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
 
 **Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
+
+## Inline cinematic poster follow-up (October 15, 2026)
+
+The Hero Carousel remains the first ordinary LazyColumn item: it must scroll entirely away as the user navigates into the rows, and must **not** be pinned or persist above them. Home, Movies, and Series cinematic media rows (including Continue Watching) use portrait 140×210dp posters rather than 16:9 mini-backdrops. When a title receives focus its **existing** Surface widens up to 340dp (bounded by screen width) and displays the compact cinematic trailer/backdrop, title and metadata **in that poster slot**. There is no additional full-width preview above any row. When focus moves, the former item returns to its portrait poster and the newly active poster expands; focusing another row collapses the old row. Long-press menus, selection, D-pad focus restoration, lazy pagination, and finite/looping View More cards must behave exactly as before. The separate simple layout remains unchanged.
+
+**Device acceptance:** From the Hero, press Down repeatedly: the Hero disappears with normal vertical scrolling, no sticky carousel remains, and the active poster widens without dislodging focus or adding vertical blank space. Move horizontally, then vertically, return from Details, test after dynamic genre insertion and across all three rail modes. Verify trailer first-frame/art fallback and menu-on-release behavior. Build, tests, and on-device confirmation are outstanding.
