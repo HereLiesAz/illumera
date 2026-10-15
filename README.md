@@ -56,9 +56,9 @@ import your existing addon collection and sync Continue Watching progress.
 - Row display modes: infinite scroll, finite with a "View More" card that opens a grid, or linear
 
 ### Watchlist and Stremio Library
-- Watchlist opens with Queue first, followed by one mixed Movies & Series Library row, deduplicated across providers and watch history.
+- Watchlist opens with **Suggested Next** and an adjacent refresh action, followed by **Queue**, then one mixed Movies & Series **Library poster grid**, deduplicated across providers and watch history. Queue enabled, automatic lineup and suggestion-source controls live in **Settings → Watchlist**, not above the suggestions.
 - Library combines manually bookmarked titles with locally synchronized Stremio Library entries, including unplayed Stremio bookmarks; saved-only titles now also participate in outbound synchronization and snapshot baselines.
-- Library sorting choices (Recent, Recently added, A–Z, Z–A, Last watched, Watched, Not watched, Most watched), without dropdown menus.
+- Library sorting choices (Recent, Recently added, A–Z, Z–A, Last watched, Watched, Not watched, Most watched) remain immediately above the grid, with smaller focusable chips and no dropdowns.
 - The default Library sort is saved separately for each profile under **Settings → Watchlist**. Connected cloud-storage item management is located there as well.
 - Stremio-sourced bookmarks are tracked so removing a remote item does not inadvertently delete a bookmark the user created locally. Watch counts reported by Stremio are used for Most watched when available.
 
