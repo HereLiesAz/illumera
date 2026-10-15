@@ -1208,20 +1208,21 @@ class HomeViewModel @Inject constructor(
                     val generation = screenDataGeneration
                     launch {
                         val loadedHero = try {
-                            if (screenName == "home" &&
-                                heroRow?.configId?.startsWith("catalog-home:") == true
-                            ) {
-                                val pages = repository.homePairFirstLayerPageCount(heroRow.configId)
+                            val configuredPair = heroRow?.takeIf {
+                                screenName == "home" && it.configId.startsWith("catalog-home:")
+                            }
+                            if (configuredPair != null) {
+                                val pages = repository.homePairFirstLayerPageCount(configuredPair.configId)
                                 var items = emptyList<MetaItem>()
                                 for (page in 0 until pages) {
                                     if (items.isEmpty()) {
-                                        items = repository.getHomePairCatalogPage(heroRow.configId, page)
+                                        items = repository.getHomePairCatalogPage(configuredPair.configId, page)
                                     }
                                 }
-                                heroRow.copy(items = items.take(heroConfig.posterCount))
+                                configuredPair.copy(items = items.take(heroConfig?.posterCount ?: 10))
                             } else repository.getCategoryRowPreview(
                                 configId = selectedHeroId,
-                                maxItems = heroConfig.posterCount,
+                                maxItems = heroConfig?.posterCount ?: 10,
                                 timeoutMs = initialDashboardTimeoutMs
                             )
                         } catch (cancelled: CancellationException) {
