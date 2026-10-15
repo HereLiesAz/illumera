@@ -431,6 +431,8 @@ class AddonRepository @Inject constructor(
                             api.getCatalog(url).metas.orEmpty().sanitize()
                         }.filter { it.type == config.catalogType }
                             .map { it.copy(addonBaseUrl = config.transportUrl) }
+                    } catch (_: TimeoutCancellationException) {
+                        emptyList()
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Exception) {
