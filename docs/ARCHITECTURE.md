@@ -218,3 +218,12 @@ Cinematic rows use `useLandscapeMediaCard` so **every inactive row** is landscap
 `NavDestination.Addons` has a saved, serializable `AddonsKey` and a main navigation entry, not a Settings subsection. `AddonsScreen` displays the existing browse catalog content directly, without a dialog's height constraint. Source tabs scroll horizontally, catalog results vertically, and configure/install/uninstall are accessible, focusable icons. Installed addons and manual URL/phone-paste installation retain their previous persistence and confirmation behavior. The external stremio-addons.net source is labeled **3rd Party** but its endpoint is unchanged.
 
 `HeroCarousel` retains an unconditional return-focus requester in addition to its existing initial/restored-entry requester. Up from the first focused content row (history, Hub, or category) scrolls the nonsticky `LazyColumn` to the Hero, waits for it to compose, and moves focus there. Deeper rows preserve normal vertical navigation.
+
+## Add-ons navigation and canonical Hero focus (October 15, 2026)
+
+The Add-ons root has a screen-level `FocusMemory` and `RestoreFocusOnResume` fallback to its Browse action. This is necessary because attaching `entryRequester` to a button does **not** itself move focus from the navigation drawer. Returning from Installed to Browse explicitly restores that focus after the Browse subtree is composed. At compact widths below the header's 372dp control requirement, Browse and Installed share a flexible row and the phone-link action moves below them, rather than overflowing the viewport.
+
+Addon installations are keyed by their **complete transport URL**, including configuration and credentials. The catalog's Uninstall button first matches the exact URL; where only the manifest ID matches and several configured instances exist, it opens Installed for explicit selection instead of deleting an arbitrary instance. The Installed list still removes by its exact transport URL.
+
+Movies/Series keep previously revealed empty genre shells mounted to avoid detaching the focused LazyColumn subtree. This is a focus-stability decision, **not** evidence that those shells are focusable. The Hero Up/Down return pivot now uses `firstFocusableCinematicRowIndex` to skip empty Category and Hub rows while retaining the original indexed focus IDs. The drawer's Profile/Up regression must prove Search became focused before asserting the boundary.
+
