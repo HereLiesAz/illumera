@@ -4,6 +4,7 @@ import android.content.Context
 import java.util.Locale
 import java.text.Normalizer
 import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
+import com.hereliesaz.illumera.data.model.stremio.MetaItem
 
 /**
  * Movies and Series are genre-first browsing screens, not a unified All-items row.
@@ -143,6 +144,56 @@ object ScreenGenreRows {
             .toList()
         return (defaults + extra).distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
     }
+
+    enum class TitleOrder(val label: String) {
+        CATALOG("Catalog order"),
+        RATING("Highest rated"),
+        NEWEST("Newest first"),
+        OLDEST("Oldest first"),
+        TITLE_ASC("Title A–Z"),
+        TITLE_DESC("Title Z–A")
+    }
+
+    private fun titleOrderKey(profileId: Int, screen: String, genre: String) =
+        "${profileId}_${screen}_${canonicalGenre(genre).lowercase(Locale.ROOT)}_title_order"
+
+    fun titleOrder(context: Context, profileId: Int, screen: String, genre: String): TitleOrder {
+        if (screen !in setOf("movies", "series")) return TitleOrder.CATALOG
+        val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(titleOrderKey(profileId, screen, genre), null)
+        return TitleOrder.entries.firstOrNull { it.name == stored } ?: TitleOrder.CATALOG
+    }
+
+    fun setTitleOrder(context: Context, profileId: Int, screen: String, genre: String, order: TitleOrder) {
+        if (screen !in setOf("movies", "series")) return
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(titleOrderKey(profileId, screen, genre), order.name)
+            .apply()
+    }
+
+    /** Sort only within a genre. Missing metadata is placed last; catalog order breaks ties. */
+    fun sortTitles(items: List<MetaItem>, order: TitleOrder): List<MetaItem> {
+        fun year(item: MetaItem): Int? =
+            Regex("\\d{4}").find(item.releaseInfo.orEmpty())?.value?.toIntOrNull()
+
+        return when (order) {
+            TitleOrder.CATALOG -> items
+            TitleOrder.RATING -> items.sortedWith(compareByDescending<MetaItem> {
+                it.imdbRating?.toDoubleOrNull() ?: Double.NEGATIVE_INFINITY
+            })
+            TitleOrder.NEWEST -> items.sortedWith(compareByDescending<MetaItem> { year(it) ?: Int.MIN_VALUE })
+            TitleOrder.OLDEST -> items.sortedWith(compareBy<MetaItem> { year(it) ?: Int.MAX_VALUE })
+            TitleOrder.TITLE_ASC -> items.sortedBy { it.name.lowercase(Locale.ROOT) }
+            TitleOrder.TITLE_DESC -> items.sortedByDescending { it.name.lowercase(Locale.ROOT) }
+        }
+    }
+
+    /** Viewing and saving a title are independent preference signals. */
+    fun affinityScore(items: List<MetaItem>, watchedIds: Set<String>, likedIds: Set<String>): Int =
+        items.sumOf { item ->
+            (if (item.id in watchedIds) 2 else 0) +
+                (if (item.id in likedIds) 3 else 0)
+        }
 
     private fun preferenceKey(profileId: Int, screen: String) =
         "${profileId}_${screen}_disabled"
