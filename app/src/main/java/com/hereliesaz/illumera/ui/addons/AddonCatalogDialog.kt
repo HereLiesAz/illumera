@@ -43,6 +43,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,10 +73,9 @@ fun AddonCatalogContent(
     var collectionUrl by remember { mutableStateOf("") }
     val initialFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        onLoad()
-        runCatching { initialFocusRequester.requestFocus() }
-    }
+    // A full-screen catalog must not steal focus from the Browse/Installed
+    // header (or the user-selected catalog item) on every remount.
+    LaunchedEffect(Unit) { onLoad() }
 
     val filteredItems = remember(state.catalogItems, query) {
         val needle = query.trim().lowercase()
@@ -429,6 +430,7 @@ internal fun AddonIconAction(
         onClick = onClick,
         interactionSource = interaction,
         modifier = Modifier.size(44.dp)
+            .semantics { contentDescription = label }
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.12f),
