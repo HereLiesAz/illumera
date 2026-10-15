@@ -526,7 +526,7 @@ class AddonRepositoryTest {
             config("https://live.example", "tv", "live", "Live TV", 3),
             config("https://live.example", "channel", "music", "Music Channels", 4)
         ))
-        every { dao.getAddon("https://live.example") } returns provider
+        coEvery { dao.getAddon("https://live.example") } returns provider
         coEvery { api.getCatalog("https://live.example/catalog/tv/live.json") } returns
             CatalogResponse(listOf(MetaItem(id = "tv:one", type = "tv", name = "Live One")))
         coEvery { api.getCatalog("https://live.example/catalog/channel/music.json") } returns
@@ -595,8 +595,8 @@ class AddonRepositoryTest {
             config("https://second.example", "movie", "popular", "Popular", 3),
             config("https://second.example", "series", "popular", "Popular", 4)
         ))
-        every { dao.getAddon("https://first.example") } returns first
-        every { dao.getAddon("https://second.example") } returns second
+        coEvery { dao.getAddon("https://first.example") } returns first
+        coEvery { dao.getAddon("https://second.example") } returns second
         coEvery { api.getCatalog("https://first.example/catalog/movie/popular.json") } returns
             CatalogResponse(listOf(MetaItem(id = "tt1000001", type = "movie", name = "Film One")))
         coEvery { api.getCatalog("https://first.example/catalog/series/popular.json") } returns
@@ -626,7 +626,7 @@ class AddonRepositoryTest {
             config("https://one.example", "movie", "popular", "Popular", 1),
             config("https://one.example", "series", "popular", "Popular", 2)
         ))
-        every { dao.getAddon("https://one.example") } returns provider
+        coEvery { dao.getAddon("https://one.example") } returns provider
         coEvery { api.getCatalog("https://one.example/catalog/movie/popular.json") } returns
             CatalogResponse(listOf(MetaItem(id = "tt9000001", type = "movie", name = "Adaptation")))
         coEvery { api.getCatalog("https://one.example/catalog/series/popular.json") } returns
