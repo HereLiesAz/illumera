@@ -195,13 +195,13 @@ fun InfiniteLoopRow(
 
     // Calculate the max valid index based on current mode
     val maxValidIndex = when {
-        !isInfiniteLoopEnabled -> items.size - 1
+        isLandscapeCards || !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
         !isInfiniteScrollingEnabled -> visibleItemCount // visibleItemCount items + 1 ViewMore
         else -> Int.MAX_VALUE
     }
 
     // SAFETY: Reset scroll position when switching modes
-    LaunchedEffect(isInfiniteLoopEnabled, isInfiniteScrollingEnabled) {
+    LaunchedEffect(isLandscapeCards, isInfiniteLoopEnabled, isInfiniteScrollingEnabled, items.size) {
         if (listState.firstVisibleItemIndex > maxValidIndex) {
             listState.scrollToItem(0)
         }
@@ -353,7 +353,7 @@ private fun LinearContent(
         if (isLandscapeCards) {
             items.map { item ->
                 val enriched = enrichedItems["${item.type}:${item.id}"]
-                enriched?.background ?: enriched?.poster ?: item.poster
+                enriched?.background ?: item.background ?: enriched?.poster ?: item.poster
             }
         } else {
             items.map { it.poster }
@@ -461,9 +461,9 @@ private fun LinearContent(
                     val enriched = enrichedItems["${item.type}:${item.id}"]
                     LumeraLandscapeCard(
                         title = item.name,
-                        backdropUrl = enriched?.background,
-                        logoUrl = enriched?.logo,
-                        posterUrl = item.poster,
+                        backdropUrl = enriched?.background ?: item.background,
+                        logoUrl = enriched?.logo ?: item.logo,
+                        posterUrl = enriched?.poster ?: item.poster,
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
