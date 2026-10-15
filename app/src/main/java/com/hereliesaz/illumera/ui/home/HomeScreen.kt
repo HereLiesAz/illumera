@@ -261,6 +261,15 @@ fun HomeScreen(
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
+/** Restore a row's portrait geometry only for its actual focus owner. */
+internal fun isCinematicRowActive(
+    focusedRowKey: String?,
+    rowKey: String,
+    restoredCardKey: String?,
+    cardKeyPrefix: String
+): Boolean = focusedRowKey == rowKey ||
+    (focusedRowKey == null && restoredCardKey?.startsWith(cardKeyPrefix) == true)
+
 fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
@@ -442,9 +451,9 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
-                                val historyRowActive = activeCinematicRow == "history" ||
-                                    (activeCinematicRow == null &&
-                                        effectiveLastFocusedKey?.startsWith("-1_") == true)
+                                val historyRowActive = isCinematicRowActive(
+                                    activeCinematicRow, "history", effectiveLastFocusedKey, "-1_"
+                                )
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -568,9 +577,9 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
-                                    val categoryRowActive = activeCinematicRow == rowKey ||
-                                        (activeCinematicRow == null &&
-                                            effectiveLastFocusedKey?.startsWith("${index}_") == true)
+                                    val categoryRowActive = isCinematicRowActive(
+                                        activeCinematicRow, rowKey, effectiveLastFocusedKey, "${index}_"
+                                    )
                                     val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
