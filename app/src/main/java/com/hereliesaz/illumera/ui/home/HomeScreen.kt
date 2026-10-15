@@ -48,6 +48,8 @@ import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -121,6 +123,7 @@ fun HomeScreen(
     // inactive landscape rails and portrait cards only in the focused row.
     val layoutMode = "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
+    val cinematicAudio = rememberCinematicAudioPreferences(currentProfile?.id)
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
     // wide/TV screen; on a phone that margin alone eats a third of the available width,
@@ -193,6 +196,8 @@ fun HomeScreen(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
+                    autoPlayPreviews = cinematicAudio.autoPlayPreviews,
+                    previewSound = cinematicAudio.previewSound,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
                     state = displayState,
@@ -274,6 +279,8 @@ fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
+    autoPlayPreviews: Boolean,
+    previewSound: Boolean,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     state: HomeViewModel.HomeState,
@@ -409,6 +416,16 @@ fun CinematicLayout(
                         }
                     }
 
+                    // The Hero is part of the scrolling column, not a persistent
+                    // background player. Stop fetching/playing once it leaves view.
+                    val heroVisible by remember(verticalListState) {
+                        derivedStateOf {
+                            verticalListState.layoutInfo.visibleItemsInfo.any {
+                                it.key == "cinematic_hero_carousel"
+                            }
+                        }
+                    }
+
                     LazyColumn(
                         state = verticalListState,
                         modifier = Modifier
@@ -431,6 +448,9 @@ fun CinematicLayout(
                                     },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
+                                    autoPlayPreviews = autoPlayPreviews,
+                                    previewSound = previewSound,
+                                    previewVisible = heroVisible,
                                     onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
@@ -500,7 +520,9 @@ fun CinematicLayout(
                                     enrichedItems = state.enrichedMeta,
                                     rowHeight = if (historyRowActive) 220.dp else 116.dp,
                                     inlineCinematicPreview = { poster ->
-                                        InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                        InlineFocusedPosterPreview(
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                        )
                                     },
                                     isInlineRowActive = historyRowActive,
                                     onRowFocusExited = {
@@ -658,7 +680,9 @@ fun CinematicLayout(
                                         enrichedItems = state.enrichedMeta,
                                         rowHeight = if (categoryRowActive) 220.dp else 116.dp,
                                         inlineCinematicPreview = { poster ->
-                                            InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                            InlineFocusedPosterPreview(
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                        )
                                         },
                                         isInlineRowActive = categoryRowActive,
                                         onRowFocusExited = {
@@ -686,7 +710,9 @@ fun CinematicLayout(
 private fun InlineFocusedPosterPreview(
     item: MetaItem,
     state: HomeViewModel.HomeState,
-    resolveTrailer: suspend (MetaItem) -> String?
+    resolveTrailer: suspend (MetaItem) -> String?,
+    autoPlayPreviews: Boolean,
+    previewSound: Boolean
 ) {
     val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
@@ -700,6 +726,8 @@ private fun InlineFocusedPosterPreview(
         TrailerPreview(
             item = current,
             resolveTrailer = resolveTrailer,
+            autoPlay = autoPlayPreviews,
+            soundEnabled = previewSound,
             modifier = Modifier.fillMaxSize()
         )
         Box(
@@ -1473,13 +1501,18 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
 internal fun TrailerPreview(
     item: MetaItem?,
     resolveTrailer: suspend (MetaItem) -> String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    autoPlay: Boolean = true,
+    soundEnabled: Boolean = false,
+    isVisible: Boolean = true
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
+    val videoUrl by produceState<String?>(
+        initialValue = null, item?.id, item?.type, autoPlay, isVisible
+    ) {
         value = null
-        if (item != null) {
+        if (item != null && autoPlay && isVisible) {
             delay(500)
             value = resolveTrailer(item)
         }
@@ -1488,7 +1521,7 @@ internal fun TrailerPreview(
     val player = remember(videoUrl, item?.id, item?.type) {
         videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = 0f
+                volume = if (soundEnabled) 1f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1500,11 +1533,16 @@ internal fun TrailerPreview(
                 })
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
-                playWhenReady = true
+                playWhenReady = autoPlay && isVisible
             }
         }
     }
-    DisposableEffect(player, lifecycleOwner) {
+    SideEffect {
+        player?.volume = if (soundEnabled) 1f else 0f
+        player?.playWhenReady = autoPlay && isVisible &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    }
+    DisposableEffect(player, lifecycleOwner, autoPlay, isVisible) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
@@ -1514,7 +1552,7 @@ internal fun TrailerPreview(
                     player?.pause()
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (player != null) player.playWhenReady = true
+                    if (player != null) player.playWhenReady = autoPlay && isVisible
                 }
                 else -> Unit
             }
@@ -1538,6 +1576,9 @@ internal fun TrailerPreview(
                         isClickable = false
                         descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         useController = false
+                        // Fill the available video box, cropping vertical excess
+                        // rather than displaying letterbox bars on TV screens.
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         this.player = player
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
