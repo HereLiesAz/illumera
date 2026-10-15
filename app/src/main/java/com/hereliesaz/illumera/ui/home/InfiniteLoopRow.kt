@@ -150,7 +150,9 @@ fun InfiniteLoopRow(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    isInlineRowActive: Boolean = false
 ) {
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
@@ -182,11 +184,19 @@ fun InfiniteLoopRow(
 
     // Calculate end padding to allow last item to align to left (pivot position)
     // End padding = Screen Width - Start Padding - Item Width
-    val effectiveItemWidth = if (isLandscapeCards) 190.dp else ITEM_WIDTH
+    val effectiveItemWidth = when {
+        isLandscapeCards -> 190.dp
+        inlineCinematicPreview != null -> 140.dp
+        else -> ITEM_WIDTH
+    }
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-    val endPadding = remember(screenWidth, startPadding, effectiveItemWidth) {
-        (screenWidth - startPadding - effectiveItemWidth).coerceAtLeast(120.dp)
+    val inlineCinematicWidth = minOf(
+        340.dp, (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
+    )
+    val endPadding = remember(screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth) {
+        val widestCard = if (inlineCinematicPreview != null) inlineCinematicWidth else effectiveItemWidth
+        (screenWidth - startPadding - widestCard).coerceAtLeast(20.dp)
     }
 
     // Use external state if provided, otherwise create local state
@@ -207,6 +217,10 @@ fun InfiniteLoopRow(
         }
     }
 
+    // The focused poster stays mounted while its artwork becomes the preview.
+    var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
+
     Column(modifier = Modifier.graphicsLayer { clip = false }) {
         Text(
             text = title,
@@ -219,7 +233,10 @@ fun InfiniteLoopRow(
         )
 
         // Stable reference to avoid recomposition from lambda re-allocation
-        val wrappedOnFocused = onFocused
+        val wrappedOnFocused: (MetaItem?, String) -> Unit = { item, key ->
+            activeCardKey = if (item == null) null else key
+            onFocused(item, key)
+        }
         
         when {
             // CASE A: Grid View OFF - Standard linear list
@@ -249,7 +266,10 @@ fun InfiniteLoopRow(
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
                         enrichedItems = enrichedItems,
-                        effectiveItemWidth = effectiveItemWidth
+                        effectiveItemWidth = effectiveItemWidth,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
@@ -280,7 +300,10 @@ fun InfiniteLoopRow(
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
-                        enrichedItems = enrichedItems
+                        enrichedItems = enrichedItems,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
@@ -309,7 +332,10 @@ fun InfiniteLoopRow(
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
-                        enrichedItems = enrichedItems
+                        enrichedItems = enrichedItems,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
