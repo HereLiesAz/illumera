@@ -63,6 +63,21 @@ import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.queue.QueueSection
 
+/**
+ * Number of fixed-width poster cards that fit in the available Watchlist viewport.
+ * Keep the grid's non-scrolling rows within the parent LazyColumn's width.
+ */
+internal fun watchlistGridColumnCount(
+    screenWidthDp: Int,
+    leftPaddingDp: Int,
+    posterWidthDp: Int,
+    gapDp: Int = 12,
+    rightPaddingDp: Int = 24
+): Int = maxOf(
+    1, (screenWidthDp - leftPaddingDp - rightPaddingDp + gapDp) /
+        (posterWidthDp + gapDp)
+)
+
 @Composable
 fun WatchlistScreen(
     currentProfile: ProfileEntity?,
@@ -174,9 +189,11 @@ fun WatchlistScreen(
     // Avoid nested vertical scrolling: each poster grid row is a LazyColumn item.
     val gridCardWidth = if (isCompactWatchlist) 122.dp else 140.dp
     val gridGap = 12.dp
-    val usableWidth = configuration.screenWidthDp.dp - startPadding - 24.dp
-    val gridColumnCount = maxOf(
-        1, ((usableWidth.value + gridGap.value) / (gridCardWidth.value + gridGap.value)).toInt()
+    val gridColumnCount = watchlistGridColumnCount(
+        configuration.screenWidthDp,
+        startPadding.value.toInt(),
+        gridCardWidth.value.toInt(),
+        gridGap.value.toInt()
     )
     val libraryGridRows = remember(libraryItems, gridColumnCount) {
         libraryItems.chunked(gridColumnCount)
