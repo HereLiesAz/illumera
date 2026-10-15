@@ -196,3 +196,10 @@ The centralized Google Play build for commit `7119e8e` compiled Kotlin and Andro
 ## Play test regression: canonical genre transfers (October 15, 2026)
 
 The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowReconciliationTest` (unchanged neighbour row references and idempotent replay). Canonical transfers now compare an existing row title against the incoming batch in the same direction as the deduper's `existing, incoming` contract, retaining unrelated and empty rows without copying them. Validate both named tests and the full FOSS unit suite before treating the Play release as published.
+
+## Side-drawer D-pad boundary regression (October 15, 2026)
+
+- The Android Play release build for 0.12.42.1 stopped at `NavDrawerFocusTest.menuCannotBeLeftByUpDownTraversal` (510 tests, one failure); signed-AAB upload was not reached. A previous run on the preceding patch failed the same assertion.
+- The `NavDrawerRail` focus group still restricts entry to an explicit drawer open or Left from focused content. Individual boundaries now additionally set `down = FocusRequester.Cancel` on Exit and `up = FocusRequester.Cancel` on Profile; this prevents Compose's focus-search from leaving the menu at its ends while retaining Up/Down movement *within* the rail.
+- Robolectric regression asserts that explicitly opening Exit succeeds, Down cannot leave it, Up reaches Settings, and Down returns to Exit. Right, Back, tap-to-dismiss and focus restoration remain unchanged.
+- Acceptance gate: `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist, the configured Play release unit tests, and actual Android TV D-pad focus transitions must pass before declaring delivery.
