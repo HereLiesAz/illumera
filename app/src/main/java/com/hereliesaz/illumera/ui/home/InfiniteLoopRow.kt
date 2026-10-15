@@ -249,6 +249,13 @@ fun InfiniteLoopRow(
     onRowFocusExited: (() -> Unit)? = null,
     verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
+    // Only the focused cinematic row can use portraits. This rule is enforced
+    // inside the renderer, independently of stale caller landscape flags.
+    val renderLandscapeCards = if (inlineCinematicPreview != null) {
+        !isInlineRowActive
+    } else {
+        isLandscapeCards
+    }
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
     
@@ -280,7 +287,7 @@ fun InfiniteLoopRow(
     // Calculate end padding to allow last item to align to left (pivot position)
     // End padding = Screen Width - Start Padding - Item Width
     val effectiveItemWidth = when {
-        isLandscapeCards -> 190.dp
+        renderLandscapeCards -> 190.dp
         inlineCinematicPreview != null -> 140.dp
         else -> ITEM_WIDTH
     }
@@ -290,13 +297,13 @@ fun InfiniteLoopRow(
     val inlineCinematicWidth = cinematicInlineWidth(screenWidth, startPadding)
     val endPadding = remember(
         screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
-        isInfiniteLoopEnabled, isLandscapeCards
+        isInfiniteLoopEnabled, renderLandscapeCards
     ) {
         // Finite/infinite grid modes end with a 120dp View More card (190dp
         // in landscape), never the widened cinematic poster. Use its REAL
         // width so the final item can reach the normal left focus pivot.
         val terminalWidth = if (isInfiniteLoopEnabled) {
-            if (isLandscapeCards) 190.dp else ITEM_WIDTH
+            if (renderLandscapeCards) 190.dp else ITEM_WIDTH
         } else if (inlineCinematicPreview != null) {
             inlineCinematicWidth
         } else effectiveItemWidth
@@ -315,7 +322,7 @@ fun InfiniteLoopRow(
     }
 
     // SAFETY: Reset scroll position when switching modes
-    LaunchedEffect(isLandscapeCards, isInfiniteLoopEnabled, isInfiniteScrollingEnabled, items.size) {
+    LaunchedEffect(renderLandscapeCards, isInfiniteLoopEnabled, isInfiniteScrollingEnabled, items.size) {
         if (listState.firstVisibleItemIndex > maxValidIndex) {
             listState.scrollToItem(0)
         }
@@ -370,7 +377,7 @@ fun InfiniteLoopRow(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(
                 start = startPadding,
-                bottom = if (isLandscapeCards) 4.dp else 12.dp
+                bottom = if (renderLandscapeCards) 4.dp else 12.dp
             )
         )
 
@@ -409,7 +416,7 @@ fun InfiniteLoopRow(
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = isLandscapeCards,
+                        isLandscapeCards = renderLandscapeCards,
                         enrichedItems = enrichedItems,
                         effectiveItemWidth = effectiveItemWidth,
                         inlineCinematicPreview = inlineCinematicPreview,
@@ -447,7 +454,7 @@ fun InfiniteLoopRow(
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = isLandscapeCards,
+                        isLandscapeCards = renderLandscapeCards,
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
@@ -482,7 +489,7 @@ fun InfiniteLoopRow(
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = isLandscapeCards,
+                        isLandscapeCards = renderLandscapeCards,
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
