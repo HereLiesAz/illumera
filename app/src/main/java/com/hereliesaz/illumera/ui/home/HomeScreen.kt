@@ -646,23 +646,33 @@ fun CinematicLayout(
                                     // A genre row is created without eagerly querying all
                                     // addon catalogs. Fetch when its LazyColumn item first
                                     // enters view, then keep pagination on horizontal scrolling.
+                                    // Genre probes are already owned by the ViewModel's
+                                    // one-shot background lanes. A row entering/re-entering
+                                    // the LazyColumn must not restart an empty genre fetch.
                                     LaunchedEffect(item.id) {
-                                        if ((item.id.startsWith("catalog-aggregate:") ||
-                                            item.id.startsWith("catalog-home:")) &&
+                                        if (item.id.startsWith("catalog-home:") &&
                                             item.items.isEmpty()
                                         ) onLoadMore(item.id)
                                     }
 
-                                    // Lazy pagination: load more items when scrolling near the end
-                                    // Use snapshotFlow to avoid reading layoutInfo during composition
+                                    // Fetch more only when the user advances the horizontal
+                                    // viewport. Changes to item count or vertical remounting
+                                    // must not restart pagination without a new scroll index.
                                     val itemId = item.id
-                                    val itemSize = item.items.size
-                                    LaunchedEffect(rowListState, itemId, itemSize) {
+                                    val latestItemSize by rememberUpdatedState(item.items.size)
+                                    val latestOnLoadMore by rememberUpdatedState(onLoadMore)
+                                    LaunchedEffect(rowListState, itemId) {
+                                        var lastRequestedVisibleIndex = -1
                                         snapshotFlow {
-                                            rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                            rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
                                         }.collect { lastVisibleIndex ->
-                                            if (itemSize > 0 && lastVisibleIndex >= itemSize - 10) {
-                                                onLoadMore(itemId)
+                                            if (lastVisibleIndex >= 0 &&
+                                                lastVisibleIndex > lastRequestedVisibleIndex &&
+                                                latestItemSize > 0 &&
+                                                lastVisibleIndex >= latestItemSize - 10
+                                            ) {
+                                                lastRequestedVisibleIndex = lastVisibleIndex
+                                                latestOnLoadMore(itemId)
                                             }
                                         }
                                     }
