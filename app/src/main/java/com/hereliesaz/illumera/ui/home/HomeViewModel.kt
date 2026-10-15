@@ -254,8 +254,7 @@ class HomeViewModel @Inject constructor(
     private var screenDataGeneration = 0L
 
     fun loadMoreItems(configId: String) {
-        if (configId.startsWith("catalog-aggregate:") || configId == "catalog-mixed:home") {
-            val isMixedHome = configId == "catalog-mixed:home"
+        if (configId.startsWith("catalog-aggregate:")) {
             val generation = screenDataGeneration
             val initiatingProfileId = _state.value.loadedProfileId
             val initiatingScreen = _state.value.loadedScreen
@@ -263,16 +262,14 @@ class HomeViewModel @Inject constructor(
             viewModelScope.launch {
                 try {
                     val parts = configId.split(':', limit = 3)
-                    if (!isMixedHome && parts.size != 3) return@launch
-                    val type = if (isMixedHome) "mixed" else parts[1]
-                    val genre = if (isMixedHome) null else parts[2].takeUnless { it == "all" }
+                    if (parts.size != 3) return@launch
+                    val type = parts[1]
+                    val genre = parts[2].takeUnless { it == "all" }
                     var nextPage = rowFetchOffsets.getOrPut(configId) { 0 }
                     val existing = _state.value.rows.firstOrNull { it.configId == configId }
                         ?.items.orEmpty()
                     var unique = emptyList<MetaItem>()
-                    val firstLayerCount = if (isMixedHome)
-                        repository.mixedHomeFirstLayerPageCount()
-                    else repository.aggregatedFirstLayerPageCount(type, genre)
+                    val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
                     // First visit searches every addon source group in the first layer
                     // so a later provider can populate a row even if earlier addons are empty.
                     // Subsequent horizontal browsing fetches source batches lazily.
@@ -281,9 +278,7 @@ class HomeViewModel @Inject constructor(
                     } else 4
                     repeat(probes.coerceAtLeast(0)) {
                         if (unique.isEmpty()) {
-                            val fetched = if (isMixedHome)
-                                repository.getMixedHomeCatalogPage(nextPage++)
-                            else repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                            val fetched = repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
@@ -374,11 +369,9 @@ class HomeViewModel @Inject constructor(
             }
 
             val automaticHero = current.heroRow ?: if (
-                ((current.loadedScreen == "home" &&
-                    tmdbProfileCache?.heroFor(DashboardTab.HOME)?.categoryId == null) ||
-                 (current.loadedScreen in setOf("movies", "series") &&
-                    tmdbProfileCache?.heroFor(DashboardTab.fromString(current.loadedScreen!!))
-                        ?.categoryId != HERO_DISABLED_MARKER))
+                current.loadedScreen in setOf("movies", "series") &&
+                tmdbProfileCache?.heroFor(DashboardTab.fromString(current.loadedScreen!!))
+                    ?.categoryId != HERO_DISABLED_MARKER
             ) updatedRows.firstOrNull { it.items.isNotEmpty() } else null
             current.copy(
                 rows = updatedRows,
@@ -832,18 +825,13 @@ class HomeViewModel @Inject constructor(
 
             try {
                 // Stage 1: Load only a small first batch so the screen opens quickly.
-                // Home is one combined, lazily filled Movies + Series collection.
-                // User-created Hub rows remain independent. The genre-only Movies
-                // and Series tabs continue using their own per-genre rows.
                 val initialRowsDeferred = async {
-                    if (screenName == "home") listOf(HomeRow(
-                        configId = "catalog-mixed:home",
-                        title = "Movies & Series",
-                        items = emptyList(),
-                        isInfiniteScrollingEnabled = true,
-                        supportsSkip = true,
-                        order = -1000
-                    )) else emptyList<HomeRow>()
+                    if (screenName == "home") repository.getDashboardRows(
+                        screen = screenName,
+                        skipConfigs = 0,
+                        maxConfigs = initialDashboardBatchSize,
+                        catalogTimeoutMs = initialDashboardTimeoutMs
+                    ) else emptyList<HomeRow>()
                 }
                 val hubRowsDeferred = async {
                     if (screenName == "home") repository.getHubRows(screenName)
@@ -927,14 +915,56 @@ class HomeViewModel @Inject constructor(
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Warm the mixed Home row and the first visible genre rows
-                // without downloading every addon catalog up front.
-                if (screenName == "home") {
-                    loadMoreItems("catalog-mixed:home")
-                } else if (screenName in setOf("movies", "series")) {
+                // Only the first visible genre rows start fetching initially. Others
+                // are fetched when they enter the LazyColumn viewport; never start
+                // dozens of genre network requests on one screen open.
+                if (screenName in setOf("movies", "series")) {
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
                 }
 
+                // Home alone retains its individually configured addon/hub rows.
+                if (screenName == "home") launch {
+                    val remainingRows = repository.getDashboardRows(
+                        screen = screenName,
+                        skipConfigs = initialDashboardBatchSize
+                    )
+                    if (remainingRows.isEmpty()) return@launch
+
+                    _state.update { currentState ->
+                        if (currentState.loadedScreen != screenName || currentState.loadedProfileId != currentProfileId) {
+                            return@update currentState
+                        }
+
+                        val allRows = (currentState.rows + remainingRows)
+                            .distinctBy { it.configId }
+                            .sortedBy { it.order }
+
+                        val resolvedHeroRow = when {
+                            currentState.heroRow != null -> currentState.heroRow
+                            heroConfig?.categoryId != null -> allRows.find { it.configId == heroConfig.categoryId }
+                            else -> null
+                        }
+
+                        // Append newly-arrived rows after the ones already rendered instead of
+                        // re-sorting the whole merged list by `order`. Re-sorting can shift an
+                        // already-visible row's position in mixedRows (e.g. a hub row that sat
+                        // after the initial batch can end up before a newly-inserted catalog row
+                        // with a lower `order`), which would invalidate any focus-restoration key
+                        // saved against that row's old index.
+                        val existingIds = currentState.mixedRows.mapTo(mutableSetOf()) { it.id }
+                        val newRows = allRows
+                            .map { CategoryRow.fromHomeRow(it) }
+                            .filter { it.id !in existingIds }
+                            .sortedBy { it.order }
+                        val mixedList = currentState.mixedRows + newRows
+
+                        currentState.copy(
+                            mixedRows = mixedList,
+                            rows = allRows,
+                            heroRow = resolvedHeroRow
+                        )
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
