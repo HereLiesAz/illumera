@@ -82,7 +82,17 @@ function SortStreams(streams as Object, mediaType as String, ranking as Object, 
             for j = 0 to ranking.Count() - 1
                 if ranking[j] = stream.addonBase then order = j
             end for
-            ranked.Push({ stream: stream, info: info, gap: gap, seedGap: seedGap, order: order, index: i })
+            gapBand = gap
+            if target > 0 then
+                bandWidth = target / 4#
+                if bandWidth < 1 then bandWidth = 1#
+                if info.sizeBytes = invalid then
+                    gapBand = 1e18
+                else
+                    gapBand = Fix(gap / bandWidth)
+                end if
+            end if
+            ranked.Push({ stream: stream, info: info, gap: gap, gapBand: gapBand, seedGap: seedGap, order: order, index: i })
         end if
     end for
 
@@ -105,9 +115,9 @@ function SortStreams(streams as Object, mediaType as String, ranking as Object, 
 end function
 
 function RankCompare(a as Object, b as Object, keys as Object) as Integer
-    c = Cmp(a.gap, b.gap)
-    if c <> 0 then return c
     c = a.seedGap - b.seedGap
+    if c <> 0 then return c
+    c = Cmp(a.gapBand, b.gapBand)
     if c <> 0 then return c
     c = Cmp(a.order, b.order)
     if c <> 0 then return c

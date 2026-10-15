@@ -23,6 +23,7 @@ import com.hereliesaz.illumera.domain.AddonSubtitle
 import com.hereliesaz.illumera.domain.episodeDisplayTitle
 import com.hereliesaz.illumera.domain.episodePlaybackId
 import com.hereliesaz.illumera.domain.episodeStreamId
+import com.hereliesaz.illumera.domain.canonicalEpisodeStreamId
 import com.hereliesaz.illumera.domain.findNextEpisode
 import com.hereliesaz.illumera.ui.player.PlaybackDurationStatus
 import com.hereliesaz.illumera.ui.player.PlayerSessionResult
@@ -164,6 +165,7 @@ class PlaybackSessionViewModel @Inject constructor(
     var showPlayerChoiceDialog by mutableStateOf(false)
     var currentEpisodeList by mutableStateOf<List<MetaVideo>>(emptyList())
     private var episodeListRecoveryJob: Job? = null
+    private var recoveredEpisodeAddonBaseUrl: String? = null
 
     /**
      * Series playback can outlive its Details composable. A missing/partial episode list
@@ -179,7 +181,11 @@ class PlaybackSessionViewModel @Inject constructor(
         episodeListRecoveryJob?.cancel()
         episodeListRecoveryJob = viewModelScope.launch {
             try {
-                val meta = addonRepository.resolveMetaDetails("series", seriesId)
+                val sourceType = selectedPlaybackType.takeUnless { it == "episode" } ?: "series"
+                val meta = addonRepository.resolveMetaDetails(sourceType, seriesId)
+                    ?: if (sourceType != "series")
+                        addonRepository.resolveMetaDetails("series", seriesId)
+                    else null
                 val recovered = meta?.videos.orEmpty()
                     .filter { it.season > 0 && it.episode > 0 }
                     .ifEmpty {
@@ -190,6 +196,9 @@ class PlaybackSessionViewModel @Inject constructor(
                 if (playbackSeriesId == seriesId && selectedPlaybackId == playbackId &&
                     currentEpisodeList.isEmpty() && recovered.isNotEmpty()
                 ) {
+                    recoveredEpisodeAddonBaseUrl = if (meta?.videos.orEmpty().any {
+                        it.season > 0 && it.episode > 0
+                    }) meta?.addonBaseUrl else null
                     currentEpisodeList = recovered
                 }
             } catch (cancelled: CancellationException) {
@@ -306,6 +315,7 @@ class PlaybackSessionViewModel @Inject constructor(
         if (!queuePlaybackActive) queueWholeShowActive = false
         queueStartPending = false
         episodeListRecoveryJob?.cancel()
+        recoveredEpisodeAddonBaseUrl = null
         currentEpisodeList = episodes
         currentStream = stream
         val subtitlePayload = buildSubtitlePayload(stream, addonSubtitles)
@@ -435,7 +445,7 @@ class PlaybackSessionViewModel @Inject constructor(
         )
 
         val nextPlaybackId = episodePlaybackId(playbackSeriesId, nextEpisode)
-        val nextStreamId = episodeStreamId(playbackSeriesId, nextEpisode)
+        val nextStreamId = canonicalEpisodeRequestId(nextEpisode)
         val nextPlaybackTitle = episodeDisplayTitle(nextEpisode)
 
         val autoplay = autoplayNextEnabled(profile?.autoplayNextEpisode == true)
@@ -490,7 +500,11 @@ class PlaybackSessionViewModel @Inject constructor(
 
         episodeSwitchJob = viewModelScope.launch {
             try {
-                val rawStreams = requestOrFallback(emptyList()) { addonRepository.getStreams("series", nextStreamId) }
+                val rawStreams = requestOrFallback(emptyList()) { addonRepository.getStreams(
+                    "series", nextStreamId,
+                    preferredAddonBaseUrl = recoveredEpisodeAddonBaseUrl,
+                    preferredAddonRequestId = nextEpisode.id
+                ) }
                 // Subtitles are fetched once the episode is playing (refineSubtitlesInBackground).
                 val addonSubs = emptyList<AddonSubtitle>()
                 switchStep = "ranking ${rawStreams.size} sources"
@@ -591,6 +605,15 @@ class PlaybackSessionViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Normalized cross-provider stream ID, preserving the metadata addon's private
+     * episode ID exclusively for that addon when it also offers streams.
+     */
+    private fun canonicalEpisodeRequestId(episode: MetaVideo): String {
+        val imdbEpisode = episode.id.takeIf { Regex("^tt[0-9]+:[0-9]+:[0-9]+$").matches(it) }
+        return imdbEpisode ?: canonicalEpisodeStreamId(playbackSeriesId, episode)
+    }
+
     /** The viewer picked [episode] of the playing show from the player's episode list. */
     fun selectEpisode(
         episode: MetaVideo,
@@ -605,7 +628,7 @@ class PlaybackSessionViewModel @Inject constructor(
         // regardless of which episode the user actually intended last.
         if (isEpisodeSwitchLoading) return
         val epPlaybackId = episodePlaybackId(playbackSeriesId, episode)
-        val epStreamId = episodeStreamId(playbackSeriesId, episode)
+        val epStreamId = canonicalEpisodeRequestId(episode)
         val epTitle = episodeDisplayTitle(episode)
 
         // Picking an episode by hand is the viewer's choice, not the queue's.
@@ -632,7 +655,11 @@ class PlaybackSessionViewModel @Inject constructor(
         }
 
         episodeSwitchJob = viewModelScope.launch {
-            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams("series", epStreamId) } }
+            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams(
+                    "series", epStreamId,
+                    preferredAddonBaseUrl = recoveredEpisodeAddonBaseUrl,
+                    preferredAddonRequestId = episode.id
+                ) } }
             val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
 
             val rawStreams = streamsDeferred.await()

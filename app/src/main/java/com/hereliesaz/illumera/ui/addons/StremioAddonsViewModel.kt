@@ -82,7 +82,11 @@ class StremioAddonsViewModel @Inject constructor(
                     var failedCount = 0
 
                     for (transportUrl in remoteUrls) {
-                        if (currentByUrl.containsKey(transportUrl)) continue
+                        val existing = currentByUrl[transportUrl]
+                        val placeholder = existing != null && !existing.isEnabled &&
+                            existing.catalogsJson.trim() == "[]" &&
+                            !existing.supportsMeta && !existing.supportsStream
+                        if (existing != null && !placeholder) continue
                         try {
                             addonRepository.installAddon("$transportUrl/manifest.json")
                             installedCount++

@@ -243,6 +243,7 @@ class DetailsViewModel @Inject constructor(
                 // A meta response can contain a poster/title yet no episode index.
                 // Fill it before publishing so the Details Episodes sidebar, Play,
                 // stream prefetch and the player all receive the same complete list.
+                var recoveredCanonicalId: String? = null
                 if (details.type == "series" &&
                     details.videos.orEmpty().none { it.season > 0 && it.episode > 0 }
                 ) {
@@ -250,13 +251,17 @@ class DetailsViewModel @Inject constructor(
                         canonicalFallbackId, details.name, details.releaseInfo
                     )
                     if (requestVersion != loadRequestVersion) return@launch
-                    if (recovered.isNotEmpty()) details = details.copy(videos = recovered)
+                    if (recovered.isNotEmpty()) {
+                        details = details.copy(videos = recovered)
+                        recoveredCanonicalId = recovered.firstOrNull()?.id?.substringBefore(':')
+                            ?.takeIf { Regex("^tt[0-9]+$").matches(it) }
+                    }
                 }
                 loadedContentKey = requestKey
 
                 // Canonical identity owns history/watchlist/Trakt and cross-addon lookup.
                 // details.id remains the origin addon's private request ID when it differs.
-                val streamFetchId = canonicalFallbackId
+                val streamFetchId = recoveredCanonicalId ?: canonicalFallbackId
                 // Publish usable details before any watch-history or enrichment work.
                 _state.update { it.copy(
                     meta = details,
@@ -814,6 +819,8 @@ class DetailsViewModel @Inject constructor(
                 current.copy(
                     meta = if (recovered.isNotEmpty()) current.meta?.copy(videos = recovered)
                         else current.meta,
+                    resolvedId = recovered.firstOrNull()?.id?.substringBefore(':')
+                        ?.takeIf { Regex("^tt[0-9]+$").matches(it) } ?: current.resolvedId,
                     sidebarState = if (sidebar is SidebarState.Episodes) {
                         sidebar.copy(
                             videos = if (recovered.isNotEmpty()) recovered else sidebar.videos,

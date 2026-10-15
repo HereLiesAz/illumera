@@ -266,7 +266,9 @@ class AddonRepository @Inject constructor(
                             val encoded = java.net.URLEncoder.encode(sourceGenre, "UTF-8").replace("+", "%20")
                             add("genre=$encoded")
                         }
-                        if (layer > 0) add("skip=${layer * 100}")
+                        if (layer > 0 || catalog.extra.orEmpty().any {
+                            it.name == "skip" && it.isRequired
+                        }) add("skip=${layer * 100}")
                     }
                     val suffix = if (extras.isEmpty()) "" else "/" + extras.joinToString("&")
                     val url = "${addon.transportUrl.trimEnd('/')}/catalog/$type/${catalog.id}$suffix.json"
@@ -604,7 +606,8 @@ class AddonRepository @Inject constructor(
             isTrusted = existingAddon?.isTrusted ?: false, isEnabled = true,
             nickname = existingAddon?.nickname, catalogsJson = catalogsJson,
             supportsMeta = supportsMeta,
-            supportsStream = supportsStream,
+            supportsStream = supportsStream &&
+                transportUrl != "https://stremio-trailer-addon.vercel.app",
             typesJson = gson.toJson(manifest.types.orEmpty()),
             idPrefixesJson = gson.toJson(manifest.idPrefixes.orEmpty()),
             sortOrder = existingAddon?.sortOrder ?: 999

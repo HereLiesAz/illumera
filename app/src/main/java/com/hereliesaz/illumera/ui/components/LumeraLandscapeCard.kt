@@ -126,7 +126,7 @@ fun LumeraLandscapeCard(
                     isFocused = it.isFocused
                     if (!it.isFocused) {
                         dpadKeyHeld = false
-                        dpadLongPressTriggered = false
+                        if (!contextMenuExpanded) dpadLongPressTriggered = false
                     }
                     if (it.isFocused) onFocused?.invoke()
                 },
@@ -269,7 +269,8 @@ fun LumeraLandscapeCard(
             MediaCardActionMenu(
                 target = MediaActionTarget.fromMeta(mediaItem),
                 expanded = contextMenuExpanded,
-                onDismissRequest = { contextMenuExpanded = false }
+                focusable = !dpadKeyHeld,
+                onDismissRequest = { if (!dpadKeyHeld) contextMenuExpanded = false }
             )
         }
     }

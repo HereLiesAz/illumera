@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.ui.queue
 
+import androidx.compose.ui.window.PopupProperties
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -462,6 +464,7 @@ private fun QueueCardRow(
 
                 Column(modifier = Modifier.width(140.dp)) {
                     var menuExpanded by remember(item.stableKey) { mutableStateOf(false) }
+                    var remotePressHeld by remember(item.stableKey) { mutableStateOf(false) }
                     androidx.compose.foundation.layout.Box(
                         modifier = Modifier
                             .then(
@@ -500,6 +503,7 @@ private fun QueueCardRow(
                             },
                             modifier = Modifier.focusRequester(cardFocusRequester),
                             onFocused = { onFocused(item.stableKey) },
+                            onRemotePressChanged = { remotePressHeld = it },
                             onLongClick = if (onMoveSuggestion != null || onRemoveSuggestion != null) {
                                 { menuExpanded = true }
                             } else null
@@ -507,7 +511,8 @@ private fun QueueCardRow(
 
                         DropdownMenu(
                             expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
+                            properties = PopupProperties(focusable = !remotePressHeld),
+                            onDismissRequest = { if (!remotePressHeld) menuExpanded = false }
                         ) {
                             if (onMoveSuggestion != null) {
                                 DropdownMenuItem(

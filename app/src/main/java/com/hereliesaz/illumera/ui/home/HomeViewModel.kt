@@ -251,8 +251,13 @@ class HomeViewModel @Inject constructor(
      * Uses UI batching: reveals ROW_BATCH_SIZE items at a time from a pending buffer,
      * only fetching from the API when the buffer is empty.
      */
+    private var screenDataGeneration = 0L
+
     fun loadMoreItems(configId: String) {
         if (configId.startsWith("catalog-aggregate:")) {
+            val generation = screenDataGeneration
+            val initiatingProfileId = _state.value.loadedProfileId
+            val initiatingScreen = _state.value.loadedScreen
             if (!loadingMoreRows.add(configId)) return
             viewModelScope.launch {
                 try {
@@ -261,7 +266,9 @@ class HomeViewModel @Inject constructor(
                     val type = parts[1]
                     val genre = parts[2].takeUnless { it == "all" }
                     var nextPage = rowFetchOffsets.getOrPut(configId) { 0 }
-                    var next = emptyList<MetaItem>()
+                    val existing = _state.value.rows.firstOrNull { it.configId == configId }
+                        ?.items.orEmpty()
+                    var unique = emptyList<MetaItem>()
                     val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
                     // First visit searches every addon source group in the first layer
                     // so a later provider can populate a row even if earlier addons are empty.
@@ -270,21 +277,24 @@ class HomeViewModel @Inject constructor(
                         firstLayerCount - nextPage
                     } else 4
                     repeat(probes.coerceAtLeast(0)) {
-                        if (next.isEmpty()) {
-                            next = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                        if (unique.isEmpty()) {
+                            val fetched = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                            unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
+                    // Never let an old profile's in-flight catalogs contaminate a
+                    // newly loaded profile with the same genre row IDs.
+                    if (generation != screenDataGeneration ||
+                        _state.value.loadedProfileId != initiatingProfileId ||
+                        _state.value.loadedScreen != initiatingScreen ||
+                        profileConfigurationManager.activeProfileId.value != initiatingProfileId
+                    ) return@launch
                     rowFetchOffsets[configId] = nextPage
-                    if (next.isNotEmpty()) {
-                        val existing = _state.value.rows.firstOrNull { it.configId == configId }
-                            ?.items.orEmpty()
-                        val unique = distinctAggregatedMetas(existing, next)
-                        if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
-                    }
+                    if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                 } catch (ce: CancellationException) {
                     throw ce
                 } finally {
-                    loadingMoreRows.remove(configId)
+                    if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
                 }
             }
             return
@@ -758,6 +768,8 @@ class HomeViewModel @Inject constructor(
         }
 
         loadJob?.cancel()
+        screenDataGeneration++
+        loadingMoreRows.clear()
         loadJob = viewModelScope.launch {
             // Clear 'rows' immediately so the UI doesn't show "Ghost Data" from the previous tab
             pendingRowItems.clear()

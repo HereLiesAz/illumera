@@ -184,7 +184,12 @@ class ProfileConfigurationManager @Inject constructor(
         val finalSnapshot = if (!needsInitialSetup(profileId) &&
             !prefs.getBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", false)
         ) {
-            val defaults = createDefaultRuntimeSnapshot()
+            // Never hold the runtime-switch lock indefinitely on external manifests.
+            // An interrupted upgrade remains unseeded and can retry on next load.
+            val defaults = kotlinx.coroutines.withTimeoutOrNull(8_000L) {
+                createDefaultRuntimeSnapshot()
+            }
+            if (defaults == null) snapshot else {
             val installed = snapshot.addons.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
             val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
             snapshot.copy(
@@ -198,6 +203,7 @@ class ProfileConfigurationManager @Inject constructor(
                 writeSnapshot(profileId, it)
                 prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$profileId", true).apply()
             }
+            }
         } else snapshot
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
@@ -206,7 +212,11 @@ class ProfileConfigurationManager @Inject constructor(
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
         dao.replaceRuntimeState(
-            addons = finalSnapshot.addons,
+            addons = finalSnapshot.addons.map { addon ->
+                if (addon.transportUrl.trimEnd('/') == "https://stremio-trailer-addon.vercel.app")
+                    addon.copy(supportsStream = false)
+                else addon
+            },
             catalogConfigs = finalSnapshot.catalogConfigs,
             hubRows = finalSnapshot.hubRows,
             hubRowItems = finalSnapshot.hubRowItems,
@@ -241,7 +251,10 @@ class ProfileConfigurationManager @Inject constructor(
         }
         writeSnapshot(targetProfileId, sourceSnapshot.copy(watchHistory = emptyList()))
         // A copied profile inherits any deliberate addon removal/disable choices.
-        prefs.edit().putBoolean("$KEY_DEFAULT_SET_SEEDED$targetProfileId", true).apply()
+        prefs.edit().putBoolean(
+            "$KEY_DEFAULT_SET_SEEDED$targetProfileId",
+            prefs.getBoolean("$KEY_DEFAULT_SET_SEEDED$sourceProfileId", false)
+        ).apply()
         val sourceGenres = context.getSharedPreferences("illumera_screen_genres", Context.MODE_PRIVATE)
         val genreEditor = sourceGenres.edit()
         listOf("movies", "series").forEach { screen ->
@@ -467,7 +480,13 @@ class ProfileConfigurationManager @Inject constructor(
             CatalogManifest(type = "series", id = "top", name = "Top")
         )
 
-        val manifest = runCatching { addonRepository.fetchManifest(DEFAULT_CINEMETA_MANIFEST_URL) }.getOrNull()
+        val manifest = try {
+            withTimeout(5_000L) { addonRepository.fetchManifest(DEFAULT_CINEMETA_MANIFEST_URL) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
         val catalogs = manifest?.catalogs
             ?.filter { it.type == "movie" || it.type == "series" }
             ?.ifEmpty { fallbackCatalogs }

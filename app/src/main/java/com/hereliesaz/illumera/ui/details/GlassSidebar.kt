@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.ui.details
 
+import androidx.compose.ui.window.PopupProperties
+
 import android.view.KeyEvent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
@@ -918,7 +920,8 @@ fun EpisodeItem(
                 MediaCardActionMenu(
                     target = mediaActionTarget,
                     expanded = contextMenuExpanded,
-                    onDismissRequest = { contextMenuExpanded = false }
+                    focusable = !dpadKeyHeld,
+                    onDismissRequest = { if (!dpadKeyHeld) contextMenuExpanded = false }
                 )
             }
 
@@ -1243,7 +1246,8 @@ fun RawSourceItem(
 
         DropdownMenu(
             expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false }
+            properties = PopupProperties(focusable = !dpadKeyHeld),
+            onDismissRequest = { if (!dpadKeyHeld) menuExpanded = false }
         ) {
             if (onToggleExcluded != null) {
                 DropdownMenuItem(

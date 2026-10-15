@@ -237,8 +237,14 @@ fun WatchlistScreen(
                                 color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) Color.White.copy(alpha = 0.14f)
+                                    .background(if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.27f)
+                                        else if (selected) Color.White.copy(alpha = 0.14f)
                                         else Color.White.copy(alpha = 0.05f))
+                                    .border(
+                                        if (focused) 2.dp else 0.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(8.dp)
+                                    )
                                     .clickable {
                                         sortMode = mode.first
                                         watchlistPrefs.edit().putString(

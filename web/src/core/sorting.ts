@@ -181,6 +181,7 @@ export function sortStreams(streams: Stream[], type: string, addonOrder: string[
 
   const order = (s: Stream) => { const i = addonOrder.indexOf(s.addonBase ?? ''); return i < 0 ? Infinity : i }
   const sizeGap = (r: Ranked) => (target <= 0 ? 0 : r.info.sizeBytes === undefined ? Number.MAX_SAFE_INTEGER : Math.abs(r.info.sizeBytes - target))
+  const sizeBand = (r: Ranked) => target <= 0 ? 0 : Math.floor(sizeGap(r) / Math.max(1, target / 4))
   const seedGap = (r: Ranked) => (prefs.minimumSeeds <= 0 || r.info.seeds === undefined || r.info.seeds >= prefs.minimumSeeds ? 0 : prefs.minimumSeeds - r.info.seeds)
 
   // Array.prototype.sort is stable from Chromium 70; index as a final tiebreak keeps
@@ -188,7 +189,7 @@ export function sortStreams(streams: Stream[], type: string, addonOrder: string[
   const indexed = ranked.map((r, i) => ({ r, i }))
   indexed.sort((x, y) => {
     const a = x.r, b = y.r
-    const base = sizeGap(a) - sizeGap(b) || seedGap(a) - seedGap(b) || cmp(order(a.stream), order(b.stream))
+    const base = seedGap(a) - seedGap(b) || cmp(sizeBand(a), sizeBand(b)) || cmp(order(a.stream), order(b.stream))
     if (base) return base
     for (const k of keys) { const c = byKey(k)(a, b); if (c) return c }
     return x.i - y.i

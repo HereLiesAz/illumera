@@ -264,6 +264,7 @@ class YouTubeExtractor @Inject constructor() {
         ).firstOrNull()
         val bestVideo = pickBestForClient(
             if (preferCompatiblePreview && compatibleAdaptive.isNotEmpty()) compatibleAdaptive
+            else if (preferCompatiblePreview && compatibleProgressive.isNotEmpty()) emptyList()
             else adaptiveVideo,
             PREFERRED_SEPARATE_CLIENT
         )

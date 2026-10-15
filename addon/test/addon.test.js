@@ -128,7 +128,14 @@ test('meta describes ia: items and leaves tt ids to Cinemeta', async () => {
   assert.equal((await metaHandler({ type: 'movie', id: 'tt1' }, f)).meta, null)
   const { meta } = await metaHandler({ type: 'movie', id: 'ia:c' }, f)
   assert.equal(meta.name, 'Metropolis')
-  assert.equal(meta.description, 'Silent classic')
+  assert.equal(meta.description, '&lt;b&gt;Silent&lt;/b&gt; classic')
+  // Archive descriptions are escaped rather than partially stripped:
+  // malicious HTML-like content must remain inert downstream.
+  const hostile = stubs({ meta: { unsafe: { metadata: {
+    title: 'Unsafe', description: '<img src=x onerror=alert(1)>&hello'
+  } } } })
+  const { meta: safe } = await metaHandler({ type: 'movie', id: 'ia:unsafe' }, hostile)
+  assert.equal(safe.description, '&lt;img src=x onerror=alert(1)&gt;&amp;hello')
 })
 
 test('routes parse ids with colons and search extras', () => {

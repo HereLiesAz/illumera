@@ -259,7 +259,7 @@ fun DashboardEditorScreen(
                     )
                 }
 
-                Row(
+                if (selectedTab == "home") Row(
                     modifier = Modifier.width(topRightControlsWidth),
                     horizontalArrangement = Arrangement.spacedBy(controlButtonSpacing)
                 ) {
