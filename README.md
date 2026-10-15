@@ -183,3 +183,5 @@ illumera is a media client that connects to third-party addons. It does not host
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+- Home keeps separate rows for categories such as Latest, Popular, Trending, Netflix and HBO Max. Each matching **movie + series pair from the same addon** is displayed as a single mixed row with duplicate titles removed. This does **not** create one global catch-all row. Watchlist Library, by contrast, deliberately uses one combined sortable Movies & Series row, with Queue above it.
