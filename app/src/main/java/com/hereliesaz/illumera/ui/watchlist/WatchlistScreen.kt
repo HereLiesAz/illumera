@@ -78,7 +78,6 @@ fun WatchlistScreen(
     var sortMode by remember(currentProfile?.id) {
         mutableStateOf(watchlistPrefs.getString("sort_${currentProfile?.id}", "recent") ?: "recent")
     }
-    var mediaTypeFilter by remember { mutableStateOf("all") }
     val sortedLibrary = remember(library, sortMode, currentProfile?.id) {
         val recent = compareByDescending<WatchlistViewModel.LibraryEntry> {
             maxOf(it.addedAt, it.lastWatched)
@@ -100,12 +99,7 @@ fun WatchlistScreen(
     }
     // A single sorted collection: movie/show type is retained for playback,
     // not used to segregate titles into separate Library poster rows.
-    val libraryItems = remember(sortedLibrary, mediaTypeFilter) {
-        sortedLibrary.asSequence()
-            .map { it.item }
-            .filter { mediaTypeFilter == "all" || it.type == mediaTypeFilter }
-            .toList()
-    }
+    val libraryItems = remember(sortedLibrary) { sortedLibrary.map { it.item } }
 
     // Main-screen Back is MainRootBackHandler's: every in-screen Back action (Queue reorder
     // mode, item menus) has its own handler composed later, so it runs first.
@@ -127,7 +121,15 @@ fun WatchlistScreen(
         // Resolve by ID into the new single row so restored remote focus
         // continues to point to the same title after aggregation or sorting.
         val id = key.substringAfter('_', "").substringBeforeLast('_', "")
-        val index = libraryItems.indexOfFirst { it.id == id }
+        val previousRow = key.substringBefore('_').toIntOrNull()
+        val expectedType = when (previousRow) {
+            1 -> "series" // legacy Series row
+            else -> viewModel.lastFocusedMediaType
+        }
+        val typedIndex = libraryItems.indexOfFirst {
+            it.id == id && it.type == expectedType
+        }
+        val index = if (typedIndex >= 0) typedIndex else libraryItems.indexOfFirst { it.id == id }
         if (index >= 0) {
             val updated = "0_${libraryItems[index].id}_$index"
             if (updated != key) {
@@ -146,8 +148,22 @@ fun WatchlistScreen(
         }
     }
 
-    LaunchedEffect(libraryItems) {
-        libraryItems.forEach { viewModel.resolvePosterIfNeeded(it) }
+    // Do not start a metadata request for every item in a large Library.
+    // Resolve blank artwork plus genuinely ambiguous same-title provider IDs;
+    // release-year enrichment can then safely collapse true duplicates.
+    val ambiguousIds = remember(libraryItems) {
+        libraryItems.groupBy { item ->
+            "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}"
+        }.values.filter { group ->
+            group.map { it.id }.distinct().size > 1
+        }.flatten().mapTo(mutableSetOf()) { "${it.type}:${it.id}" }
+    }
+    LaunchedEffect(libraryItems, ambiguousIds) {
+        libraryItems.forEach { item ->
+            if (item.poster.isNullOrBlank() || "${item.type}:${item.id}" in ambiguousIds) {
+                viewModel.resolvePosterIfNeeded(item)
+            }
+        }
     }
 
     val isTopNav = currentProfile?.navPosition == "top"
@@ -162,7 +178,8 @@ fun WatchlistScreen(
     val hasFilteredMedia = libraryItems.isNotEmpty()
 
     androidx.compose.runtime.CompositionLocalProvider(
-        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
+        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides
+            (watchedIds + sortedLibrary.filter { it.watched }.map { it.item.id })
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().focusMemoryRoot(focusMemory),
@@ -203,27 +220,6 @@ fun WatchlistScreen(
                     )
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
-                        items(listOf("all" to "All", "movie" to "Movies", "series" to "Series")) { type ->
-                            val selected = mediaTypeFilter == type.first
-                            val interaction = remember { MutableInteractionSource() }
-                            val focused by interaction.collectIsFocusedAsState()
-                            Text(
-                                type.second,
-                                color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = if (selected || focused) 0.18f else 0.05f))
-                                    .border(if (focused) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                                    .clickable { mediaTypeFilter = type.first }
-                                    .focusable(interactionSource = interaction)
-                                    .padding(horizontal = 14.dp, vertical = 11.dp)
-                            )
-                        }
-                    }
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(top = 12.dp)
                     ) {
                         items(modes, key = { it.first }) { mode ->
@@ -259,7 +255,7 @@ fun WatchlistScreen(
             if (!hasFilteredMedia) {
                 item {
                     Text(
-                        text = if (hasWatchlistMedia) "No ${if (mediaTypeFilter == "movie") "movies" else "series"} in your Library" else "Your watchlist is empty",
+                        text = "Your watchlist is empty",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.5f),
                         modifier = Modifier.padding(start = startPadding, top = 12.dp, bottom = 4.dp)
@@ -277,7 +273,8 @@ fun WatchlistScreen(
                         items = libraryItems,
                         onMovieClick = onMovieClick,
                         onViewMore = {},
-                        onFocused = { _: MetaItem?, key: String ->
+                        onFocused = { focused: MetaItem?, key: String ->
+                            viewModel.lastFocusedMediaType = focused?.type
                             lastFocusedKey = key
                             viewModel.lastFocusedKey = key
                             lastQueueFocusedKey = null

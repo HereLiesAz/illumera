@@ -60,6 +60,67 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun differentProviderTitleWithUnknownYearIsNotAssumedDuplicate() {
+        fun e(id: String, year: String? = null, poster: String? = null) =
+            WatchlistViewModel.LibraryEntry(
+                item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = "movie", name = "The Return",
+                    releaseInfo = year, poster = poster
+                ),
+                addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
+            )
+        assertEquals(2, aggregateLibraryEntries(listOf(e("tt0000001"), e("tmdb:2"))).size)
+        val merged = aggregateLibraryEntries(
+            listOf(e("tt0000001", "2024", ""), e("tmdb:2", "2024", "good-poster"))
+        )
+        assertEquals(1, merged.size)
+        assertEquals("good-poster", merged.single().item.poster)
+    }
+
+    @Test
+    fun mixedLibraryCollapsesDuplicateProvidersButPreservesMovieAndSeries() {
+        fun entry(
+            id: String, type: String, title: String, added: Long,
+            watchedAt: Long, poster: String? = null, year: String? = null
+        ) = WatchlistViewModel.LibraryEntry(
+            item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                id = id, type = type, name = title, poster = poster, releaseInfo = year
+            ),
+            addedAt = added, lastWatched = watchedAt,
+            watched = watchedAt > 0L, timesWatched = if (watchedAt > 0L) 1 else 0
+        )
+        val input = listOf(
+            entry("tt0000033", "movie", "The Return", 100L, 0L, year = "2024"),
+            entry("tmdb:9", "movie", "The Return", 0L, 400L,
+                poster = "artwork", year = "2024"),
+            entry("tt0000033", "series", "The Return", 200L, 0L, year = "2024"),
+            entry("tt0000044", "movie", "Another Return", 300L, 0L, year = "2024")
+        )
+        val merged = aggregateLibraryEntries(input)
+        assertEquals(3, merged.size)
+        val film = merged.first { it.item.type == "movie" && it.item.id == "tt0000033" }
+        assertEquals("artwork", film.item.poster)
+        assertEquals(100L, film.addedAt)
+        assertEquals(400L, film.lastWatched)
+        assertTrue(film.watched)
+        assertTrue(merged.any { it.item.type == "series" && it.item.id == "tt0000033" })
+        assertTrue(merged.any { it.item.id == "tt0000044" })
+    }
+
+    @Test
+    fun distinctCanonicalImdbTitlesWithSameNameAndYearStaySeparate() {
+        val originals = listOf("tt0000091", "tt0000092").map { id ->
+            WatchlistViewModel.LibraryEntry(
+                item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = "movie", name = "The Return", releaseInfo = "2024"
+                ),
+                addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
+            )
+        }
+        assertEquals(2, aggregateLibraryEntries(originals).size)
+    }
+
+    @Test
     fun libraryMergesSavedAndSyncedTitlesWithoutDuplicatingSeriesEpisodes() = runTest(dispatcher) {
         every { dao.getWatchlist(1) } returns flowOf(listOf(
             WatchlistEntity(1, "tt123", "series", "Series Title", "poster", 1000L),

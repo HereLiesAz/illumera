@@ -195,7 +195,7 @@ fun InfiniteLoopRow(
 
     // Calculate the max valid index based on current mode
     val maxValidIndex = when {
-        isLandscapeCards || !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
+        !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
         !isInfiniteScrollingEnabled -> visibleItemCount // visibleItemCount items + 1 ViewMore
         else -> Int.MAX_VALUE
     }
@@ -227,7 +227,7 @@ fun InfiniteLoopRow(
             // Cinematic landscape rails must not revert to portrait when a
             // catalog is configured as an infinite or finite grid.
             // A standard LazyRow also supports per-genre incremental paging.
-            isLandscapeCards || !isInfiniteLoopEnabled -> {
+            !isInfiniteLoopEnabled -> {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
                     LinearContent(
                         listState = listState,
@@ -278,7 +278,8 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards
                     )
                 }
             }
@@ -305,7 +306,8 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards
                     )
                 }
             }
@@ -353,7 +355,10 @@ private fun LinearContent(
         if (isLandscapeCards) {
             items.map { item ->
                 val enriched = enrichedItems["${item.type}:${item.id}"]
-                enriched?.background ?: item.background ?: enriched?.poster ?: item.poster
+                enriched?.background?.takeIf { it.isNotBlank() }
+                    ?: item.background?.takeIf { it.isNotBlank() }
+                    ?: enriched?.poster?.takeIf { it.isNotBlank() }
+                    ?: item.poster?.takeIf { it.isNotBlank() }
             }
         } else {
             items.map { it.poster }
@@ -461,13 +466,16 @@ private fun LinearContent(
                     val enriched = enrichedItems["${item.type}:${item.id}"]
                     LumeraLandscapeCard(
                         title = item.name,
-                        backdropUrl = enriched?.background ?: item.background,
+                        backdropUrl = enriched?.background?.takeIf { it.isNotBlank() }
+                            ?: item.background?.takeIf { it.isNotBlank() },
                         logoUrl = enriched?.logo ?: item.logo,
-                        posterUrl = enriched?.poster ?: item.poster,
+                        posterUrl = enriched?.poster?.takeIf { it.isNotBlank() }
+                            ?: item.poster?.takeIf { it.isNotBlank() },
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
                         hasNewEpisode = item.hasNewEpisode,
+                        isWatched = rowIndex != -1 && item.id in LocalWatchedIds.current,
                         onFocused = {
                             ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
                             onFocused(item, uniqueKey)
@@ -547,7 +555,8 @@ private fun InfiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -565,7 +574,14 @@ private fun InfiniteGridContent(
     val totalItems = sectionSize * INFINITE_LOOP_GENERATIONS
 
     // Prefetch image URLs list
-    val imageUrls = remember(truncatedMovies) { truncatedMovies.map { it.poster } }
+    val imageUrls = remember(truncatedMovies, isLandscapeCards) {
+        truncatedMovies.map { item ->
+            if (isLandscapeCards)
+                item.background?.takeIf { it.isNotBlank() }
+                    ?: item.poster?.takeIf { it.isNotBlank() }
+            else item.poster?.takeIf { it.isNotBlank() }
+        }
+    }
     
     // Track focused index for ViewMore card's directional alpha
     var currentFocusedIndex by remember(listState) { 
@@ -654,7 +670,7 @@ private fun InfiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -706,6 +722,33 @@ private fun InfiniteGridContent(
                     ) {
                         val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                         val watchedIds = LocalWatchedIds.current
+                        if (isLandscapeCards) {
+                        LumeraLandscapeCard(
+                            title = item.movie.name,
+                            backdropUrl = item.movie.background?.takeIf { it.isNotBlank() },
+                            logoUrl = item.movie.logo?.takeIf { it.isNotBlank() },
+                            posterUrl = item.movie.poster?.takeIf { it.isNotBlank() },
+                            onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
+                            progress = item.movie.progress,
+                            isWatched = rowIndex != -1 && item.movie.id in watchedIds,
+                            onFocused = {
+                                currentFocusedIndex = scrollIndex
+                                val logicalIndex = scrollIndex % sectionSize
+                                if (logicalIndex < imageUrls.size) {
+                                    if (isLandscapeCards)
+                                        ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, logicalIndex)
+                                    else ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
+                                }
+                                onFocused(item.movie, uniqueKey)
+                            },
+                            modifier = Modifier.then(
+                                if (shouldRequestFocus) Modifier.focusRequester(entryRequester)
+                                else if (pivotFocusRequester != null && scrollIndex == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)
+                                else Modifier
+                            ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
+                        )
+                        } else {
                         LumeraCard(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
@@ -717,7 +760,9 @@ private fun InfiniteGridContent(
                                 currentFocusedIndex = scrollIndex
                                 val logicalIndex = scrollIndex % sectionSize
                                 if (logicalIndex < imageUrls.size) {
-                                    ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
+                                    if (isLandscapeCards)
+                                        ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, logicalIndex)
+                                    else ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
                                 }
                                 onFocused(item.movie, uniqueKey)
                             },
@@ -727,6 +772,7 @@ private fun InfiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        }
                     }
                 }
 
@@ -734,6 +780,7 @@ private fun InfiniteGridContent(
                     val uniqueKey = "${rowIndex}_viewmore_$scrollIndex"
                     
                     InfiniteViewMoreCard(
+                        isLandscapeCards = isLandscapeCards,
                         isTopNav = isTopNav,
                         isFirstRow = isFirstRow,
                         drawerRequester = drawerRequester,
@@ -801,7 +848,8 @@ private fun FiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false
 ) {
     val context = LocalContext.current
     
@@ -874,7 +922,7 @@ private fun FiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -919,15 +967,20 @@ private fun FiniteGridContent(
                             }
                     ) {
                         val watchedIds = LocalWatchedIds.current
-                        LumeraCard(
+                        if (isLandscapeCards) {
+                        LumeraLandscapeCard(
                             title = item.movie.name,
-                            posterUrl = item.movie.poster,
+                            backdropUrl = item.movie.background?.takeIf { it.isNotBlank() },
+                            logoUrl = item.movie.logo?.takeIf { it.isNotBlank() },
+                            posterUrl = item.movie.poster?.takeIf { it.isNotBlank() },
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
-                                ImagePrefetcher.prefetchAround(context, imageUrls, index)
+                                if (isLandscapeCards)
+                                    ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
+                                else ImagePrefetcher.prefetchAround(context, imageUrls, index)
                                 onFocused(item.movie, uniqueKey)
                             },
                             modifier = Modifier.then(
@@ -936,13 +989,34 @@ private fun FiniteGridContent(
                                 else Modifier
                             ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
                         )
+                        } else {
+                        LumeraCard(
+                            title = item.movie.name,
+                            posterUrl = item.movie.poster,
+                            onClick = { onMovieClick(item.movie) },
+                            mediaItem = item.movie,
+                            progress = item.movie.progress,
+                            isWatched = rowIndex != -1 && item.movie.id in watchedIds,
+                            onFocused = {
+                                if (isLandscapeCards)
+                                    ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
+                                else ImagePrefetcher.prefetchAround(context, imageUrls, index)
+                                onFocused(item.movie, uniqueKey)
+                            },
+                            modifier = Modifier.then(
+                                if (shouldRequestFocus) Modifier.focusRequester(entryRequester)
+                                else if (pivotFocusRequester != null && index == listState.firstVisibleItemIndex) Modifier.focusRequester(pivotFocusRequester)
+                                else Modifier
+                            ).restorableFocusIfTracked(uniqueKey, LocalFocusMemory.current)
+                        )
+                        }
                     }
                 }
 
                 is GridRowItem.ViewMoreItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -971,6 +1045,7 @@ private fun FiniteGridContent(
                             }
                     ) {
                         ViewMoreCard(
+                            isLandscape = isLandscapeCards,
                             onClick = onViewMore,
                             onFocused = { 
                                 onFocused(null, uniqueKey) 
@@ -997,6 +1072,7 @@ private fun FiniteGridContent(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun InfiniteViewMoreCard(
+    isLandscapeCards: Boolean,
     isTopNav: Boolean,
     isFirstRow: Boolean,
     drawerRequester: FocusRequester,
@@ -1026,7 +1102,7 @@ private fun InfiniteViewMoreCard(
 
     Box(
         modifier = modifier
-            .width(ITEM_WIDTH)
+            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
             .graphicsLayer {
                 clip = false
                 alpha = animatedAlpha
@@ -1071,7 +1147,8 @@ private fun InfiniteViewMoreCard(
     ) {
         ViewMoreCard(
             onClick = onClick,
-            onFocused = null
+            onFocused = null,
+            isLandscape = isLandscapeCards
         )
     }
 }

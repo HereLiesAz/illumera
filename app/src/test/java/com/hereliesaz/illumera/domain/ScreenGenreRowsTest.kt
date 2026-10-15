@@ -91,6 +91,24 @@ class ScreenGenreRowsTest {
         assertFalse(result.contains("Last Month"))
     }
 
+    @Test fun recognizesGenuineProviderGenresOutsideOriginalList() {
+        val catalogs = listOf(CatalogManifest(
+            type = "series", id = "provider",
+            extra = listOf(CatalogExtra(
+                name = "genre", isRequired = true,
+                options = listOf("Soap", "TV Movie", "Action & Adventure", "English", "2160p")
+            ))
+        ))
+        val result = ScreenGenreRows.availableGenres("series", catalogs)
+        assertTrue(result.containsAll(listOf("Soap", "TV Movie", "Action & Adventure")))
+        assertFalse(result.contains("English"))
+        assertFalse(result.contains("2160p"))
+        assertEquals("Film-Noir", ScreenGenreRows.canonicalGenre("Film Noir"))
+        assertEquals("True Crime", ScreenGenreRows.canonicalGenre("True-Crime"))
+        assertEquals("Martial Arts", ScreenGenreRows.canonicalGenre("Martial-Arts"))
+        assertEquals("Slice of Life", ScreenGenreRows.canonicalGenre("Slice-of-Life"))
+    }
+
     @Test fun sourceGenreNamesUseTheOfficialAlias() {
         assertEquals("Sci-Fi", ScreenGenreRows.canonicalGenre("Science Fiction"))
         assertEquals("Reality-TV", ScreenGenreRows.canonicalGenre("Reality TV"))

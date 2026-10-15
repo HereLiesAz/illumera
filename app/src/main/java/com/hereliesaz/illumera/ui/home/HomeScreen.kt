@@ -691,7 +691,8 @@ fun CinematicLayout(
                                     // addon catalogs. Fetch when its LazyColumn item first
                                     // enters view, then keep pagination on horizontal scrolling.
                                     LaunchedEffect(item.id) {
-                                        if (item.id.startsWith("catalog-aggregate:") &&
+                                        if ((item.id.startsWith("catalog-aggregate:") ||
+                                            item.id.startsWith("catalog-home:")) &&
                                             item.items.isEmpty()
                                         ) onLoadMore(item.id)
                                     }
@@ -1344,6 +1345,12 @@ fun SimpleLayout(
                     is CategoryRow -> {
                         // Create list state with saved scroll position for this row
                         // Reset when focus was redirected from a removed history item to this first row
+                        LaunchedEffect(item.id) {
+                            if ((item.id.startsWith("catalog-home:") ||
+                                    item.id.startsWith("catalog-aggregate:")) &&
+                                item.items.isEmpty()
+                            ) onLoadMore(item.id)
+                        }
                         val rowKey = item.id
                         val resetScroll = historyFocusRedirected && historyItems.isEmpty() && rowIndex == 0
                         val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
