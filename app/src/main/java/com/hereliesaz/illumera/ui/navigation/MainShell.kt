@@ -18,6 +18,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.platform.LocalView
+import android.view.SoundEffectConstants
+import android.os.SystemClock
+import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import androidx.navigation3.runtime.NavEntryDecorator
 import com.hereliesaz.illumera.data.model.ProfileEntity
 
@@ -165,6 +174,9 @@ fun MainShell(
 ) {
     val contentState = state.contentState
     val isTop = navPosition == "top"
+    val audioPreferences = rememberCinematicAudioPreferences(currentProfile?.id)
+    val rootView = LocalView.current
+    var previousNavigationSoundAt by remember { mutableStateOf(0L) }
     SideEffect {
         // The same close as the chrome's own: the side menu restores the content's focused
         // element first; the top bar hands focus to the screen's entry point.
@@ -175,7 +187,27 @@ fun MainShell(
         }
         state.exitAction = onExit
     }
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            if (audioPreferences.navigationSounds && event.type == KeyEventType.KeyDown) {
+                val sound = when (event.key) {
+                    Key.DirectionLeft -> SoundEffectConstants.NAVIGATION_LEFT
+                    Key.DirectionRight -> SoundEffectConstants.NAVIGATION_RIGHT
+                    Key.DirectionUp -> SoundEffectConstants.NAVIGATION_UP
+                    Key.DirectionDown -> SoundEffectConstants.NAVIGATION_DOWN
+                    else -> null
+                }
+                if (sound != null) {
+                    val now = SystemClock.uptimeMillis()
+                    if (now - previousNavigationSoundAt >= 110L) {
+                        previousNavigationSoundAt = now
+                        rootView.playSoundEffect(sound)
+                    }
+                }
+            }
+            false // Never consume a D-pad event or interfere with navigation.
+        }
+    ) {
         Box(modifier = Modifier.fillMaxSize().navDrawerContentLayer(contentState)) {
             CompositionLocalProvider(LocalMainShellState provides state) {
                 content()
