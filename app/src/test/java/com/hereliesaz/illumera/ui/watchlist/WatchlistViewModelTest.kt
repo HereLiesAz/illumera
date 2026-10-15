@@ -60,6 +60,24 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun differentProviderTitleWithUnknownYearIsNotAssumedDuplicate() {
+        fun e(id: String, year: String? = null, poster: String? = null) =
+            WatchlistViewModel.LibraryEntry(
+                item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = "movie", name = "The Return",
+                    releaseInfo = year, poster = poster
+                ),
+                addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
+            )
+        assertEquals(2, aggregateLibraryEntries(listOf(e("tt0000001"), e("tmdb:2"))).size)
+        val merged = aggregateLibraryEntries(
+            listOf(e("tt0000001", "2024", ""), e("tmdb:2", "2024", "good-poster"))
+        )
+        assertEquals(1, merged.size)
+        assertEquals("good-poster", merged.single().item.poster)
+    }
+
+    @Test
     fun mixedLibraryCollapsesDuplicateProvidersButPreservesMovieAndSeries() {
         fun entry(
             id: String, type: String, title: String, added: Long,
