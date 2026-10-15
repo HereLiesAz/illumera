@@ -393,6 +393,13 @@ fun NavDrawerRail(
                         onNavigate = onNavigate,
                         modifier = Modifier
                             .focusRequester(drawerRequesters[dest]!!)
+                            // End of the rail: a Down focus search must never
+                            // escape from Exit into the content behind the menu.
+                            .focusProperties {
+                                if (dest == NavDestination.Exit) {
+                                    down = FocusRequester.Cancel
+                                }
+                            }
                             .onPreviewKeyEvent {
                                 menuItemKey(it, closeMenu, backFromMenu)
                             }
@@ -411,6 +418,8 @@ fun NavDrawerRail(
                             onNavigate = { onNavigate(NavDestination.Profile) },
                             modifier = Modifier
                                 .focusRequester(drawerRequesters[NavDestination.Profile]!!)
+                                // Upper boundary mirrors the Exit trap below.
+                                .focusProperties { up = FocusRequester.Cancel }
                                 .onPreviewKeyEvent {
                                     menuItemKey(it, closeMenu, backFromMenu)
                                 }
