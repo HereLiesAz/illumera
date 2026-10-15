@@ -356,9 +356,11 @@ class AddonRepository @Inject constructor(
                 title = group.title,
                 items = emptyList(),
                 order = group.order,
-                isInfiniteLoopEnabled = config.isInfiniteLoopEnabled,
+                // Aggregated rows are genuinely paginated, so do not use the
+                // old synthetic infinite-loop grid's Int.MAX_VALUE indices.
+                isInfiniteLoopEnabled = false,
                 visibleItemCount = config.visibleItemCount,
-                isInfiniteScrollingEnabled = config.isInfiniteScrollingEnabled,
+                isInfiniteScrollingEnabled = true,
                 supportsSkip = true
             )
         }
