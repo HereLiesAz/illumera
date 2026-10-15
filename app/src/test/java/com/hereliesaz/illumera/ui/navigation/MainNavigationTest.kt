@@ -128,6 +128,7 @@ class MainNavigationTest {
                         entry<SeriesKey> { RootScreen(it) }
                         entry<SearchKey> { RootScreen(it) }
                         entry<WatchlistKey> { RootScreen(it) }
+                        entry<AddonsKey> { RootScreen(it) }
                         entry<SettingsKey> { RootScreen(it) }
                         entry<GridKey> { Text("grid") }
                         entry<DetailsKey> { Text("details") }
@@ -168,6 +169,14 @@ class MainNavigationTest {
     }
 
     @Test
+    fun addonsIsANavigableSavedMainRootRatherThanASettingsSection() {
+        val s = mutableListOf<NavKey>(SettingsKey(), DetailsKey("movie", "tt1"))
+        assertTrue(BackStackOps.navigateToMainRoot(s, NavDestination.Addons))
+        assertEquals(listOf<NavKey>(AddonsKey(nonce = 1)), s)
+        assertEquals("Add-ons", NavDestination.Addons.label)
+    }
+
+    @Test
     fun reselectingTheCurrentRootMakesADistinctKey() {
         val s = mutableListOf<NavKey>(SettingsKey())
         BackStackOps.navigateToMainRoot(s, NavDestination.Settings)
@@ -182,7 +191,8 @@ class MainNavigationTest {
         tester.setContent { restored = rememberNavBackStack(AppBackStackConfiguration, HomeKey()) }
         for (destination in listOf(
             NavDestination.Movies, NavDestination.Series, NavDestination.Search,
-            NavDestination.Watchlist, NavDestination.Settings, NavDestination.Home
+            NavDestination.Watchlist, NavDestination.Addons,
+            NavDestination.Settings, NavDestination.Home
         )) {
             compose.runOnUiThread { BackStackOps.navigateToMainRoot(restored!!, destination) }
             val before = restored!!.toList()
