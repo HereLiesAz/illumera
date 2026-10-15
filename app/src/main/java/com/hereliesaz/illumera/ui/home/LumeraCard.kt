@@ -65,7 +65,7 @@ fun LumeraCard(
     mediaItem: MetaItem? = null,
     inlineCinematicExpanded: Boolean = false,
     inlineCinematicWidth: Dp = 340.dp,
-    inlineCinematicPreview: (@Composable () -> Unit)? = null
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
@@ -161,10 +161,10 @@ fun LumeraCard(
                 )
             )
         ) {
-            if (inlineCinematicExpanded && inlineCinematicPreview != null) {
+            if (inlineCinematicExpanded && inlineCinematicPreview != null && mediaItem != null) {
                 // The Surface (and D-pad/long-press focus node) remains mounted
                 // when artwork changes to moving cinematic preview.
-                inlineCinematicPreview()
+                inlineCinematicPreview(mediaItem)
             } else {
             val context = LocalContext.current
             val imageRequest = remember(posterUrl) {
