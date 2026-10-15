@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +32,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import kotlin.math.abs
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -125,6 +129,78 @@ private class RowKeyRepeatDebouncer {
     var lastTime: Long = 0L
 }
 
+/**
+ * Pick the card with the closest LEFT edge, not the closest center. A wide
+ * cinematic preview must not shift vertical D-pad focus one title to the right.
+ */
+internal fun closestCinematicCardLeft(
+    sourceLeft: Float,
+    candidates: List<Pair<String, Float>>
+): String? = candidates.minWithOrNull(
+    compareBy<Pair<String, Float>> { abs(it.second - sourceLeft) }.thenBy { it.second }
+)?.first
+
+/** Coordinates only the visible cards of adjacent cinematic media rows. */
+internal class CinematicVerticalFocusCoordinator {
+    var orderedRowIndices: List<Int> = emptyList()
+
+    private data class Target(val left: Float, val requester: FocusRequester)
+    private val targets = mutableMapOf<Int, MutableMap<String, Target>>()
+
+    fun record(rowIndex: Int, itemKey: String, left: Float, requester: FocusRequester) {
+        targets.getOrPut(rowIndex) { mutableMapOf() }[itemKey] = Target(left, requester)
+    }
+
+    fun unregister(rowIndex: Int, itemKey: String, requester: FocusRequester) {
+        val registered = targets[rowIndex]?.get(itemKey)
+        if (registered?.requester == requester) {
+            targets[rowIndex]?.remove(itemKey)
+            if (targets[rowIndex]?.isEmpty() == true) targets.remove(rowIndex)
+        }
+    }
+
+    fun move(rowIndex: Int, itemKey: String, down: Boolean): Boolean {
+        val current = orderedRowIndices.indexOf(rowIndex)
+        if (current < 0) return false
+        val next = current + if (down) 1 else -1
+        val destinationIndex = orderedRowIndices.getOrNull(next) ?: return false
+        val sourceLeft = targets[rowIndex]?.get(itemKey)?.left ?: return false
+        val destination = targets[destinationIndex].orEmpty()
+        val closest = closestCinematicCardLeft(
+            sourceLeft, destination.map { (key, target) -> key to target.left }
+        ) ?: return false
+        val requester = destination[closest]?.requester ?: return false
+        return runCatching { requester.requestFocus() }.isSuccess
+    }
+}
+
+/** Register the actual card bounds and preserve normal navigation as fallback. */
+@Composable
+private fun rememberCinematicVerticalFocusModifier(
+    coordinator: CinematicVerticalFocusCoordinator?,
+    rowIndex: Int,
+    itemKey: String
+): Modifier {
+    if (coordinator == null) return Modifier
+    val requester = remember(rowIndex, itemKey) { FocusRequester() }
+    DisposableEffect(coordinator, rowIndex, itemKey, requester) {
+        onDispose { coordinator.unregister(rowIndex, itemKey, requester) }
+    }
+    return Modifier
+        .focusRequester(requester)
+        .onGloballyPositioned { coordinates ->
+            coordinator.record(rowIndex, itemKey, coordinates.positionInWindow().x, requester)
+        }
+        .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionUp -> coordinator.move(rowIndex, itemKey, down = false)
+                Key.DirectionDown -> coordinator.move(rowIndex, itemKey, down = true)
+                else -> false
+            }
+        }
+}
+
 /** 16:9 preview width bounded by the actual space beside the navigation chrome. */
 internal fun cinematicInlineWidth(screenWidth: Dp, startPadding: Dp): Dp =
     minOf(
@@ -160,7 +236,8 @@ fun InfiniteLoopRow(
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     isInlineRowActive: Boolean = false,
-    onRowFocusExited: (() -> Unit)? = null
+    onRowFocusExited: (() -> Unit)? = null,
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
@@ -320,7 +397,10 @@ fun InfiniteLoopRow(
                         effectiveItemWidth = effectiveItemWidth,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -354,7 +434,10 @@ fun InfiniteLoopRow(
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -386,7 +469,10 @@ fun InfiniteLoopRow(
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -428,7 +514,10 @@ private fun LinearContent(
     effectiveItemWidth: Dp = ITEM_WIDTH,
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
 
@@ -655,7 +744,10 @@ private fun InfiniteGridContent(
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
 
@@ -934,7 +1026,10 @@ private fun FiniteGridContent(
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
     
