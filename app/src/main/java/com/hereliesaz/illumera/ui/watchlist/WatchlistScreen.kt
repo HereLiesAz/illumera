@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -158,10 +159,25 @@ fun WatchlistScreen(
             group.map { it.id }.distinct().size > 1
         }.flatten().mapTo(mutableSetOf()) { "${it.type}:${it.id}" }
     }
+    fun shouldEnrich(item: MetaItem) =
+        item.poster.isNullOrBlank() || "${item.type}:${item.id}" in ambiguousIds
+
+    // A library can contain thousands of items. Only resolve the initially
+    // visible cards and items entering the horizontal viewport, not the full
+    // library at composition time.
     LaunchedEffect(libraryItems, ambiguousIds) {
-        libraryItems.forEach { item ->
-            if (item.poster.isNullOrBlank() || "${item.type}:${item.id}" in ambiguousIds) {
-                viewModel.resolvePosterIfNeeded(item)
+        libraryItems.take(10).filter(::shouldEnrich)
+            .forEach(viewModel::resolvePosterIfNeeded)
+    }
+    LaunchedEffect(viewModel.libraryRowState, libraryItems, ambiguousIds) {
+        snapshotFlow {
+            viewModel.libraryRowState.layoutInfo.visibleItemsInfo.map { it.index }
+        }.collect { visible ->
+            visible.flatMap { index ->
+                (index - 2).coerceAtLeast(0)..(index + 2).coerceAtMost(libraryItems.lastIndex)
+            }.distinct().forEach { index ->
+                libraryItems.getOrNull(index)?.takeIf(::shouldEnrich)
+                    ?.let(viewModel::resolvePosterIfNeeded)
             }
         }
     }
@@ -274,6 +290,7 @@ fun WatchlistScreen(
                         onMovieClick = onMovieClick,
                         onViewMore = {},
                         onFocused = { focused: MetaItem?, key: String ->
+                            focused?.takeIf(::shouldEnrich)?.let(viewModel::resolvePosterIfNeeded)
                             viewModel.lastFocusedMediaType = focused?.type
                             lastFocusedKey = key
                             viewModel.lastFocusedKey = key
