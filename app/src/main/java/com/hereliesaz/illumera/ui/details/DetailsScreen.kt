@@ -44,7 +44,8 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -619,7 +620,7 @@ fun DetailsScreen(
 
                         ExpandableIconButton(
                             label = "Episodes",
-                            icon = Icons.AutoMirrored.Filled.List,
+                            icon = Icons.Default.VideoLibrary,
                             modifier = Modifier
                                 .focusRequester(episodesButtonFocusRequester)
                                 .restorableFocus("hero:episodes", focusMemory),
@@ -652,7 +653,7 @@ fun DetailsScreen(
 
                         ExpandableIconButton(
                             label = "Queue whole show",
-                            icon = Icons.AutoMirrored.Filled.List,
+                            icon = Icons.Default.VideoLibrary,
                             modifier = Modifier.restorableFocus("hero:queue_show", focusMemory),
                             onClick = {
                                 onAddToQueue(
@@ -670,7 +671,7 @@ fun DetailsScreen(
 
                         ExpandableIconButton(
                             label = "Sources",
-                            icon = Icons.Default.Dns,
+                            icon = Icons.Default.SwapHoriz,
                             modifier = Modifier.restorableFocus("hero:sources", focusMemory),
                             onClick = {
                                 val ep = resumeEpisode ?: firstEpisode ?: return@ExpandableIconButton
@@ -768,7 +769,7 @@ fun DetailsScreen(
 
                         ExpandableIconButton(
                             label = "Sources",
-                            icon = Icons.Default.Dns,
+                            icon = Icons.Default.SwapHoriz,
                             modifier = Modifier.restorableFocus("hero:sources", focusMemory),
                             onClick = {
                                 pendingPlaybackId = streamId
