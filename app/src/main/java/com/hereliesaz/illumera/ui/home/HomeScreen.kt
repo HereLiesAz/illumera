@@ -235,8 +235,7 @@ fun HomeScreen(
                     onFocusChange = { viewModel.setLastFocusedKey(it) },
                     onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos) },
                     onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory) },
-                    onPreviewItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) },
-                    isLandscapeContinueWatching = isLandscapeContinueWatching
+                    onPreviewItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) }
                 )
             } else {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
@@ -305,8 +304,7 @@ fun CinematicLayout(
     onFocusChange: (String) -> Unit,
     onScrollPositionChange: (String, Pair<Int, Int>) -> Unit,
     onVerticalScrollChange: (Pair<Int, Int>) -> Unit,
-    onPreviewItemVisible: (MetaItem) -> Unit,
-    isLandscapeContinueWatching: Boolean = false
+    onPreviewItemVisible: (MetaItem) -> Unit
 ) {
     // Track the *currently* focused row rather than relying on a previously
     // restored poster key. The preview expands immediately above its own row.
