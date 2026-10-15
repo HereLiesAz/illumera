@@ -132,3 +132,11 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - Autoplay trailer extraction prioritizes direct YouTube video IDs, skips addon search-result links, and tries up to two addon candidates before TMDB/Cinemeta. Candidate budgets remain bounded; a bad first addon entry must not starve a later playable one.
 - When authoritative Cinemeta genre classification recovers after a temporary outage, the title migrates out of any previous fallback genre row before being appended to its canonical destination. The existing cross-provider dedup identity helper is reused.
 - Regression checks cover title-without-year and the search-page-before-video-ID case; TV playback, Android build and full integration remain release gates.
+
+## Active-row cinematic hierarchy (October 15, 2026) — supersedes earlier row-shape descriptions
+
+- Home, Movies and Series: on initial entry, only the restored/focused content row uses portrait posters; **all other media rows render 190dp-wide landscape thumbnails at 116dp rail height**. Continue Watching follows the same rule. When focus changes rows, the former row immediately condenses and the new one expands. The active row reserves 220dp and keeps its compact inline trailer on the focused poster; there is no dedicated preview panel.
+- The vertical LazyColumn uses a **positive 20dp row gap** (replaces -12dp), so poster focus scaling does not overlap the next row title. The 175dp focus pivot leaves most of the preceding inactive rail visible. The Hero scrolls away normally.
+- A row-mode switch restores focus to the same media card after landscape/portrait recomposition; left/right navigation, View More, hold-to-open menus and progress decorations remain available.
+- Settings → Screen Editor → Home no longer has Simple/Cinematic buttons; Personalization no longer has the Continue Watching poster/landscape selector. Stored preferences are preserved to avoid database migrations, but cinematic geometry is not user-overridable.
+- Regression unit assertions cover active row selection, inactive rows, Hero/Hub focus, and restored keys. TV D-pad and release build are still required before publication.
