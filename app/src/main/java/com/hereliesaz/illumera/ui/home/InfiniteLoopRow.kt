@@ -181,11 +181,11 @@ private fun rememberCinematicVerticalFocusModifier(
     rowIndex: Int,
     itemKey: String
 ): Modifier {
-    if (coordinator == null) return Modifier
     val requester = remember(rowIndex, itemKey) { FocusRequester() }
     DisposableEffect(coordinator, rowIndex, itemKey, requester) {
         onDispose { coordinator.unregister(rowIndex, itemKey, requester) }
     }
+    if (coordinator == null) return Modifier
     return Modifier
         .focusRequester(requester)
         .onGloballyPositioned { coordinates ->
@@ -640,6 +640,9 @@ private fun LinearContent(
                             }
                         } else false
                     }
+                    .then(rememberCinematicVerticalFocusModifier(
+                        verticalFocusCoordinator, rowIndex, uniqueKey
+                    ))
             ) {
                 if (isLandscapeCards) {
                     val enriched = enrichedItems["${item.type}:${item.id}"]
@@ -915,6 +918,9 @@ private fun InfiniteGridContent(
                                     }
                                 } else false
                             }
+                            .then(rememberCinematicVerticalFocusModifier(
+                                verticalFocusCoordinator, rowIndex, uniqueKey
+                            ))
                     ) {
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
@@ -1156,6 +1162,9 @@ private fun FiniteGridContent(
                                     }
                                 } else false
                             }
+                            .then(rememberCinematicVerticalFocusModifier(
+                                verticalFocusCoordinator, rowIndex, uniqueKey
+                            ))
                     ) {
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
