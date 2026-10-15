@@ -41,7 +41,8 @@ import com.hereliesaz.illumera.ui.util.touchClick
 fun ViewMoreCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onFocused: (() -> Unit)? = null
+    onFocused: (() -> Unit)? = null,
+    isLandscape: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val glowColor = MaterialTheme.colorScheme.primary
@@ -53,8 +54,8 @@ fun ViewMoreCard(
 
     Box(
         modifier = modifier
-            .width(140.dp)
-            .aspectRatio(2f / 3f)
+            .width(if (isLandscape) 190.dp else 140.dp)
+            .aspectRatio(if (isLandscape) 16f / 9f else 2f / 3f)
             .zIndex(if (isFocused) 10f else 0f)
             .graphicsLayer { clip = false }
     ) {
