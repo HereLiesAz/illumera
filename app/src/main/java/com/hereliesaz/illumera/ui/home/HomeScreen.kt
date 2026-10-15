@@ -655,27 +655,10 @@ fun CinematicLayout(
                                         ) onLoadMore(item.id)
                                     }
 
-                                    // Fetch more only when the user advances the horizontal
-                                    // viewport. Changes to item count or vertical remounting
-                                    // must not restart pagination without a new scroll index.
+                                    // Explicit card focus, not layout measurements
+                                    // emitted during a row shape switch, drives paging.
                                     val itemId = item.id
-                                    val latestItemSize by rememberUpdatedState(item.items.size)
-                                    val latestOnLoadMore by rememberUpdatedState(onLoadMore)
-                                    LaunchedEffect(rowListState, itemId) {
-                                        var lastRequestedVisibleIndex = -1
-                                        snapshotFlow {
-                                            rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                                        }.collect { lastVisibleIndex ->
-                                            if (lastVisibleIndex >= 0 &&
-                                                lastVisibleIndex > lastRequestedVisibleIndex &&
-                                                latestItemSize > 0 &&
-                                                lastVisibleIndex >= latestItemSize - 10
-                                            ) {
-                                                lastRequestedVisibleIndex = lastVisibleIndex
-                                                latestOnLoadMore(itemId)
-                                            }
-                                        }
-                                    }
+                                    val itemSize = item.items.size
 
                                     InfiniteLoopRow(
                                         startPadding = startPadding,
@@ -691,6 +674,11 @@ fun CinematicLayout(
                                             activeCinematicRow = rowKey
                                             focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
+                                            val focusedIndex = key.substringAfterLast('_').toIntOrNull()
+                                            if (focusItem != null && itemSize > 0 &&
+                                                focusedIndex != null &&
+                                                focusedIndex >= (itemSize - 3).coerceAtLeast(0)
+                                            ) onLoadMore(itemId)
                                         },
                                         entryRequester = entryRequester,
                                         drawerRequester = drawerRequester,
