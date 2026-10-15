@@ -685,6 +685,13 @@ class QueueManager @Inject constructor(
                 .toList()
 
             val latestState = stateForScope(scope) ?: return
+            // Settings can change sources/types while an old refresh is
+            // awaiting an addon. Its results must not resurrect stale
+            // suggestions after synchronous preference invalidation.
+            if (latestState.preferences != current.preferences) {
+                setRefreshing(scope, false)
+                return
+            }
             val existing = if (preserveExisting) {
                 latestState.suggestions
                     .filter(::isEligible)
