@@ -74,7 +74,7 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 ## October 15 cinematic/genre/trailer fixes — verification pending
 
 - Movies and Series omit empty genre rows from the vertical LazyColumn and D-pad focus chain; the original row index remains stable for poster focus keys. Three background lanes probe all enabled genres instead of requiring a user to focus empty rows to load later content. Initial genre probes cover up to two source layers, where paging is supported.
-- Catalog items are routed to only their lead genre, prioritizing public Cinemeta metadata by IMDb ID or verified title/year instead of addon genre order. When the central lookup is unavailable, a stable sorted addon-genre fallback prevents relying on the first addon label. Unclassified items are withheld rather than duplicated across multiple rows.
+- Catalog items are routed to only their lead genre, prioritizing public Cinemeta metadata by IMDb ID or verified title/year instead of addon genre order. Items found in secondary-genre catalogs are transferred to their primary-genre row rather than disappearing; cross-row transfers deduplicate against existing destination cards. When the central lookup is unavailable, a stable sorted addon-genre fallback prevents relying on the first addon label. Unclassified items are withheld rather than duplicated across multiple rows.
 - Cinematic previews are 184dp tall. Autoplay trailer candidates use the enabled addon, TMDB video metadata when configured, and public Cinemeta trailer records. Silent previews prefer muxed hardware-compatible video when available.
 - Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
 
@@ -93,3 +93,12 @@ The Hero Carousel remains the first ordinary LazyColumn item: it must scroll ent
 - Continue Watching and other portrait rails select cached enriched posters when original history/suggestion cards lack artwork; no blank collapsed card after asynchronous enrichment.
 
 Android compilation and TV D-pad/end-of-row focus require device verification before release.
+### Review fixes for PR #243
+
+- Distinct canonical IMDb IDs never read one another's title/year genre cache; same-name/same-year IMDb collision covered by a fixed-data regression test.
+- Non-IMDb catalog entries resolve TMDB trailers through a conservatively matched IMDb ID when available, not through their unrecognized addon prefix.
+- When later aggregate catalog pages return empty/duplicate/reclassified results, up to four later source pages are probed so pagination does not stall.
+- Primary genres are classified in six-item batches and appended to the correct visible row as each batch finishes. Slow Cinemeta metadata must not keep an entire 100-title page hidden.
+- Trailer extraction gives at most one addon candidate, one TMDB candidate, and two Cinemeta candidates 15 seconds each, preserving time for later sources within the resolver deadline.
+
+These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
