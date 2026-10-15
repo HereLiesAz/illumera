@@ -66,6 +66,7 @@ fun HeroCarousel(
     previewSound: Boolean = false,
     previewVisible: Boolean = true,
     entryRequester: FocusRequester? = null,
+    returnFocusRequester: FocusRequester? = null,
     drawerRequester: FocusRequester? = null,
     isFirstItem: Boolean = false,
     isTopNav: Boolean = false,
@@ -177,6 +178,7 @@ fun HeroCarousel(
             .fillMaxWidth()
             .height(420.dp)
             .then(if (entryRequester != null) Modifier.focusRequester(entryRequester) else Modifier)
+            .then(if (returnFocusRequester != null) Modifier.focusRequester(returnFocusRequester) else Modifier)
             .restorableFocusIfTracked("hero", LocalFocusMemory.current)
             .then(upBlockModifier)
             .onFocusChanged { hasFocus = it.isFocused || it.hasFocus }

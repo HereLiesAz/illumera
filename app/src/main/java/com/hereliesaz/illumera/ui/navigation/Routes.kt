@@ -56,6 +56,11 @@ data class WatchlistKey(override val nonce: Int = 0) : MainRootKey {
 }
 
 @Serializable
+data class AddonsKey(override val nonce: Int = 0) : MainRootKey {
+    override val destination: NavDestination get() = NavDestination.Addons
+}
+
+@Serializable
 data class SettingsKey(override val nonce: Int = 0) : MainRootKey {
     override val destination: NavDestination get() = NavDestination.Settings
 }
@@ -67,6 +72,7 @@ fun mainRootKeyFor(destination: NavDestination, nonce: Int = 0): MainRootKey? = 
     NavDestination.Series -> SeriesKey(nonce)
     NavDestination.Search -> SearchKey(nonce)
     NavDestination.Watchlist -> WatchlistKey(nonce)
+    NavDestination.Addons -> AddonsKey(nonce)
     NavDestination.Settings -> SettingsKey(nonce)
     NavDestination.Profile, NavDestination.Exit -> null
 }
@@ -143,6 +149,7 @@ val AppBackStackConfiguration: SavedStateConfiguration = SavedStateConfiguration
             subclass(SeriesKey::class, SeriesKey.serializer())
             subclass(SearchKey::class, SearchKey.serializer())
             subclass(WatchlistKey::class, WatchlistKey.serializer())
+            subclass(AddonsKey::class, AddonsKey.serializer())
             subclass(SettingsKey::class, SettingsKey.serializer())
             subclass(GridKey::class, GridKey.serializer())
             subclass(DetailsKey::class, DetailsKey.serializer())

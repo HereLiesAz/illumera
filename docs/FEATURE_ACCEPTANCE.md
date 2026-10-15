@@ -185,3 +185,10 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 The centralized Google Play build for commit `7119e8e` compiled Kotlin and Android resources, but failed two of 509 JVM unit tests in `GenreRowReconciliationTest`. Root causes were (1) authoritative moves compared incoming canonical titles with every other genre row before moving them, so the destination incorrectly rejected its own incoming title; (2) filtering unrelated genre rows rebuilt unchanged list objects, violating focus-state preservation. `reconcileGenreRows` now deduplicates canonical arrivals only against the destination, while fallback arrivals still deduplicate across all rows, and returns the original collection for unaffected rows. Existing fixed-value regression tests verify moving only the targeted title and replaying the same canonical batch without replacing any card row.
 
 **Release constraint:** Require successful unit tests and the signed AAB build before marking the Google Play release complete. Device-level genre focus and cinematic-video visual validation remain unverified.
+
+## Hero return and Add-ons navigation (October 15, 2026) — verification pending
+
+- Navigate down until the Hero scrolls away. Navigate up through content: Up from the first row (Continue Watching, Hub, or first populated genre) must scroll back to the Hero and focus it, even when earlier genres were hidden. Hero remains nonsticky.
+- Add-ons is a root item in side and top navigation with a saved back-stack key; Settings no longer contains an Add-ons section. From Add-ons, Back at the root opens main navigation; Back inside Installed restores Browse.
+- The former browse modal fills its own new screen. Its source tabs, including renamed **3rd Party**, scroll horizontally; the search results scroll vertically. Configure/install/uninstall are icon-only, with TV-focus and accessibility labels; uninstall is confirmed. Installed addons, collections, manifest URL input and remote paste remain available.
+- FOSS Debug/Release unit tests and Android TV focus/scroll/installation checks remain required before release.

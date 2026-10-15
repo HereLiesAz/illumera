@@ -67,6 +67,7 @@ enum class NavDestination(
     Watchlist(R.drawable.watchlist_icon, "Watchlist"),
     Search(R.drawable.search_icon, "Search"),
     Profile(R.drawable.profile_icon, "Log Out", iconSize = 18.dp),
+    Addons(R.drawable.puzzle_icon, "Add-ons"),
     Settings(R.drawable.settings_icon, "Settings"),
     Exit(R.drawable.exit_icon, "Exit", iconSize = 21.dp)
 }
@@ -220,7 +221,8 @@ fun NavDrawerRail(
         NavDestination.Home,
         NavDestination.Movies,
         NavDestination.Series,
-        NavDestination.Watchlist
+        NavDestination.Watchlist,
+        NavDestination.Addons
     )
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -440,6 +442,11 @@ fun NavDrawerRail(
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                // Standalone add-on browser/manager lives alongside Settings.
+                DrawerItem(NavDestination.Addons)
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Bottom Section: Settings & Exit
                 Column(

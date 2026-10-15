@@ -108,6 +108,7 @@ fun TopNavigationBarOverlay(
         if (currentProfile?.menuMoviesEnabled != false) add(NavDestination.Movies)
         if (currentProfile?.menuSeriesEnabled != false) add(NavDestination.Series)
         if (currentProfile?.menuWatchlistEnabled != false) add(NavDestination.Watchlist)
+        add(NavDestination.Addons)
     }
 
     // Left Logic (Settings + Menu)

@@ -80,6 +80,7 @@ import com.hereliesaz.illumera.ui.navigation.rememberAppBackStack
 import com.hereliesaz.illumera.ui.navigation.MoviesKey
 import com.hereliesaz.illumera.ui.navigation.SearchKey
 import com.hereliesaz.illumera.ui.navigation.SeriesKey
+import com.hereliesaz.illumera.ui.navigation.AddonsKey
 import com.hereliesaz.illumera.ui.navigation.SettingsKey
 import com.hereliesaz.illumera.ui.navigation.WatchlistKey
 import com.hereliesaz.illumera.ui.navigation.isMainAreaKey
@@ -101,6 +102,7 @@ import com.hereliesaz.illumera.ui.profiles.ProfileScreen
 import com.hereliesaz.illumera.ui.profiles.ProfileViewModel
 import com.hereliesaz.illumera.ui.search.SearchScreen
 import com.hereliesaz.illumera.ui.settings.SettingsScreen
+import com.hereliesaz.illumera.ui.addons.AddonsScreen
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.theme.DefaultThemes
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
@@ -803,6 +805,7 @@ class MainActivity : ComponentActivity() {
                         val homeEntryRequester = remember { FocusRequester() }
                         val searchEntryRequester = remember { FocusRequester() }
                         val settingsEntryRequester = remember { FocusRequester() }
+                        val addonsEntryRequester = remember { FocusRequester() }
                         val watchlistEntryRequester = remember { FocusRequester() }
                         val gridEntryRequester = remember { FocusRequester() }
 
@@ -837,6 +840,7 @@ class MainActivity : ComponentActivity() {
                                     NavDestination.Home, NavDestination.Movies, NavDestination.Series -> homeEntryRequester.requestFocus()
                                     NavDestination.Search -> searchEntryRequester.requestFocus()
                                     NavDestination.Settings -> settingsEntryRequester.requestFocus()
+                                    NavDestination.Addons -> addonsEntryRequester.requestFocus()
                                     NavDestination.Watchlist -> watchlistEntryRequester.requestFocus()
                                     else -> {}
                                 }
@@ -967,6 +971,12 @@ class MainActivity : ComponentActivity() {
                                     drawerRequester = drawerRequesters.getValue(NavDestination.Watchlist),
                                     watchedIds = watchlistHomeVm.state.collectAsState().value.watchedIds,
                                     onMovieClick = openDetailsFor
+                                )
+                            } }
+                            entry<AddonsKey> { MainRoot(it.destination) {
+                                AddonsScreen(
+                                    entryRequester = addonsEntryRequester,
+                                    isTopNav = navPosition == "top"
                                 )
                             } }
                             entry<SettingsKey> { MainRoot(it.destination) {

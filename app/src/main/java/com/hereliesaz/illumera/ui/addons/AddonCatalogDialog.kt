@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -20,6 +21,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,20 +43,19 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
 import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
-import com.hereliesaz.illumera.ui.util.rememberDialogWidth
 
 @Composable
-fun AddonCatalogDialog(
+fun AddonCatalogContent(
     state: AddonsViewModel.UiState,
-    onDismissRequest: () -> Unit,
     onLoad: () -> Unit,
     onSourceSelected: (AddonCatalogSource) -> Unit,
     onAddCollection: (String) -> Unit,
@@ -55,17 +63,19 @@ fun AddonCatalogDialog(
     onCollectionRemoved: (SavedAddonCollection) -> Unit,
     onRetry: () -> Unit,
     onInstall: (AddonCatalogItem) -> Unit,
-    onConfigure: (AddonCatalogItem) -> Unit
+    onRemove: (AddonCatalogItem) -> Unit,
+    onConfigure: (AddonCatalogItem) -> Unit,
+    modifier: Modifier = Modifier,
+    entryRequester: FocusRequester? = null
 ) {
     var query by remember { mutableStateOf("") }
     var addingCollection by remember { mutableStateOf(false) }
     var collectionUrl by remember { mutableStateOf("") }
     val initialFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) {
-        onLoad()
-        runCatching { initialFocusRequester.requestFocus() }
-    }
+    // A full-screen catalog must not steal focus from the Browse/Installed
+    // header (or the user-selected catalog item) on every remount.
+    LaunchedEffect(Unit) { onLoad() }
 
     val filteredItems = remember(state.catalogItems, query) {
         val needle = query.trim().lowercase()
@@ -82,24 +92,20 @@ fun AddonCatalogDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismissRequest) {
-        Column(
-            modifier = Modifier
-                .width(rememberDialogWidth(760))
-                .heightIn(max = 640.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                .padding(24.dp)
-        ) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
+    ) {
             Text(
-                "Browse Stremio Addons",
+                "Browse Add-ons",
                 style = MaterialTheme.typography.headlineSmall,
                 color = Color.White,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Official, Community, stremio-addons.net, and collections — installed through Illumera.",
+                "Official, Community, 3rd Party, and saved collections",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.58f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -107,23 +113,28 @@ fun AddonCatalogDialog(
 
             Spacer(Modifier.height(18.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET).forEach { source ->
+                    item(key = source.name) {
                     VoidButton(
                         text = source.displayName,
                         onClick = { onSourceSelected(source) },
                         isPrimary = state.catalogSource == source,
                         modifier = Modifier
-                            .width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 180.dp else 130.dp)
-                            .then(if (source == AddonCatalogSource.OFFICIAL) Modifier.focusRequester(initialFocusRequester) else Modifier)
+                            .width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 142.dp else 130.dp)
+                            .then(if (source == AddonCatalogSource.OFFICIAL)
+                                Modifier.focusRequester(entryRequester ?: initialFocusRequester) else Modifier)
+                    )
+                    }
+                }
+                item(key = "add_collection") {
+                    VoidButton(
+                        text = "+ Collection",
+                        onClick = { addingCollection = !addingCollection },
+                        isPrimary = addingCollection,
+                        modifier = Modifier.width(170.dp)
                     )
                 }
-                VoidButton(
-                    text = "+ Collection",
-                    onClick = { addingCollection = !addingCollection },
-                    isPrimary = addingCollection,
-                    modifier = Modifier.width(170.dp)
-                )
             }
 
             if (state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
@@ -272,7 +283,7 @@ fun AddonCatalogDialog(
                         )
                     } else {
                         LazyColumn(
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(filteredItems, key = { "${state.catalogSource}:${it.transportUrl}:${it.manifest.id}" }) { item ->
@@ -283,6 +294,7 @@ fun AddonCatalogDialog(
                                             normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)
                                     },
                                     onInstall = { onInstall(item) },
+                                    onRemove = { onRemove(item) },
                                     onConfigure = { onConfigure(item) }
                                 )
                             }
@@ -291,18 +303,6 @@ fun AddonCatalogDialog(
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                VoidButton(
-                    text = "Close",
-                    onClick = onDismissRequest,
-                    modifier = Modifier.width(130.dp)
-                )
-            }
-        }
     }
 }
 
@@ -311,6 +311,7 @@ private fun AddonCatalogRow(
     item: AddonCatalogItem,
     installed: Boolean,
     onInstall: () -> Unit,
+    onRemove: () -> Unit,
     onConfigure: () -> Unit
 ) {
     val manifest = item.manifest
@@ -389,32 +390,54 @@ private fun AddonCatalogRow(
 
         Spacer(Modifier.width(14.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (configurable && installable) {
-                VoidButton(
-                    text = "Configure",
-                    onClick = onConfigure,
-                    modifier = Modifier.width(130.dp)
+                AddonIconAction(
+                    icon = { Icon(Icons.Default.Settings, contentDescription = "Configure ${manifest.name}") },
+                    label = "Configure ${manifest.name}",
+                    onClick = onConfigure
                 )
             }
-
-            if (!configurationRequired && installable) {
-                VoidButton(
-                    text = if (installed) "Installed" else "Install",
-                    onClick = onInstall,
-                    enabled = !installed,
-                    isPrimary = !installed,
-                    modifier = Modifier.width(120.dp)
+            if (installed) {
+                AddonIconAction(
+                    icon = { Icon(Icons.Default.Delete, contentDescription = "Uninstall ${manifest.name}") },
+                    label = "Uninstall ${manifest.name}",
+                    onClick = onRemove
+                )
+            } else if (!configurationRequired && installable) {
+                AddonIconAction(
+                    icon = { Icon(Icons.Default.Add, contentDescription = "Install ${manifest.name}") },
+                    label = "Install ${manifest.name}",
+                    onClick = onInstall
                 )
             } else if (!installable) {
-                VoidButton(
-                    text = "Unavailable",
-                    onClick = {},
-                    enabled = false,
-                    modifier = Modifier.width(130.dp)
-                )
+                Text("Unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             }
         }
+    }
+}
+
+/** Icon-only addon action with an explicit TV-focus outline and accessible label. */
+@Composable
+internal fun AddonIconAction(
+    icon: @Composable () -> Unit,
+    label: String,
+    onClick: () -> Unit
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    IconButton(
+        onClick = onClick,
+        interactionSource = interaction,
+        modifier = Modifier.size(44.dp)
+            .semantics { contentDescription = label }
+            .border(
+                if (focused) 2.dp else 1.dp,
+                if (focused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.12f),
+                RoundedCornerShape(8.dp)
+            )
+    ) {
+        Box(contentAlignment = Alignment.Center) { icon() }
     }
 }
 
