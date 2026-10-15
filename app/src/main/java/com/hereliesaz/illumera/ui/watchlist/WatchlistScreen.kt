@@ -3,7 +3,7 @@ package com.hereliesaz.illumera.ui.watchlist
 import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
 import com.hereliesaz.illumera.ui.navigation.focus.focusMemoryRoot
 import com.hereliesaz.illumera.ui.navigation.focus.rememberFocusMemory
-import com.hereliesaz.illumera.ui.home.resolveRowRestoreIndex
+import com.hereliesaz.illumera.ui.navigation.focus.restorableFocusIfTracked
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,19 +48,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.queue.QueueItem
-import com.hereliesaz.illumera.ui.home.DpadRepeatGate
-import com.hereliesaz.illumera.ui.home.InfiniteLoopRow
-import com.hereliesaz.illumera.ui.home.UpKeyDebouncer
+import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.queue.QueueSection
 
 @Composable
@@ -111,8 +112,6 @@ fun WatchlistScreen(
     val focusMemory = rememberFocusMemory()
     RestoreFocusOnResume(memory = focusMemory, fallback = entryRequester)
 
-    val upKeyDebouncer = remember { UpKeyDebouncer() }
-    val dpadRepeatGate = remember { DpadRepeatGate() }
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
     var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
 
@@ -162,42 +161,52 @@ fun WatchlistScreen(
     fun shouldEnrich(item: MetaItem) =
         item.poster.isNullOrBlank() || "${item.type}:${item.id}" in ambiguousIds
 
-    // A library can contain thousands of items. Only resolve the initially
-    // visible cards and items entering the horizontal viewport, not the full
-    // library at composition time.
-    LaunchedEffect(libraryItems, ambiguousIds) {
-        libraryItems.take(10).filter(::shouldEnrich)
-            .forEach(viewModel::resolvePosterIfNeeded)
-    }
-    LaunchedEffect(viewModel.libraryRowState, libraryItems, ambiguousIds) {
-        snapshotFlow {
-            viewModel.libraryRowState.layoutInfo.visibleItemsInfo.map { it.index }
-        }.collect { visible ->
-            visible.flatMap { index ->
-                (index - 2).coerceAtLeast(0)..(index + 2).coerceAtMost(libraryItems.lastIndex)
-            }.distinct().forEach { index ->
-                libraryItems.getOrNull(index)?.takeIf(::shouldEnrich)
-                    ?.let(viewModel::resolvePosterIfNeeded)
-            }
-        }
-    }
-
     val isTopNav = currentProfile?.navPosition == "top"
-    val isCompactWatchlist = LocalConfiguration.current.screenWidthDp < 600
+    val configuration = LocalConfiguration.current
+    val isCompactWatchlist = configuration.screenWidthDp < 600
     val startPadding = when {
         isTopNav -> 50.dp
         isCompactWatchlist -> 96.dp
         else -> 120.dp
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
-    val hasWatchlistMedia = sortedLibrary.isNotEmpty()
-    val hasFilteredMedia = libraryItems.isNotEmpty()
+
+    // Avoid nested vertical scrolling: each poster grid row is a LazyColumn item.
+    val gridCardWidth = if (isCompactWatchlist) 122.dp else 140.dp
+    val gridGap = 12.dp
+    val usableWidth = configuration.screenWidthDp.dp - startPadding - 24.dp
+    val gridColumnCount = maxOf(
+        1, ((usableWidth.value + gridGap.value) / (gridCardWidth.value + gridGap.value)).toInt()
+    )
+    val libraryGridRows = remember(libraryItems, gridColumnCount) {
+        libraryItems.chunked(gridColumnCount)
+    }
+
+    // Enrich only nearby visible posters, not an entire potentially huge library.
+    LaunchedEffect(libraryItems, ambiguousIds, gridColumnCount) {
+        libraryItems.take(gridColumnCount * 2).filter(::shouldEnrich)
+            .forEach(viewModel::resolvePosterIfNeeded)
+    }
+    LaunchedEffect(viewModel.watchlistColumnState, libraryGridRows, ambiguousIds) {
+        snapshotFlow {
+            viewModel.watchlistColumnState.layoutInfo.visibleItemsInfo.map { it.index }
+        }.collect { visible ->
+            visible.flatMap { listIndex ->
+                ((listIndex - 2) - 1)..((listIndex - 2) + 1)
+            }.distinct().forEach { gridRowIndex ->
+                libraryGridRows.getOrNull(gridRowIndex).orEmpty()
+                    .filter(::shouldEnrich)
+                    .forEach(viewModel::resolvePosterIfNeeded)
+            }
+        }
+    }
 
     androidx.compose.runtime.CompositionLocalProvider(
         com.hereliesaz.illumera.ui.components.LocalWatchedIds provides
             (watchedIds + sortedLibrary.filter { it.watched }.map { it.item.id })
     ) {
         LazyColumn(
+            state = viewModel.watchlistColumnState,
             modifier = Modifier.fillMaxSize().focusMemoryRoot(focusMemory),
             contentPadding = PaddingValues(top = topPadding + 20.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -225,9 +234,6 @@ fun WatchlistScreen(
             item(key = "library_sort") {
                 Column(modifier = Modifier.padding(start = startPadding, top = 12.dp, end = 12.dp)) {
                     Text("Library", style = MaterialTheme.typography.titleLarge, color = Color.White)
-                    Text("Saved movies and series, including synchronized Stremio history",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.65f))
                     val modes = listOf(
                         "recent" to "Recent", "added" to "Recently added",
                         "az" to "A–Z", "za" to "Z–A",
@@ -235,8 +241,8 @@ fun WatchlistScreen(
                         "unwatched" to "Not watched", "mostwatched" to "Most watched"
                     )
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.padding(top = 5.dp)
                     ) {
                         items(modes, key = { it.first }) { mode ->
                             val selected = sortMode == mode.first
@@ -244,16 +250,17 @@ fun WatchlistScreen(
                             val focused by interaction.collectIsFocusedAsState()
                             Text(
                                 mode.second,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                 color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.27f)
                                         else if (selected) Color.White.copy(alpha = 0.14f)
                                         else Color.White.copy(alpha = 0.05f))
                                     .border(
                                         if (focused) 2.dp else 0.dp,
                                         MaterialTheme.colorScheme.primary,
-                                        RoundedCornerShape(8.dp)
+                                        RoundedCornerShape(6.dp)
                                     )
                                     .clickable {
                                         sortMode = mode.first
@@ -262,7 +269,7 @@ fun WatchlistScreen(
                                         ).apply()
                                     }
                                     .focusable(interactionSource = interaction)
-                                    .padding(horizontal = 14.dp, vertical = 11.dp)
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
                             )
                         }
                     }
@@ -279,35 +286,47 @@ fun WatchlistScreen(
                 }
             }
 
-            if (libraryItems.isNotEmpty()) {
-                item(key = "combined_library") {
-                    InfiniteLoopRow(
-                        startPadding = startPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = 0,
-                        title = "Movies & Series",
-                        items = libraryItems,
-                        onMovieClick = onMovieClick,
-                        onViewMore = {},
-                        onFocused = { focused: MetaItem?, key: String ->
-                            focused?.takeIf(::shouldEnrich)?.let(viewModel::resolvePosterIfNeeded)
-                            viewModel.lastFocusedMediaType = focused?.type
-                            lastFocusedKey = key
-                            viewModel.lastFocusedKey = key
-                            lastQueueFocusedKey = null
-                            viewModel.lastQueueFocusedKey = null
-                        },
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true)
-                            lastFocusedKey else null,
-                        isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = false, // Queue remains the entry row
-                        isInfiniteLoopEnabled = false,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = dpadRepeatGate,
-                        externalListState = viewModel.libraryRowState
-                    )
+            if (libraryGridRows.isNotEmpty()) {
+                itemsIndexed(
+                    items = libraryGridRows,
+                    key = { _, row -> "library_grid_${row.first().type}_${row.first().id}" },
+                    contentType = { _, _ -> "library_poster_grid_row" }
+                ) { gridRowIndex, row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(start = startPadding, end = 24.dp),
+                        horizontalArrangement = Arrangement.spacedBy(gridGap)
+                    ) {
+                        row.forEachIndexed { columnIndex, media ->
+                            val index = gridRowIndex * gridColumnCount + columnIndex
+                            val focusKey = "0_${media.id}_$index"
+                            Box(Modifier.width(gridCardWidth)) {
+                                LumeraCard(
+                                    title = media.name,
+                                    posterUrl = media.poster,
+                                    mediaItem = media,
+                                    onClick = { onMovieClick(media) },
+                                    isWatched = media.id in watchedIds,
+                                    hasNewEpisode = media.hasNewEpisode,
+                                    onFocused = {
+                                        media.takeIf(::shouldEnrich)?.let(viewModel::resolvePosterIfNeeded)
+                                        viewModel.lastFocusedMediaType = media.type
+                                        lastFocusedKey = focusKey
+                                        viewModel.lastFocusedKey = focusKey
+                                        lastQueueFocusedKey = null
+                                        viewModel.lastQueueFocusedKey = null
+                                    },
+                                    modifier = Modifier
+                                        .width(gridCardWidth)
+                                        .then(
+                                            if (lastFocusedKey == focusKey) Modifier.focusRequester(entryRequester)
+                                            else Modifier
+                                        )
+                                        .restorableFocusIfTracked(focusKey, focusMemory)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
