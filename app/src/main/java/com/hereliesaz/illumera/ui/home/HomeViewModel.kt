@@ -65,7 +65,7 @@ class HomeViewModel @Inject constructor(
             trailerUrlCache.remove(trailerKey)
         }
         return try {
-            kotlinx.coroutines.withTimeout(55_000L) {
+            kotlinx.coroutines.withTimeout(95_000L) {
                 val candidates = linkedSetOf<String>()
                 val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
                     ?: kotlinx.coroutines.withTimeoutOrNull(5_000L) {
@@ -85,12 +85,12 @@ class HomeViewModel @Inject constructor(
                     val trailerAddon = dao.getAddon("https://stremio-trailer-addon.vercel.app")
                     if (trailerAddon?.isEnabled == true) {
                         try {
-                            val response = kotlinx.coroutines.withTimeout(7_000L) {
+                            val response = kotlinx.coroutines.withTimeoutOrNull(7_000L) {
                                 trailerApi.getStreams(
                                     "https://stremio-trailer-addon.vercel.app/stream/${item.type}/$imdbId.json"
                                 )
                             }
-                            response.streams.orEmpty().forEach { stream ->
+                            response?.streams.orEmpty().forEach { stream ->
                                 stream.ytId?.let { candidates += it }
                                 stream.externalUrl?.let { candidates += it }
                                 stream.url?.takeIf { it.contains("youtu", ignoreCase = true) }
@@ -109,8 +109,9 @@ class HomeViewModel @Inject constructor(
                     try {
                         val tmdbId = tmdbService.ensureTmdbId(item.id, item.type)
                         if (tmdbId != null) {
-                            tmdbMetadataService.fetchBestTrailerKey(tmdbId, item.type)
-                                ?.key?.let { candidates += it }
+                            kotlinx.coroutines.withTimeoutOrNull(8_000L) {
+                                tmdbMetadataService.fetchBestTrailerKey(tmdbId, item.type)
+                            }?.key?.let { candidates += it }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -121,7 +122,7 @@ class HomeViewModel @Inject constructor(
 
                 if (imdbId != null) {
                     try {
-                        val meta = kotlinx.coroutines.withTimeout(6_000L) {
+                        val meta = kotlinx.coroutines.withTimeoutOrNull(6_000L) {
                             trailerApi.getJson("https://v3-cinemeta.strem.io/meta/${item.type}/$imdbId.json")
                                 .asJsonObject.getAsJsonObject("meta")
                         }
@@ -146,7 +147,7 @@ class HomeViewModel @Inject constructor(
                 }
 
                 for (candidate in candidates) {
-                    val source = kotlinx.coroutines.withTimeoutOrNull(16_000L) {
+                    val source = kotlinx.coroutines.withTimeoutOrNull(32_000L) {
                         youtubeExtractor.extractPlaybackSource(
                             candidate, preferCompatiblePreview = true
                         )
