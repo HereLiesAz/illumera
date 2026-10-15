@@ -191,11 +191,9 @@ fun QueueSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = startPadding, end = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        // Compact layouts retain a visible Refresh action rather than crushing
+        // the adjacent controls into a 132dp-wide row.
+        val headerContent: @Composable () -> Unit = {
             Text(
                 text = "Suggested Next",
                 style = MaterialTheme.typography.titleLarge,
@@ -203,7 +201,7 @@ fun QueueSection(
             )
             val refreshInteraction = remember { MutableInteractionSource() }
             val refreshFocused by refreshInteraction.collectIsFocusedAsState()
-            val refreshColors = buttonColors(focused = refreshFocused, enabled = state.preferences.enabled)
+            val refreshColors = buttonColors(focused = refreshFocused, enabled = true)
             Button(
                 onClick = {
                     if (state.preferences.enabled) {
@@ -238,6 +236,24 @@ fun QueueSection(
                     color = refreshColors.content,
                     style = MaterialTheme.typography.labelMedium
                 )
+            }
+        val compactHeader = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 540
+        if (compactHeader) {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = startPadding, end = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                headerContent()
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(start = startPadding, end = 32.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                headerContent()
             }
         }
 
