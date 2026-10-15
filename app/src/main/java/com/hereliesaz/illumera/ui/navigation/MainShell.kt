@@ -185,7 +185,8 @@ fun MainShell(
     val isTop = navPosition == "top"
     val audioPreferences = rememberCinematicAudioPreferences(currentProfile?.id)
     val rootView = LocalView.current
-    var previousNavigationSoundAt by remember { mutableStateOf(0L) }
+    // A mutable holder avoids redrawing the full shell for every key repeat.
+    val previousNavigationSoundAt = remember { longArrayOf(0L) }
     SideEffect {
         // The same close as the chrome's own: the side menu restores the content's focused
         // element first; the top bar hands focus to the screen's entry point.
@@ -202,8 +203,8 @@ fun MainShell(
                 val sound = soundForNavigationKey(event.key)
                 if (sound != null) {
                     val now = SystemClock.uptimeMillis()
-                    if (now - previousNavigationSoundAt >= 110L) {
-                        previousNavigationSoundAt = now
+                    if (now - previousNavigationSoundAt[0] >= 110L) {
+                        previousNavigationSoundAt[0] = now
                         rootView.playSoundEffect(sound)
                     }
                 }
