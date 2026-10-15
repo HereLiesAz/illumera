@@ -87,6 +87,10 @@ internal fun watchlistGridColumnCount(
         (posterWidthDp + gapDp)
 )
 
+/** One stable lazy-grid identity per media item; no row or sort index. */
+internal fun watchlistGridMediaKey(item: MetaItem): String =
+    "library_${item.type}_${item.id}"
+
 @Composable
 fun WatchlistScreen(
     currentProfile: ProfileEntity?,
@@ -319,7 +323,7 @@ fun WatchlistScreen(
 
             itemsIndexed(
                 items = libraryItems,
-                key = { _, media -> "library_${media.type}_${media.id}" },
+                key = { _, media -> watchlistGridMediaKey(media) },
                 contentType = { _, _ -> "library_poster" }
             ) { index, media ->
                 val columnIndex = index % gridColumnCount
