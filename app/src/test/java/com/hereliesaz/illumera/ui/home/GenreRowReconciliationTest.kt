@@ -42,7 +42,7 @@ class GenreRowReconciliationTest {
             HomeRow(configId = comedy, title = "Comedy", items = emptyList()),
             HomeRow(configId = action, title = "Action", items = listOf(unrelated))
         )
-        val mixed = original.map(com.hereliesaz.illumera.domain.CategoryRow::fromHomeRow)
+        val mixed = original.map { com.hereliesaz.illumera.domain.CategoryRow.fromHomeRow(it) }
         val updatedRows = reconcileGenreRows(
             original, comedy, listOf(movie), authoritative = true
         )
