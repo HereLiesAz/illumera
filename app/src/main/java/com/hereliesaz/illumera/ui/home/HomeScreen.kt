@@ -547,7 +547,7 @@ fun CinematicLayout(
                                     ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            startPadding = startPadding,
                                             isTopNav = isTopNav, resolveTrailer = resolveTrailer
                                         )
                                     }
@@ -721,7 +721,7 @@ fun CinematicLayout(
                                     ) {
                                         FocusedRowCinematicPreview(
                                             item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding, infoTopPadding = infoTopPadding,
+                                            startPadding = startPadding,
                                             isTopNav = isTopNav, resolveTrailer = resolveTrailer
                                         )
                                     }
@@ -773,7 +773,6 @@ private fun FocusedRowCinematicPreview(
     item: MetaItem?,
     state: HomeViewModel.HomeState,
     startPadding: androidx.compose.ui.unit.Dp,
-    infoTopPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     resolveTrailer: suspend (MetaItem) -> String?
 ) {
@@ -791,8 +790,11 @@ private fun FocusedRowCinematicPreview(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth()
-                        .padding(start = startPadding, top = infoTopPadding.coerceAtMost(22.dp)),
-                    contentAlignment = Alignment.TopStart
+                        // Anchor the title/description to the bottom of the
+                        // preview so short descriptions cannot leave a tall
+                        // empty band before the row's heading and landscape cards.
+                        .padding(start = startPadding, top = 12.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.BottomStart
                 ) {
                     AnimatedContent(
                         targetState = item,
