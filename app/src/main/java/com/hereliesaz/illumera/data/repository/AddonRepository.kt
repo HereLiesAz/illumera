@@ -208,7 +208,8 @@ class AddonRepository @Inject constructor(
                             val matchingOption = options.firstOrNull {
                                 ScreenGenreRows.canonicalGenre(it).equals(
                                     ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
-                                )
+                                ) || (ScreenGenreRows.canonicalGenre(it) == "Action & Adventure" &&
+                                    ScreenGenreRows.canonicalGenre(genre) in setOf("Action", "Adventure"))
                             }
                             when {
                                 matchingOption != null -> listOf(matchingOption)
