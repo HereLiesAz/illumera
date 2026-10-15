@@ -142,6 +142,38 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun heroReturnSkipsARevealedButNowEmptyGenre() {
+        val formerAction = com.hereliesaz.illumera.domain.CategoryRow(
+            id = "action", title = "Action", order = 0, items = emptyList()
+        )
+        val populatedDrama = com.hereliesaz.illumera.domain.CategoryRow(
+            id = "drama", title = "Drama", order = 1,
+            items = listOf(MetaItem(id = "tt111", type = "movie", name = "Drama"))
+        )
+        val rows: List<com.hereliesaz.illumera.domain.HomeRowItem> =
+            listOf(formerAction, populatedDrama)
+
+        assertEquals(1, firstFocusableCinematicRowIndex(rows.withIndex().toList()))
+    }
+
+    @Test
+    fun heroReturnUsesFocusableHubAndPreservesOriginalRowIndices() {
+        val empty = com.hereliesaz.illumera.domain.CategoryRow(
+            id = "empty", title = "Empty", order = 0, items = emptyList()
+        )
+        val hub = com.hereliesaz.illumera.domain.HubGroupRow(
+            id = "services", title = "Services", order = 1,
+            items = listOf(com.hereliesaz.illumera.domain.HubItem(
+                id = "stream", title = "Streaming", categoryId = "category"
+            ))
+        )
+        val rows: List<com.hereliesaz.illumera.domain.HomeRowItem> = listOf(empty, hub)
+
+        assertEquals(1, firstFocusableCinematicRowIndex(rows.withIndex().toList()))
+        assertNull(firstFocusableCinematicRowIndex(listOf(empty).withIndex().toList()))
+    }
+
+    @Test
     fun verticalFocusDoesNotSkipHubRowsOrHiddenGenreIndices() {
         // The visible order contains a Hub at index 3 and genre gaps where
         // unpopulated rails were omitted. Navigation must respect that order.
