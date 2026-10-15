@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.domain
 
 import android.content.Context
 import java.util.Locale
+import java.text.Normalizer
 import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
 
 /**
@@ -46,16 +47,49 @@ object ScreenGenreRows {
         "all languages", "all countries", "any language", "any country"
     )
 
+    private fun nativeLabelKey(value: String): String =
+        Normalizer.normalize(value.trim(), Normalizer.Form.NFKD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase(Locale.ROOT)
+
     private val languageAndCountryLabels: Set<String> by lazy {
-        val languages = Locale.getISOLanguages().map { language ->
-            Locale.forLanguageTag(language).getDisplayLanguage(Locale.ENGLISH)
-                .lowercase(Locale.ROOT)
+        // Providers frequently use native spellings, not English ones:
+        // Español, Português, Deutsch, Français, 日本語, etc.
+        val locales = Locale.getISOLanguages().map { Locale.forLanguageTag(it) }
+        // Avoid formatting every country in every ISO language on the UI
+        // thread; the most common addon-localized labels cover the real cases.
+        val displayLocales = listOf(
+            "en", "es", "pt", "de", "fr", "it", "ja",
+            "zh", "ko", "ru", "ar", "tr", "hi"
+        ).map(Locale::forLanguageTag)
+        val languages = locales.flatMap { language ->
+            listOf(
+                language.getDisplayLanguage(Locale.ENGLISH),
+                language.getDisplayLanguage(language)
+            )
         }
-        val countries = Locale.getISOCountries().map { region ->
-            Locale.Builder().setRegion(region).build()
-                .getDisplayCountry(Locale.ENGLISH).lowercase(Locale.ROOT)
+        val countries = Locale.getISOCountries().flatMap { region ->
+            val country = Locale.Builder().setRegion(region).build()
+            // Include native/localized country names from supported display
+            // languages, not only English labels.
+            displayLocales.map { locale -> country.getDisplayCountry(locale) }
         }
-        (languages + countries).toSet()
+        (languages + countries).map(::nativeLabelKey).toSet()
+    }
+
+    /**
+     * An addon may report a combined genre even when the viewer is browsing a
+     * constituent Stremio row. Use the same relationship for source selection
+     * AND metadata filtering.
+     */
+    fun matchesRequestedGenre(actual: String, requested: String): Boolean {
+        val value = canonicalGenre(actual)
+        val target = canonicalGenre(requested)
+        return value.equals(target, ignoreCase = true) ||
+            (value.equals("Action & Adventure", ignoreCase = true) &&
+                target in setOf("Action", "Adventure")) ||
+            (value.equals("Sci-Fi & Fantasy", ignoreCase = true) &&
+                target in setOf("Sci-Fi", "Fantasy"))
     }
 
     private fun isActualGenre(genre: String): Boolean {
@@ -63,7 +97,7 @@ object ScreenGenreRows {
         if (name.isEmpty()) return false
         // Recognized genres always win before the generic filter rules.
         if (name in recognizedGenreLabels) return true
-        if (name in nonGenreLabels || name in languageAndCountryLabels) return false
+        if (name in nonGenreLabels || nativeLabelKey(name) in languageAndCountryLabels) return false
         if (name.matches(Regex("(?:19|20)[0-9]{2}(?:s)?"))) return false
         if (name.matches(Regex("[0-9]{3,4}p|[248]k(?:\\s*(?:uhd|hdr))?"))) return false
         if (name.matches(Regex("(?:last|past|next|this)\\s+(?:[0-9]+\\s+)?(?:days?|weeks?|months?|years?)"))) return false

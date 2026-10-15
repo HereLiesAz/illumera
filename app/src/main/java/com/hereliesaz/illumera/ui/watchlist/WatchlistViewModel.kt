@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -33,6 +35,7 @@ class WatchlistViewModel @Inject constructor(
 
     // Touched from Main (resolvePosterIfNeeded) and IO (the launch's finally) — must be concurrent.
     private val resolveInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val metadataResolveSlots = Semaphore(3)
     // Cools down retries for items that just failed to resolve, instead of retrying
     // every one of them on every watchlist mutation (the movieItems/seriesItems
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
@@ -144,6 +147,9 @@ class WatchlistViewModel @Inject constructor(
             var succeeded = false
             var cancelled = false
             try {
+                // Only three metadata lookups run at once even when a large Library
+                // contains several ambiguous cross-provider identities.
+                metadataResolveSlots.withPermit {
                 // Network resolution must not hold the profile runtime lock. A slow addon
                 // should never block loadRuntimeState() during a profile switch.
                 val meta = repository.resolveMetaDetails(item.type, item.id)
@@ -185,6 +191,7 @@ class WatchlistViewModel @Inject constructor(
                         }
                     }
                 }
+                } // Metadata semaphore slot.
             } catch (error: CancellationException) {
                 cancelled = true
                 throw error
@@ -209,7 +216,7 @@ internal fun aggregateLibraryEntries(
     entries: List<WatchlistViewModel.LibraryEntry>
 ): List<WatchlistViewModel.LibraryEntry> {
     val result = mutableListOf<WatchlistViewModel.LibraryEntry>()
-    val imdbPattern = Regex("^tt[0-9]+$")
+    val imdbPattern = Regex("tt[0-9]+")
     val yearPattern = Regex("(?:19|20)[0-9]{2}")
     fun norm(item: MetaItem) = item.name.lowercase().filter { it.isLetterOrDigit() }
     fun year(item: MetaItem) =
@@ -222,9 +229,11 @@ internal fun aggregateLibraryEntries(
             val old = existing.item
             if (old.type != item.type) return@indexOfFirst false
             if (old.id == item.id) return@indexOfFirst true
-            val oldImdb = old.id.takeIf { imdbPattern.matches(it) }
-            val newImdb = item.id.takeIf { imdbPattern.matches(it) }
-            if (oldImdb != null && newImdb != null) return@indexOfFirst false
+            val oldImdb = imdbPattern.find(old.id)?.value
+            val newImdb = imdbPattern.find(item.id)?.value
+            // Equivalent Stremio/third-party IMDb prefixes must merge even if
+            // their display names or release-year metadata differ.
+            if (oldImdb != null && newImdb != null) return@indexOfFirst oldImdb == newImdb
             val oldYear = year(old)
             val newYear = year(item)
             // Matching only a name when release years are unknown collapses

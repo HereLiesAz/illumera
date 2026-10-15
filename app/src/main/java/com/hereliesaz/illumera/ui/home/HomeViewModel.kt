@@ -920,16 +920,31 @@ class HomeViewModel @Inject constructor(
                     automaticAggregateId != null && heroConfig?.categoryId == automaticAggregateId ->
                         initialRows.find { it.configId == automaticAggregateId }
                             ?: initialRows.firstOrNull { it.items.isNotEmpty() }
-                    heroConfig?.categoryId != null ->
-                        initialRows.find { it.configId == heroConfig.categoryId }
-                            ?: (if (screenName == "home")
+                    heroConfig?.categoryId != null -> {
+                        val configured = initialRows.find { it.configId == heroConfig.categoryId }
+                            ?: if (screenName == "home")
                                 repository.getHomePairRowForConfig(heroConfig.categoryId)
-                            else null)
-                            ?: repository.getCategoryRowPreview(
-                                configId = heroConfig.categoryId,
-                                maxItems = heroConfig.posterCount,
-                                timeoutMs = initialDashboardTimeoutMs
-                            )
+                            else null
+                        if (screenName == "home" && configured?.configId?.startsWith("catalog-home:") == true &&
+                            configured.items.isEmpty()
+                        ) {
+                            // A user-selected Hero may be outside the first two lazily
+                            // warmed rows. Fetch its content independently now rather
+                            // than displaying a permanently empty row shell.
+                            val pages = repository.homePairFirstLayerPageCount(configured.configId)
+                            var items = emptyList<MetaItem>()
+                            for (page in 0 until pages) {
+                                if (items.isEmpty()) {
+                                    items = repository.getHomePairCatalogPage(configured.configId, page)
+                                }
+                            }
+                            configured.copy(items = items.take(heroConfig.posterCount))
+                        } else configured ?: repository.getCategoryRowPreview(
+                            configId = heroConfig.categoryId,
+                            maxItems = heroConfig.posterCount,
+                            timeoutMs = initialDashboardTimeoutMs
+                        )
+                    }
                     screenName in setOf("movies", "series") ->
                         initialRows.firstOrNull { it.items.isNotEmpty() }
                     else -> initialRows.firstOrNull { it.items.isNotEmpty() }
