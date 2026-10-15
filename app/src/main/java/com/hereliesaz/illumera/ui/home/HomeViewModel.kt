@@ -843,8 +843,7 @@ class HomeViewModel @Inject constructor(
                         screen = screenName,
                         skipConfigs = 0,
                         maxConfigs = initialDashboardBatchSize,
-                        catalogTimeoutMs = initialDashboardTimeoutMs,
-                        curatedHomeOnly = true
+                        catalogTimeoutMs = initialDashboardTimeoutMs
                     ) else emptyList<HomeRow>()
                 }
                 val hubRowsDeferred = async {
@@ -873,20 +872,9 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                 } else emptyList()
-                // The primary Home collection combines movies and series from
-                // every enabled addon, retaining each item's media type. Existing
-                // user-customized category/Hub rows are kept after this feed.
-                val mixedHomeRow = HomeRow(
-                    configId = "catalog-aggregate:mixed:all",
-                    title = "Movies & Series",
-                    items = emptyList(),
-                    isInfiniteScrollingEnabled = true,
-                    supportsSkip = true,
-                    order = -1000
-                )
-                val initialRows = if (screenName == "home")
-                    listOf(mixedHomeRow) + configuredRows
-                else genreRows
+                // A Home category is now one row per addon/category pair (movie + TV),
+                // not a single global feed. Repository groups BEFORE pagination.
+                val initialRows = if (screenName == "home") configuredRows else genreRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
@@ -947,16 +935,13 @@ class HomeViewModel @Inject constructor(
                 // dozens of genre network requests on one screen open.
                 if (screenName in setOf("movies", "series")) {
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
-                } else if (screenName == "home") {
-                    loadMoreItems(mixedHomeRow.configId)
                 }
 
                 // Home alone retains its individually configured addon/hub rows.
                 if (screenName == "home") launch {
                     val remainingRows = repository.getDashboardRows(
                         screen = screenName,
-                        skipConfigs = initialDashboardBatchSize,
-                        curatedHomeOnly = true
+                        skipConfigs = initialDashboardBatchSize
                     )
                     if (remainingRows.isEmpty()) return@launch
 
