@@ -55,6 +55,41 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun onlyActiveCinematicRailMayRenderPortraitCards() {
+        assertEquals(true, useLandscapeMediaCard(true, false, false))
+        assertEquals(true, useLandscapeMediaCard(true, false, true))
+        assertEquals(false, useLandscapeMediaCard(true, true, true))
+        assertEquals(false, useLandscapeMediaCard(false, false, false))
+        assertEquals(true, useLandscapeMediaCard(false, true, true))
+    }
+
+    @Test
+    fun expandedCinematicRowReservesSpaceOutsideThePoster() {
+        assertEquals(116f, cinematicRailHeight(false).value, 0.001f)
+        assertEquals(238f, cinematicRailHeight(true).value, 0.001f)
+        assertEquals(0f, cinematicRailTrailingSpace(false).value, 0.001f)
+        assertEquals(8f, cinematicRailTrailingSpace(true).value, 0.001f)
+    }
+
+    @Test
+    fun heroVideoCoversWideViewportWithVerticallyCenteredOverflow() {
+        val (width, height) = cinematicVideoCoverSize(1920.dp, 420.dp)
+        assertEquals(1920f, width.value, 0.01f)
+        assertEquals(1080f, height.value, 0.01f)
+        assertEquals(330f, (height.value - 420f) / 2f, 0.01f)
+    }
+
+    @Test
+    fun inlineVideoAlsoCoversItsViewportRatherThanLetterboxing() {
+        val (portraitWidth, portraitHeight) = cinematicVideoCoverSize(280.dp, 210.dp)
+        assertEquals(373.3333f, portraitWidth.value, 0.02f)
+        assertEquals(210f, portraitHeight.value, 0.001f)
+        val (wideWidth, wideHeight) = cinematicVideoCoverSize(373.3333f.dp, 210.dp)
+        assertEquals(373.3333f, wideWidth.value, 0.02f)
+        assertEquals(210f, wideHeight.value, 0.02f)
+    }
+
+    @Test
     fun onlyCurrentlyFocusedCinematicRowUsesPortraitPosters() {
         assertEquals(true, isCinematicRowActive("movies:action", "movies:action", "2_tt42_0", "2_"))
         assertEquals(false, isCinematicRowActive("movies:action", "movies:drama", "3_tt31_1", "3_"))

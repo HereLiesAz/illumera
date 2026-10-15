@@ -172,3 +172,10 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 
 
 **Merged conflict resolution:** Main's catalog exhaustion tracking and regression fixtures are retained alongside the active/inactive cinematic row focus work in PR #250. Android device validation is still required.
+
+## Cinematic row clearance and center-cropped trailers (October 15, 2026)
+
+- Inactive Home/Movies/Series media rows, including Continue Watching, must show 190dp-wide landscape thumbnails; active row only shows posters. This applies regardless of grid/loop mode or caller landscape configuration.
+- The active rail reserves 238dp plus 8dp after it; the inactive rail reserves 116dp. Heading below an active row must not overlap its focus-scaled poster.
+- Video must cover the entire available viewport and crop symmetrically. At 1920×420dp, a 16:9 video must be measured at 1920×1080dp, cropping 330dp top and bottom. Inline previews use the same center crop. The TextureView allows this clipping on Android TV.
+- Full release validation remains outstanding: FOSS Gradle tests, device playback and screenshot comparison.

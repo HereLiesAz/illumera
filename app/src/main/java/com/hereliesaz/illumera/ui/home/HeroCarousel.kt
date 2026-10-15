@@ -254,6 +254,9 @@ fun HeroCarousel(
     ) {
         AnimatedContent(
             targetState = currentItem,
+            // An unconstrained AnimatedContent can retain a smaller measured
+            // image frame, leaving an uncovered strip beside the Hero video.
+            modifier = Modifier.fillMaxSize(),
             transitionSpec = {
                 fadeIn(tween(500)).togetherWith(fadeOut(tween(300)))
                     .using(androidx.compose.animation.SizeTransform(clip = false))

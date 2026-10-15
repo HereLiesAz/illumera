@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -271,6 +273,12 @@ internal fun isCinematicRowActive(
     cardKeyPrefix: String
 ): Boolean = focusedRowKey == rowKey ||
     (focusedRowKey == null && restoredCardKey?.startsWith(cardKeyPrefix) == true)
+
+/** Height covers the 210dp poster, its 1.05x focus scale, and a safety margin. */
+internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 116.dp
+
+/** Reserve actual space after expanded artwork, rather than drawing onto the next heading. */
+internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -546,7 +554,7 @@ fun CinematicLayout(
                                     // portrait posters and one expanded inline preview.
                                     isLandscapeCards = !historyRowActive,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = if (historyRowActive) 220.dp else 116.dp,
+                                    rowHeight = cinematicRailHeight(historyRowActive),
                                     inlineCinematicPreview = { poster ->
                                         InlineFocusedPosterPreview(
                                             poster, state, resolveTrailer, autoPlayPreviews, previewSound
@@ -560,6 +568,7 @@ fun CinematicLayout(
                                         }
                                     }
                                 )
+                                Spacer(Modifier.height(cinematicRailTrailingSpace(historyRowActive)))
                                 }
                             }
                         }
@@ -708,7 +717,7 @@ fun CinematicLayout(
                                         repeatGate = dpadRepeatGate,
                                         isLandscapeCards = !categoryRowActive,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = if (categoryRowActive) 220.dp else 116.dp,
+                                        rowHeight = cinematicRailHeight(categoryRowActive),
                                         inlineCinematicPreview = { poster ->
                                             InlineFocusedPosterPreview(
                                             poster, state, resolveTrailer, autoPlayPreviews, previewSound
@@ -722,6 +731,7 @@ fun CinematicLayout(
                                             }
                                         }
                                     )
+                                    Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
                                     }
                                 }
                             }
@@ -1523,6 +1533,20 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
         ?.first
 }
 
+/**
+ * Measure a 16:9 video *larger* than a wide/short viewport, then clip its
+ * centered overflow. A PlayerView zoom flag alone cannot fix a view measured
+ * smaller than the viewport. The same geometry serves Hero and poster previews.
+ */
+internal fun cinematicVideoCoverSize(
+    viewportWidth: Dp,
+    viewportHeight: Dp
+): Pair<Dp, Dp> {
+    val videoRatio = 16f / 9f
+    return maxOf(viewportWidth, viewportHeight * videoRatio) to
+        maxOf(viewportHeight, viewportWidth / videoRatio)
+}
+
 /** Do not resolve media or start a player for a disabled/offscreen preview. */
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
@@ -1603,10 +1627,18 @@ internal fun TrailerPreview(
         }
     }
     if (player != null) {
-        Box(modifier = modifier) {
+        BoxWithConstraints(
+            modifier = modifier.clipToBounds(),
+            contentAlignment = Alignment.Center
+        ) {
+            val (coverWidth, coverHeight) = cinematicVideoCoverSize(maxWidth, maxHeight)
             AndroidView(
                 factory = {
-                    PlayerView(it).apply {
+                    (android.view.LayoutInflater.from(it).inflate(
+                        R.layout.cinematic_trailer_player, null
+                    ) as PlayerView).apply {
+                        // TextureView clips correctly to the centered viewport,
+                        // unlike SurfaceView on some Android TV render pipelines.
                         // The preview is passive media *inside a focusable poster*.
                         // Never let its Android view steal D-pad or touch focus.
                         isFocusable = false
@@ -1623,7 +1655,10 @@ internal fun TrailerPreview(
                     }
                 },
                 update = { it.player = player },
-                modifier = Modifier.fillMaxSize()
+                // Explicitly oversize the video surface when the carousel is
+                // wider than 16:9. The *center* stays visible; top and bottom
+                // are cut off by the viewport's clipping bounds.
+                modifier = Modifier.requiredSize(coverWidth, coverHeight)
             )
             if (!ready) {
                 // Don't hide the SurfaceView: alpha=0 can prevent a first-frame
