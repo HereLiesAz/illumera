@@ -65,15 +65,22 @@ internal fun reconcileGenreRows(
     return rows.map { row ->
         val items = when {
             row.configId == destination -> {
-                val elsewhere = if (authoritative) emptyList() else
-                    rows.filter { it.configId != destination }.flatMap { it.items }
-                val additions = distinctAggregatedMetas(row.items + elsewhere, newItems)
+                // A canonical move must be allowed into its destination even
+                // when the same title still lives in an old fallback row.
+                // Fallback batches, conversely, must not duplicate an item
+                // already assigned to another row.
+                val existing = if (authoritative) row.items else
+                    row.items + rows.filter { it.configId != destination }.flatMap { it.items }
+                val additions = distinctAggregatedMetas(existing, newItems)
                 if (additions.isEmpty()) row.items else row.items + additions
             }
             authoritative && row.configId.startsWith("catalog-aggregate:") -> {
-                row.items.filter { item ->
+                val retained = row.items.filter { item ->
                     distinctAggregatedMetas(newItems, listOf(item)).isNotEmpty()
                 }
+                // Keep object identity for untouched rows. Replacing an equal
+                // LazyColumn item can tear down the current TV focus target.
+                if (retained.size == row.items.size) row.items else retained
             }
             else -> row.items
         }

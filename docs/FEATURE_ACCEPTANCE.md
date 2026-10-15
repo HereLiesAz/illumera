@@ -179,3 +179,9 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - The active rail reserves 238dp plus 8dp after it; the inactive rail reserves 116dp. Heading below an active row must not overlap its focus-scaled poster.
 - Video must cover the entire available viewport and crop symmetrically. At 1920×420dp, a 16:9 video must be measured at 1920×1080dp, cropping 330dp top and bottom. Inline previews use the same center crop. The TextureView allows this clipping on Android TV.
 - Full release validation remains outstanding: FOSS Gradle tests, device playback and screenshot comparison.
+
+## Release gate: canonical genre reconciliation (October 15, 2026)
+
+The centralized Google Play build for commit `7119e8e` compiled Kotlin and Android resources, but failed two of 509 JVM unit tests in `GenreRowReconciliationTest`. Root causes were (1) authoritative moves compared incoming canonical titles with every other genre row before moving them, so the destination incorrectly rejected its own incoming title; (2) filtering unrelated genre rows rebuilt unchanged list objects, violating focus-state preservation. `reconcileGenreRows` now deduplicates canonical arrivals only against the destination, while fallback arrivals still deduplicate across all rows, and returns the original collection for unaffected rows. Existing fixed-value regression tests verify moving only the targeted title and replaying the same canonical batch without replacing any card row.
+
+**Release constraint:** Require successful unit tests and the signed AAB build before marking the Google Play release complete. Device-level genre focus and cinematic-video visual validation remain unverified.
