@@ -126,7 +126,9 @@ fun AddonsScreen(
                     else -> {
                         removalGuidance = "Choose the configured installation below."
                         showingInstalled = true
-                        handoffToInstalled = true
+                        // Installed is a persistent header child; transfer focus before
+                        // removing the selected catalog action, not on a later frame.
+                        handoffToInstalled = !focusMemory.requestFocus("addons:installed")
                     }
                 }
             },
