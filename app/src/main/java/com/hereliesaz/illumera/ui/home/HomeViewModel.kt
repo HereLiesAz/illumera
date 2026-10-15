@@ -332,6 +332,7 @@ class HomeViewModel @Inject constructor(
                     val existing = _state.value.rows.firstOrNull { it.configId == configId }
                         ?.items.orEmpty()
                     var unique = emptyList<MetaItem>()
+                    val routedGenreItems = mutableMapOf<String, MutableList<MetaItem>>()
                     val firstLayerCount = when {
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
@@ -351,12 +352,12 @@ class HomeViewModel @Inject constructor(
                             }
                             val unseen = distinctAggregatedMetas(existing, fetched)
                             unique = if (genre == null) unseen else {
-                                kotlinx.coroutines.coroutineScope {
+                                val classified = kotlinx.coroutines.coroutineScope {
                                     unseen.chunked(6).flatMap { group ->
                                         group.map { candidate ->
                                             async {
-                                                // Cinemeta's lead genre takes priority over
-                                                // the arbitrary genre order from each addon.
+                                                // Cinemeta's lead genre, not an addon's
+                                                // arbitrary genre ordering, determines placement.
                                                 val canonical = repository.primaryGenreFor(candidate)
                                                 val lead = canonical
                                                     ?: candidate.genres.orEmpty()
@@ -368,13 +369,25 @@ class HomeViewModel @Inject constructor(
                                                     "Sci-Fi & Fantasy" -> "Sci-Fi"
                                                     else -> lead
                                                 }
-                                                candidate.takeIf {
-                                                    assigned?.equals(genre, ignoreCase = true) == true
-                                                }
+                                                assigned to candidate
                                             }
-                                        }.awaitAll().filterNotNull()
+                                        }.awaitAll()
                                     }
                                 }
+                                // A provider can list a title only in its secondary-genre
+                                // catalog: route it to the canonical row, do not discard it.
+                                classified.forEach { (primary, candidate) ->
+                                    val destination = _state.value.rows.firstOrNull { row ->
+                                        row.title.equals(primary, ignoreCase = true)
+                                    }?.configId
+                                    if (destination != null) {
+                                        routedGenreItems.getOrPut(destination) { mutableListOf() }
+                                            .add(candidate)
+                                    }
+                                }
+                                classified.filter { (primary, _) ->
+                                    primary?.equals(genre, ignoreCase = true) == true
+                                }.map { it.second }
                             }
                         }
                     }
@@ -386,6 +399,13 @@ class HomeViewModel @Inject constructor(
                         profileConfigurationManager.activeProfileId.value != initiatingProfileId
                     ) return@launch
                     rowFetchOffsets[configId] = nextPage
+                    if (genre != null) {
+                        // Route secondary-catalog finds into the correct row even if
+                        // that row has not yet begun its own source pagination.
+                        routedGenreItems.forEach { (destination, titles) ->
+                            if (destination != configId) appendItemsToRow(destination, titles)
+                        }
+                    }
                     if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                 } catch (ce: CancellationException) {
                     throw ce
@@ -474,8 +494,9 @@ class HomeViewModel @Inject constructor(
     private fun appendItemsToRow(configId: String, newItems: List<MetaItem>) {
         _state.update { current ->
             val updatedRows = current.rows.map { r ->
-                if (r.configId == configId) r.copy(items = r.items + newItems)
-                else r
+                if (r.configId == configId) {
+                    r.copy(items = r.items + distinctAggregatedMetas(r.items, newItems))
+                } else r
             }
 
             val updatedMixed = current.mixedRows.map { item ->
