@@ -117,11 +117,9 @@ fun HomeScreen(
             }
         }
     }
-    // Movies and Series always combine the hero carousel with the inline cinematic
-    // preview. Home retains its profile-selected layout.
-    val layoutMode = if (tab == DashboardTab.HOME) {
-        currentProfile?.layoutFor(tab) ?: "cinematic"
-    } else "cinematic"
+    // All discovery tabs share the non-configurable cinematic row hierarchy:
+    // inactive landscape rails and portrait cards only in the focused row.
+    val layoutMode = "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
@@ -336,8 +334,9 @@ fun CinematicLayout(
     )
 
     val density = LocalDensity.current
-    // Adjust pivot with 40dp offset to prevent slide-up (5.dp content padding + 40.dp)
-    val titleHeadroomPx = remember(density) { with(density) { 45.dp.toPx() } }
+    // Keep the preceding compact landscape rail almost entirely on-screen
+    // when a newly focused portrait row reaches its vertical pivot.
+    val titleHeadroomPx = remember(density) { with(density) { 175.dp.toPx() } }
     
     // Skip vertical scroll on restoration (when we have a saved focus key)
     val isVerticalRestoration = effectiveLastFocusedKey != null
@@ -406,7 +405,8 @@ fun CinematicLayout(
                         modifier = Modifier
                             .fillMaxSize(), // Focus managed by items
                         contentPadding = PaddingValues(top = 5.dp, bottom = 400.dp),
-                        verticalArrangement = Arrangement.spacedBy((-12).dp)
+                        // A negative gap placed the active poster over the next row heading.
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         if (heroItems.isNotEmpty()) {
                             // Ordinary list item: the Hero must scroll away entirely.
@@ -442,6 +442,9 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
+                                val historyRowActive = activeCinematicRow == "history" ||
+                                    (activeCinematicRow == null &&
+                                        effectiveLastFocusedKey?.startsWith("-1_") == true)
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -482,17 +485,15 @@ fun CinematicLayout(
                                     externalListState = historyRowState,
                                     upKeyDebouncer = upKeyDebouncer,
                                     repeatGate = dpadRepeatGate,
-                                    // All cinematic media rows use portrait posters. The
-                                    // focused card itself expands; no panel is mounted above.
-                                    isLandscapeCards = false,
+                                    // Inactive rows are 16:9 rails; the active row uses
+                                    // portrait posters and one expanded inline preview.
+                                    isLandscapeCards = !historyRowActive,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = 210.dp,
+                                    rowHeight = if (historyRowActive) 220.dp else 116.dp,
                                     inlineCinematicPreview = { poster ->
                                         InlineFocusedPosterPreview(poster, state, resolveTrailer)
                                     },
-                                    isInlineRowActive = activeCinematicRow == "history" ||
-                                        (activeCinematicRow == null &&
-                                            effectiveLastFocusedKey?.startsWith("-1_") == true)
+                                    isInlineRowActive = historyRowActive
                                 )
                                 }
                             }
@@ -567,6 +568,9 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
+                                    val categoryRowActive = activeCinematicRow == rowKey ||
+                                        (activeCinematicRow == null &&
+                                            effectiveLastFocusedKey?.startsWith("${index}_") == true)
                                     val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
@@ -636,15 +640,13 @@ fun CinematicLayout(
                                         externalListState = rowListState,
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
-                                        isLandscapeCards = false,
+                                        isLandscapeCards = !categoryRowActive,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = 210.dp,
+                                        rowHeight = if (categoryRowActive) 220.dp else 116.dp,
                                         inlineCinematicPreview = { poster ->
                                             InlineFocusedPosterPreview(poster, state, resolveTrailer)
                                         },
-                                        isInlineRowActive = activeCinematicRow == rowKey ||
-                                            (activeCinematicRow == null &&
-                                                effectiveLastFocusedKey?.startsWith("${index}_") == true)
+                                        isInlineRowActive = categoryRowActive
                                     )
                                     }
                                 }
