@@ -56,7 +56,12 @@ object ScreenGenreRows {
         // Providers frequently use native spellings, not English ones:
         // Español, Português, Deutsch, Français, 日本語, etc.
         val locales = Locale.getISOLanguages().map { Locale.forLanguageTag(it) }
-        val displayLocales = (locales + listOf(Locale.ENGLISH)).distinct()
+        // Avoid formatting every country in every ISO language on the UI
+        // thread; the most common addon-localized labels cover the real cases.
+        val displayLocales = listOf(
+            "en", "es", "pt", "de", "fr", "it", "ja",
+            "zh", "ko", "ru", "ar", "tr", "hi"
+        ).map(Locale::forLanguageTag)
         val languages = locales.flatMap { language ->
             listOf(
                 language.getDisplayLanguage(Locale.ENGLISH),
