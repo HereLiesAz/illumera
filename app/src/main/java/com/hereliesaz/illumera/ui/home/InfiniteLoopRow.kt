@@ -192,8 +192,11 @@ fun InfiniteLoopRow(
     }
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
+    // Native 16:9 previews need roughly 373dp at 210dp high. Allow room
+    // beyond the old 340dp width, but never extend into the TV navigation rail.
     val inlineCinematicWidth = minOf(
-        340.dp, (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
+        210.dp * (16f / 9f),
+        (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
     )
     val endPadding = remember(
         screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
