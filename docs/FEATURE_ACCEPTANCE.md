@@ -79,3 +79,13 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
 
 **Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
+
+### Review fixes for PR #243
+
+- Distinct canonical IMDb IDs never read one another's title/year genre cache; same-name/same-year IMDb collision covered by a fixed-data regression test.
+- Non-IMDb catalog entries resolve TMDB trailers through a conservatively matched IMDb ID when available, not through their unrecognized addon prefix.
+- When later aggregate catalog pages return empty/duplicate/reclassified results, up to four later source pages are probed so pagination does not stall.
+- Primary genres are classified in six-item batches and appended to the correct visible row as each batch finishes. Slow Cinemeta metadata must not keep an entire 100-title page hidden.
+- Trailer extraction gives at most one addon candidate, one TMDB candidate, and two Cinemeta candidates 15 seconds each, preserving time for later sources within the resolver deadline.
+
+These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
