@@ -106,7 +106,7 @@ class AddonRepository @Inject constructor(
         if (cached != null) return@withContext cached
 
         val imdbId = directId ?: try {
-            withTimeout(4_000L) {
+            kotlinx.coroutines.withTimeoutOrNull(4_000L) {
                 searchMovies(meta.name).firstOrNull { candidate ->
                     candidate.type == meta.type &&
                         candidate.name.lowercase(java.util.Locale.ROOT)
@@ -124,7 +124,7 @@ class AddonRepository @Inject constructor(
 
         val primary = try {
             primaryGenreRequests.withPermit {
-                withTimeout(4_000L) {
+                kotlinx.coroutines.withTimeoutOrNull(4_000L) {
                     api.getMeta("https://v3-cinemeta.strem.io/meta/${meta.type}/$imdbId.json")
                         .meta.sanitize()?.genres.orEmpty()
                         .map(ScreenGenreRows::canonicalGenre)
