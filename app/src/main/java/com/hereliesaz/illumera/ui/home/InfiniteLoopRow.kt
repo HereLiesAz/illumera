@@ -229,12 +229,25 @@ fun InfiniteLoopRow(
 
     // The focused poster stays mounted while its artwork becomes the preview.
     var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    val inlineTransitionRequester = remember(rowIndex, title) { FocusRequester() }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
+
+    // Landscape -> portrait changes the card's visual component. Restore
+    // D-pad focus to that same media identity after the replacement is laid out.
+    LaunchedEffect(isInlineRowActive, activeCardKey) {
+        if (isInlineRowActive && activeCardKey != null) {
+            withFrameNanos { }
+            runCatching { inlineTransitionRequester.requestFocus() }
+        }
+    }
+    LaunchedEffect(isInlineRowActive) {
+        if (!isInlineRowActive) activeCardKey = null
+    }
 
     Column(
         modifier = Modifier
             .graphicsLayer { clip = false }
-            .onFocusChanged { if (!it.hasFocus) activeCardKey = null }
+            .onFocusChanged { if (!it.hasFocus && !isInlineRowActive) activeCardKey = null }
     ) {
         Text(
             text = title,
@@ -462,6 +475,8 @@ private fun LinearContent(
                     .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                         inlineCinematicWidth
                     } else effectiveItemWidth)
+                    .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                        Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                     .graphicsLayer { clip = false }
                     .onPreviewKeyEvent { keyEvent ->
                         if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -734,6 +749,8 @@ private fun InfiniteGridContent(
                             .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                                 inlineCinematicWidth
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
+                            .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                                Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -976,6 +993,8 @@ private fun FiniteGridContent(
                             .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                                 inlineCinematicWidth
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
+                            .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                                Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
