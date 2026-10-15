@@ -101,8 +101,13 @@ class AddonRepository @Inject constructor(
         val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
         val titleKey = if (title.isNotBlank() && year != null) "${meta.type}:$title:$year" else null
         val directId = Regex("tt[0-9]+").find(meta.id)?.value
-        val cached = directId?.let { primaryGenreCache["${meta.type}:$it"] }
-            ?: titleKey?.let { primaryGenreCache[it] }
+        // IMDb IDs are authoritative. A shared title and release year must
+        // never make two distinct canonical IDs inherit one another's genres.
+        val cached = if (directId != null) {
+            primaryGenreCache["${meta.type}:$directId"]
+        } else {
+            titleKey?.let { primaryGenreCache[it] }
+        }
         if (cached != null) return@withContext cached
 
         val imdbId = directId ?: try {

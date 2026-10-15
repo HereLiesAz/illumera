@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.tv.material3.Border
@@ -62,7 +63,10 @@ fun LumeraCard(
     onLongClick: (() -> Unit)? = null,
     onRemotePressChanged: ((Boolean) -> Unit)? = null,
     mediaItem: MetaItem? = null,
-    cardWidth: androidx.compose.ui.unit.Dp = 140.dp
+    inlineCinematicExpanded: Boolean = false,
+    inlineCinematicWidth: Dp = 340.dp,
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    cardWidth: Dp = 140.dp
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
@@ -90,8 +94,11 @@ fun LumeraCard(
 
     Box(
         modifier = modifier
-            .width(cardWidth)
-            .aspectRatio(2f / 3f)
+            .width(if (inlineCinematicExpanded && inlineCinematicPreview != null) inlineCinematicWidth else cardWidth)
+            .then(
+                if (inlineCinematicPreview != null) Modifier.height(210.dp)
+                else Modifier.aspectRatio(2f / 3f)
+            )
             .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
             .graphicsLayer { clip = false }
     ) {
@@ -155,6 +162,11 @@ fun LumeraCard(
                 )
             )
         ) {
+            if (inlineCinematicExpanded && inlineCinematicPreview != null && mediaItem != null) {
+                // The Surface (and D-pad/long-press focus node) remains mounted
+                // when artwork changes to moving cinematic preview.
+                inlineCinematicPreview(mediaItem)
+            } else {
             val context = LocalContext.current
             val imageRequest = remember(posterUrl) {
                 ImageRequest.Builder(context)
@@ -240,6 +252,7 @@ fun LumeraCard(
                         )
                     }
                 }
+            }
             }
         }
 

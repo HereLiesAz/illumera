@@ -76,11 +76,34 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 ## October 15 cinematic/genre/trailer fixes — verification pending
 
 - Movies and Series omit empty genre rows from the vertical LazyColumn and D-pad focus chain; the original row index remains stable for poster focus keys. Three background lanes probe all enabled genres instead of requiring a user to focus empty rows to load later content. Initial genre probes cover up to two source layers, where paging is supported.
-- Catalog items are routed to only their lead genre, prioritizing public Cinemeta metadata by IMDb ID or verified title/year instead of addon genre order. When the central lookup is unavailable, a stable sorted addon-genre fallback prevents relying on the first addon label. Unclassified items are withheld rather than duplicated across multiple rows.
+- Catalog items are routed to only their lead genre, prioritizing public Cinemeta metadata by IMDb ID or verified title/year instead of addon genre order. Items found in secondary-genre catalogs are transferred to their primary-genre row rather than disappearing; cross-row transfers deduplicate against existing destination cards. When the central lookup is unavailable, a stable sorted addon-genre fallback prevents relying on the first addon label. Unclassified items are withheld rather than duplicated across multiple rows.
 - Cinematic previews are 184dp tall. Autoplay trailer candidates use the enabled addon, TMDB video metadata when configured, and public Cinemeta trailer records. Silent previews prefer muxed hardware-compatible video when available.
 - Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
 
 **Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
+
+## Inline cinematic poster follow-up (October 15, 2026)
+
+The Hero Carousel remains the first ordinary LazyColumn item: it must scroll entirely away as the user navigates into the rows, and must **not** be pinned or persist above them. Home, Movies, and Series cinematic media rows (including Continue Watching) use portrait 140×210dp posters rather than 16:9 mini-backdrops. When a title receives focus its **existing** Surface widens up to 340dp (bounded by screen width) and displays the compact cinematic trailer/backdrop, title and metadata **in that poster slot**. There is no additional full-width preview above any row. When focus moves, the former item returns to its portrait poster and the newly active poster expands; focusing another row collapses the old row. Long-press menus, selection, D-pad focus restoration, lazy pagination, and finite/looping View More cards must behave exactly as before. The separate simple layout remains unchanged.
+
+**Device acceptance:** From the Hero, press Down repeatedly: the Hero disappears with normal vertical scrolling, no sticky carousel remains, and the active poster widens without dislodging focus or adding vertical blank space. Move horizontally, then vertically, return from Details, test after dynamic genre insertion and across all three rail modes. Verify trailer first-frame/art fallback and menu-on-release behavior. Build, tests, and on-device confirmation are outstanding.
+
+### Review fixes for PR #245
+
+- Losing focus to the navigation drawer or top bar clears the active inline preview and unmounts its muted ExoPlayer; moving within the row does not.
+- Finite/infinite View More end padding uses the terminal card's actual width (120dp portrait; 190dp landscape), independent of the expanded 340dp poster width.
+- Continue Watching and other portrait rails select cached enriched posters when original history/suggestion cards lack artwork; no blank collapsed card after asynchronous enrichment.
+
+Android compilation and TV D-pad/end-of-row focus require device verification before release.
+### Review fixes for PR #243
+
+- Distinct canonical IMDb IDs never read one another's title/year genre cache; same-name/same-year IMDb collision covered by a fixed-data regression test.
+- Non-IMDb catalog entries resolve TMDB trailers through a conservatively matched IMDb ID when available, not through their unrecognized addon prefix.
+- When later aggregate catalog pages return empty/duplicate/reclassified results, up to four later source pages are probed so pagination does not stall.
+- Primary genres are classified in six-item batches and appended to the correct visible row as each batch finishes. Slow Cinemeta metadata must not keep an entire 100-title page hidden.
+- Trailer extraction gives at most one addon candidate, one TMDB candidate, and two Cinemeta candidates 15 seconds each, preserving time for later sources within the resolver deadline.
+
+These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
 
 ## Watchlist reorganization (October 15, 2026) — awaiting device verification
 
@@ -98,3 +121,6 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Left-arrow navigation in the poster grid shares one repeat debounce across cells. Reaching column zero by holding Left does not immediately escape to the drawer; a fresh deliberate press does.
 - Grid children are composed with stable `key(media.type, media.id)` identities, preserving card/long-press state across reorders or deduplication within a row.
 - QueueManager regression tests cover persisted invalidation, manual-queue retention, and in-flight refresh results rejected after a preference switch; the old async request cannot resurrect titles from a now-disabled source. Full Android builds and remote-device verification remain required.
+
+- Review follow-up: Suggested Next and Refresh stack vertically on compact screens while retaining a horizontal header on TV.
+- Review follow-up: disabled suggestions retain a visibly focused Refresh control; last Library card consumes Right when top navigation is active.

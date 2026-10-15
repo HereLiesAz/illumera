@@ -881,6 +881,32 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun distinctImdbTitlesWithSameNameAndYearKeepSeparatePrimaryGenres() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val firstUrl = "https://v3-cinemeta.strem.io/meta/movie/tt1111101.json"
+        val secondUrl = "https://v3-cinemeta.strem.io/meta/movie/tt1111102.json"
+        coEvery { api.getMeta(firstUrl) } returns MetaResponse(
+            MetaItem(id = "tt1111101", type = "movie", name = "Same Title",
+                releaseInfo = "2025", genres = listOf("Comedy"))
+        )
+        coEvery { api.getMeta(secondUrl) } returns MetaResponse(
+            MetaItem(id = "tt1111102", type = "movie", name = "Same Title",
+                releaseInfo = "2025", genres = listOf("Drama"))
+        )
+        val repository = AddonRepository(api, dao)
+
+        assertEquals("Comedy", repository.primaryGenreFor(MetaItem(
+            id = "tt1111101", type = "movie", name = "Same Title", releaseInfo = "2025"
+        )))
+        assertEquals("Drama", repository.primaryGenreFor(MetaItem(
+            id = "tt1111102", type = "movie", name = "Same Title", releaseInfo = "2025"
+        )))
+        coVerify(exactly = 1) { api.getMeta(firstUrl) }
+        coVerify(exactly = 1) { api.getMeta(secondUrl) }
+    }
+
+    @Test
     fun primaryGenreLookupRecoversAfterUnavailableCanonicalMetadata() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>(relaxed = true)

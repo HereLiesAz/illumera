@@ -150,7 +150,9 @@ fun InfiniteLoopRow(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    isInlineRowActive: Boolean = false
 ) {
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
@@ -182,11 +184,29 @@ fun InfiniteLoopRow(
 
     // Calculate end padding to allow last item to align to left (pivot position)
     // End padding = Screen Width - Start Padding - Item Width
-    val effectiveItemWidth = if (isLandscapeCards) 190.dp else ITEM_WIDTH
+    val effectiveItemWidth = when {
+        isLandscapeCards -> 190.dp
+        inlineCinematicPreview != null -> 140.dp
+        else -> ITEM_WIDTH
+    }
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-    val endPadding = remember(screenWidth, startPadding, effectiveItemWidth) {
-        (screenWidth - startPadding - effectiveItemWidth).coerceAtLeast(120.dp)
+    val inlineCinematicWidth = minOf(
+        340.dp, (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
+    )
+    val endPadding = remember(
+        screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
+        isInfiniteLoopEnabled, isLandscapeCards
+    ) {
+        // Finite/infinite grid modes end with a 120dp View More card (190dp
+        // in landscape), never the widened cinematic poster. Use its REAL
+        // width so the final item can reach the normal left focus pivot.
+        val terminalWidth = if (isInfiniteLoopEnabled) {
+            if (isLandscapeCards) 190.dp else ITEM_WIDTH
+        } else if (inlineCinematicPreview != null) {
+            inlineCinematicWidth
+        } else effectiveItemWidth
+        (screenWidth - startPadding - terminalWidth).coerceAtLeast(20.dp)
     }
 
     // Use external state if provided, otherwise create local state
@@ -207,7 +227,15 @@ fun InfiniteLoopRow(
         }
     }
 
-    Column(modifier = Modifier.graphicsLayer { clip = false }) {
+    // The focused poster stays mounted while its artwork becomes the preview.
+    var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
+
+    Column(
+        modifier = Modifier
+            .graphicsLayer { clip = false }
+            .onFocusChanged { if (!it.hasFocus) activeCardKey = null }
+    ) {
         Text(
             text = title,
             color = Color.White.copy(0.9f),
@@ -219,7 +247,10 @@ fun InfiniteLoopRow(
         )
 
         // Stable reference to avoid recomposition from lambda re-allocation
-        val wrappedOnFocused = onFocused
+        val wrappedOnFocused: (MetaItem?, String) -> Unit = { item, key ->
+            activeCardKey = if (item == null) null else key
+            onFocused(item, key)
+        }
         
         when {
             // CASE A: Grid View OFF - Standard linear list
@@ -249,7 +280,10 @@ fun InfiniteLoopRow(
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
                         enrichedItems = enrichedItems,
-                        effectiveItemWidth = effectiveItemWidth
+                        effectiveItemWidth = effectiveItemWidth,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
@@ -280,7 +314,10 @@ fun InfiniteLoopRow(
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
-                        enrichedItems = enrichedItems
+                        enrichedItems = enrichedItems,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
@@ -309,7 +346,10 @@ fun InfiniteLoopRow(
                         repeatGate = repeatGate,
                         pivotFocusRequester = pivotFocusRequester,
                         isLandscapeCards = isLandscapeCards,
-                        enrichedItems = enrichedItems
+                        enrichedItems = enrichedItems,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        activeCardKey = focusedPreviewKey,
+                        inlineCinematicWidth = inlineCinematicWidth
                     )
                 }
             }
@@ -348,7 +388,10 @@ private fun LinearContent(
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
     enrichedItems: Map<String, MetaItem> = emptyMap(),
-    effectiveItemWidth: Dp = ITEM_WIDTH
+    effectiveItemWidth: Dp = ITEM_WIDTH,
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
 
@@ -363,7 +406,11 @@ private fun LinearContent(
                     ?: item.poster?.takeIf { it.isNotBlank() }
             }
         } else {
-            items.map { it.poster }
+            items.map { item ->
+                enrichedItems["${item.type}:${item.id}"]?.poster
+                    ?.takeIf { it.isNotBlank() }
+                    ?: item.poster
+            }
         }
     }
 
@@ -412,7 +459,9 @@ private fun LinearContent(
 
             Box(
                 modifier = Modifier
-                    .width(effectiveItemWidth)
+                    .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                        inlineCinematicWidth
+                    } else effectiveItemWidth)
                     .graphicsLayer { clip = false }
                     .onPreviewKeyEvent { keyEvent ->
                         if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -493,12 +542,16 @@ private fun LinearContent(
                     val watchedIds = LocalWatchedIds.current
                     LumeraCard(
                         title = item.name,
-                        posterUrl = item.poster,
+                        posterUrl = enrichedItems["${item.type}:${item.id}"]?.poster
+                            ?.takeIf { it.isNotBlank() } ?: item.poster,
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
                         isWatched = rowIndex != -1 && item.id in watchedIds,
                         hasNewEpisode = item.hasNewEpisode,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                        inlineCinematicWidth = inlineCinematicWidth,
                         onFocused = {
                             ImagePrefetcher.prefetchAround(context, imageUrls, index)
                             onFocused(item, uniqueKey)
@@ -560,7 +613,10 @@ private fun InfiniteGridContent(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
 
@@ -582,7 +638,8 @@ private fun InfiniteGridContent(
         truncatedMovies.map { item ->
             if (isLandscapeCards)
                 item.background?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
-            else item.poster?.takeIf { it.isNotBlank() }
+            else enrichedItems["${item.type}:${item.id}"]?.poster
+                ?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
         }
     }
     
@@ -671,9 +728,12 @@ private fun InfiniteGridContent(
 
             when (item) {
                 is GridRowItem.MovieItem -> {
+                    val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                     Box(
                         modifier = Modifier
-                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
+                            .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                                inlineCinematicWidth
+                            } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -723,15 +783,18 @@ private fun InfiniteGridContent(
                                 } else false
                             }
                     ) {
-                        val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
                             title = item.movie.name,
-                            posterUrl = item.movie.poster,
+                            posterUrl = enrichedItems["${item.movie.type}:${item.movie.id}"]?.poster
+                                ?.takeIf { it.isNotBlank() } ?: item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
                             enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -827,7 +890,10 @@ private fun FiniteGridContent(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
     
@@ -840,7 +906,8 @@ private fun FiniteGridContent(
         truncatedMovies.map { item ->
             if (isLandscapeCards)
                 item.background?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
-            else item.poster?.takeIf { it.isNotBlank() }
+            else enrichedItems["${item.type}:${item.id}"]?.poster
+                ?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
         }
     }
     
@@ -906,7 +973,9 @@ private fun FiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
+                            .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                                inlineCinematicWidth
+                            } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -953,11 +1022,15 @@ private fun FiniteGridContent(
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
                             title = item.movie.name,
-                            posterUrl = item.movie.poster,
+                            posterUrl = enrichedItems["${item.movie.type}:${item.movie.id}"]?.poster
+                                ?.takeIf { it.isNotBlank() } ?: item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
                             enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -1129,6 +1202,9 @@ private fun GridMediaCard(
     isWatched: Boolean,
     isLandscapeCards: Boolean,
     enrichedItems: Map<String, MetaItem>,
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)?,
+    inlineCinematicExpanded: Boolean,
+    inlineCinematicWidth: Dp,
     onFocused: () -> Unit,
     modifier: Modifier
 ) {
@@ -1159,6 +1235,9 @@ private fun GridMediaCard(
             progress = progress,
             isWatched = isWatched,
             hasNewEpisode = mediaItem.hasNewEpisode,
+            inlineCinematicPreview = inlineCinematicPreview,
+            inlineCinematicExpanded = inlineCinematicExpanded,
+            inlineCinematicWidth = inlineCinematicWidth,
             onFocused = onFocused,
             modifier = modifier
         )
