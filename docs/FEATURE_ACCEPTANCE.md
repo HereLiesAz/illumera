@@ -47,8 +47,10 @@ The previous combined All Movies/All Series row was explicitly **not** requested
 
 TV acceptance: fresh install defaults to 19 Movie and 22 Series genre rows; no All Movies/All Series row is visible; disabling e.g. Horror only hides Horror on the chosen screen and persists after relaunch; no options that are actually years are displayed as genres; Movies and Series have separate choices; Home remains unchanged.
 
-## Mixed Home and Watchlist Library aggregation
+## Paired-category Home and mixed Watchlist Library
 
-The new Home catalog includes both movies and series from every enabled addon, using interleaved, deduplicated, lazily fetched pages. Existing custom Hubs and Continue Watching remain independent intentional collections. In Watchlist, Queue is still first, and Library now has **one** Movies & Series row populated by a type-aware deduplicated merge of saved titles and synchronized history, with the prior sorting options preserved. The Movies and Series tabs are unchanged and retain their genre-first rows.
+Home must preserve one row per distinct category, merging paired movies and series within it rather than combining all categories into a single row: Latest Movies + Latest Series → Latest, Popular Movies + Popular Series → Popular, Netflix Movies + Netflix Series → Netflix, etc. Identically named categories from enabled providers are combined and deduplicated within the row. Each category has independent lazy paging. Continue Watching, Hero and custom Hubs remain in place. Movies and Series tabs retain their genre-first rows.
 
-**Required verification:** test a movie plus a series with the same provider ID (both retained), duplicate source hits (one card), movie/series page continuation, removal of a saved bookmark without a blank focus target, restored focus from the previous Series row, sorting after a newly synchronized episode, and Hero content loading when the Home mixed row first arrives. Build and Android TV verification are pending.
+In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Series Library row, keeping saved titles and synchronized Stremio history together with its existing sort modes.
+
+**Acceptance checks:** Distinct Latest/Popular/Trending/Netflix/HBO Max rows remain distinct; each contains both media types when available; same-title duplicates across addon sources appear once; a movie and series adaptation never collapse into one item; one-sided categories still appear; paginating one category does not modify another; Watchlist maintains one sortable combined rail and restores D-pad focus after removing a title. Build and on-device verification remain outstanding.
