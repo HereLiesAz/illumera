@@ -111,6 +111,32 @@ class ScreenGenreRowsTest {
         assertEquals("Slice of Life", ScreenGenreRows.canonicalGenre("Slice-of-Life"))
     }
 
+    @Test fun localizedLanguageNamesNeverCreateGenreRows() {
+        val manifest = CatalogManifest(
+            type = "series", id = "top",
+            genres = listOf(
+                "Español", "Português", "Deutsch", "Français",
+                "日本語", "Espana", "España", "Horror", "Anime"
+            ),
+            extra = listOf(CatalogExtra(
+                name = "genre", options = listOf("Italiano", "Русский", "Drama")
+            ))
+        )
+        val rows = ScreenGenreRows.availableGenres("series", listOf(manifest))
+        assertTrue(rows.containsAll(listOf("Horror", "Anime", "Drama")))
+        for (language in listOf(
+            "Español", "Português", "Deutsch", "Français", "日本語", "Italiano", "Русский"
+        )) assertFalse("Unexpected language row: $language", language in rows)
+    }
+
+    @Test fun combinedGenreMetadataMatchesBothConstituentRows() {
+        assertTrue(ScreenGenreRows.matchesRequestedGenre("Action & Adventure", "Action"))
+        assertTrue(ScreenGenreRows.matchesRequestedGenre("Action & Adventure", "Adventure"))
+        assertTrue(ScreenGenreRows.matchesRequestedGenre("Sci-Fi & Fantasy", "Fantasy"))
+        assertTrue(ScreenGenreRows.matchesRequestedGenre("Sci-Fi & Fantasy", "Sci-Fi"))
+        assertFalse(ScreenGenreRows.matchesRequestedGenre("Sci-Fi & Fantasy", "Comedy"))
+    }
+
     @Test fun sourceGenreNamesUseTheOfficialAlias() {
         assertEquals("Sci-Fi", ScreenGenreRows.canonicalGenre("Science Fiction"))
         assertEquals("Reality-TV", ScreenGenreRows.canonicalGenre("Reality TV"))
