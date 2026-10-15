@@ -50,7 +50,7 @@ fun distinctAggregatedMetas(
     val seenIds = mutableSetOf<String>()
     val imdbIds = mutableSetOf<String>()
     val titleIdentities = mutableMapOf<String, MutableSet<String?>>()
-    val imdbRegex = Regex("^tt[0-9]+$")
+    val imdbRegex = Regex("tt[0-9]+")
     fun titleKey(meta: MetaItem): String? {
         val title = meta.name.lowercase().filter { it.isLetterOrDigit() }
         val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
@@ -58,7 +58,7 @@ fun distinctAggregatedMetas(
     }
     fun register(meta: MetaItem) {
         seenIds.add("${meta.type}:${meta.id}")
-        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        val imdb = imdbRegex.find(meta.id)?.value
         if (imdb != null) imdbIds.add("${meta.type}:$imdb")
         titleKey(meta)?.let { title ->
             titleIdentities.getOrPut(title) { mutableSetOf() }.add(imdb)
@@ -510,6 +510,10 @@ class AddonRepository @Inject constructor(
                         withTimeout(catalogTimeoutMs) {
                             api.getCatalog(url).metas.orEmpty().sanitize()
                         }
+                    } catch (_: TimeoutCancellationException) {
+                        // A single slow addon is an empty catalog, not cancellation
+                        // of every other Home category loaded in this coroutine scope.
+                        emptyList()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
