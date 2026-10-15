@@ -366,6 +366,15 @@ class AddonRepository @Inject constructor(
         }
     }
 
+    /** Map a legacy single-type Screen Editor Hero source to its mixed Home pair. */
+    suspend fun getHomePairRowForConfig(configId: String): HomeRow? =
+        withContext(Dispatchers.IO) {
+            val group = homeCatalogPairs().firstOrNull { pair ->
+                pair.sources.any { it.uniqueId == configId }
+            } ?: return@withContext null
+            getHomePairedRows().firstOrNull { it.configId == group.id }
+        }
+
     suspend fun homePairFirstLayerPageCount(rowId: String, sourcesPerPage: Int = 4): Int =
         withContext(Dispatchers.IO) {
             val count = homeCatalogPairs().firstOrNull { it.id == rowId }?.sources?.size ?: 0
