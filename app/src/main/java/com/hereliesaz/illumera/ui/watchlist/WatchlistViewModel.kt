@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -33,6 +35,7 @@ class WatchlistViewModel @Inject constructor(
 
     // Touched from Main (resolvePosterIfNeeded) and IO (the launch's finally) — must be concurrent.
     private val resolveInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val metadataResolveSlots = Semaphore(3)
     // Cools down retries for items that just failed to resolve, instead of retrying
     // every one of them on every watchlist mutation (the movieItems/seriesItems
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
@@ -144,6 +147,9 @@ class WatchlistViewModel @Inject constructor(
             var succeeded = false
             var cancelled = false
             try {
+                // Only three metadata lookups run at once even when a large Library
+                // contains several ambiguous cross-provider identities.
+                metadataResolveSlots.withPermit {
                 // Network resolution must not hold the profile runtime lock. A slow addon
                 // should never block loadRuntimeState() during a profile switch.
                 val meta = repository.resolveMetaDetails(item.type, item.id)
@@ -185,6 +191,7 @@ class WatchlistViewModel @Inject constructor(
                         }
                     }
                 }
+                } // Metadata semaphore slot.
             } catch (error: CancellationException) {
                 cancelled = true
                 throw error
