@@ -330,7 +330,7 @@ fun CinematicLayout(
     RestoreFocusOnResume(
         memory = focusMemory,
         fallback = entryRequester,
-        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
+        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || visibleMixedRows.isNotEmpty(),
         neighbour = { resolveHomeFocusNeighbour(it, focusMemory.registeredKeys) }
     )
 
@@ -408,6 +408,7 @@ fun CinematicLayout(
                         verticalArrangement = Arrangement.spacedBy((-12).dp)
                     ) {
                         if (heroItems.isNotEmpty()) {
+                            // Ordinary list item: the Hero must scroll away entirely.
                             item(key = "cinematic_hero_carousel", contentType = "hero") {
                                 HeroCarousel(
                                     items = heroItems,
@@ -480,8 +481,8 @@ fun CinematicLayout(
                                     externalListState = historyRowState,
                                     upKeyDebouncer = upKeyDebouncer,
                                     repeatGate = dpadRepeatGate,
-                                    // Cinematic panels always pair with 16:9 landscape cards,
-                                    // regardless of the separate simple-layout Watch History setting.
+                                    // All cinematic media rows use portrait posters. The
+                                    // focused card itself expands; no panel is mounted above.
                                     isLandscapeCards = false,
                                     enrichedItems = state.enrichedMeta,
                                     rowHeight = 210.dp,
@@ -520,7 +521,7 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this hub row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val hubKey = "hub_${item.id}"
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == 0
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedHubPosition = if (resetScroll) null else rowScrollPositions[hubKey]
                                     val hubListState = rememberLazyListState(
                                         initialFirstVisibleItemIndex = savedHubPosition?.first ?: 0,
@@ -553,7 +554,7 @@ fun CinematicLayout(
                                         isLastRow = index == visibleMixedRows.lastOrNull()?.index,
                                         isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
-                                            historyItems.isEmpty() && index == 0
+                                            historyItems.isEmpty() && index == firstVisibleRowIndex
                                         ) firstRowPivotRequester else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
                                         forceLandscape = true
@@ -565,7 +566,7 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == 0
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
                                     val initialIndex = savedPosition?.first ?: 0
@@ -627,7 +628,7 @@ fun CinematicLayout(
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
                                         isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
-                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == 0) firstRowPivotRequester else null,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
