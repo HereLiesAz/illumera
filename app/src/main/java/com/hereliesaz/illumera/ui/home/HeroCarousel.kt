@@ -62,6 +62,9 @@ fun HeroCarousel(
     onFocusChange: (String) -> Unit,
     onCurrentItemVisible: (MetaItem) -> Unit = {},
     resolveTrailer: (suspend (MetaItem) -> String?)? = null,
+    autoPlayPreviews: Boolean = true,
+    previewSound: Boolean = false,
+    previewVisible: Boolean = true,
     entryRequester: FocusRequester? = null,
     drawerRequester: FocusRequester? = null,
     isFirstItem: Boolean = false,
@@ -310,7 +313,10 @@ fun HeroCarousel(
             TrailerPreview(
                 item = currentItem,
                 resolveTrailer = resolveTrailer,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                autoPlay = autoPlayPreviews,
+                soundEnabled = previewSound,
+                isVisible = previewVisible
             )
         }
 
