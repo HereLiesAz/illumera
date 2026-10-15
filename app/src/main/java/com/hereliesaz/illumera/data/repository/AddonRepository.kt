@@ -306,6 +306,36 @@ class AddonRepository @Inject constructor(
         }
     }
 
+    /**
+     * Home's combined catalog consumes the same bounded source pages as Movies and
+     * Series, concurrently. No type dropdown or separate movie/TV filter is applied.
+     * Each item retains its original type for Details and stream resolution.
+     */
+    suspend fun getMixedCatalogPage(
+        page: Int, sourcesPerPage: Int = 4
+    ): List<MetaItem> = kotlinx.coroutines.coroutineScope {
+        val movie = async { getAggregatedCatalogPage("movie", page = page, sourcesPerPage = sourcesPerPage) }
+        val series = async { getAggregatedCatalogPage("series", page = page, sourcesPerPage = sourcesPerPage) }
+        val movieItems = movie.await()
+        val seriesItems = series.await()
+        // Interleave to avoid a single busy provider putting every TV show at the
+        // very end of the row. Deduplicate within this batch; ViewModel handles
+        // duplicate identities across subsequent batches.
+        val mixed = buildList {
+            for (index in 0 until maxOf(movieItems.size, seriesItems.size)) {
+                movieItems.getOrNull(index)?.let(::add)
+                seriesItems.getOrNull(index)?.let(::add)
+            }
+        }
+        distinctAggregatedMetas(emptyList(), mixed)
+    }
+
+    suspend fun mixedCatalogFirstLayerPageCount(): Int = kotlinx.coroutines.coroutineScope {
+        val movie = async { aggregatedFirstLayerPageCount("movie", null) }
+        val series = async { aggregatedFirstLayerPageCount("series", null) }
+        maxOf(movie.await(), series.await())
+    }
+
     suspend fun getDashboardRows(
         screen: String,
         skipConfigs: Int = 0,
