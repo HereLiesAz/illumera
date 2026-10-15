@@ -75,11 +75,12 @@ internal fun reconcileGenreRows(
                 if (additions.isEmpty()) row.items else row.items + additions
             }
             authoritative && row.configId.startsWith("catalog-aggregate:") -> {
+                // Compare identities in the *existing -> incoming* direction.
+                // A matching title is not novel; only that title leaves this row.
+                // Keep untouched row and list instances for stable TV focus.
                 val retained = row.items.filter { item ->
-                    distinctAggregatedMetas(newItems, listOf(item)).isNotEmpty()
+                    distinctAggregatedMetas(listOf(item), newItems).isNotEmpty()
                 }
-                // Keep object identity for untouched rows. Replacing an equal
-                // LazyColumn item can tear down the current TV focus target.
                 if (retained.size == row.items.size) row.items else retained
             }
             else -> row.items
