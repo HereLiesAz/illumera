@@ -686,9 +686,12 @@ fun CinematicLayout(
                                             focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
                                             val focusedIndex = key.substringAfterLast('_').toIntOrNull()
-                                            if (focusItem != null && itemSize > 0 &&
+                                            // A tiny genre batch is not a pagination trigger:
+                                            // otherwise *every* focus/re-focus starts more
+                                            // catalog requests while the row is recomposing.
+                                            if (focusItem != null && itemSize >= 8 &&
                                                 focusedIndex != null &&
-                                                focusedIndex >= (itemSize - 3).coerceAtLeast(0)
+                                                focusedIndex >= itemSize - 3
                                             ) onLoadMore(itemId)
                                         },
                                         entryRequester = entryRequester,
