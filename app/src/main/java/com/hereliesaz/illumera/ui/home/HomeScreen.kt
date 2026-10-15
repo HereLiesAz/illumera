@@ -141,7 +141,6 @@ fun HomeScreen(
     } else "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
-    val infoTopPadding = if (isTopNav) 60.dp else 30.dp
     // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
     // wide/TV screen; on a phone that margin alone eats a third of the available width,
     // so trim it down there while still clearing the drawer.
@@ -213,7 +212,6 @@ fun HomeScreen(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
-                    infoTopPadding = infoTopPadding,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
                     state = displayState,
@@ -286,7 +284,6 @@ fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
-    infoTopPadding: androidx.compose.ui.unit.Dp,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     state: HomeViewModel.HomeState,
