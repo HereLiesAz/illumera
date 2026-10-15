@@ -41,8 +41,9 @@ class WatchlistViewModel @Inject constructor(
     var lastFocusedKey: String? = null
     var lastQueueFocusedKey: String? = null
 
-    val movieRowState = androidx.compose.foundation.lazy.LazyListState()
-    val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
+    // Single mixed library rail: preserve one horizontal scroll/focus position
+    // across sorting and title updates, regardless of the title's media type.
+    val libraryRowState = androidx.compose.foundation.lazy.LazyListState()
 
     data class LibraryEntry(
         val item: MetaItem,
@@ -78,17 +79,7 @@ class WatchlistViewModel @Inject constructor(
                 val savedEntries = saved.map { item ->
                     LibraryEntry(item.toMetaItem(), item.addedAt, 0L, false, 0)
                 }
-                (savedEntries + historyEntries).groupBy { "${it.item.type}:${it.item.id}" }
-                    .values.map { duplicates ->
-                        val preferred = duplicates.firstOrNull { !it.item.poster.isNullOrBlank() }
-                            ?: duplicates.first()
-                        preferred.copy(
-                            addedAt = duplicates.maxOf { it.addedAt },
-                            lastWatched = duplicates.maxOf { it.lastWatched },
-                            watched = duplicates.any { it.watched },
-                            timesWatched = duplicates.sumOf { it.timesWatched }
-                        )
-                    }
+                mergeLibraryEntries(savedEntries + historyEntries)
             }
         }.stateIn(
             viewModelScope,
@@ -152,6 +143,61 @@ class WatchlistViewModel @Inject constructor(
                 }
             }
         }
+    }
+}
+
+/**
+ * Deduplicates as saved titles and Stremio-synced history are merged.
+ * Preserve movie/series type in every identity: a film and TV adaptation
+ * with the same title must remain separate entries.
+ * A title/year match is used only when at least one provider lacks IMDb ID.
+ */
+internal fun mergeLibraryEntries(
+    entries: List<WatchlistViewModel.LibraryEntry>
+): List<WatchlistViewModel.LibraryEntry> {
+    val groups = mutableListOf<MutableList<WatchlistViewModel.LibraryEntry>>()
+    val imdbRegex = Regex("tt[0-9]+")
+    fun imdb(item: MetaItem): String? = imdbRegex.find(item.id)?.value
+    fun titleYear(item: MetaItem): String? {
+        val title = item.name.lowercase().filter { it.isLetterOrDigit() }
+        val year = Regex("(?:19|20)[0-9]{2}").find(item.releaseInfo.orEmpty())?.value
+        return if (title.isNotBlank() && year != null) "$title:$year" else null
+    }
+    for (entry in entries) {
+        val duplicateGroup = groups.firstOrNull { group ->
+            group.any { candidate ->
+                val original = candidate.item
+                val incoming = entry.item
+                if (original.type != incoming.type) false
+                else {
+                    val leftImdb = imdb(original)
+                    val rightImdb = imdb(incoming)
+                    (original.id == incoming.id) ||
+                        (leftImdb != null && leftImdb == rightImdb) ||
+                        (titleYear(original) != null &&
+                            titleYear(original) == titleYear(incoming) &&
+                            (leftImdb == null || rightImdb == null))
+                }
+            }
+        }
+        if (duplicateGroup == null) groups.add(mutableListOf(entry))
+        else duplicateGroup.add(entry)
+    }
+    return groups.map { sameTitle ->
+        // Prefer a saved title over an episode's name from watch history, but
+        // fill any missing artwork from whichever provider has it.
+        val preferred = sameTitle.firstOrNull { it.addedAt > 0 } ?: sameTitle.first()
+        preferred.copy(
+            item = preferred.item.copy(
+                poster = preferred.item.poster ?: sameTitle.firstNotNullOfOrNull { it.item.poster },
+                background = preferred.item.background ?: sameTitle.firstNotNullOfOrNull { it.item.background },
+                logo = preferred.item.logo ?: sameTitle.firstNotNullOfOrNull { it.item.logo }
+            ),
+            addedAt = sameTitle.maxOf { it.addedAt },
+            lastWatched = sameTitle.maxOf { it.lastWatched },
+            watched = sameTitle.any { it.watched },
+            timesWatched = sameTitle.sumOf { it.timesWatched }
+        )
     }
 }
 
