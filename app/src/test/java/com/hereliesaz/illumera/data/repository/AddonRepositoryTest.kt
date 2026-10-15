@@ -487,60 +487,96 @@ class AddonRepositoryTest {
 
 
     @Test
-    fun mixedHomeInterleavesMoviesAndSeriesAndDeduplicatesEachType() = runTest {
+    fun homePairsPopularMoviesAndSeriesWithoutMergingTrendingOrNetflix() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
-        val bothTypes = """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]"""
-        every { dao.getAllAddons() } returns flowOf(listOf(
-            addon("https://first.example").copy(catalogsJson = bothTypes),
-            addon("https://second.example").copy(catalogsJson = bothTypes),
-            addon("https://disabled.example", enabled = false).copy(catalogsJson = bothTypes)
+        val popular = """[{"type":"movie","id":"popular","name":"Popular"},
+            {"type":"series","id":"popular","name":"Popular"},
+            {"type":"movie","id":"trending","name":"Trending"},
+            {"type":"series","id":"trending","name":"Trending"}]"""
+        val provider = addon("https://one.example").copy(catalogsJson = popular)
+        every { dao.getAllAddons() } returns flowOf(listOf(provider))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://one.example", "movie", "popular", "Popular", 1),
+            config("https://one.example", "series", "popular", "Popular", 2),
+            config("https://one.example", "movie", "trending", "Trending", 3),
+            config("https://one.example", "series", "trending", "Trending", 4),
+            config("https://one.example", "movie", "netflix", "Netflix", 5)
         ))
-        coEvery { api.getCatalog("https://first.example/catalog/movie/top.json") } returns
-            CatalogResponse(listOf(
-                MetaItem(id = "tt1000001", type = "movie", name = "Film One"),
-                MetaItem(id = "tt1000002", type = "movie", name = "Film Two")
-            ))
-        coEvery { api.getCatalog("https://first.example/catalog/series/top.json") } returns
-            CatalogResponse(listOf(
-                MetaItem(id = "tt2000001", type = "series", name = "Show One")
-            ))
-        coEvery { api.getCatalog("https://second.example/catalog/movie/top.json") } returns
-            CatalogResponse(listOf(MetaItem(id = "tt1000001", type = "movie", name = "Film One duplicate")))
-        coEvery { api.getCatalog("https://second.example/catalog/series/top.json") } returns
-            CatalogResponse(listOf(
-                MetaItem(id = "tt2000001", type = "series", name = "Show One duplicate"),
-                MetaItem(id = "tt2000002", type = "series", name = "Show Two")
-            ))
-
-        val repository = AddonRepository(api, dao)
-        val mixed = repository.getMixedHomeCatalogPage(page = 0)
-        assertEquals(
-            listOf("movie:tt1000001", "series:tt2000001",
-                "movie:tt1000002", "series:tt2000002"),
-            mixed.map { "${it.type}:${it.id}" }
-        )
-        coVerify(exactly = 0) { api.getCatalog("https://disabled.example/catalog/movie/top.json") }
-        coVerify(exactly = 0) { api.getCatalog("https://disabled.example/catalog/series/top.json") }
+        val rows = AddonRepository(api, dao).getHomePairedRows()
+        assertEquals(listOf("Popular", "Trending", "Netflix"), rows.map { it.title })
+        assertEquals(3, rows.size)
+        assertTrue(rows.all { it.items.isEmpty() })
+        assertEquals(listOf(1, 3, 5), rows.map { it.order })
     }
 
     @Test
-    fun mixedHomePreservesSameIdAcrossMovieAndSeriesMediaTypes() = runTest {
+    fun homePopularPairAggregatesMoviesSeriesAcrossProvidersAndDeduplicates() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
-        every { dao.getAllAddons() } returns flowOf(listOf(
-            addon("https://both.example").copy(
-                catalogsJson = """[{"type":"movie","id":"top"},{"type":"series","id":"top"}]"""
-            )
+        val catalogJson = """[{"type":"movie","id":"popular"},{"type":"series","id":"popular"}]"""
+        val first = addon("https://first.example").copy(catalogsJson = catalogJson)
+        val second = addon("https://second.example").copy(catalogsJson = catalogJson)
+        every { dao.getAllAddons() } returns flowOf(listOf(first, second))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://first.example", "movie", "popular", "Popular", 1),
+            config("https://first.example", "series", "popular", "Popular", 2),
+            config("https://second.example", "movie", "popular", "Popular", 3),
+            config("https://second.example", "series", "popular", "Popular", 4)
         ))
-        coEvery { api.getCatalog("https://both.example/catalog/movie/top.json") } returns
-            CatalogResponse(listOf(MetaItem(id = "tt9000001", type = "movie", name = "Adaptation")))
-        coEvery { api.getCatalog("https://both.example/catalog/series/top.json") } returns
-            CatalogResponse(listOf(MetaItem(id = "tt9000001", type = "series", name = "Adaptation")))
-        val mixed = AddonRepository(api, dao).getMixedHomeCatalogPage(page = 0)
-        assertEquals(2, mixed.size)
-        assertEquals(setOf("movie", "series"), mixed.map { it.type }.toSet())
+        every { dao.getAddon("https://first.example") } returns first
+        every { dao.getAddon("https://second.example") } returns second
+        coEvery { api.getCatalog("https://first.example/catalog/movie/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1000001", type = "movie", name = "Film One")))
+        coEvery { api.getCatalog("https://first.example/catalog/series/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt2000001", type = "series", name = "Show One")))
+        coEvery { api.getCatalog("https://second.example/catalog/movie/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1000001", type = "movie", name = "Film One again")))
+        coEvery { api.getCatalog("https://second.example/catalog/series/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt2000002", type = "series", name = "Show Two")))
+
+        val repository = AddonRepository(api, dao)
+        val row = repository.getHomePairedRows().single()
+        val titles = repository.getHomePairCatalogPage(row.configId, page = 0)
+        assertEquals(
+            listOf("movie:tt1000001", "series:tt2000001", "series:tt2000002"),
+            titles.map { "${it.type}:${it.id}" }
+        )
+        assertEquals(1, repository.homePairFirstLayerPageCount(row.configId))
     }
+
+    @Test
+    fun movieAndSeriesWithSameIdStaySeparateInsidePairedRow() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        val provider = addon("https://one.example")
+        every { dao.getAllAddons() } returns flowOf(listOf(provider))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://one.example", "movie", "popular", "Popular", 1),
+            config("https://one.example", "series", "popular", "Popular", 2)
+        ))
+        every { dao.getAddon("https://one.example") } returns provider
+        coEvery { api.getCatalog("https://one.example/catalog/movie/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt9000001", type = "movie", name = "Adaptation")))
+        coEvery { api.getCatalog("https://one.example/catalog/series/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt9000001", type = "series", name = "Adaptation")))
+        val rowId = AddonRepository(api, dao).getHomePairedRows().single().configId
+        val result = AddonRepository(api, dao).getHomePairCatalogPage(rowId, page = 0)
+        assertEquals(setOf("movie", "series"), result.map { it.type }.toSet())
+    }
+
+    private fun config(
+        url: String, type: String, id: String, title: String, order: Int
+    ) = CatalogConfigEntity(
+        uniqueId = "$url/$type/$id",
+        transportUrl = url,
+        addonName = "Example",
+        catalogType = type,
+        catalogId = id,
+        catalogName = title,
+        showInHome = true,
+        homeOrder = order
+    )
 
     @Test
     fun aggregatedCatalogCombinesEnabledCatalogsAndDeduplicatesTitles() = runTest {
