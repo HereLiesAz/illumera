@@ -325,6 +325,7 @@ fun InfiniteLoopRow(
     // its focus target for one frame. Don't confuse that handoff with focus
     // leaving the row for another row or the navigation drawer.
     var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    var rowPreviouslyHeldFocus by remember(rowIndex, title) { mutableStateOf(false) }
     var focusHandoffPending by remember(rowIndex, title) { mutableStateOf(false) }
     val inlineTransitionRequester = remember(rowIndex, title) { FocusRequester() }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
@@ -350,8 +351,14 @@ fun InfiniteLoopRow(
     Column(
         modifier = Modifier
             .graphicsLayer { clip = false }
-            .onFocusChanged {
-                if (!it.hasFocus && !focusHandoffPending) {
+            .onFocusChanged { state ->
+                if (state.hasFocus) {
+                    rowPreviouslyHeldFocus = true
+                } else if (rowPreviouslyHeldFocus && !focusHandoffPending) {
+                    // Initial unattached/empty LazyRows also report hasFocus=false.
+                    // Only an actual focused->unfocused transition can collapse
+                    // the row; otherwise every remount toggles the active genre.
+                    rowPreviouslyHeldFocus = false
                     activeCardKey = null
                     onRowFocusExited?.invoke()
                 }
