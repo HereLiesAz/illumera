@@ -31,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -467,29 +468,6 @@ fun CinematicLayout(
                         )
                     }
 
-                    // The expanded panel belongs ABOVE the focused poster row,
-                    // so bring its header into view on vertical row transitions.
-                    // Do not re-scroll when navigating between posters in one row.
-                    LaunchedEffect(activeCinematicRow) {
-                        val focused = activeCinematicRow ?: return@LaunchedEffect
-                        val index = when (focused) {
-                            "history" -> if (historyItems.isNotEmpty()) (if (heroItems.isNotEmpty()) 1 else 0) else -1
-                            "__hero__", "__hub__" -> -1
-                            else -> {
-                                val row = visibleMixedRows.indexOfFirst {
-                                    it.value is CategoryRow && it.value.id == focused
-                                }
-                                if (row < 0) -1 else row +
-                                    (if (heroItems.isNotEmpty()) 1 else 0) +
-                                    (if (historyItems.isNotEmpty()) 1 else 0)
-                            }
-                        }
-                        if (index >= 0) {
-                            delay(100)
-                            verticalListState.animateScrollToItem(index)
-                        }
-                    }
-
                     PersistLazyListPosition(
                         listState = verticalListState,
                         key = "cinematic_vertical",
@@ -548,19 +526,6 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
-                                    AnimatedVisibility(
-                                        visible = activeCinematicRow == "history" ||
-                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("-1_") == true),
-                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-                                    ) {
-                                        FocusedRowCinematicPreview(
-                                            item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding,
-                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
-                                        )
-                                    }
-
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -604,9 +569,15 @@ fun CinematicLayout(
                                     repeatGate = dpadRepeatGate,
                                     // Cinematic panels always pair with 16:9 landscape cards,
                                     // regardless of the separate simple-layout Watch History setting.
-                                    isLandscapeCards = true,
+                                    isLandscapeCards = false,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = 122.dp
+                                    rowHeight = 210.dp,
+                                    inlineCinematicPreview = { poster ->
+                                        InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                    },
+                                    isInlineRowActive = activeCinematicRow == "history" ||
+                                        (activeCinematicRow == null &&
+                                            effectiveLastFocusedKey?.startsWith("-1_") == true)
                                 )
                                 }
                             }
@@ -724,18 +695,6 @@ fun CinematicLayout(
                                         }
                                     }
 
-                                    AnimatedVisibility(
-                                        visible = activeCinematicRow == rowKey ||
-                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("${index}_") == true),
-                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-                                    ) {
-                                        FocusedRowCinematicPreview(
-                                            item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding,
-                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
-                                        )
-                                    }
                                     InfiniteLoopRow(
                                         startPadding = startPadding,
                                         isTopNav = isTopNav,
@@ -764,9 +723,15 @@ fun CinematicLayout(
                                         externalListState = rowListState,
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
-                                        isLandscapeCards = true,
+                                        isLandscapeCards = false,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = 122.dp
+                                        rowHeight = 210.dp,
+                                        inlineCinematicPreview = { poster ->
+                                            InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                        },
+                                        isInlineRowActive = activeCinematicRow == rowKey ||
+                                            (activeCinematicRow == null &&
+                                                effectiveLastFocusedKey?.startsWith("${index}_") == true)
                                     )
                                     }
                                 }
@@ -779,116 +744,68 @@ fun CinematicLayout(
     }
 }
 
+/**
+ * Render preview *inside* the focused poster's existing Surface. The Surface
+ * owns D-pad, touch and long-press; this content only paints moving artwork.
+ */
 @Composable
-private fun FocusedRowCinematicPreview(
-    item: MetaItem?,
+private fun InlineFocusedPosterPreview(
+    item: MetaItem,
     state: HomeViewModel.HomeState,
-    startPadding: androidx.compose.ui.unit.Dp,
-    isTopNav: Boolean,
     resolveTrailer: suspend (MetaItem) -> String?
 ) {
-    // Keep the original artwork visible immediately; enriching the text
-    // must never blank the backdrop while the trailer is still resolving.
-    val bgItem = item
-    // The old 360dp panel, followed by a 210dp row reserved for 107dp cards,
-    // left a large blank band between the preview information and the posters.
-    // This compact panel ends just above the next row's heading.
-    Box(modifier = Modifier.fillMaxWidth().height(184.dp)) {
-        CinematicBackground(bgItem)
-        TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
-        Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth()
-                        // Anchor the title/description to the bottom of the
-                        // preview so short descriptions cannot leave a tall
-                        // empty band before the row's heading and landscape cards.
-                        .padding(start = startPadding, top = 6.dp, bottom = 6.dp),
-                    contentAlignment = Alignment.BottomStart
-                ) {
-                    AnimatedContent(
-                        targetState = item,
-                        transitionSpec = { fadeIn(tween(400)).togetherWith(fadeOut(tween(200))) },
-                        label = "Info"
-                    ) { item ->
-                        if (item != null) {
-                            // Hide info content while waiting for TMDB enrichment
-                            val itemReady = !state.tmdbEnabled || state.tmdbEnrichedIds.contains("${item.type}:${item.id}")
-                            Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
-                                Box(
-                                    modifier = Modifier
-                                        // Was a hardcoded 700dp — nearly double a phone's
-                                        // entire screen width. Use the actual available
-                                        // width instead (already correctly constrained by
-                                        // the parent's padding/weight above).
-                                        .fillMaxWidth()
-                                        .height(56.dp),
-                                    contentAlignment = Alignment.BottomStart
-                                ) {
-                                    if (!item.logo.isNullOrEmpty()) {
-                                        SubcomposeAsyncImage(
-                                            model = item.logo,
-                                            contentDescription = item.name,
-                                            contentScale = ContentScale.Fit,
-                                            alignment = Alignment.BottomStart,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .widthIn(max = 500.dp)
-                                                .heightIn(max = 56.dp),
-                                            error = {
-                                                Text(
-                                                    text = item.name,
-                                                    style = MaterialTheme.typography.displaySmall.copy(
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 32.sp,
-                                                        lineHeight = 1.05.em
-                                                    ),
-                                                    color = Color.White,
-                                                    maxLines = 2,
-                                                    softWrap = true,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                )
-                                            }
-                                        )
-                                    } else {
-                                        Text(
-                                            text = item.name,
-                                            style = MaterialTheme.typography.displaySmall.copy(
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 32.sp,
-                                                lineHeight = 1.05.em
-                                            ),
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            softWrap = true,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                HomeMetaStrip(item = item)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = item.description ?: "",
-                                    maxLines = if (isTopNav) 2 else 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
-                                    color = Color.White.copy(0.85f),
-                                    textAlign = TextAlign.Start,
-                                    // Same fix as the logo/title Box above — was a fixed
-                                    // 450dp, overflowing a phone screen; fillMaxWidth with a
-                                    // cap preserves the original comfortable reading width
-                                    // on TV while actually fitting on a phone.
-                                    modifier = Modifier.fillMaxWidth().widthIn(max = 450.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-    
+    val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
+    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
+        AsyncImage(
+            model = current.background?.takeIf { it.isNotBlank() }
+                ?: current.poster?.takeIf { it.isNotBlank() },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        TrailerPreview(
+            item = current,
+            resolveTrailer = resolveTrailer,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.35f to Color.Black.copy(alpha = 0.15f),
+                    1f to Color.Black.copy(alpha = 0.9f)
+                )
+            )
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = current.name,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold, fontSize = 19.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            val year = extractHomePrimaryYear(current.releaseInfo)
+            Text(
+                text = listOf(current.type.replaceFirstChar { it.uppercase() }, year)
+                    .filterNot { it == "----" }.joinToString(" · "),
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodySmall
+            )
+            current.description?.takeIf { it.isNotBlank() }?.let { description ->
+                Text(
+                    text = description,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
