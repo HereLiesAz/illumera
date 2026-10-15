@@ -170,8 +170,10 @@ Default profile snapshots now carry Cinemeta, YouTube Trailers, Streaming Catalo
 The Stremio Library sync baseline now includes saved-only `WatchlistEntity` titles as well as watch history. The latest watched episode is collapsed under its parent series for Stremio synchronization. Disabling/deleting stock addons remains under user control.
 
 
-## Home mixed-catalog aggregation
+## Home category-pair aggregation
 
-Home displays one lazily paginated `catalog-mixed:home` rail containing both movies and series from every enabled eligible addon catalog, interleaved across media types. Each source-batch cursor advances independently through movie and series catalog candidates. Deduplication uses the same IMDb/type/title/year identity as genre browsing, carried across fetched pages. The Home Hero Carousel draws automatically from the mixed row as it populates; Continue Watching and user-created Hub rows remain separate by design. Explicit addon-by-addon Home rows are superseded by this unified rail, while Movies and Series screens retain **only** their individually enabled genre rows.
+Home retains **separate category/provider groupings**: Latest, Popular, Trending, Netflix, HBO Max and every other configured Home catalog title. For each matching category, the movie and series variants (and enabled addon sources with the same normalized category label) are combined into one `catalog-home:<category>` row. Each pair is deduplicated by media type, canonical IMDb ID, or title/year when one side has a provider-specific ID, and its source batches are fetched lazily. Home does **not** aggregate all categories into a single catch-all row. A category without a paired media type still appears on its own.
+
+The Home Hero Carousel uses the first populated merged category by default; Continue Watching and custom Hub rows remain separate. Existing user-selected Hero category previews continue to work. Movies and Series remain genre-first and do not receive catch-all rows.
 
 The Watchlist Library now presents a single sorted collection containing both media types, preserving type-specific details navigation and per-profile sorting. The old two-row focus key migrates into row zero and one remembered horizontal scroll position is used for the mixed rail.
