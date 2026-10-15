@@ -935,50 +935,6 @@ class HomeViewModel @Inject constructor(
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
                 }
 
-                // Home's separately configured addon rows are superseded by its
-                // deduplicated mixed collection. Retain custom Hub rows above.
-                if (false) launch {
-                    val remainingRows = repository.getDashboardRows(
-                        screen = screenName,
-                        skipConfigs = initialDashboardBatchSize
-                    )
-                    if (remainingRows.isEmpty()) return@launch
-
-                    _state.update { currentState ->
-                        if (currentState.loadedScreen != screenName || currentState.loadedProfileId != currentProfileId) {
-                            return@update currentState
-                        }
-
-                        val allRows = (currentState.rows + remainingRows)
-                            .distinctBy { it.configId }
-                            .sortedBy { it.order }
-
-                        val resolvedHeroRow = when {
-                            currentState.heroRow != null -> currentState.heroRow
-                            heroConfig?.categoryId != null -> allRows.find { it.configId == heroConfig.categoryId }
-                            else -> null
-                        }
-
-                        // Append newly-arrived rows after the ones already rendered instead of
-                        // re-sorting the whole merged list by `order`. Re-sorting can shift an
-                        // already-visible row's position in mixedRows (e.g. a hub row that sat
-                        // after the initial batch can end up before a newly-inserted catalog row
-                        // with a lower `order`), which would invalidate any focus-restoration key
-                        // saved against that row's old index.
-                        val existingIds = currentState.mixedRows.mapTo(mutableSetOf()) { it.id }
-                        val newRows = allRows
-                            .map { CategoryRow.fromHomeRow(it) }
-                            .filter { it.id !in existingIds }
-                            .sortedBy { it.order }
-                        val mixedList = currentState.mixedRows + newRows
-
-                        currentState.copy(
-                            mixedRows = mixedList,
-                            rows = allRows,
-                            heroRow = resolvedHeroRow
-                        )
-                    }
-                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
