@@ -79,7 +79,6 @@ import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.domain.HomeRowItem
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
-import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
@@ -1495,6 +1494,10 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
         ?.first
 }
 
+/** Do not resolve media or start a player for a disabled/offscreen preview. */
+internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
+    autoPlay && visible
+
 /**
  * The image underneath stays visible until ExoPlayer reports that the extracted
  * trailer video is ready. Switching titles cancels resolution and disposes the player.
@@ -1515,7 +1518,7 @@ internal fun TrailerPreview(
         initialValue = null, item?.id, item?.type, autoPlay, isVisible
     ) {
         value = null
-        if (item != null && autoPlay && isVisible) {
+        if (item != null && shouldResolveCinematicPreview(autoPlay, isVisible)) {
             delay(500)
             value = resolveTrailer(item)
         }
