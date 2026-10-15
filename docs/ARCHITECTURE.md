@@ -213,3 +213,8 @@ Cinematic rows use `useLandscapeMediaCard` so **every inactive row** is landscap
 
 `cinematicVideoCoverSize` computes a 16:9 covering surface from the **actual viewport** width and height, rather than trusting a player resize flag. `TrailerPreview` centers the oversized video inside a clipped `BoxWithConstraints`. `cinematic_trailer_player.xml` requests TextureView, which supports precise clipping on Android TV, with Media3 zoom for other video ratios. The Hero's AnimatedContent explicitly fills its 420dp viewport. Both Hero and inline video center-crop without letterboxing.
 
+## Standalone Add-ons destination and Hero focus return (October 15, 2026)
+
+`NavDestination.Addons` has a saved, serializable `AddonsKey` and a main navigation entry, not a Settings subsection. `AddonsScreen` displays the existing browse catalog content directly, without a dialog's height constraint. Source tabs scroll horizontally, catalog results vertically, and configure/install/uninstall are accessible, focusable icons. Installed addons and manual URL/phone-paste installation retain their previous persistence and confirmation behavior. The external stremio-addons.net source is labeled **3rd Party** but its endpoint is unchanged.
+
+`HeroCarousel` retains an unconditional return-focus requester in addition to its existing initial/restored-entry requester. Up from the first focused content row (history, Hub, or category) scrolls the nonsticky `LazyColumn` to the Hero, waits for it to compose, and moves focus there. Deeper rows preserve normal vertical navigation.
