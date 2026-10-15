@@ -192,3 +192,7 @@ The centralized Google Play build for commit `7119e8e` compiled Kotlin and Andro
 - Add-ons is a root item in side and top navigation with a saved back-stack key; Settings no longer contains an Add-ons section. From Add-ons, Back at the root opens main navigation; Back inside Installed restores Browse.
 - The former browse modal fills its own new screen. Its source tabs, including renamed **3rd Party**, scroll horizontally; the search results scroll vertically. Configure/install/uninstall are icon-only, with TV-focus and accessibility labels; uninstall is confirmed. Installed addons, collections, manifest URL input and remote paste remain available.
 - FOSS Debug/Release unit tests and Android TV focus/scroll/installation checks remain required before release.
+
+## Play test regression: canonical genre transfers (October 15, 2026)
+
+The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowReconciliationTest` (unchanged neighbour row references and idempotent replay). Canonical transfers now compare an existing row title against the incoming batch in the same direction as the deduper's `existing, incoming` contract, retaining unrelated and empty rows without copying them. Validate both named tests and the full FOSS unit suite before treating the Play release as published.
