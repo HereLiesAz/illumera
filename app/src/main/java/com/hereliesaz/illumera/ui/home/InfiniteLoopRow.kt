@@ -353,7 +353,10 @@ private fun LinearContent(
         if (isLandscapeCards) {
             items.map { item ->
                 val enriched = enrichedItems["${item.type}:${item.id}"]
-                enriched?.background ?: item.background ?: enriched?.poster ?: item.poster
+                enriched?.background?.takeIf { it.isNotBlank() }
+                    ?: item.background?.takeIf { it.isNotBlank() }
+                    ?: enriched?.poster?.takeIf { it.isNotBlank() }
+                    ?: item.poster?.takeIf { it.isNotBlank() }
             }
         } else {
             items.map { it.poster }
@@ -461,13 +464,17 @@ private fun LinearContent(
                     val enriched = enrichedItems["${item.type}:${item.id}"]
                     LumeraLandscapeCard(
                         title = item.name,
-                        backdropUrl = enriched?.background ?: item.background,
-                        logoUrl = enriched?.logo ?: item.logo,
-                        posterUrl = enriched?.poster ?: item.poster,
+                        backdropUrl = enriched?.background?.takeIf { it.isNotBlank() }
+                            ?: item.background?.takeIf { it.isNotBlank() },
+                        logoUrl = enriched?.logo?.takeIf { it.isNotBlank() }
+                            ?: item.logo?.takeIf { it.isNotBlank() },
+                        posterUrl = enriched?.poster?.takeIf { it.isNotBlank() }
+                            ?: item.poster?.takeIf { it.isNotBlank() },
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
                         hasNewEpisode = item.hasNewEpisode,
+                        isWatched = rowIndex != -1 && item.id in LocalWatchedIds.current,
                         onFocused = {
                             ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
                             onFocused(item, uniqueKey)
