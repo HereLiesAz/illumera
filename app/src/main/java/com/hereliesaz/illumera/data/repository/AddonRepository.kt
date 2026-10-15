@@ -289,14 +289,10 @@ class AddonRepository @Inject constructor(
                                 // genre value was actually supplied in its request.
                                 (!sourceGenre.isNullOrBlank() &&
                                     (meta.genres.isNullOrEmpty() || meta.genres.orEmpty().any {
-                                        ScreenGenreRows.canonicalGenre(it).equals(
-                                            ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
-                                        )
+                                        ScreenGenreRows.matchesRequestedGenre(it, genre)
                                     })) ||
                                 meta.genres.orEmpty().any {
-                                    ScreenGenreRows.canonicalGenre(it).equals(
-                                        ScreenGenreRows.canonicalGenre(genre), ignoreCase = true
-                                    )
+                                    ScreenGenreRows.matchesRequestedGenre(it, genre)
                                 }
                         }.map { it.copy(addonBaseUrl = addon.transportUrl) }.toList()
                 }
