@@ -125,6 +125,13 @@ private class RowKeyRepeatDebouncer {
     var lastTime: Long = 0L
 }
 
+/** 16:9 preview width bounded by the actual space beside the navigation chrome. */
+internal fun cinematicInlineWidth(screenWidth: Dp, startPadding: Dp): Dp =
+    minOf(
+        210.dp * (16f / 9f),
+        (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
+    )
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun InfiniteLoopRow(
@@ -192,12 +199,8 @@ fun InfiniteLoopRow(
     }
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-    // Native 16:9 previews need roughly 373dp at 210dp high. Allow room
-    // beyond the old 340dp width, but never extend into the TV navigation rail.
-    val inlineCinematicWidth = minOf(
-        210.dp * (16f / 9f),
-        (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
-    )
+    // Native 16:9 previews need roughly 373dp at 210dp high, screen permitting.
+    val inlineCinematicWidth = cinematicInlineWidth(screenWidth, startPadding)
     val endPadding = remember(
         screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
         isInfiniteLoopEnabled, isLandscapeCards
