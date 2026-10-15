@@ -25,10 +25,11 @@ object ScreenGenreRows {
     // poster rows. Keep official Stremio genres plus recognized cinematic
     // genres, rather than treating every arbitrary option as a genre.
     private val additionalRealGenres = listOf(
-        "Anime", "Children", "Cult", "Experimental", "Film-Noir",
+        "Action & Adventure", "Anime", "Children", "Cult", "Experimental", "Film-Noir",
         "Independent", "Kids", "Martial Arts", "Music", "Musical",
         "News", "Noir", "Psychological", "Short", "Slice of Life",
-        "Superhero", "Suspense", "True Crime", "Soap", "TV Movie", "Action & Adventure"
+        "Soap", "TV Movie", "Sci-Fi & Fantasy",
+        "Superhero", "Suspense", "True Crime"
     )
     private val recognizedGenreLabels =
         (movieDefaults + seriesExtra + additionalRealGenres)
@@ -86,9 +87,9 @@ object ScreenGenreRows {
         "slice-of-life", "sliceoflife" -> "Slice of Life"
         "sports" -> "Sport"
         "children's", "childrens" -> "Children"
-        "action and adventure", "action-adventure", "action & adventure" -> "Action & Adventure"
-        "tv-movie", "tv film", "television movie" -> "TV Movie"
-        "soap opera", "soap-opera" -> "Soap"
+        "action and adventure", "action-adventure" -> "Action & Adventure"
+        "science fiction & fantasy", "sci fi & fantasy" -> "Sci-Fi & Fantasy"
+        "tv movies", "television movie" -> "TV Movie"
         else -> value.trim()
     }
 
@@ -132,6 +133,7 @@ object ScreenGenreRows {
     ) {
         if (screen !in setOf("movies", "series")) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putStringSet(preferenceKey(profileId, screen), disabled.toSet()).apply()
+            .putStringSet(preferenceKey(profileId, screen), disabled.map(::canonicalGenre).toSet())
+            .apply()
     }
 }

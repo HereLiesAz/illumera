@@ -149,7 +149,8 @@ fun LumeraLandscapeCard(
             )
         ) {
             val context = LocalContext.current
-            val imageUrl = backdropUrl?.takeIf { it.isNotBlank() } ?: posterUrl?.takeIf { it.isNotBlank() }
+            val imageUrl = backdropUrl?.takeIf { it.isNotBlank() }
+                ?: posterUrl?.takeIf { it.isNotBlank() }
             val imageRequest = remember(imageUrl) {
                 ImageRequest.Builder(context)
                     .data(imageUrl)
@@ -231,11 +232,14 @@ fun LumeraLandscapeCard(
                     Box(
                         modifier = Modifier.align(Alignment.TopStart)
                             .padding(6.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("✓", color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            "✓", color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
