@@ -843,7 +843,8 @@ class HomeViewModel @Inject constructor(
                         screen = screenName,
                         skipConfigs = 0,
                         maxConfigs = initialDashboardBatchSize,
-                        catalogTimeoutMs = initialDashboardTimeoutMs
+                        catalogTimeoutMs = initialDashboardTimeoutMs,
+                        curatedHomeOnly = true
                     ) else emptyList<HomeRow>()
                 }
                 val hubRowsDeferred = async {
@@ -954,7 +955,8 @@ class HomeViewModel @Inject constructor(
                 if (screenName == "home") launch {
                     val remainingRows = repository.getDashboardRows(
                         screen = screenName,
-                        skipConfigs = initialDashboardBatchSize
+                        skipConfigs = initialDashboardBatchSize,
+                        curatedHomeOnly = true
                     )
                     if (remainingRows.isEmpty()) return@launch
 
