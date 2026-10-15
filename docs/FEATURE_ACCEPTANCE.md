@@ -85,3 +85,11 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 The Hero Carousel remains the first ordinary LazyColumn item: it must scroll entirely away as the user navigates into the rows, and must **not** be pinned or persist above them. Home, Movies, and Series cinematic media rows (including Continue Watching) use portrait 140×210dp posters rather than 16:9 mini-backdrops. When a title receives focus its **existing** Surface widens up to 340dp (bounded by screen width) and displays the compact cinematic trailer/backdrop, title and metadata **in that poster slot**. There is no additional full-width preview above any row. When focus moves, the former item returns to its portrait poster and the newly active poster expands; focusing another row collapses the old row. Long-press menus, selection, D-pad focus restoration, lazy pagination, and finite/looping View More cards must behave exactly as before. The separate simple layout remains unchanged.
 
 **Device acceptance:** From the Hero, press Down repeatedly: the Hero disappears with normal vertical scrolling, no sticky carousel remains, and the active poster widens without dislodging focus or adding vertical blank space. Move horizontally, then vertically, return from Details, test after dynamic genre insertion and across all three rail modes. Verify trailer first-frame/art fallback and menu-on-release behavior. Build, tests, and on-device confirmation are outstanding.
+
+### Review fixes for PR #245
+
+- Losing focus to the navigation drawer or top bar clears the active inline preview and unmounts its muted ExoPlayer; moving within the row does not.
+- Finite/infinite View More end padding uses the terminal card's actual width (120dp portrait; 190dp landscape), independent of the expanded 340dp poster width.
+- Continue Watching and other portrait rails select cached enriched posters when original history/suggestion cards lack artwork; no blank collapsed card after asynchronous enrichment.
+
+Android compilation and TV D-pad/end-of-row focus require device verification before release.
