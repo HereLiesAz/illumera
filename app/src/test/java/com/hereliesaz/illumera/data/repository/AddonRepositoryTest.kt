@@ -511,6 +511,23 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun homePairsTitlesWithMovieAndSeriesSuffixesButRetainsDistinctProviders() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon("https://one.example")))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://one.example", "movie", "netflix-movie", "Netflix Movies", 1),
+            config("https://one.example", "series", "netflix-series", "Netflix Series", 2),
+            config("https://one.example", "movie", "hbo-movie", "HBO Max - Movie", 3),
+            config("https://one.example", "series", "hbo-series", "HBO Max - Series", 4),
+            config("https://one.example", "movie", "latest-movie", "Latest Movies", 5),
+            config("https://one.example", "series", "latest-series", "Latest Series", 6)
+        ))
+        val rows = AddonRepository(api, dao).getHomePairedRows()
+        assertEquals(listOf("Netflix", "HBO Max", "Latest"), rows.map { it.title })
+    }
+
+    @Test
     fun homePopularPairAggregatesMoviesSeriesAcrossProvidersAndDeduplicates() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
