@@ -325,6 +325,21 @@ fun CinematicLayout(
         }
     }
     val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
+    // All visible rows (including Hub spacers) participate in vertical order.
+    // Only media rails register cards, so navigation into a Hub/Hero keeps its
+    // original focus behavior instead of jumping over that row.
+    val verticalFocusCoordinator = remember(state.loadedScreen) {
+        CinematicVerticalFocusCoordinator()
+    }
+    val verticalRowOrder = remember(historyItems, visibleMixedRows) {
+        buildList {
+            if (historyItems.isNotEmpty()) add(-1)
+            visibleMixedRows.forEach { add(it.index) }
+        }
+    }
+    SideEffect {
+        verticalFocusCoordinator.orderedRowIndices = verticalRowOrder
+    }
 
     // Proactive metadata fetch for continue watching cards (posters + landscape)
     LaunchedEffect(historyItems) {
@@ -527,6 +542,7 @@ fun CinematicLayout(
                                         )
                                     },
                                     isInlineRowActive = historyRowActive,
+                                    verticalFocusCoordinator = verticalFocusCoordinator,
                                     onRowFocusExited = {
                                         if (activeCinematicRow == "history") {
                                             activeCinematicRow = "__navigation__"
@@ -687,6 +703,7 @@ fun CinematicLayout(
                                         )
                                         },
                                         isInlineRowActive = categoryRowActive,
+                                        verticalFocusCoordinator = verticalFocusCoordinator,
                                         onRowFocusExited = {
                                             if (activeCinematicRow == rowKey) {
                                                 activeCinematicRow = "__navigation__"
