@@ -691,7 +691,8 @@ fun CinematicLayout(
                                     // addon catalogs. Fetch when its LazyColumn item first
                                     // enters view, then keep pagination on horizontal scrolling.
                                     LaunchedEffect(item.id) {
-                                        if (item.id.startsWith("catalog-aggregate:") &&
+                                        if ((item.id.startsWith("catalog-aggregate:") ||
+                                            item.id.startsWith("catalog-home:")) &&
                                             item.items.isEmpty()
                                         ) onLoadMore(item.id)
                                     }
