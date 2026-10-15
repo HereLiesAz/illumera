@@ -135,6 +135,65 @@ class QueueManagerTest {
     }
 
     @Test
+    fun disablingASuggestionSourceInvalidatesSavedRecommendationsBeforeLeavingSettings() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        coEvery { addonDao.getAllWatchHistoryOnce() } returns historyOf("tt-a", "tt-b")
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+        queue.setSuggestionSource(QueueSuggestionSource.TRAKT, false)
+        queue.refreshSuggestions()
+        assertEquals(setOf("tt-a", "tt-b"), queue.state.value.suggestions.map { it.id }.toSet())
+
+        // The queue may already be full, and the Settings composable may
+        // disappear before its own refresh coroutine finishes.
+        queue.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, false)
+
+        assertTrue(queue.state.value.suggestions.isEmpty())
+        assertTrue(newManager(addonDao = addonDao).state.value.suggestions.isEmpty())
+        assertTrue(newManager(addonDao = addonDao).state.value.preferences.suggestionSources.isEmpty())
+    }
+
+    @Test
+    fun changingAllowedContentTypesInvalidatesPriorSuggestionsButNotManualQueue() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        coEvery { addonDao.getAllWatchHistoryOnce() } returns historyOf("tt-a")
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+        queue.setSuggestionSource(QueueSuggestionSource.TRAKT, false)
+        queue.add(QueueItem(id = "tt-manual", type = "movie", title = "Manual"))
+        queue.refreshSuggestions()
+        assertEquals(listOf("tt-a"), queue.state.value.suggestions.map { it.id })
+
+        queue.setIncludeMovies(false)
+
+        assertTrue(queue.state.value.suggestions.isEmpty())
+        assertEquals(listOf("tt-manual"), queue.state.value.manualItems.map { it.id })
+        assertFalse(queue.state.value.preferences.includeMovies)
+    }
+
+    @Test
+    fun inFlightRefreshCannotRestoreSuggestionsFromANowDisabledSource() = runTest {
+        val addonDao = mockk<AddonDao>(relaxed = true)
+        val gate = CompletableDeferred<Unit>()
+        coEvery { addonDao.getAllWatchHistoryOnce() } coAnswers {
+            gate.await()
+            historyOf("tt-stale")
+        }
+        val queue = newManager(addonDao = addonDao)
+        queue.setEnabled(true)
+        queue.setSuggestionSource(QueueSuggestionSource.TRAKT, false)
+
+        val loading = launch { queue.refreshSuggestions() }
+        runCurrent()
+        queue.setSuggestionSource(QueueSuggestionSource.PLAY_HISTORY, false)
+        gate.complete(Unit)
+        loading.join()
+
+        assertTrue(queue.state.value.suggestions.isEmpty())
+        assertFalse(queue.state.value.isRefreshingSuggestions)
+    }
+
+    @Test
     fun manualQueueIsIsolatedAcrossProfileSwitches() {
         manager.add(QueueItem(id = "profile-one", type = "movie", title = "One"))
 

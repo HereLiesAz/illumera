@@ -65,7 +65,8 @@ fun LumeraCard(
     mediaItem: MetaItem? = null,
     inlineCinematicExpanded: Boolean = false,
     inlineCinematicWidth: Dp = 340.dp,
-    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    cardWidth: Dp = 140.dp
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
@@ -93,7 +94,7 @@ fun LumeraCard(
 
     Box(
         modifier = modifier
-            .width(if (inlineCinematicExpanded && inlineCinematicPreview != null) inlineCinematicWidth else 140.dp)
+            .width(if (inlineCinematicExpanded && inlineCinematicPreview != null) inlineCinematicWidth else cardWidth)
             .then(
                 if (inlineCinematicPreview != null) Modifier.height(210.dp)
                 else Modifier.aspectRatio(2f / 3f)

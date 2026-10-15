@@ -28,6 +28,20 @@ class QueueFocusNeighbourTest {
     }
 
     @Test
+    fun removedSuggestionFallsBackToTheQueueNowBelowIt() {
+        val before = listOf(listOf("suggestion"), listOf("queued", "next"))
+        val after = listOf(emptyList(), listOf("queued", "next"))
+        assertEquals("queued", queueFocusNeighbour("suggestion", before, after))
+    }
+
+    @Test
+    fun removedQueueItemFallsBackToSuggestedNextAboveIt() {
+        val before = listOf(listOf("suggestion"), listOf("queued"))
+        val after = listOf(listOf("suggestion"), emptyList())
+        assertEquals("suggestion", queueFocusNeighbour("queued", before, after))
+    }
+
+    @Test
     fun nothingLeftGivesNull() {
         assertNull(queueFocusNeighbour("a", listOf(listOf("a"), emptyList()), listOf(emptyList(), emptyList())))
     }
