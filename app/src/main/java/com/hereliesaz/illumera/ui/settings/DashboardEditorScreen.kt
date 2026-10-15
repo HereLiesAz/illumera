@@ -47,7 +47,6 @@ import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubShape
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
-import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.domain.withHero
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
@@ -192,19 +191,10 @@ fun DashboardEditorScreen(
                 } else false
             }
             val controlButtonSpacing = 8.dp
-            val heroToControlsGap = controlButtonSpacing
             val tabButtonWidth = if (isTopNav) 100.dp else 92.dp
             val addButtonWidth = 108.dp
             val newHubButtonWidth = 140.dp
             val topRightControlsWidth = addButtonWidth + controlButtonSpacing + newHubButtonWidth
-            // Manual optical tuning per nav mode.
-            val topNavSimpleWidthOffset = (-1).dp
-            val topNavCinematicWidthOffset = (-8).dp
-            val leftNavCinematicWidthOffset = (-42).dp
-            val simpleButtonWidth = addButtonWidth + if (isTopNav) topNavSimpleWidthOffset else 0.dp
-            val cinematicButtonWidth = newHubButtonWidth + if (isTopNav) topNavCinematicWidthOffset else leftNavCinematicWidthOffset
-            val layoutControlsWidth = simpleButtonWidth + controlButtonSpacing + cinematicButtonWidth
-
             // The tab row + action buttons need ~530dp combined (fixed optically-tuned
             // widths); that overflows a phone-compact Settings pane (~312dp available),
             // so let it scroll horizontally there instead of overlapping.
@@ -285,8 +275,6 @@ fun DashboardEditorScreen(
             // --- PER-TAB LAYOUT + HERO CONTROLS ---
             if (currentProfile != null) {
                 val dashboardTab = DashboardTab.fromString(selectedTab)
-                val currentLayout = currentProfile.layoutFor(dashboardTab)
-                val isSimple = selectedTab == "home" && currentLayout == "simple"
                 val heroConfig = currentProfile.heroFor(dashboardTab)
                 val heroDisabled = heroConfig.categoryId == HERO_DISABLED_MARKER
                 val heroLabel = if (heroConfig.categoryId == null ||
@@ -321,32 +309,9 @@ fun DashboardEditorScreen(
                         interactive = true,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(end = if (selectedTab == "home") layoutControlsWidth + heroToControlsGap else 0.dp)
                             .then(goBackModifier)
                     )
 
-                    if (selectedTab == "home") Row(
-                        modifier = Modifier
-                            .width(layoutControlsWidth)
-                            .align(Alignment.CenterEnd),
-                        horizontalArrangement = Arrangement.spacedBy(controlButtonSpacing),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LayoutOptionItem(
-                            label = "Simple",
-                            onClick = { viewModel.updateTabLayout(currentProfile.id, dashboardTab, "simple") },
-                            isSelected = isSimple,
-                            modifier = Modifier
-                                .width(simpleButtonWidth)
-                        )
-                        LayoutOptionItem(
-                            label = "Cinematic",
-                            onClick = { viewModel.updateTabLayout(currentProfile.id, dashboardTab, "cinematic") },
-                            isSelected = !isSimple,
-                            modifier = Modifier
-                                .width(cinematicButtonWidth)
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
