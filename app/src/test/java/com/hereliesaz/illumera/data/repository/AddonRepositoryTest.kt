@@ -487,6 +487,26 @@ class AddonRepositoryTest {
 
 
     @Test
+    fun bareMoviesAndTvShowsCatalogsUseTheSameProviderCategory() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>()
+        every { dao.getAllAddons() } returns flowOf(listOf(addon("https://one.example")))
+        every { dao.getAllCatalogConfigs() } returns flowOf(listOf(
+            config("https://one.example", "movie", "films", "Movies", 1),
+            config("https://one.example", "series", "shows", "TV Shows", 2)
+        ))
+        val rows = AddonRepository(api, dao).getHomePairedRows()
+        assertEquals(1, rows.size)
+    }
+
+    @Test
+    fun normalizedImdbProviderIdsAreDeduplicatedInHomeRows() {
+        val first = MetaItem(id = "tt1234567", type = "movie", name = "A Film")
+        val alias = first.copy(id = "imdb:tt1234567")
+        assertEquals(1, distinctAggregatedMetas(emptyList(), listOf(first, alias)).size)
+    }
+
+    @Test
     fun homePairsPopularMoviesAndSeriesWithoutMergingTrendingOrNetflix() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
