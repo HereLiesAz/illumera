@@ -411,13 +411,17 @@ class AddonRepository @Inject constructor(
                         "series" -> primary.seriesOrder
                         else -> 999
                     },
-                    supportsSkip = catalogSupportsSkip(addon, primary.catalogType, primary.catalogId),
+                    supportsSkip = catalogSupportsSkip(addon, primary.catalogType, primary.catalogId) ||
+                        (secondary?.let {
+                            catalogSupportsSkip(addon, it.catalogType, it.catalogId)
+                        } ?: false),
                     secondCatalogUrl = secondaryUrl.takeIf { secondary != null },
                     secondSupportsSkip = secondary?.let {
                         catalogSupportsSkip(addon, it.catalogType, it.catalogId)
                     } ?: false,
                     fetchedPrimaryCount = moviesOrSeries.size,
-                    fetchedSecondCount = secondType.size
+                    fetchedSecondCount = secondType.size,
+                    primarySupportsSkip = catalogSupportsSkip(addon, primary.catalogType, primary.catalogId)
                 )
             } }.awaitAll().filterNotNull()
         }
