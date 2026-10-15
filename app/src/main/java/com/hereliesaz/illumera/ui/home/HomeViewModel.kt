@@ -373,7 +373,10 @@ class HomeViewModel @Inject constructor(
                 } else item
             }
 
-            val automaticHero = current.heroRow ?: if (
+            val refreshedHero = current.heroRow?.let { hero ->
+                updatedRows.firstOrNull { it.configId == hero.configId } ?: hero
+            }
+            val automaticHero = refreshedHero ?: if (
                 ((current.loadedScreen == "home" &&
                     tmdbProfileCache?.heroFor(DashboardTab.HOME)?.categoryId == null) ||
                  (current.loadedScreen in setOf("movies", "series") &&
@@ -883,6 +886,9 @@ class HomeViewModel @Inject constructor(
                             ?: initialRows.firstOrNull { it.items.isNotEmpty() }
                     heroConfig?.categoryId != null ->
                         initialRows.find { it.configId == heroConfig.categoryId }
+                            ?: (if (screenName == "home")
+                                repository.getHomePairRowForConfig(heroConfig.categoryId)
+                            else null)
                             ?: repository.getCategoryRowPreview(
                                 configId = heroConfig.categoryId,
                                 maxItems = heroConfig.posterCount,
