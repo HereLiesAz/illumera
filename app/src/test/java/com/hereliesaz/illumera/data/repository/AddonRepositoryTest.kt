@@ -859,6 +859,76 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun canonicalLeadGenreBeatsAddonGenreOrderingAndIsCached() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val url = "https://v3-cinemeta.strem.io/meta/movie/tt1112223.json"
+        coEvery { api.getMeta(url) } returns MetaResponse(
+            MetaItem(
+                id = "tt1112223", type = "movie", name = "Genre Example",
+                genres = listOf("Drama", "Comedy")
+            )
+        )
+        val item = MetaItem(
+            id = "tt1112223", type = "movie", name = "Genre Example",
+            genres = listOf("Comedy", "Drama")
+        )
+        val repository = AddonRepository(api, dao)
+
+        assertEquals("Drama", repository.primaryGenreFor(item))
+        assertEquals("Drama", repository.primaryGenreFor(item))
+        coVerify(exactly = 1) { api.getMeta(url) }
+    }
+
+    @Test
+    fun primaryGenreLookupRecoversAfterUnavailableCanonicalMetadata() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val url = "https://v3-cinemeta.strem.io/meta/series/tt8889990.json"
+        coEvery { api.getMeta(url) } throws java.io.IOException("offline")
+        val item = MetaItem(id = "tt8889990", type = "series", name = "Series")
+        val repository = AddonRepository(api, dao)
+
+        assertEquals(null, repository.primaryGenreFor(item))
+        coEvery { api.getMeta(url) } returns MetaResponse(
+            item.copy(genres = listOf("Science Fiction", "Drama"))
+        )
+        assertEquals("Sci-Fi", repository.primaryGenreFor(item))
+        coVerify(exactly = 2) { api.getMeta(url) }
+    }
+
+    @Test
+    fun alternateProviderIdUsesExactCinemetaTitleAndYearToFindGenre() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val movieSearch = "https://v3-cinemeta.strem.io/catalog/movie/top/search=Example%20Film.json"
+        val seriesSearch = "https://v3-cinemeta.strem.io/catalog/series/top/search=Example%20Film.json"
+        coEvery { api.getCatalog(movieSearch) } returns CatalogResponse(
+            listOf(
+                MetaItem(id = "tt4445556", type = "movie", name = "Example Film", releaseInfo = "2001"),
+                MetaItem(id = "tt4445557", type = "movie", name = "Example Film", releaseInfo = "2018")
+            )
+        )
+        coEvery { api.getCatalog(seriesSearch) } returns CatalogResponse(emptyList())
+        coEvery {
+            api.getMeta("https://v3-cinemeta.strem.io/meta/movie/tt4445557.json")
+        } returns MetaResponse(
+            MetaItem(
+                id = "tt4445557", type = "movie", name = "Example Film",
+                genres = listOf("Thriller", "Drama")
+            )
+        )
+        val repository = AddonRepository(api, dao)
+        val item = MetaItem(id = "tmdb:222", type = "movie", name = "Example Film",
+            releaseInfo = "2018", genres = listOf("Drama", "Thriller"))
+
+        assertEquals("Thriller", repository.primaryGenreFor(item))
+        coVerify(exactly = 0) {
+            api.getMeta("https://v3-cinemeta.strem.io/meta/movie/tt4445556.json")
+        }
+    }
+
+    @Test
     fun countsAllSourceBatchesBeforeConcludingThatAGenreIsEmpty() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>()
