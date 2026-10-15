@@ -154,3 +154,10 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - Repeat when coming back to a portrait row, when horizontal rows have different scroll offsets, and in linear, finite and looping rails. Candidate positions are measured in window coordinates, not inferred from poster width or saved indexes.
 - Genre rows with disabled/empty predecessors and intervening Hub rows must not be skipped. Hero, Hub, View More, and offscreen targets retain normal focus fallback.
 - Unit assertions use fixed left-edge coordinates (120/330/540dp, and independently offset rows) so a center-based selection fails the test; physical Android TV D-pad validation remains required.
+
+## Movies/Series genre reload and D-pad crash regression (October 15, 2026)
+
+- Genre batches no longer write the **destination** HomeRow into every CategoryRow: mixed rows are projected from the HomeRow matching **their own configId**. Canonical reclassification removes only duplicate media identities from other genres, leaving unrelated cards, category titles, IDs, and LazyColumn item keys untouched.
+- Idempotent catalog batches preserve unchanged HomeRow object references and do not emit a new StateFlow value. A fallback page cannot reintroduce an item already classified into its primary row.
+- Aggregate genres are initially probed only by the ViewModel's bounded lanes; remounting a visible LazyColumn item no longer retriggers empty-genre fetches. Horizontal paging is not restarted by changed item counts; a new visible scroll index must cross the end threshold. A failed source logs a warning instead of terminating the screen coroutine.
+- Regression fixtures assert canonical moves, unchanged unrelated rows, duplicate-batch replay, fallback suppression, and provider aliases. Additional TV checks: open Movies and Series, allow all genres to populate, navigate between rows in either direction, verify active portrait/inactive landscape switching, inspect empty/late rows, and leave/re-enter via drawer without crashing or repeated reloads.
