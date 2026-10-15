@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.ui.home
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 
 /** Where Home's focus goes when a refresh removes or moves the focused card. */
 class HomeFocusNeighbourTest {
@@ -65,6 +66,14 @@ class HomeFocusNeighbourTest {
         assertEquals(false, isCinematicRowActive(null, "drama", "-1_tt9_0", "0_"))
         assertEquals(true, isCinematicRowActive(null, "drama", "0_tt31_2", "0_"))
         assertEquals(false, isCinematicRowActive(null, "drama", "10_tt31_2", "1_"))
+    }
+
+    @Test
+    fun cinematicPreviewMatchesWideVideoWhileRespectingNarrowViewport() {
+        // Expected sizes are independent measurements, not calls to the production formula.
+        assertEquals(373.3333f, cinematicInlineWidth(1920.dp, 120.dp).value, 0.02f)
+        assertEquals(277f, cinematicInlineWidth(393.dp, 96.dp).value, 0.001f)
+        assertEquals(140f, cinematicInlineWidth(250.dp, 96.dp).value, 0.001f)
     }
 
     @Test
