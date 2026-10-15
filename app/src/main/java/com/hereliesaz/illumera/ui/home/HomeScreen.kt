@@ -502,7 +502,12 @@ fun CinematicLayout(
                                     inlineCinematicPreview = { poster ->
                                         InlineFocusedPosterPreview(poster, state, resolveTrailer)
                                     },
-                                    isInlineRowActive = historyRowActive
+                                    isInlineRowActive = historyRowActive,
+                                    onRowFocusExited = {
+                                        if (activeCinematicRow == "history") {
+                                            activeCinematicRow = "__navigation__"
+                                        }
+                                    }
                                 )
                                 }
                             }
@@ -655,7 +660,12 @@ fun CinematicLayout(
                                         inlineCinematicPreview = { poster ->
                                             InlineFocusedPosterPreview(poster, state, resolveTrailer)
                                         },
-                                        isInlineRowActive = categoryRowActive
+                                        isInlineRowActive = categoryRowActive,
+                                        onRowFocusExited = {
+                                            if (activeCinematicRow == rowKey) {
+                                                activeCinematicRow = "__navigation__"
+                                            }
+                                        }
                                     )
                                     }
                                 }
