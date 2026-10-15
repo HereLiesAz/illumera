@@ -374,6 +374,7 @@ fun CinematicLayout(
     // Focus the remembered item (entryRequester follows it) once there is something to focus:
     // on resume, and again if a refresh takes the focused card away.
     val firstRowPivotRequester = remember { FocusRequester() }
+    val heroReturnRequester = remember { FocusRequester() }
 
     RestoreFocusOnResume(
         memory = focusMemory,
@@ -421,6 +422,22 @@ fun CinematicLayout(
                         initialFirstVisibleItemIndex = verticalScrollPosition.first + if (heroItems.isNotEmpty() && verticalScrollPosition.first == 0) 0 else historyScrollAdjustment,
                         initialFirstVisibleItemScrollOffset = verticalScrollPosition.second
                     )
+
+                    // Restore the Hero into composition before sending Up-focus to it.
+                    val heroReturnScope = rememberCoroutineScope()
+                    val returnToHeroFromFirstRow = Modifier.onPreviewKeyEvent { event ->
+                        if (heroItems.isNotEmpty() &&
+                            event.type == KeyEventType.KeyDown &&
+                            event.key == Key.DirectionUp
+                        ) {
+                            heroReturnScope.launch {
+                                verticalListState.scrollToItem(0)
+                                withFrameNanos { }
+                                runCatching { heroReturnRequester.requestFocus() }
+                            }
+                            true
+                        } else false
+                    }
 
                     // Global UP key debouncer to prevent accidental navbar navigation
                     val upKeyDebouncer = remember { UpKeyDebouncer() }
@@ -488,6 +505,7 @@ fun CinematicLayout(
                                     previewVisible = heroVisible &&
                                         (activeCinematicRow == null || activeCinematicRow == "__hero__"),
                                     onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
+                                    returnFocusRequester = heroReturnRequester,
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
                                     drawerRequester = drawerRequester,
@@ -506,7 +524,9 @@ fun CinematicLayout(
 
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
-                                Column {
+                                Column(modifier = Modifier.then(
+                                    if (heroItems.isNotEmpty()) returnToHeroFromFirstRow else Modifier
+                                )) {
                                 val historyRowActive = isCinematicRowActive(
                                     activeCinematicRow, "history", effectiveLastFocusedKey, "-1_"
                                 )
@@ -593,7 +613,11 @@ fun CinematicLayout(
                             val index = indexed.index
                             when (val item = indexed.value) {
                                 is HubGroupRow -> {
-                                    Column {
+                                    Column(modifier = Modifier.then(
+                                        if (heroItems.isNotEmpty() && historyItems.isEmpty() &&
+                                            index == firstVisibleRowIndex
+                                        ) returnToHeroFromFirstRow else Modifier
+                                    )) {
                                     // Create list state with saved scroll position for this hub row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val hubKey = "hub_${item.id}"
@@ -638,7 +662,11 @@ fun CinematicLayout(
                                     }
                                 }
                                 is CategoryRow -> {
-                                    Column {
+                                    Column(modifier = Modifier.then(
+                                        if (heroItems.isNotEmpty() && historyItems.isEmpty() &&
+                                            index == firstVisibleRowIndex
+                                        ) returnToHeroFromFirstRow else Modifier
+                                    )) {
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
