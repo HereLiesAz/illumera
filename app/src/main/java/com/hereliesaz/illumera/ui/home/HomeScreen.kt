@@ -306,8 +306,9 @@ fun CinematicLayout(
     // persisted poster keys while assigning compact indices to LazyColumn.
     val visibleMixedRows = remember(state.mixedRows, state.loadedScreen) {
         state.mixedRows.withIndex().filter { indexed ->
+            val row = indexed.value
             state.loadedScreen !in setOf("movies", "series") ||
-                indexed.value !is CategoryRow || indexed.value.items.isNotEmpty()
+                row !is CategoryRow || row.items.isNotEmpty()
         }
     }
     val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
