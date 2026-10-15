@@ -84,6 +84,7 @@ import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
