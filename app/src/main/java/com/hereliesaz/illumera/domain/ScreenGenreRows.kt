@@ -24,9 +24,10 @@ object ScreenGenreRows {
     // poster rows. Keep official Stremio genres plus recognized cinematic
     // genres, rather than treating every arbitrary option as a genre.
     private val additionalRealGenres = listOf(
-        "Anime", "Children", "Cult", "Experimental", "Film-Noir",
+        "Action & Adventure", "Anime", "Children", "Cult", "Experimental", "Film-Noir",
         "Independent", "Kids", "Martial Arts", "Music", "Musical",
         "News", "Noir", "Psychological", "Short", "Slice of Life",
+        "Soap", "TV Movie", "Sci-Fi & Fantasy",
         "Superhero", "Suspense", "True Crime"
     )
     private val recognizedGenreLabels =
@@ -45,6 +46,9 @@ object ScreenGenreRows {
         "slice-of-life", "sliceoflife" -> "Slice of Life"
         "sports" -> "Sport"
         "children's", "childrens" -> "Children"
+        "action and adventure", "action-adventure" -> "Action & Adventure"
+        "science fiction & fantasy", "sci fi & fantasy" -> "Sci-Fi & Fantasy"
+        "tv movies", "television movie" -> "TV Movie"
         else -> value.trim()
     }
 
@@ -81,8 +85,9 @@ object ScreenGenreRows {
     fun enabledGenres(
         context: Context, profileId: Int, screen: String, available: List<String>
     ): List<String> {
-        val disabled = disabledGenres(context, profileId, screen).map { it.lowercase() }.toSet()
-        return available.filter { it.lowercase() !in disabled }
+        val disabled = disabledGenres(context, profileId, screen)
+            .map { canonicalGenre(it).lowercase() }.toSet()
+        return available.filter { canonicalGenre(it).lowercase() !in disabled }
     }
 
     fun setDisabledGenres(
@@ -90,6 +95,7 @@ object ScreenGenreRows {
     ) {
         if (screen !in setOf("movies", "series")) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putStringSet(preferenceKey(profileId, screen), disabled.toSet()).apply()
+            .putStringSet(preferenceKey(profileId, screen), disabled.map(::canonicalGenre).toSet())
+            .apply()
     }
 }
