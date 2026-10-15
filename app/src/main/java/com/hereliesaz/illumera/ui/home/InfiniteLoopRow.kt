@@ -152,7 +152,8 @@ fun InfiniteLoopRow(
     isLandscapeCards: Boolean = false,
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
-    isInlineRowActive: Boolean = false
+    isInlineRowActive: Boolean = false,
+    onRowFocusExited: (() -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
@@ -227,27 +228,41 @@ fun InfiniteLoopRow(
         }
     }
 
-    // The focused poster stays mounted while its artwork becomes the preview.
+    // Transforming a focused 16:9 Surface into a portrait Surface detaches
+    // its focus target for one frame. Don't confuse that handoff with focus
+    // leaving the row for another row or the navigation drawer.
     var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    var focusHandoffPending by remember(rowIndex, title) { mutableStateOf(false) }
     val inlineTransitionRequester = remember(rowIndex, title) { FocusRequester() }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
 
-    // Landscape -> portrait changes the card's visual component. Restore
-    // D-pad focus to that same media identity after the replacement is laid out.
     LaunchedEffect(isInlineRowActive, activeCardKey) {
-        if (isInlineRowActive && activeCardKey != null) {
+        if (isInlineRowActive && focusHandoffPending && activeCardKey != null) {
             withFrameNanos { }
-            runCatching { inlineTransitionRequester.requestFocus() }
+            val regained = runCatching { inlineTransitionRequester.requestFocus() }.isSuccess
+            focusHandoffPending = false
+            if (!regained) {
+                activeCardKey = null
+                onRowFocusExited?.invoke()
+            }
         }
     }
     LaunchedEffect(isInlineRowActive) {
-        if (!isInlineRowActive) activeCardKey = null
+        if (!isInlineRowActive) {
+            activeCardKey = null
+            focusHandoffPending = false
+        }
     }
 
     Column(
         modifier = Modifier
             .graphicsLayer { clip = false }
-            .onFocusChanged { if (!it.hasFocus && !isInlineRowActive) activeCardKey = null }
+            .onFocusChanged {
+                if (!it.hasFocus && !focusHandoffPending) {
+                    activeCardKey = null
+                    onRowFocusExited?.invoke()
+                }
+            }
     ) {
         Text(
             text = title,
@@ -261,6 +276,9 @@ fun InfiniteLoopRow(
 
         // Stable reference to avoid recomposition from lambda re-allocation
         val wrappedOnFocused: (MetaItem?, String) -> Unit = { item, key ->
+            if (item != null && inlineCinematicPreview != null && !isInlineRowActive) {
+                focusHandoffPending = true
+            }
             activeCardKey = if (item == null) null else key
             onFocused(item, key)
         }
