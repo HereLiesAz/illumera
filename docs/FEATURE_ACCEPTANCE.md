@@ -102,3 +102,11 @@ Android compilation and TV D-pad/end-of-row focus require device verification be
 - Trailer extraction gives at most one addon candidate, one TMDB candidate, and two Cinemeta candidates 15 seconds each, preserving time for later sources within the resolver deadline.
 
 These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
+
+## Follow-up to the post-merge #244 adversarial review
+
+- The earlier Hero Down requester issue is already corrected in the merged inline-poster layout: CinematicLayout attaches it to `firstVisibleRowIndex` for both Category and Hub rows (not the original empty genre index).
+- IMDb IDs inferred from provider-specific catalog entries must have a matching release year. Bare title matches are ambiguous across remakes and no longer identify metadata or TMDB trailers.
+- Autoplay trailer extraction prioritizes direct YouTube video IDs, skips addon search-result links, and tries up to two addon candidates before TMDB/Cinemeta. Candidate budgets remain bounded; a bad first addon entry must not starve a later playable one.
+- When authoritative Cinemeta genre classification recovers after a temporary outage, the title migrates out of any previous fallback genre row before being appended to its canonical destination. The existing cross-provider dedup identity helper is reused.
+- Regression checks cover title-without-year and the search-page-before-video-ID case; TV playback, Android build and full integration remain release gates.
