@@ -306,6 +306,122 @@ class AddonRepository @Inject constructor(
         }
     }
 
+    /**
+     * One Home row per *category pair*, e.g. Trending Movies + Trending Series
+     * become Trending. Matching labels across enabled addons also contribute to
+     * that same category; no unrelated Latest/Popular/Netflix/HBO Max rows merge.
+     */
+    private data class HomeCatalogPair(
+        val id: String,
+        val title: String,
+        val sources: List<CatalogConfigEntity>,
+        val order: Int
+    )
+
+    private fun homeCategoryTitle(config: CatalogConfigEntity): String {
+        val candidate = config.customTitle?.takeIf { it.isNotBlank() }
+            ?: config.catalogName?.takeIf { it.isNotBlank() }
+            ?: config.catalogId.replace('-', ' ').replace('_', ' ')
+        val normalized = candidate.replace(
+            Regex("(?i)\\s*(?:[-:/]|\\s)\\s*(?:movies?|series|tv shows?|shows?)\\s*$"),
+            ""
+        ).trim()
+        return normalized.ifBlank { config.addonName }
+    }
+
+    private suspend fun homeCatalogPairs(): List<HomeCatalogPair> {
+        val activeAddons = dao.getAllAddons().firstOrNull().orEmpty()
+            .filter { it.isEnabled }.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
+        val configs = dao.getAllCatalogConfigs().firstOrNull().orEmpty()
+            .filter { it.showInHome && it.catalogType in setOf("movie", "series") &&
+                it.transportUrl.trimEnd('/') in activeAddons }
+            .sortedWith(compareBy({ it.homeOrder }, { it.uniqueId }))
+        return configs.groupBy { config ->
+            homeCategoryTitle(config).lowercase().filter { it.isLetterOrDigit() }
+        }.map { (key, group) ->
+            HomeCatalogPair(
+                id = "catalog-home:$key",
+                title = homeCategoryTitle(group.first()),
+                sources = group,
+                order = group.minOf { it.homeOrder }
+            )
+        }.sortedWith(compareBy({ it.order }, { it.title }))
+    }
+
+    suspend fun getHomePairedRows(): List<HomeRow> = withContext(Dispatchers.IO) {
+        homeCatalogPairs().map { group ->
+            val config = group.sources.first()
+            HomeRow(
+                configId = group.id,
+                title = group.title,
+                items = emptyList(),
+                order = group.order,
+                isInfiniteLoopEnabled = config.isInfiniteLoopEnabled,
+                visibleItemCount = config.visibleItemCount,
+                isInfiniteScrollingEnabled = config.isInfiniteScrollingEnabled,
+                supportsSkip = true
+            )
+        }
+    }
+
+    suspend fun homePairFirstLayerPageCount(rowId: String, sourcesPerPage: Int = 4): Int =
+        withContext(Dispatchers.IO) {
+            val count = homeCatalogPairs().firstOrNull { it.id == rowId }?.sources?.size ?: 0
+            (count + sourcesPerPage.coerceIn(1, 8) - 1) / sourcesPerPage.coerceIn(1, 8)
+        }
+
+    suspend fun getHomePairCatalogPage(
+        rowId: String, page: Int, sourcesPerPage: Int = 4
+    ): List<MetaItem> = withContext(Dispatchers.IO) {
+        val group = homeCatalogPairs().firstOrNull { it.id == rowId }
+            ?: return@withContext emptyList()
+        val size = sourcesPerPage.coerceIn(1, 8)
+        val batchCount = (group.sources.size + size - 1) / size
+        if (batchCount == 0) return@withContext emptyList()
+        val safePage = page.coerceAtLeast(0)
+        val layer = safePage / batchCount
+        val offset = (safePage % batchCount) * size
+        kotlinx.coroutines.coroutineScope {
+            val fetched = group.sources.drop(offset).take(size).map { config ->
+                async {
+                    val addon = dao.getAddon(config.transportUrl)
+                        ?: return@async emptyList<MetaItem>()
+                    val supportsSkip = catalogSupportsSkip(
+                        addon, config.catalogType, config.catalogId
+                    )
+                    if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
+                    val url = buildString {
+                        append(config.transportUrl.trimEnd('/'))
+                        append("/catalog/")
+                        append(config.catalogType)
+                        append("/")
+                        append(config.catalogId)
+                        if (layer > 0) append("/skip=${layer * 100}")
+                        append(".json")
+                    }
+                    try {
+                        withTimeout(5_000L) {
+                            api.getCatalog(url).metas.orEmpty().sanitize()
+                        }.filter { it.type == config.catalogType }
+                            .map { it.copy(addonBaseUrl = config.transportUrl) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                }
+            }.awaitAll().flatten()
+            val movies = fetched.filter { it.type == "movie" }
+            val series = fetched.filter { it.type == "series" }
+            distinctAggregatedMetas(emptyList(), buildList {
+                for (index in 0 until maxOf(movies.size, series.size)) {
+                    movies.getOrNull(index)?.let { add(it) }
+                    series.getOrNull(index)?.let { add(it) }
+                }
+            })
+        }
+    }
+
     suspend fun getDashboardRows(
         screen: String,
         skipConfigs: Int = 0,
