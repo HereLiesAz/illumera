@@ -322,6 +322,16 @@ fun CinematicLayout(
         buildContinueWatchingItems(state.history, state.seriesNextUp)
     }
 
+    // Empty genres have no focusable row. Preserve the original index for
+    // persisted poster keys while assigning compact indices to LazyColumn.
+    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen) {
+        state.mixedRows.withIndex().filter { indexed ->
+            state.loadedScreen !in setOf("movies", "series") ||
+                indexed.value !is CategoryRow || indexed.value.items.isNotEmpty()
+        }
+    }
+    val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
+
     // Proactive metadata fetch for continue watching cards (posters + landscape)
     LaunchedEffect(historyItems) {
         historyItems.take(15).forEach { item -> onPreviewItemVisible(item) }
@@ -466,8 +476,8 @@ fun CinematicLayout(
                             "history" -> if (historyItems.isNotEmpty()) (if (heroItems.isNotEmpty()) 1 else 0) else -1
                             "__hero__", "__hub__" -> -1
                             else -> {
-                                val row = state.mixedRows.indexOfFirst {
-                                    it is CategoryRow && it.id == focused
+                                val row = visibleMixedRows.indexOfFirst {
+                                    it.value is CategoryRow && it.value.id == focused
                                 }
                                 if (row < 0) -1 else row +
                                     (if (heroItems.isNotEmpty()) 1 else 0) +
@@ -492,8 +502,10 @@ fun CinematicLayout(
                         withFrameNanos { }
                         val idx = verticalListState.firstVisibleItemIndex
                         val off = verticalListState.firstVisibleItemScrollOffset
-                        verticalListState.scrollToItem(idx + 1)
-                        verticalListState.scrollToItem(idx, off)
+                        if (idx + 1 < verticalListState.layoutInfo.totalItemsCount) {
+                            verticalListState.scrollToItem(idx + 1)
+                            verticalListState.scrollToItem(idx, off)
+                        }
                     }
 
                     LazyColumn(
@@ -601,23 +613,24 @@ fun CinematicLayout(
                         }
 
                         itemsIndexed(
-                            items = state.mixedRows,
-                            key = { _, item -> 
-                                when(item) {
+                            items = visibleMixedRows,
+                            key = { _, indexed ->
+                                when (val item = indexed.value) {
                                     is HubGroupRow -> "hub_row_${item.id}"
                                     is CategoryRow -> "row_${item.id}"
                                     else -> "unknown_${item.id}"
                                 }
                             },
-                            contentType = { _, item -> 
-                                when(item) {
+                            contentType = { _, indexed ->
+                                when (indexed.value) {
                                     is HubGroupRow -> "hub_row"
                                     is CategoryRow -> "row"
                                     else -> "unknown"
                                 }
                             }
-                        ) { index, item ->
-                            when (item) {
+                        ) { _, indexed ->
+                            val index = indexed.index
+                            when (val item = indexed.value) {
                                 is HubGroupRow -> {
                                     Column {
                                     // Create list state with saved scroll position for this hub row
@@ -654,8 +667,8 @@ fun CinematicLayout(
                                         externalListState = hubListState,
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
-                                        isLastRow = index == state.mixedRows.lastIndex,
-                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
+                                        isLastRow = index == visibleMixedRows.lastOrNull()?.index,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
                                             historyItems.isEmpty() && index == 0
                                         ) firstRowPivotRequester else null,
@@ -743,7 +756,7 @@ fun CinematicLayout(
                                         drawerRequester = drawerRequester,
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == 0,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
                                         pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == 0) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
@@ -780,7 +793,7 @@ private fun FocusedRowCinematicPreview(
     // The old 360dp panel, followed by a 210dp row reserved for 107dp cards,
     // left a large blank band between the preview information and the posters.
     // This compact panel ends just above the next row's heading.
-    Box(modifier = Modifier.fillMaxWidth().height(282.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(184.dp)) {
         CinematicBackground(bgItem)
         TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
         Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
@@ -791,7 +804,7 @@ private fun FocusedRowCinematicPreview(
                         // Anchor the title/description to the bottom of the
                         // preview so short descriptions cannot leave a tall
                         // empty band before the row's heading and landscape cards.
-                        .padding(start = startPadding, top = 12.dp, bottom = 12.dp),
+                        .padding(start = startPadding, top = 6.dp, bottom = 6.dp),
                     contentAlignment = Alignment.BottomStart
                 ) {
                     AnimatedContent(
@@ -810,7 +823,7 @@ private fun FocusedRowCinematicPreview(
                                         // width instead (already correctly constrained by
                                         // the parent's padding/weight above).
                                         .fillMaxWidth()
-                                        .height(90.dp),
+                                        .height(56.dp),
                                     contentAlignment = Alignment.BottomStart
                                 ) {
                                     if (!item.logo.isNullOrEmpty()) {
@@ -822,7 +835,7 @@ private fun FocusedRowCinematicPreview(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .widthIn(max = 500.dp)
-                                                .heightIn(max = 90.dp),
+                                                .heightIn(max = 56.dp),
                                             error = {
                                                 Text(
                                                     text = item.name,
@@ -855,12 +868,12 @@ private fun FocusedRowCinematicPreview(
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 HomeMetaStrip(item = item)
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = item.description ?: "",
-                                    maxLines = if (isTopNav) 3 else 4,
+                                    maxLines = if (isTopNav) 2 else 3,
                                     overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
                                     color = Color.White.copy(0.85f),
