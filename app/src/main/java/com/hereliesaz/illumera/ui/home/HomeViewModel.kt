@@ -80,7 +80,6 @@ internal fun reconcileGenreRows(
                 // Keep untouched row and list instances for stable TV focus.
                 val retained = row.items.filter { item ->
                     distinctAggregatedMetas(listOf(item), newItems).isNotEmpty()
-                        .not()
                 }
                 if (retained.size == row.items.size) row.items else retained
             }
