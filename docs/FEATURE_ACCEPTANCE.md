@@ -147,3 +147,10 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - D-pad Up/Down/Left/Right invoke Android's built-in navigation click through the MainShell preview-key listener, returning `false` so key focus movement/held-key behavior is preserved. Throttle repeated sounds to 110ms; Enter/Center/Back must not play navigation clicks.
 - Both Hero and inline cards use Media3 `RESIZE_MODE_ZOOM` to eliminate letterboxing, intentionally cropping edges of wider/taller trailers. Hero remains full screen width and scrolls away. Leaving the Hero's viewport or entering a content row stops its trailer; it must not play sound behind the active row.
 - Inline preview width is ~373dp on large screens (for a 210dp-tall 16:9 video), or the available screen width minus navigation inset and 20dp. Unit tests assert fixed TV/phone/minimum values, preference keys, and direction-to-sound mappings; physical TV, video aspect-ratio, lifecycle pause/resume, and sound routing still require device tests.
+
+## Cross-row left-edge navigation (October 15, 2026)
+
+- From the wide focused inline preview, press Up/Down into an adjacent compact landscape row. Focus must land on the title whose **left edge** aligns most closely with the preview's left edge—not the second title at the preview's horizontal center.
+- Repeat when coming back to a portrait row, when horizontal rows have different scroll offsets, and in linear, finite and looping rails. Candidate positions are measured in window coordinates, not inferred from poster width or saved indexes.
+- Genre rows with disabled/empty predecessors and intervening Hub rows must not be skipped. Hero, Hub, View More, and offscreen targets retain normal focus fallback.
+- Unit assertions use fixed left-edge coordinates (120/330/540dp, and independently offset rows) so a center-based selection fails the test; physical Android TV D-pad validation remains required.
