@@ -289,6 +289,9 @@ class HomeViewModel @Inject constructor(
                 pendingRowItems.clear()
                 allFetchedRowIds.clear()
                 rowFetchOffsets.clear()
+                exhaustedCatalogRows.clear()
+                emptyCatalogPageStreak.clear()
+                seenAggregateCandidates.clear()
                 pairedRowFetchOffsets.clear()
                 loadingMoreRows.clear()
                 metadataRequestsInFlight.clear()
@@ -366,6 +369,14 @@ class HomeViewModel @Inject constructor(
     // Raw number of items fetched per row (including duplicates) — used as the catalog skip
     // so repeated items across pages don't cause the same page to be refetched forever.
     private val rowFetchOffsets = mutableMapOf<String, Int>()
+    // Persisted for the current loaded screen so LazyColumn recomposition and
+    // short/incomplete addon pages cannot restart exhausted genre loading.
+    private val exhaustedCatalogRows = mutableSetOf<String>()
+    private val emptyCatalogPageStreak = mutableMapOf<String, Int>()
+    // Seen across ALL pages of a source genre, including titles redirected to
+    // another primary genre; otherwise repeated pages look newly populated.
+    private val seenAggregateCandidates = mutableMapOf<String, MutableList<MetaItem>>()
+
     private val pairedRowFetchOffsets = mutableMapOf<String, Int>()
 
     private data class MetadataFallback(
@@ -389,6 +400,7 @@ class HomeViewModel @Inject constructor(
 
     fun loadMoreItems(configId: String) {
         if (configId.startsWith("catalog-aggregate:") || configId.startsWith("catalog-home:")) {
+            if (configId in exhaustedCatalogRows) return
             val isHomePair = configId.startsWith("catalog-home:")
             val generation = screenDataGeneration
             val initiatingProfileId = _state.value.loadedProfileId
@@ -409,6 +421,11 @@ class HomeViewModel @Inject constructor(
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
                     }
+                    if (firstLayerCount == 0) {
+                        exhaustedCatalogRows.add(configId)
+                        return@launch
+                    }
+                    var emptyStreak = emptyCatalogPageStreak[configId] ?: 0
                     // Previously a later empty page halted pagination permanently.
                     // Probe a bounded number until there is actual NEW primary-row content.
                     val probes = if (!isHomePair && existing.isEmpty()) {
@@ -417,14 +434,21 @@ class HomeViewModel @Inject constructor(
                         firstLayerCount - nextPage
                     } else 4
                     repeat(probes) {
-                        if (unique.isEmpty()) {
+                        if (unique.isEmpty() && configId !in exhaustedCatalogRows) {
                             val fetched = when {
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
+                            // Keep the identities of titles routed to other primary
+                            // genres, preventing their source pages reappearing forever.
+                            val seen = seenAggregateCandidates.getOrPut(configId) { mutableListOf() }
+                            val freshCandidates = distinctAggregatedMetas(seen, fetched)
+                            seen.addAll(freshCandidates)
+                            emptyStreak = if (freshCandidates.isEmpty()) emptyStreak + 1 else 0
+                            if (emptyStreak >= firstLayerCount) exhaustedCatalogRows.add(configId)
                             val currentItems = _state.value.rows
                                 .firstOrNull { it.configId == configId }?.items.orEmpty()
-                            val unseen = distinctAggregatedMetas(currentItems, fetched)
+                            val unseen = distinctAggregatedMetas(currentItems, freshCandidates)
                             if (genre == null) {
                                 unique = unseen
                             } else {
@@ -487,6 +511,7 @@ class HomeViewModel @Inject constructor(
                         profileConfigurationManager.activeProfileId.value != initiatingProfileId
                     ) return@launch
                     rowFetchOffsets[configId] = nextPage
+                    emptyCatalogPageStreak[configId] = emptyStreak
                     if (genre == null && unique.isNotEmpty()) {
                         appendItemsToRow(configId, unique)
                     }
@@ -624,6 +649,9 @@ class HomeViewModel @Inject constructor(
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
+        exhaustedCatalogRows.clear()
+        emptyCatalogPageStreak.clear()
+        seenAggregateCandidates.clear()
         pairedRowFetchOffsets.clear()
         _state.value = _state.value.copy(
             loadedScreen = null,
@@ -1011,6 +1039,9 @@ class HomeViewModel @Inject constructor(
             pendingRowItems.clear()
             allFetchedRowIds.clear()
             rowFetchOffsets.clear()
+            exhaustedCatalogRows.clear()
+            emptyCatalogPageStreak.clear()
+            seenAggregateCandidates.clear()
             _state.value = _state.value.copy(
                 isLoading = true,
                 mixedRows = emptyList(),
