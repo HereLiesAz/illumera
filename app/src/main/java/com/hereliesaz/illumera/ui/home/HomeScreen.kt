@@ -79,6 +79,7 @@ import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.domain.HomeRowItem
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.ui.components.LumeraBackground
@@ -100,9 +101,23 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
-    val displayState = remember(tab, state) {
+    val genreContext = LocalContext.current
+    val displayState = remember(tab, state, currentProfile?.id) {
         if (tab != DashboardTab.HOME) {
-            state
+            val profileId = currentProfile?.id
+            val screen = if (tab == DashboardTab.MOVIES) "movies" else "series"
+            if (profileId == null) state else state.copy(
+                rows = state.rows.map { row ->
+                    row.copy(items = ScreenGenreRows.sortTitles(
+                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                    ))
+                },
+                mixedRows = state.mixedRows.map { row ->
+                    if (row is CategoryRow) row.copy(items = ScreenGenreRows.sortTitles(
+                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                    )) else row
+                }
+            )
         } else {
             // Home-only rule: once a movie or any episode of a series is watched,
             // remove that title from Home catalog/hero lists immediately. The
@@ -337,12 +352,21 @@ fun CinematicLayout(
             revealedGenres.add(row.id)
         }
     }
-    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, revealedGenres.toList()) {
-        state.mixedRows.withIndex().filter { indexed ->
-            val row = indexed.value
-            state.loadedScreen !in setOf("movies", "series") ||
-                row !is CategoryRow || row.items.isNotEmpty() || row.id in revealedGenres
-        }
+    // Preserve original indices (used by stored TV focus keys) even as the
+    // visible order adapts to watched and bookmarked titles. Empty genre
+    // shells remain visible so late/empty catalog fetches never truncate the page.
+    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, state.watchedIds, state.likedIds) {
+        val original = state.mixedRows.withIndex().toList()
+        if (state.loadedScreen in setOf("movies", "series")) {
+            original.sortedWith(
+                compareByDescending<IndexedValue<HomeRowItem>> { indexed ->
+                    val row = indexed.value
+                    if (row is CategoryRow) ScreenGenreRows.affinityScore(
+                        row.items, state.watchedIds, state.likedIds
+                    ) else Int.MIN_VALUE
+                }.thenBy { it.index }
+            )
+        } else original
     }
     val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
     // All visible rows (including Hub spacers) participate in vertical order.
