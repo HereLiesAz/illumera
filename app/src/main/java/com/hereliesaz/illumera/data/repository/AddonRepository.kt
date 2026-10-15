@@ -306,40 +306,6 @@ class AddonRepository @Inject constructor(
         }
     }
 
-    /**
-     * Mixed Home catalog, aggregating BOTH movies and series across every enabled
-     * addon. Each call advances the two independently paginated media streams by
-     * one bounded source batch, then interleaves them so neither type dominates.
-     * The Home ViewModel deduplicates against all previously displayed pages.
-     */
-    suspend fun getMixedHomeCatalogPage(page: Int, sourcesPerTypePage: Int = 4): List<MetaItem> =
-        kotlinx.coroutines.coroutineScope {
-            val requestedPage = page.coerceAtLeast(0)
-            val movies = async {
-                getAggregatedCatalogPage("movie", page = requestedPage, sourcesPerPage = sourcesPerTypePage)
-            }
-            val series = async {
-                getAggregatedCatalogPage("series", page = requestedPage, sourcesPerPage = sourcesPerTypePage)
-            }
-            val movieItems = movies.await()
-            val seriesItems = series.await()
-            val interleaved = buildList {
-                val maximum = maxOf(movieItems.size, seriesItems.size)
-                for (index in 0 until maximum) {
-                    movieItems.getOrNull(index)?.let { add(it) }
-                    seriesItems.getOrNull(index)?.let { add(it) }
-                }
-            }
-            distinctAggregatedMetas(emptyList(), interleaved)
-        }
-
-    /** First-layer source batches to examine before treating a mixed Home row as empty. */
-    suspend fun mixedHomeFirstLayerPageCount(): Int =
-        maxOf(
-            aggregatedFirstLayerPageCount("movie", null),
-            aggregatedFirstLayerPageCount("series", null)
-        )
-
     suspend fun getDashboardRows(
         screen: String,
         skipConfigs: Int = 0,
