@@ -108,6 +108,29 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun prefixedImdbLibraryEntriesMergeWithDifferentTitlesButKeepMediaTypesSeparate() {
+        fun e(id: String, type: String, title: String) =
+            WatchlistViewModel.LibraryEntry(
+                item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                    id = id, type = type, name = title
+                ),
+                addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
+            )
+        val sameMovie = listOf(
+            e("tt1234567", "movie", "Original title"),
+            e("imdb:tt1234567", "movie", "Alternate title")
+        )
+        assertEquals(1, aggregateLibraryEntries(sameMovie).size)
+        assertEquals(1, aggregateLibraryEntries(sameMovie.reversed()).size)
+        val differentTypes = sameMovie + e("tt1234567", "series", "Series edition")
+        assertEquals(2, aggregateLibraryEntries(differentTypes).size)
+        assertEquals(2, aggregateLibraryEntries(listOf(
+            e("tt1234567", "movie", "Same name"),
+            e("tt7654321", "movie", "Same name")
+        )).size)
+    }
+
+    @Test
     fun distinctCanonicalImdbTitlesWithSameNameAndYearStaySeparate() {
         val originals = listOf("tt0000091", "tt0000092").map { id ->
             WatchlistViewModel.LibraryEntry(
