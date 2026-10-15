@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -14,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -56,6 +59,8 @@ class AppUpdateManager @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences("lumera_update_prefs", Context.MODE_PRIVATE)
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    private val checkMutex = Mutex()
+    private var lastCheckedAtMs: Long? = null
     val state = _state.asStateFlow()
 
     val isPopupEnabled: Boolean
@@ -75,36 +80,43 @@ class AppUpdateManager @Inject constructor(
      */
     private val releaseBodyByApkUrl = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    suspend fun checkForUpdate() {
+    /** Recheck on foreground resume and periodically while visible, without repeating a download. */
+    suspend fun checkForUpdate(force: Boolean = true) = checkMutex.withLock {
         if (!BuildConfig.ENABLE_SELF_UPDATE) {
             _state.value = UpdateState.Idle
-            return
+            return@withLock
         }
+        if (_state.value is UpdateState.Downloading || _state.value is UpdateState.ReadyToInstall) {
+            return@withLock
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (!force && lastCheckedAtMs?.let { now - it < RECHECK_INTERVAL_MS } == true) {
+            return@withLock
+        }
+        lastCheckedAtMs = now
         _state.value = UpdateState.Checking
         try {
             val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
-
-            val remoteVersion = release.tagName.removePrefix("v")
-            val currentVersion = BuildConfig.VERSION_NAME
-
-            if (isNewerVersion(remoteVersion, currentVersion)) {
-                val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
-                if (apkAsset != null) {
-                    if (!isAllowedDownloadUrl(apkAsset.downloadUrl)) {
-                        _state.value = UpdateState.Error("Update URL is not from a trusted source.")
-                        return
-                    }
-                    releaseBodyByApkUrl[apkAsset.downloadUrl] = release.body.orEmpty()
-                    _state.value = UpdateState.UpdateAvailable(
-                        UpdateInfo(
-                            versionName = remoteVersion,
-                            changelog = stripHashFromChangelog(release.body),
-                            apkUrl = apkAsset.downloadUrl
-                        )
-                    )
-                } else {
+            val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+            val remoteVersion = apkAsset?.let { githubReleaseVersion(release.tagName, it.name) }
+                ?: release.tagName.removePrefix("v")
+            if (isNewerVersion(remoteVersion, BuildConfig.VERSION_NAME)) {
+                if (apkAsset == null) {
                     _state.value = UpdateState.Error("Release found but no APK attached.")
+                    return@withLock
                 }
+                if (!isAllowedDownloadUrl(apkAsset.downloadUrl)) {
+                    _state.value = UpdateState.Error("Update URL is not from a trusted source.")
+                    return@withLock
+                }
+                releaseBodyByApkUrl[apkAsset.downloadUrl] = release.body.orEmpty()
+                _state.value = UpdateState.UpdateAvailable(
+                    UpdateInfo(
+                        versionName = remoteVersion,
+                        changelog = stripHashFromChangelog(release.body),
+                        apkUrl = apkAsset.downloadUrl
+                    )
+                )
             } else {
                 _state.value = UpdateState.UpToDate
             }
@@ -331,6 +343,7 @@ class AppUpdateManager @Inject constructor(
     }
 
     companion object {
+        private const val RECHECK_INTERVAL_MS = 30 * 60 * 1000L
         private const val KEY_UPDATE_POPUP_ENABLED = "update_popup_enabled"
         private const val MAX_DOWNLOAD_REDIRECTS = 5
 
@@ -345,6 +358,24 @@ class AppUpdateManager @Inject constructor(
             if (installed.multipleSigners || apk.multipleSigners) return installed.hashes == apk.hashes
             return apk.hashes.containsAll(installed.hashes)
         }
+
+        /**
+         * GitHub's release tag is major.minor.patch; the signed APK's filename
+         * includes the fourth, Android build component. Match its first three
+         * components to the tag before trusting it as a version identity.
+         */
+        internal fun githubReleaseVersion(tagName: String, assetName: String): String {
+            val tag = tagName.removePrefix("v")
+            val assetVersion = Regex("""^illumera-(\\d+\\.\\d+\\.\\d+\\.\\d+)-release\\.apk$""",
+                RegexOption.IGNORE_CASE).matchEntire(assetName)?.groupValues?.get(1)
+                ?: return tag
+            return if (assetVersion.substringBeforeLast('.') == tag || assetVersion == tag) {
+                assetVersion
+            } else tag
+        }
+
+        internal fun isVersionNewer(remote: String, current: String): Boolean =
+            isNewerVersion(remote, current)
 
         /** Trusted domains for APK downloads. */
         private val ALLOWED_DOWNLOAD_HOSTS = setOf(
