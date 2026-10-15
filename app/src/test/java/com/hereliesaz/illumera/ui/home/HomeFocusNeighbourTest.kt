@@ -27,6 +27,31 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun youtubeVideoIdAfterAnAddonSearchPageRemainsSelectable() {
+        val ranked = prioritizedYouTubePreviewCandidates(
+            listOf(
+                "https://www.youtube.com/results?search_query=trailer",
+                "dQw4w9WgXcQ",
+                "https://www.youtube.com/watch?v=QH2-TGUlwu4"
+            )
+        )
+        assertEquals(listOf("dQw4w9WgXcQ", "https://www.youtube.com/watch?v=QH2-TGUlwu4"), ranked)
+    }
+
+    @Test
+    fun trailerCandidatesAreBoundedAndDirectIdsTakePriority() {
+        val ranked = prioritizedYouTubePreviewCandidates(
+            listOf(
+                "https://youtu.be/ABCDEFGHIJK",
+                "ABCDEFGHIJK",
+                "MNOPQRSTUVW",
+                "https://youtube.com/results?search_query=bad"
+            )
+        )
+        assertEquals(listOf("ABCDEFGHIJK", "MNOPQRSTUVW"), ranked)
+    }
+
+    @Test
     fun nothingComposedInTheRowGivesNull() {
         assertNull(resolveHomeFocusNeighbour("3_tt3_2", listOf("4_tt1_0", "hero")))
         assertNull(resolveHomeFocusNeighbour("hero", listOf("3_tt1_0")))
