@@ -1540,12 +1540,15 @@ internal fun TrailerPreview(
             }
         }
     }
+    // Settings/viewport changes shouldn't dispose a player until its own URL
+    // identity changes. The lifecycle observer reads the latest play condition.
+    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
     SideEffect {
         player?.volume = if (soundEnabled) 1f else 0f
-        player?.playWhenReady = autoPlay && isVisible &&
+        player?.playWhenReady = shouldPlay &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
     }
-    DisposableEffect(player, lifecycleOwner, autoPlay, isVisible) {
+    DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
@@ -1555,7 +1558,7 @@ internal fun TrailerPreview(
                     player?.pause()
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (player != null) player.playWhenReady = autoPlay && isVisible
+                    if (player != null) player.playWhenReady = shouldPlay
                 }
                 else -> Unit
             }
