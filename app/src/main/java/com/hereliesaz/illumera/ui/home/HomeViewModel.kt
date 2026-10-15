@@ -66,7 +66,9 @@ class HomeViewModel @Inject constructor(
         }
         return try {
             kotlinx.coroutines.withTimeout(95_000L) {
-                val candidates = linkedSetOf<String>()
+                val addonCandidates = linkedSetOf<String>()
+                val tmdbCandidates = linkedSetOf<String>()
+                val cinemetaCandidates = linkedSetOf<String>()
                 val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
                     ?: kotlinx.coroutines.withTimeoutOrNull(5_000L) {
                         val normalizedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
@@ -91,10 +93,10 @@ class HomeViewModel @Inject constructor(
                                 )
                             }
                             response?.streams.orEmpty().forEach { stream ->
-                                stream.ytId?.let { candidates += it }
-                                stream.externalUrl?.let { candidates += it }
+                                stream.ytId?.let { addonCandidates += it }
+                                stream.externalUrl?.let { addonCandidates += it }
                                 stream.url?.takeIf { it.contains("youtu", ignoreCase = true) }
-                                    ?.let { candidates += it }
+                                    ?.let { addonCandidates += it }
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -107,11 +109,11 @@ class HomeViewModel @Inject constructor(
                 // TMDB's video index is app-level metadata, not a Stremio addon.
                 if (com.hereliesaz.illumera.BuildConfig.TMDB_API_KEY.isNotBlank()) {
                     try {
-                        val tmdbId = tmdbService.ensureTmdbId(item.id, item.type)
+                        val tmdbId = tmdbService.ensureTmdbId(imdbId ?: item.id, item.type)
                         if (tmdbId != null) {
                             kotlinx.coroutines.withTimeoutOrNull(8_000L) {
                                 tmdbMetadataService.fetchBestTrailerKey(tmdbId, item.type)
-                            }?.key?.let { candidates += it }
+                            }?.key?.let { tmdbCandidates += it }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -133,10 +135,10 @@ class HomeViewModel @Inject constructor(
                                 if (!entry.isJsonObject) return@forEach
                                 val trailer = entry.asJsonObject
                                 trailer.get("ytId")?.takeIf { it.isJsonPrimitive }
-                                    ?.asString?.let { candidates += it }
+                                    ?.asString?.let { cinemetaCandidates += it }
                                 trailer.get("id")?.takeIf { it.isJsonPrimitive }
                                     ?.asString?.takeIf { it.length == 11 }
-                                    ?.let { candidates += it }
+                                    ?.let { cinemetaCandidates += it }
                             }
                         }
                     } catch (cancelled: CancellationException) {
@@ -146,18 +148,29 @@ class HomeViewModel @Inject constructor(
                     }
                 }
 
-                for (candidate in candidates) {
-                    val source = kotlinx.coroutines.withTimeoutOrNull(32_000L) {
-                        youtubeExtractor.extractPlaybackSource(
-                            candidate, preferCompatiblePreview = true
-                        )
-                    }
-                    if (source != null) {
-                        if (trailerUrlCache.size > 128) trailerUrlCache.clear()
-                        trailerUrlCache[trailerKey] = CachedTrailer(
-                            source.videoUrl, System.currentTimeMillis()
-                        )
-                        return@withTimeout source.videoUrl
+                // Bound each source separately: unplayable addon entries must
+                // not exhaust the resolver before TMDB or Cinemeta is tried.
+                // Limit extraction to four candidates, with a total bound of 72s.
+                val attempted = mutableSetOf<String>()
+                for (sourceCandidates in listOf(
+                    addonCandidates.take(1),
+                    tmdbCandidates.take(1),
+                    cinemetaCandidates.take(2)
+                )) {
+                    for (candidate in sourceCandidates) {
+                        if (!attempted.add(candidate)) continue
+                        val source = kotlinx.coroutines.withTimeoutOrNull(18_000L) {
+                            youtubeExtractor.extractPlaybackSource(
+                                candidate, preferCompatiblePreview = true
+                            )
+                        }
+                        if (source != null) {
+                            if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+                            trailerUrlCache[trailerKey] = CachedTrailer(
+                                source.videoUrl, System.currentTimeMillis()
+                            )
+                            return@withTimeout source.videoUrl
+                        }
                     }
                 }
                 null
