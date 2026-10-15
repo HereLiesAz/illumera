@@ -36,6 +36,26 @@ class GenreRowReconciliationTest {
     }
 
     @Test
+    fun mixedLazyColumnRowsRetainUniqueIdsAndUnchangedNeighbourReferences() {
+        val original = listOf(
+            HomeRow(configId = drama, title = "Drama", items = listOf(movie)),
+            HomeRow(configId = comedy, title = "Comedy", items = emptyList()),
+            HomeRow(configId = action, title = "Action", items = listOf(unrelated))
+        )
+        val mixed = original.map(com.hereliesaz.illumera.domain.CategoryRow::fromHomeRow)
+        val updatedRows = reconcileGenreRows(
+            original, comedy, listOf(movie), authoritative = true
+        )
+        val result = reconcileGenreMixedRows(mixed, updatedRows)
+            .map { it as com.hereliesaz.illumera.domain.CategoryRow }
+
+        assertEquals(listOf(drama, comedy, action), result.map { it.id })
+        assertEquals(listOf("Drama", "Comedy", "Action"), result.map { it.title })
+        assertEquals(listOf(0, 1, 1), result.map { it.items.size })
+        assertSame(mixed[2], result[2])
+    }
+
+    @Test
     fun laterFallbackPageCannotResurrectAClassifiedTitleInAnotherGenre() {
         val rows = listOf(
             HomeRow(configId = drama, title = "Drama", items = emptyList()),
