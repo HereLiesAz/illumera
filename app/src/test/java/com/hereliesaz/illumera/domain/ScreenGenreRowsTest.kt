@@ -91,6 +91,26 @@ class ScreenGenreRowsTest {
         assertFalse(result.contains("Last Month"))
     }
 
+    @Test fun recognizedProviderGenresRemainAvailable() {
+        val list = ScreenGenreRows.availableGenres(
+            "series",
+            listOf(CatalogManifest(
+                type = "series", id = "top",
+                genres = listOf("Soap", "TV Movie", "Action & Adventure", "Sci-Fi & Fantasy")
+            ))
+        )
+        assertTrue(list.containsAll(
+            listOf("Soap", "TV Movie", "Action & Adventure", "Sci-Fi & Fantasy")
+        ))
+    }
+
+    @Test fun legacyDisabledGenreAliasesCanonicalize() {
+        assertEquals("Film-Noir", ScreenGenreRows.canonicalGenre("Film Noir"))
+        assertEquals("True Crime", ScreenGenreRows.canonicalGenre("True-Crime"))
+        assertEquals("Martial Arts", ScreenGenreRows.canonicalGenre("Martial-Arts"))
+        assertEquals("Slice of Life", ScreenGenreRows.canonicalGenre("Slice-of-Life"))
+    }
+
     @Test fun sourceGenreNamesUseTheOfficialAlias() {
         assertEquals("Sci-Fi", ScreenGenreRows.canonicalGenre("Science Fiction"))
         assertEquals("Reality-TV", ScreenGenreRows.canonicalGenre("Reality TV"))
