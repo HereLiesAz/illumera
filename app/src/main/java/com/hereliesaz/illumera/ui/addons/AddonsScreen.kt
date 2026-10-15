@@ -101,7 +101,7 @@ fun AddonsScreen(
         AddonCatalogContent(
             modifier = Modifier.weight(1f),
             state = state,
-            onLoad = viewModel::loadCatalog,
+            onLoad = { viewModel.loadCatalog() },
             onSourceSelected = { source ->
                 showingInstalled = false
                 removalGuidance = null
