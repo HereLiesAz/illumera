@@ -237,6 +237,7 @@ fun QueueSection(
                     style = MaterialTheme.typography.labelMedium
                 )
             }
+        }
         val compactHeader = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 540
         if (compactHeader) {
             Column(
