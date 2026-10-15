@@ -275,6 +275,9 @@ fun PlayerScreen(
     LaunchedEffect(movieId, videoUrl, backendType, autoFallbackEnabled) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
         val resumePosition = viewModel.getResumePosition(movieId)
+        (playbackController as? ExoPlayerBackend)?.setVolume(
+            if (movieId.startsWith("trailer_")) 0.6f else 1f
+        )
         playbackController.load(
             PlayerLoadRequest(
                 mediaUrl = videoUrl,
