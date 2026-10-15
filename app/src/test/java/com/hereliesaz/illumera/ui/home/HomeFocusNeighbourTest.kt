@@ -52,6 +52,22 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun onlyCurrentlyFocusedCinematicRowUsesPortraitPosters() {
+        assertEquals(true, isCinematicRowActive("movies:action", "movies:action", "2_tt42_0", "2_"))
+        assertEquals(false, isCinematicRowActive("movies:action", "movies:drama", "3_tt31_1", "3_"))
+        assertEquals(false, isCinematicRowActive("__hero__", "movies:action", "2_tt42_0", "2_"))
+        assertEquals(false, isCinematicRowActive("__hub__", "history", "-1_tt9_0", "-1_"))
+    }
+
+    @Test
+    fun restoredFocusActivatesOnlyItsMatchingRowUntilNavigationBegins() {
+        assertEquals(true, isCinematicRowActive(null, "history", "-1_tt9_0", "-1_"))
+        assertEquals(false, isCinematicRowActive(null, "drama", "-1_tt9_0", "0_"))
+        assertEquals(true, isCinematicRowActive(null, "drama", "0_tt31_2", "0_"))
+        assertEquals(false, isCinematicRowActive(null, "drama", "10_tt31_2", "1_"))
+    }
+
+    @Test
     fun nothingComposedInTheRowGivesNull() {
         assertNull(resolveHomeFocusNeighbour("3_tt3_2", listOf("4_tt1_0", "hero")))
         assertNull(resolveHomeFocusNeighbour("hero", listOf("3_tt1_0")))
