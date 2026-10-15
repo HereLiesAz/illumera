@@ -187,13 +187,34 @@ class NavDrawerFocusTest {
     fun menuCannotBeLeftByUpDownTraversal() {
         setUp()
         compose.runOnIdle { second.requestFocus() }
-        compose.runOnIdle { requesters.getValue(NavDestination.Exit).openNavDrawer() }
+        compose.runOnIdle {
+            assertTrue(requesters.getValue(NavDestination.Exit).openNavDrawer())
+        }
+        menuItem("Exit").assertIsFocused()
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Down) }
         menuItem("Exit").assertIsFocused()
         compose.runOnIdle { requesters.getValue(NavDestination.Search).openNavDrawer() }
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Up) }
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Up) }
         compose.onNodeWithTag("first").assertIsNotFocused()
+        compose.onNodeWithTag("second").assertIsNotFocused()
+    }
+
+    @Test
+    fun exitTrapsDownButStillAllowsUpToSettingsAndBack() {
+        setUp()
+        compose.runOnIdle { second.requestFocus() }
+        compose.runOnIdle {
+            assertTrue(requesters.getValue(NavDestination.Exit).openNavDrawer())
+        }
+        menuItem("Exit").assertIsFocused()
+
+        compose.runOnIdle { focusManager.moveFocus(FocusDirection.Down) }
+        menuItem("Exit").assertIsFocused()
+        compose.runOnIdle { focusManager.moveFocus(FocusDirection.Up) }
+        menuItem("Settings").assertIsFocused()
+        compose.runOnIdle { focusManager.moveFocus(FocusDirection.Down) }
+        menuItem("Exit").assertIsFocused()
         compose.onNodeWithTag("second").assertIsNotFocused()
     }
 
