@@ -79,6 +79,7 @@ import com.hereliesaz.illumera.domain.HeroConfig
 import com.hereliesaz.illumera.domain.HubGroupRow
 import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.domain.HomeRowItem
+import com.hereliesaz.illumera.domain.ScreenGenreRows
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.ui.components.LumeraBackground
@@ -114,9 +115,23 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
-    val displayState = remember(tab, state) {
+    val genreContext = LocalContext.current
+    val displayState = remember(tab, state, currentProfile?.id) {
         if (tab != DashboardTab.HOME) {
-            state
+            val profileId = currentProfile?.id
+            val screen = if (tab == DashboardTab.MOVIES) "movies" else "series"
+            if (profileId == null) state else state.copy(
+                rows = state.rows.map { row ->
+                    row.copy(items = ScreenGenreRows.sortTitles(
+                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                    ))
+                },
+                mixedRows = state.mixedRows.map { row ->
+                    if (row is CategoryRow) row.copy(items = ScreenGenreRows.sortTitles(
+                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                    )) else row
+                }
+            )
         } else {
             // Home-only rule: once a movie or any episode of a series is watched,
             // remove that title from Home catalog/hero lists immediately. The
@@ -351,12 +366,21 @@ fun CinematicLayout(
             revealedGenres.add(row.id)
         }
     }
-    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, revealedGenres.toList()) {
-        state.mixedRows.withIndex().filter { indexed ->
-            val row = indexed.value
-            state.loadedScreen !in setOf("movies", "series") ||
-                row !is CategoryRow || row.items.isNotEmpty() || row.id in revealedGenres
-        }
+    // Preserve original poster indices while ranking rows for the active profile.
+    // Keep unpopulated genre shells so the screen does not end at the first
+    // successfully loaded group; they are skipped by TV focus navigation.
+    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, state.watchedIds, state.likedIds) {
+        val original = state.mixedRows.withIndex().toList()
+        if (state.loadedScreen in setOf("movies", "series")) {
+            original.sortedWith(
+                compareByDescending<IndexedValue<HomeRowItem>> { indexed ->
+                    val row = indexed.value
+                    if (row is CategoryRow) ScreenGenreRows.affinityScore(
+                        row.items, state.watchedIds, state.likedIds
+                    ) else Int.MIN_VALUE
+                }.thenBy { it.index }
+            )
+        } else original
     }
     val firstFocusableRowIndex = remember(visibleMixedRows) {
         firstFocusableCinematicRowIndex(visibleMixedRows)
@@ -440,8 +464,21 @@ fun CinematicLayout(
                         initialFirstVisibleItemScrollOffset = verticalScrollPosition.second
                     )
 
-                    // Restore the Hero into composition before sending Up-focus to it.
+                    // Both directions can target a row that is not composed yet.
                     val heroReturnScope = rememberCoroutineScope()
+                    val focusFirstAvailableRow: () -> Unit = {
+                        val ordinal = visibleMixedRows.indexOfFirst { it.index == firstFocusableRowIndex }
+                        if (historyItems.isNotEmpty() || ordinal >= 0) {
+                            heroReturnScope.launch {
+                                val targetItem = if (historyItems.isNotEmpty()) 1 else 1 + ordinal
+                                verticalListState.scrollToItem(targetItem)
+                                repeat(10) {
+                                    withFrameNanos { }
+                                    if (runCatching { firstRowPivotRequester.requestFocus() }.getOrDefault(false)) return@launch
+                                }
+                            }
+                        }
+                    }
                     val returnToHeroFromFirstRow = Modifier.onPreviewKeyEvent { event ->
                         if (heroItems.isNotEmpty() &&
                             event.type == KeyEventType.KeyDown &&
@@ -449,8 +486,10 @@ fun CinematicLayout(
                         ) {
                             heroReturnScope.launch {
                                 verticalListState.scrollToItem(0)
-                                withFrameNanos { }
-                                runCatching { heroReturnRequester.requestFocus() }
+                                repeat(10) {
+                                    withFrameNanos { }
+                                    if (runCatching { heroReturnRequester.requestFocus() }.getOrDefault(false)) return@launch
+                                }
                             }
                             true
                         } else false
@@ -521,7 +560,7 @@ fun CinematicLayout(
                                     // the Hero cannot continue playing underneath it.
                                     previewVisible = heroVisible &&
                                         (activeCinematicRow == null || activeCinematicRow == "__hero__"),
-                                    onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
+                                    onNavigateDown = focusFirstAvailableRow,
                                     returnFocusRequester = heroReturnRequester,
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
@@ -1625,7 +1664,7 @@ internal fun TrailerPreview(
     val player = remember(videoUrl, item?.id, item?.type) {
         videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = if (soundEnabled) 1f else 0f
+                volume = if (soundEnabled) 0.6f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1645,7 +1684,7 @@ internal fun TrailerPreview(
     // identity changes. The lifecycle observer reads the latest play condition.
     val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
     SideEffect {
-        player?.volume = if (soundEnabled) 1f else 0f
+        player?.volume = if (soundEnabled) 0.6f else 0f
         player?.playWhenReady = shouldPlay &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
     }
