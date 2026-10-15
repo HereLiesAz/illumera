@@ -341,6 +341,7 @@ fun WatchlistScreen(
                                     title = media.name,
                                     posterUrl = media.poster,
                                     mediaItem = media,
+                                    cardWidth = gridCardWidth,
                                     onClick = { onMovieClick(media) },
                                     isWatched = media.id in libraryWatchedIds,
                                     hasNewEpisode = media.hasNewEpisode,
