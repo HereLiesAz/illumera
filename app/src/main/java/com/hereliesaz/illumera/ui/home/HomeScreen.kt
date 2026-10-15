@@ -31,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -81,26 +82,8 @@ import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
 
-private const val RAPID_VERTICAL_NAV_WINDOW_MS = 220L
-private const val RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS = 120L
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
-
-private class HomeFocusTimingTracker {
-    var previous: Long = 0L
-    var current: Long = 0L
-
-    fun mark(now: Long = System.currentTimeMillis()) {
-        previous = current
-        current = now
-    }
-
-    fun isRapid(windowMs: Long): Boolean = current - previous in 1..windowMs
-}
-
-private class PreviewUpdateGate {
-    var lastUpdateMs: Long = 0L
-}
 
 @Composable
 fun HomeScreen(
@@ -303,12 +286,9 @@ fun CinematicLayout(
     onVerticalScrollChange: (Pair<Int, Int>) -> Unit,
     onPreviewItemVisible: (MetaItem) -> Unit
 ) {
-    // Track the *currently* focused row rather than relying on a previously
-    // restored poster key. The preview expands immediately above its own row.
+    // The row only controls whether its active poster expands inline.
+    // The Hero is an ordinary LazyColumn item, never a sticky header.
     var activeCinematicRow by remember(state.loadedScreen) { mutableStateOf<String?>(null) }
-    var instantFocusItem by remember { mutableStateOf<MetaItem?>(null) }
-    var displayedItem by remember { mutableStateOf<MetaItem?>(null) }
-    val previewUpdateGate = remember { PreviewUpdateGate() }
 
     // Cache the history items transformation to avoid allocating new list on every recomposition
     // Stable key: only rebuild when items/order/watched-state change, not when images update
@@ -343,38 +323,6 @@ fun CinematicLayout(
     }
     val historyFocusRedirected = effectiveLastFocusedKey != lastFocusedKey
 
-    val restoredPreviewItem = remember(effectiveLastFocusedKey, state.mixedRows, historyItems) {
-        resolveCinematicPreviewItem(
-            lastFocusedKey = effectiveLastFocusedKey,
-            mixedRows = state.mixedRows,
-            historyItems = historyItems
-        )
-    }
-    val renderedPreviewItem = remember(displayedItem, state.mixedRows, state.heroRow, historyItems, state.enrichedMeta) {
-        resolveLatestPreviewItem(
-            current = displayedItem,
-            state = state,
-            historyItems = historyItems
-        )
-    }
-
-    LaunchedEffect(state.rows, state.history, restoredPreviewItem, effectiveLastFocusedKey) {
-        if (instantFocusItem == null) {
-            val first = when {
-                restoredPreviewItem != null -> restoredPreviewItem
-                // Returning from details with a saved focus key: avoid showing the wrong
-                // poster while focus restoration is still in progress.
-                effectiveLastFocusedKey != null -> null
-                else -> historyItems.firstOrNull() ?: state.rows.firstOrNull()?.items?.firstOrNull()
-            }
-            instantFocusItem = first
-            displayedItem = first
-            if (first != null) {
-                onPreviewItemVisible(first)
-            }
-        }
-    }
-
     // Focus the remembered item (entryRequester follows it) once there is something to focus:
     // on resume, and again if a refresh takes the focused card away.
     val firstRowPivotRequester = remember { FocusRequester() }
@@ -382,15 +330,9 @@ fun CinematicLayout(
     RestoreFocusOnResume(
         memory = focusMemory,
         fallback = entryRequester,
-        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
+        enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || visibleMixedRows.isNotEmpty(),
         neighbour = { resolveHomeFocusNeighbour(it, focusMemory.registeredKeys) }
     )
-
-    LaunchedEffect(instantFocusItem) {
-        val target = instantFocusItem ?: return@LaunchedEffect
-        delay(300)
-        displayedItem = target
-    }
 
     val density = LocalDensity.current
     // Adjust pivot with 40dp offset to prevent slide-up (5.dp content padding + 40.dp)
@@ -408,9 +350,6 @@ fun CinematicLayout(
         }
     }
 
-    // Track focus timing without triggering recomposition on every focus hop.
-    val verticalFocusTiming = remember { HomeFocusTimingTracker() }
-
     val verticalPivot = remember(titleHeadroomPx) {
         FocusPivotSpec(
             customOffset = titleHeadroomPx,
@@ -418,32 +357,8 @@ fun CinematicLayout(
             stiffnessProvider = { Spring.StiffnessLow }
         )
     }
-    
-    // Wrap onFocusChange to track timing for vertical dynamic stiffness
-    val wrappedOnFocusChange: (String) -> Unit = remember(onFocusChange) {
-        { key ->
-            verticalFocusTiming.mark()
-            onFocusChange(key)
-        }
-    }
 
-    fun updatePreviewItem(item: MetaItem?, rowJustChanged: Boolean = false) {
-        if (item == null) return
-        onPreviewItemVisible(item)
-        val now = System.currentTimeMillis()
-        val isRapid = verticalFocusTiming.isRapid(RAPID_VERTICAL_NAV_WINDOW_MS)
-        // A new row must show its own first poster immediately. Only throttle
-        // rapid lateral moves inside the same poster row.
-        val allowUpdate = rowJustChanged || !isRapid ||
-            now - previewUpdateGate.lastUpdateMs >= RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS
-        if (allowUpdate && (instantFocusItem?.id != item.id || instantFocusItem?.type != item.type)) {
-            instantFocusItem = item
-            if (rowJustChanged) displayedItem = item
-            previewUpdateGate.lastUpdateMs = now
-        } else if (allowUpdate) {
-            previewUpdateGate.lastUpdateMs = now
-        }
-    }
+    val wrappedOnFocusChange: (String) -> Unit = onFocusChange
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -465,29 +380,6 @@ fun CinematicLayout(
                             horizontalRepeatIntervalMs = DPAD_REPEAT_INTERVAL_HORIZONTAL_MS,
                             verticalRepeatIntervalMs = DPAD_REPEAT_INTERVAL_VERTICAL_MS
                         )
-                    }
-
-                    // The expanded panel belongs ABOVE the focused poster row,
-                    // so bring its header into view on vertical row transitions.
-                    // Do not re-scroll when navigating between posters in one row.
-                    LaunchedEffect(activeCinematicRow) {
-                        val focused = activeCinematicRow ?: return@LaunchedEffect
-                        val index = when (focused) {
-                            "history" -> if (historyItems.isNotEmpty()) (if (heroItems.isNotEmpty()) 1 else 0) else -1
-                            "__hero__", "__hub__" -> -1
-                            else -> {
-                                val row = visibleMixedRows.indexOfFirst {
-                                    it.value is CategoryRow && it.value.id == focused
-                                }
-                                if (row < 0) -1 else row +
-                                    (if (heroItems.isNotEmpty()) 1 else 0) +
-                                    (if (historyItems.isNotEmpty()) 1 else 0)
-                            }
-                        }
-                        if (index >= 0) {
-                            delay(100)
-                            verticalListState.animateScrollToItem(index)
-                        }
                     }
 
                     PersistLazyListPosition(
@@ -516,6 +408,7 @@ fun CinematicLayout(
                         verticalArrangement = Arrangement.spacedBy((-12).dp)
                     ) {
                         if (heroItems.isNotEmpty()) {
+                            // Ordinary list item: the Hero must scroll away entirely.
                             item(key = "cinematic_hero_carousel", contentType = "hero") {
                                 HeroCarousel(
                                     items = heroItems,
@@ -548,19 +441,6 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
-                                    AnimatedVisibility(
-                                        visible = activeCinematicRow == "history" ||
-                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("-1_") == true),
-                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-                                    ) {
-                                        FocusedRowCinematicPreview(
-                                            item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding,
-                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
-                                        )
-                                    }
-
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -585,9 +465,8 @@ fun CinematicLayout(
                                     onMovieClick = onMovieClick,
                                     onViewMore = { onViewMore("Continue Watching", historyItems, "") },
                                     onFocused = { item: MetaItem?, key: String ->
-                                        val changedRow = activeCinematicRow != "history"
                                         activeCinematicRow = "history"
-                                        updatePreviewItem(item, rowJustChanged = changedRow)
+                                        item?.let(onPreviewItemVisible)
                                         wrappedOnFocusChange(key)
                                     },
                                     entryRequester = entryRequester,
@@ -602,11 +481,17 @@ fun CinematicLayout(
                                     externalListState = historyRowState,
                                     upKeyDebouncer = upKeyDebouncer,
                                     repeatGate = dpadRepeatGate,
-                                    // Cinematic panels always pair with 16:9 landscape cards,
-                                    // regardless of the separate simple-layout Watch History setting.
-                                    isLandscapeCards = true,
+                                    // All cinematic media rows use portrait posters. The
+                                    // focused card itself expands; no panel is mounted above.
+                                    isLandscapeCards = false,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = 122.dp
+                                    rowHeight = 210.dp,
+                                    inlineCinematicPreview = { poster ->
+                                        InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                    },
+                                    isInlineRowActive = activeCinematicRow == "history" ||
+                                        (activeCinematicRow == null &&
+                                            effectiveLastFocusedKey?.startsWith("-1_") == true)
                                 )
                                 }
                             }
@@ -636,7 +521,7 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this hub row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val hubKey = "hub_${item.id}"
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == 0
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedHubPosition = if (resetScroll) null else rowScrollPositions[hubKey]
                                     val hubListState = rememberLazyListState(
                                         initialFirstVisibleItemIndex = savedHubPosition?.first ?: 0,
@@ -656,8 +541,7 @@ fun CinematicLayout(
                                         onHubClick = onHubClick,
                                         onFocused = { _, focusKey ->
                                             activeCinematicRow = "__hub__"
-                                            instantFocusItem = null
-                                            wrappedOnFocusChange("hub_$focusKey")
+                                             wrappedOnFocusChange("hub_$focusKey")
                                         },
                                         entryRequester = entryRequester,
                                         drawerRequester = drawerRequester,
@@ -670,7 +554,7 @@ fun CinematicLayout(
                                         isLastRow = index == visibleMixedRows.lastOrNull()?.index,
                                         isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
-                                            historyItems.isEmpty() && index == 0
+                                            historyItems.isEmpty() && index == firstVisibleRowIndex
                                         ) firstRowPivotRequester else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
                                         forceLandscape = true
@@ -682,7 +566,7 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == 0
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
                                     val initialIndex = savedPosition?.first ?: 0
@@ -724,18 +608,6 @@ fun CinematicLayout(
                                         }
                                     }
 
-                                    AnimatedVisibility(
-                                        visible = activeCinematicRow == rowKey ||
-                                            (activeCinematicRow == null && effectiveLastFocusedKey?.startsWith("${index}_") == true),
-                                        enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                                        exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-                                    ) {
-                                        FocusedRowCinematicPreview(
-                                            item = renderedPreviewItem, state = state,
-                                            startPadding = startPadding,
-                                            isTopNav = isTopNav, resolveTrailer = resolveTrailer
-                                        )
-                                    }
                                     InfiniteLoopRow(
                                         startPadding = startPadding,
                                         isTopNav = isTopNav,
@@ -747,9 +619,8 @@ fun CinematicLayout(
                                             { onViewMore(item.title, item.items, item.id) }
                                         },
                                         onFocused = { focusItem: MetaItem?, key: String ->
-                                            val changedRow = activeCinematicRow != rowKey
                                             activeCinematicRow = rowKey
-                                            updatePreviewItem(focusItem, rowJustChanged = changedRow)
+                                            focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
                                         },
                                         entryRequester = entryRequester,
@@ -757,16 +628,22 @@ fun CinematicLayout(
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
                                         isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
-                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == 0) firstRowPivotRequester else null,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
                                         externalListState = rowListState,
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
-                                        isLandscapeCards = true,
+                                        isLandscapeCards = false,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = 122.dp
+                                        rowHeight = 210.dp,
+                                        inlineCinematicPreview = { poster ->
+                                            InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                        },
+                                        isInlineRowActive = activeCinematicRow == rowKey ||
+                                            (activeCinematicRow == null &&
+                                                effectiveLastFocusedKey?.startsWith("${index}_") == true)
                                     )
                                     }
                                 }
@@ -779,116 +656,68 @@ fun CinematicLayout(
     }
 }
 
+/**
+ * Render preview *inside* the focused poster's existing Surface. The Surface
+ * owns D-pad, touch and long-press; this content only paints moving artwork.
+ */
 @Composable
-private fun FocusedRowCinematicPreview(
-    item: MetaItem?,
+private fun InlineFocusedPosterPreview(
+    item: MetaItem,
     state: HomeViewModel.HomeState,
-    startPadding: androidx.compose.ui.unit.Dp,
-    isTopNav: Boolean,
     resolveTrailer: suspend (MetaItem) -> String?
 ) {
-    // Keep the original artwork visible immediately; enriching the text
-    // must never blank the backdrop while the trailer is still resolving.
-    val bgItem = item
-    // The old 360dp panel, followed by a 210dp row reserved for 107dp cards,
-    // left a large blank band between the preview information and the posters.
-    // This compact panel ends just above the next row's heading.
-    Box(modifier = Modifier.fillMaxWidth().height(184.dp)) {
-        CinematicBackground(bgItem)
-        TrailerPreview(item = bgItem, resolveTrailer = resolveTrailer, modifier = Modifier.fillMaxSize())
-        Box(modifier = Modifier.fillMaxSize().zIndex(2f)) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth()
-                        // Anchor the title/description to the bottom of the
-                        // preview so short descriptions cannot leave a tall
-                        // empty band before the row's heading and landscape cards.
-                        .padding(start = startPadding, top = 6.dp, bottom = 6.dp),
-                    contentAlignment = Alignment.BottomStart
-                ) {
-                    AnimatedContent(
-                        targetState = item,
-                        transitionSpec = { fadeIn(tween(400)).togetherWith(fadeOut(tween(200))) },
-                        label = "Info"
-                    ) { item ->
-                        if (item != null) {
-                            // Hide info content while waiting for TMDB enrichment
-                            val itemReady = !state.tmdbEnabled || state.tmdbEnrichedIds.contains("${item.type}:${item.id}")
-                            Column(modifier = Modifier.alpha(if (itemReady) 1f else 0f)) {
-                                Box(
-                                    modifier = Modifier
-                                        // Was a hardcoded 700dp — nearly double a phone's
-                                        // entire screen width. Use the actual available
-                                        // width instead (already correctly constrained by
-                                        // the parent's padding/weight above).
-                                        .fillMaxWidth()
-                                        .height(56.dp),
-                                    contentAlignment = Alignment.BottomStart
-                                ) {
-                                    if (!item.logo.isNullOrEmpty()) {
-                                        SubcomposeAsyncImage(
-                                            model = item.logo,
-                                            contentDescription = item.name,
-                                            contentScale = ContentScale.Fit,
-                                            alignment = Alignment.BottomStart,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .widthIn(max = 500.dp)
-                                                .heightIn(max = 56.dp),
-                                            error = {
-                                                Text(
-                                                    text = item.name,
-                                                    style = MaterialTheme.typography.displaySmall.copy(
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 32.sp,
-                                                        lineHeight = 1.05.em
-                                                    ),
-                                                    color = Color.White,
-                                                    maxLines = 2,
-                                                    softWrap = true,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                )
-                                            }
-                                        )
-                                    } else {
-                                        Text(
-                                            text = item.name,
-                                            style = MaterialTheme.typography.displaySmall.copy(
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 32.sp,
-                                                lineHeight = 1.05.em
-                                            ),
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            softWrap = true,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                HomeMetaStrip(item = item)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = item.description ?: "",
-                                    maxLines = if (isTopNav) 2 else 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, letterSpacing = 0.sp, lineHeight = 1.2.em),
-                                    color = Color.White.copy(0.85f),
-                                    textAlign = TextAlign.Start,
-                                    // Same fix as the logo/title Box above — was a fixed
-                                    // 450dp, overflowing a phone screen; fillMaxWidth with a
-                                    // cap preserves the original comfortable reading width
-                                    // on TV while actually fitting on a phone.
-                                    modifier = Modifier.fillMaxWidth().widthIn(max = 450.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-    
+    val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
+    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
+        AsyncImage(
+            model = current.background?.takeIf { it.isNotBlank() }
+                ?: current.poster?.takeIf { it.isNotBlank() },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        TrailerPreview(
+            item = current,
+            resolveTrailer = resolveTrailer,
+            modifier = Modifier.fillMaxSize()
+        )
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.35f to Color.Black.copy(alpha = 0.15f),
+                    1f to Color.Black.copy(alpha = 0.9f)
+                )
+            )
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = current.name,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold, fontSize = 19.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            val year = extractHomePrimaryYear(current.releaseInfo)
+            Text(
+                text = listOf(current.type.replaceFirstChar { it.uppercase() }, year)
+                    .filterNot { it == "----" }.joinToString(" · "),
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.bodySmall
+            )
+            current.description?.takeIf { it.isNotBlank() }?.let { description ->
+                Text(
+                    text = description,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -929,30 +758,6 @@ private fun resolveEffectiveFocusKey(
     }
 
     return lastFocusedKey
-}
-
-private fun resolveCinematicPreviewItem(
-    lastFocusedKey: String?,
-    mixedRows: List<HomeRowItem>,
-    historyItems: List<MetaItem>
-): MetaItem? {
-    if (lastFocusedKey.isNullOrEmpty()) return null
-    if (lastFocusedKey.startsWith("hub_") || lastFocusedKey.startsWith("hero_")) return null
-
-    val firstSeparator = lastFocusedKey.indexOf('_')
-    if (firstSeparator <= 0) return null
-
-    val rowToken = lastFocusedKey.substring(0, firstSeparator)
-    val itemToken = lastFocusedKey.substring(firstSeparator + 1).substringBeforeLast("_")
-    if (itemToken.isEmpty() || itemToken == "viewmore") return null
-
-    if (rowToken == "-1") {
-        return historyItems.firstOrNull { it.id == itemToken }
-    }
-
-    val rowIndex = rowToken.toIntOrNull() ?: return null
-    val row = mixedRows.getOrNull(rowIndex) as? CategoryRow ?: return null
-    return row.items.firstOrNull { it.id == itemToken }
 }
 
 /**
@@ -1068,33 +873,6 @@ private fun isEpisodePlaybackId(playbackId: String): Boolean {
     val parts = playbackId.split(":")
     if (parts.size < 3) return false
     return parts[parts.lastIndex - 1].toIntOrNull() != null && parts.last().toIntOrNull() != null
-}
-
-private fun resolveLatestPreviewItem(
-    current: MetaItem?,
-    state: HomeViewModel.HomeState,
-    historyItems: List<MetaItem>
-): MetaItem? {
-    val item = current ?: return null
-
-    // Check enriched metadata cache (handles items not in any category row, e.g. from search)
-    val enriched = state.enrichedMeta["${item.type}:${item.id}"]
-    if (enriched != null && !enriched.logo.isNullOrEmpty()) return enriched
-
-    val fromHistory = historyItems.firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromHistory != null && !fromHistory.logo.isNullOrEmpty()) return fromHistory
-
-    val fromHero = state.heroRow?.items?.firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromHero != null && !fromHero.logo.isNullOrEmpty()) return fromHero
-
-    val fromRows = state.mixedRows
-        .asSequence()
-        .filterIsInstance<CategoryRow>()
-        .flatMap { row -> row.items.asSequence() }
-        .firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromRows != null && !fromRows.logo.isNullOrEmpty()) return fromRows
-
-    return item
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -1731,6 +1509,12 @@ internal fun TrailerPreview(
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
+                        // The preview is passive media *inside a focusable poster*.
+                        // Never let its Android view steal D-pad or touch focus.
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        isClickable = false
+                        descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         useController = false
                         this.player = player
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
