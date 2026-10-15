@@ -1000,13 +1000,30 @@ class HomeViewModel @Inject constructor(
                     maxItems = hubInitialLoadCount
                 )
                 if (fetchedRow != null) {
-                    // Cache fetched row so GridView can lazy-load additional pages via loadMoreItems().
+                    // The preview has already fetched its first page. Persist
+                    // actual per-source counts so View More never retries skip=0.
+                    val primaryType = if ("/catalog/series/" in fetchedRow.catalogUrl) "series"
+                        else "movie"
+                    val normalized = fetchedRow.copy(
+                        fetchedPrimaryCount = maxOf(
+                            fetchedRow.fetchedPrimaryCount,
+                            if (fetchedRow.secondCatalogUrl != null)
+                                fetchedRow.items.count { it.type == primaryType }
+                            else fetchedRow.items.size
+                        ),
+                        fetchedSecondCount = maxOf(
+                            fetchedRow.fetchedSecondCount,
+                            if (fetchedRow.secondCatalogUrl != null)
+                                fetchedRow.items.count { it.type != primaryType }
+                            else 0
+                        )
+                    )
                     _state.update { current ->
                         val updatedRows = current.rows
-                            .filterNot { it.configId == fetchedRow.configId } + fetchedRow
+                            .filterNot { it.configId == normalized.configId } + normalized
                         current.copy(rows = updatedRows)
                     }
-                    onResult(fetchedRow.title, fetchedRow.items)
+                    onResult(normalized.title, normalized.items)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
