@@ -223,3 +223,12 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - Every enabled movie/series genre is kept as a stable row while remote content loads. Rows rank by watched and watchlisted titles per profile; Screen Editor allows an independent catalog/rating/date/title sort for the titles **within** each genre.
 - Menu selection navigates and dismisses the menu. Details' source/episode glyphs match Player's. Trailer-preview and trailer-only player audio are capped at 60%.
 - **Still required:** Android FOSS Debug and Release unit tests, a successful CI build, Android TV focus checks (especially Hero↔later genres, Installed selection and menu closure), and live addon/trailer verification. Do not claim the changes are device-verified on source review alone.
+
+
+## Fast navigation and deferred previews (October 15, 2026) — validation pending
+
+- Home and genre screen shells should become navigable without waiting on selected-Hero catalog network requests; configured Hero previews populate afterward.
+- The first two Home rows begin loading after the initial screen state is published. All Movies/Series genre rows are eventually probed with no more than three concurrent workers, distributing completed work across later rows even if an early provider times out.
+- D-pad held Left/Right/Up/Down must accept every Android `repeatCount > 0` event. Separate zero-repeat duplicate presses still respect the gate; exiting to the navigation rail remains subject to existing boundaries.
+- While any directional input is active, poster/hero art stays visible and trailer extraction is disabled/cancelled. Resume only after 750ms idle plus the trailer preview's startup delay. Scrolling never waits for the trailer resolver's long network timeout.
+- Run `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.
