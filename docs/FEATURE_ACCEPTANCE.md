@@ -223,3 +223,13 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - Every enabled movie/series genre is kept as a stable row while remote content loads. Rows rank by watched and watchlisted titles per profile; Screen Editor allows an independent catalog/rating/date/title sort for the titles **within** each genre.
 - Menu selection navigates and dismisses the menu. Details' source/episode glyphs match Player's. Trailer-preview and trailer-only player audio are capped at 60%.
 - **Still required:** Android FOSS Debug and Release unit tests, a successful CI build, Android TV focus checks (especially Hero↔later genres, Installed selection and menu closure), and live addon/trailer verification. Do not claim the changes are device-verified on source review alone.
+
+
+## Update popup and install-source routing (October 15, 2026) — tests/device verification pending
+
+- Launch or return to foreground with a GitHub-installed build behind a signed GitHub release: an update popup is shown after splash; selecting Update downloads/verifies the release APK, while Later suppresses only this version. Compare the four-component `versionName` in the APK filename; a three-component tag alone cannot determine a build-level update.
+- A later GitHub release must notify again, even if the previous version was dismissed. Stop checking every frame; foreground checks are capped at 30-minute intervals unless requested in About.
+- Play builds must never offer a GitHub APK. When Play Core confirms an update, offer its in-app install. If Play Core is unsupported, an announced upstream version can prompt to *check Play* without claiming availability; pressing Update opens the Play Store listing.
+- For Play fallback announcements without a versionCode, dismissals must key on the announced version, so the next announcement still pops up.
+- Existing opt-out preference for GitHub automatic popups remains functional. Verify offline/error handling does not claim an update exists.
+- Gates: Android FOSS debug/release unit tests, Play build compile, GitHub APK release build, Android TV with Play and GitHub installations, and actual Google Play release visibility.
