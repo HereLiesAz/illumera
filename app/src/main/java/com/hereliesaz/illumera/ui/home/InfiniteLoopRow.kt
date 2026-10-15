@@ -195,7 +195,7 @@ fun InfiniteLoopRow(
 
     // Calculate the max valid index based on current mode
     val maxValidIndex = when {
-        isLandscapeCards || !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
+        !isInfiniteLoopEnabled -> (items.size - 1).coerceAtLeast(0)
         !isInfiniteScrollingEnabled -> visibleItemCount // visibleItemCount items + 1 ViewMore
         else -> Int.MAX_VALUE
     }
@@ -227,7 +227,7 @@ fun InfiniteLoopRow(
             // Cinematic landscape rails must not revert to portrait when a
             // catalog is configured as an infinite or finite grid.
             // A standard LazyRow also supports per-genre incremental paging.
-            isLandscapeCards || !isInfiniteLoopEnabled -> {
+            !isInfiniteLoopEnabled -> {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
                     LinearContent(
                         listState = listState,
@@ -278,7 +278,9 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards,
+                        enrichedItems = enrichedItems
                     )
                 }
             }
@@ -305,7 +307,9 @@ fun InfiniteLoopRow(
                         rowHeight = rowHeight,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester
+                        pivotFocusRequester = pivotFocusRequester,
+                        isLandscapeCards = isLandscapeCards,
+                        enrichedItems = enrichedItems
                     )
                 }
             }
@@ -554,7 +558,9 @@ private fun InfiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false,
+    enrichedItems: Map<String, MetaItem> = emptyMap()
 ) {
     val context = LocalContext.current
 
@@ -661,7 +667,7 @@ private fun InfiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -713,11 +719,13 @@ private fun InfiniteGridContent(
                     ) {
                         val uniqueKey = "${rowIndex}_${item.movie.id}_$scrollIndex"
                         val watchedIds = LocalWatchedIds.current
-                        LumeraCard(
+                        GridMediaCard(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
+                            isLandscapeCards = isLandscapeCards,
+                            enrichedItems = enrichedItems,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -808,7 +816,9 @@ private fun FiniteGridContent(
     rowHeight: Dp,
     upKeyDebouncer: UpKeyDebouncer,
     repeatGate: DpadRepeatGate,
-    pivotFocusRequester: FocusRequester? = null
+    pivotFocusRequester: FocusRequester? = null,
+    isLandscapeCards: Boolean = false,
+    enrichedItems: Map<String, MetaItem> = emptyMap()
 ) {
     val context = LocalContext.current
     
@@ -881,7 +891,7 @@ private fun FiniteGridContent(
                 is GridRowItem.MovieItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -926,11 +936,13 @@ private fun FiniteGridContent(
                             }
                     ) {
                         val watchedIds = LocalWatchedIds.current
-                        LumeraCard(
+                        GridMediaCard(
                             title = item.movie.name,
                             posterUrl = item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
+                            isLandscapeCards = isLandscapeCards,
+                            enrichedItems = enrichedItems,
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
@@ -949,7 +961,7 @@ private fun FiniteGridContent(
                 is GridRowItem.ViewMoreItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -1079,6 +1091,56 @@ private fun InfiniteViewMoreCard(
         ViewMoreCard(
             onClick = onClick,
             onFocused = null
+        )
+    }
+}
+
+
+// Shared poster renderer for finite/infinite grid modes. Grid behavior (including
+// View More and looping) stays intact when cinematic mode switches the artwork
+// itself to 16:9 landscape cards.
+@Composable
+private fun GridMediaCard(
+    title: String,
+    posterUrl: String?,
+    onClick: () -> Unit,
+    mediaItem: MetaItem,
+    progress: Float,
+    isWatched: Boolean,
+    isLandscapeCards: Boolean,
+    enrichedItems: Map<String, MetaItem>,
+    onFocused: () -> Unit,
+    modifier: Modifier
+) {
+    if (isLandscapeCards) {
+        val enriched = enrichedItems["${mediaItem.type}:${mediaItem.id}"]
+        LumeraLandscapeCard(
+            title = title,
+            backdropUrl = enriched?.background?.takeIf { it.isNotBlank() }
+                ?: mediaItem.background?.takeIf { it.isNotBlank() },
+            posterUrl = enriched?.poster?.takeIf { it.isNotBlank() }
+                ?: posterUrl?.takeIf { it.isNotBlank() },
+            logoUrl = enriched?.logo?.takeIf { it.isNotBlank() }
+                ?: mediaItem.logo?.takeIf { it.isNotBlank() },
+            onClick = onClick,
+            mediaItem = mediaItem,
+            progress = progress,
+            hasNewEpisode = mediaItem.hasNewEpisode,
+            isWatched = isWatched,
+            onFocused = onFocused,
+            modifier = modifier
+        )
+    } else {
+        LumeraCard(
+            title = title,
+            posterUrl = posterUrl,
+            onClick = onClick,
+            mediaItem = mediaItem,
+            progress = progress,
+            isWatched = isWatched,
+            hasNewEpisode = mediaItem.hasNewEpisode,
+            onFocused = onFocused,
+            modifier = modifier
         )
     }
 }
