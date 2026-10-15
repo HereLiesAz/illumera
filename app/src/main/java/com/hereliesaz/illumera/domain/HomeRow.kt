@@ -16,5 +16,5 @@ data class HomeRow(
     val secondSupportsSkip: Boolean = false,
     val fetchedPrimaryCount: Int = 0,             // Raw source counts (before dedup)
     val fetchedSecondCount: Int = 0,
-    val primarySupportsSkip: Boolean = false
+    val primarySupportsSkip: Boolean = supportsSkip
 )
