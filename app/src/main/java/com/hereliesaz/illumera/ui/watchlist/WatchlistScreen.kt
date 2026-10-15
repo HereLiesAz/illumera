@@ -346,6 +346,14 @@ fun WatchlistScreen(
                                                 }
                                                 true
                                             } else false
+                                        } else if (
+                                            event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionRight &&
+                                            isTopNav && index == libraryItems.lastIndex
+                                        ) {
+                                            // No next grid item: remain in Library instead
+                                            // of jumping diagonally to top navigation.
+                                            true
                                         } else false
                                     }
                             ) {
