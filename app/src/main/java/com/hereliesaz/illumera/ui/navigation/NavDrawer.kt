@@ -396,8 +396,17 @@ fun NavDrawerRail(
                             // End of the rail: a Down focus search must never
                             // escape from Exit into the content behind the menu.
                             .focusProperties {
-                                if (dest == NavDestination.Exit) {
-                                    down = FocusRequester.Cancel
+                                when (dest) {
+                                    NavDestination.Exit -> {
+                                        // A spatial focus search can otherwise skip the
+                                        // adjacent Settings item in the bottom stack.
+                                        up = drawerRequesters.getValue(NavDestination.Settings)
+                                        down = FocusRequester.Cancel
+                                    }
+                                    NavDestination.Settings -> {
+                                        down = drawerRequesters.getValue(NavDestination.Exit)
+                                    }
+                                    else -> Unit
                                 }
                             }
                             .onPreviewKeyEvent {
