@@ -590,10 +590,12 @@ class AddonRepositoryTest {
             addon("https://a.example"), addon("https://b.example")
         ))
         every { dao.getAllCatalogConfigs() } returns flowOf(configs)
-        coEvery { api.getCatalog(any()) } answers {
-            val type = if (firstArg<String>().contains("/series/")) "series" else "movie"
-            CatalogResponse(listOf(MetaItem(id = "tt1234567", type = type, name = "Title")))
-        }
+        coEvery { api.getCatalog("https://a.example/catalog/movie/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234561", type = "movie", name = "Film")))
+        coEvery { api.getCatalog("https://b.example/catalog/series/popular.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234562", type = "series", name = "Show")))
+        coEvery { api.getCatalog("https://a.example/catalog/series/latest.json") } returns
+            CatalogResponse(listOf(MetaItem(id = "tt1234563", type = "series", name = "Latest Show")))
         val result = AddonRepository(api, dao).getDashboardRows("home")
         assertEquals(3, result.size)
         assertTrue(result.all { it.secondCatalogUrl == null })
