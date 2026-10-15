@@ -317,11 +317,22 @@ fun CinematicLayout(
 
     // Empty genres have no focusable row. Preserve the original index for
     // persisted poster keys while assigning compact indices to LazyColumn.
-    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen) {
+    // A genre may become empty when canonical metadata moves its final title.
+    // Once a row has been shown, keep its key mounted until the screen changes:
+    // disposing/remounting focused LazyColumn rows produces a focus crash.
+    val revealedGenres = remember(state.loadedScreen, state.loadedProfileId) {
+        mutableStateListOf<String>()
+    }
+    state.mixedRows.forEach { row ->
+        if (row is CategoryRow && row.items.isNotEmpty() && row.id !in revealedGenres) {
+            revealedGenres.add(row.id)
+        }
+    }
+    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, revealedGenres.toList()) {
         state.mixedRows.withIndex().filter { indexed ->
             val row = indexed.value
             state.loadedScreen !in setOf("movies", "series") ||
-                row !is CategoryRow || row.items.isNotEmpty()
+                row !is CategoryRow || row.items.isNotEmpty() || row.id in revealedGenres
         }
     }
     val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
