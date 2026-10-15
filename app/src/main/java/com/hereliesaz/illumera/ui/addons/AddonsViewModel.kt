@@ -61,7 +61,7 @@ class AddonsViewModel @Inject constructor(
         val isLoading: Boolean = false,
         val error: String? = null,
         val pendingInstall: AddonInstallConfig? = null,
-        val catalogSource: AddonCatalogSource = AddonCatalogSource.OFFICIAL,
+        val catalogSource: AddonCatalogSource = AddonCatalogSource.ALL,
         val activeCollection: SavedAddonCollection? = null,
         val savedCollections: List<SavedAddonCollection> = emptyList(),
         val catalogItems: List<AddonCatalogItem> = emptyList(),
@@ -209,13 +209,13 @@ class AddonsViewModel @Inject constructor(
         val updated = catalogRepository.getSavedCollections()
         if (current.activeCollection?.url == collection.url) {
             _uiState.value = current.copy(
-                catalogSource = AddonCatalogSource.OFFICIAL,
+                catalogSource = AddonCatalogSource.ALL,
                 activeCollection = null,
                 savedCollections = updated,
                 catalogItems = emptyList(),
                 catalogError = null
             )
-            loadCatalog(AddonCatalogSource.OFFICIAL, force = true)
+            loadCatalog(AddonCatalogSource.ALL, force = true)
         } else {
             _uiState.value = current.copy(savedCollections = updated)
         }

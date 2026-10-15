@@ -57,7 +57,8 @@ fun VoidInput(
     onValueChange: (String) -> Unit,
     placeholder: String,
     modifier: Modifier = Modifier,
-    onDone: (() -> Unit)? = null
+    onDone: (() -> Unit)? = null,
+    compact: Boolean = false
 ) {
     val isTv = rememberIsTvDevice()
     val shellInteractionSource = remember { MutableInteractionSource() }
@@ -83,7 +84,7 @@ fun VoidInput(
 
     Box(
         modifier = modifier
-            .height(50.dp)
+            .height(if (compact) 36.dp else 50.dp)
             .then(if (isTv) Modifier.focusRequester(shellFocusRequester) else Modifier)
             .clip(RoundedCornerShape(8.dp))
             .background(Color.Black.copy(alpha = 0.5f))
@@ -95,7 +96,7 @@ fun VoidInput(
                         .focusable(interactionSource = shellInteractionSource)
                 } else Modifier
             )
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = if (compact) 10.dp else 16.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         if (value.isEmpty()) {
@@ -109,7 +110,7 @@ fun VoidInput(
             value = value,
             onValueChange = onValueChange,
             enabled = !isTv || editing,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+            textStyle = (if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium).copy(color = Color.White),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             singleLine = true,
             keyboardOptions = KeyboardOptions(
@@ -144,7 +145,8 @@ fun VoidButton(
     isPrimary: Boolean = false,
     isDestructive: Boolean = false,
     enabled: Boolean = true,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    compact: Boolean = false
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -162,7 +164,7 @@ fun VoidButton(
 
     Box(
         modifier = modifier
-            .height(50.dp)
+            .height(if (compact) 36.dp else 50.dp)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
             .background(colors.container)
@@ -180,7 +182,7 @@ fun VoidButton(
     ) {
         Text(
             text = text.uppercase(),
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            style = (if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium).copy(fontWeight = FontWeight.Bold),
             color = colors.content
         )
     }

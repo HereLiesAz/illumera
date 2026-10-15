@@ -278,6 +278,7 @@ class HomeViewModel @Inject constructor(
         val heroRow: HomeRow? = null,
         val loadedProfileId: Int? = null,
         val watchedIds: Set<String> = emptySet(), // IMDb IDs of watched items (movies + series)
+        val likedIds: Set<String> = emptySet(), // Bookmarked titles for the active profile
         val enrichedMeta: Map<String, MetaItem> = emptyMap(),
         val tmdbEnabled: Boolean = false,
         val tmdbEnrichedIds: Set<String> = emptySet()
@@ -1061,6 +1062,7 @@ class HomeViewModel @Inject constructor(
                 loadedProfileId = null,
                 enrichedMeta = emptyMap(),
                 tmdbEnrichedIds = emptySet(),
+                likedIds = emptySet(),
                 tmdbEnabled = currentProfile?.tmdbEnabled == true
             )
             tmdbEnrichmentInFlight.clear()
@@ -1084,6 +1086,14 @@ class HomeViewModel @Inject constructor(
                 }
             } else {
                 _state.value = _state.value.copy(history = emptyList(), seriesNextUp = emptyList())
+            }
+
+            if (screenName in setOf("movies", "series")) {
+                launch {
+                    dao.getWatchlist(currentProfileId).collect { bookmarks ->
+                        _state.update { it.copy(likedIds = bookmarks.map { item -> item.id }.toSet()) }
+                    }
+                }
             }
 
             // Load watched IDs for all tabs (watched indicator on posters)

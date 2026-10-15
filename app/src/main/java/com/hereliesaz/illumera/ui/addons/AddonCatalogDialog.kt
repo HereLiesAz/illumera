@@ -52,6 +52,8 @@ import coil.compose.AsyncImage
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
 import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
+import com.hereliesaz.illumera.ui.navigation.focus.FocusMemory
+import com.hereliesaz.illumera.ui.navigation.focus.restorableFocus
 
 @Composable
 fun AddonCatalogContent(
@@ -65,8 +67,13 @@ fun AddonCatalogContent(
     onInstall: (AddonCatalogItem) -> Unit,
     onRemove: (AddonCatalogItem) -> Unit,
     onConfigure: (AddonCatalogItem) -> Unit,
+    showingInstalled: Boolean = false,
+    onInstalledSelected: () -> Unit = {},
+    onRemoveInstalled: (String) -> Unit = {},
+    onInstallUrl: () -> Unit = {},
     modifier: Modifier = Modifier,
-    entryRequester: FocusRequester? = null
+    entryRequester: FocusRequester? = null,
+    focusMemory: FocusMemory
 ) {
     var query by remember { mutableStateOf("") }
     var addingCollection by remember { mutableStateOf(false) }
@@ -77,6 +84,14 @@ fun AddonCatalogContent(
     // header (or the user-selected catalog item) on every remount.
     LaunchedEffect(Unit) { onLoad() }
 
+    val filteredInstalled = remember(state.addons, query) {
+        val needle = query.trim()
+        state.addons.filter { addon ->
+            needle.isEmpty() || addon.name.contains(needle, true) ||
+                addon.nickname.orEmpty().contains(needle, true) ||
+                addon.transportUrl.contains(needle, true)
+        }
+    }
     val filteredItems = remember(state.catalogItems, query) {
         val needle = query.trim().lowercase()
         if (needle.isEmpty()) {
@@ -113,18 +128,34 @@ fun AddonCatalogContent(
 
             Spacer(Modifier.height(18.dp))
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item(key = "all") {
+                    VoidButton(
+                        text = "All",
+                        onClick = { onSourceSelected(AddonCatalogSource.ALL) },
+                        isPrimary = !showingInstalled && state.catalogSource == AddonCatalogSource.ALL,
+                        modifier = Modifier.width(66.dp).focusRequester(entryRequester ?: initialFocusRequester).restorableFocus("addons:all", focusMemory),
+                        compact = true
+                    )
+                }
+                item(key = "installed") {
+                    VoidButton(
+                        text = "Installed (${state.addons.size})",
+                        onClick = onInstalledSelected,
+                        isPrimary = showingInstalled,
+                        modifier = Modifier.width(120.dp).restorableFocus("addons:installed", focusMemory),
+                        compact = true
+                    )
+                }
                 listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET).forEach { source ->
                     item(key = source.name) {
-                    VoidButton(
-                        text = source.displayName,
-                        onClick = { onSourceSelected(source) },
-                        isPrimary = state.catalogSource == source,
-                        modifier = Modifier
-                            .width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 142.dp else 130.dp)
-                            .then(if (source == AddonCatalogSource.OFFICIAL)
-                                Modifier.focusRequester(entryRequester ?: initialFocusRequester) else Modifier)
-                    )
+                        VoidButton(
+                            text = source.displayName,
+                            onClick = { onSourceSelected(source) },
+                            isPrimary = !showingInstalled && state.catalogSource == source,
+                            modifier = Modifier.width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 98.dp else 90.dp).restorableFocus("addons:source:${source.name}", focusMemory),
+                            compact = true
+                        )
                     }
                 }
                 item(key = "add_collection") {
@@ -132,12 +163,21 @@ fun AddonCatalogContent(
                         text = "+ Collection",
                         onClick = { addingCollection = !addingCollection },
                         isPrimary = addingCollection,
-                        modifier = Modifier.width(170.dp)
+                        modifier = Modifier.width(110.dp).restorableFocus("addons:collection-add", focusMemory),
+                        compact = true
+                    )
+                }
+                item(key = "install_url") {
+                    VoidButton(
+                        text = "Install URL",
+                        onClick = onInstallUrl,
+                        modifier = Modifier.width(106.dp).restorableFocus("addons:install-url", focusMemory),
+                        compact = true
                     )
                 }
             }
 
-            if (state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
+            if (!showingInstalled && state.catalogSource == AddonCatalogSource.STREMIO_ADDONS_NET) {
                 Text(
                     "Addons sourced from stremio-addons.net — https://stremio-addons.net/",
                     color = MaterialTheme.colorScheme.primary,
@@ -181,7 +221,7 @@ fun AddonCatalogContent(
                 )
             }
 
-            if (state.savedCollections.isNotEmpty()) {
+            if (!showingInstalled && state.savedCollections.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Collections",
@@ -197,7 +237,7 @@ fun AddonCatalogContent(
                             onClick = { onCollectionSelected(collection) },
                             isPrimary = state.catalogSource == AddonCatalogSource.COLLECTION &&
                                 state.activeCollection?.url == collection.url,
-                            modifier = Modifier.width(190.dp)
+                            modifier = Modifier.width(190.dp).restorableFocus("addons:collection:${collection.url}", focusMemory)
                         )
                     }
                 }
@@ -216,18 +256,41 @@ fun AddonCatalogContent(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
             VoidInput(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = "Search addons",
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().restorableFocus("addons:search", focusMemory),
+                compact = true
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
 
-            when {
+            if (showingInstalled) {
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(filteredInstalled, key = { it.transportUrl }) { addon ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(addon.nickname ?: addon.name, color = Color.White)
+                                Text(addon.transportUrl, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                            }
+                            AddonIconAction(
+                                icon = { Icon(Icons.Default.Delete, contentDescription = "Uninstall ${addon.nickname ?: addon.name}") },
+                                label = "Uninstall ${addon.nickname ?: addon.name}",
+                                onClick = { onRemoveInstalled(addon.transportUrl) },
+                                modifier = Modifier.restorableFocus("addons:installed:${addon.transportUrl}", focusMemory)
+                            )
+                        }
+                    }
+                }
+            } else when {
                 state.isCatalogLoading && state.catalogItems.isEmpty() -> {
                     Box(
                         modifier = Modifier
@@ -289,9 +352,9 @@ fun AddonCatalogContent(
                             items(filteredItems, key = { "${state.catalogSource}:${it.transportUrl}:${it.manifest.id}" }) { item ->
                                 AddonCatalogRow(
                                     item = item,
+                                    focusMemory = focusMemory,
                                     installed = state.addons.any { installed ->
-                                        installed.id == item.manifest.id ||
-                                            normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)
+                                        normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)
                                     },
                                     onInstall = { onInstall(item) },
                                     onRemove = { onRemove(item) },
@@ -309,6 +372,7 @@ fun AddonCatalogContent(
 @Composable
 private fun AddonCatalogRow(
     item: AddonCatalogItem,
+    focusMemory: FocusMemory,
     installed: Boolean,
     onInstall: () -> Unit,
     onRemove: () -> Unit,
@@ -395,20 +459,23 @@ private fun AddonCatalogRow(
                 AddonIconAction(
                     icon = { Icon(Icons.Default.Settings, contentDescription = "Configure ${manifest.name}") },
                     label = "Configure ${manifest.name}",
-                    onClick = onConfigure
+                    onClick = onConfigure,
+                    modifier = Modifier.restorableFocus("addons:configure:${item.transportUrl}", focusMemory)
                 )
             }
             if (installed) {
                 AddonIconAction(
                     icon = { Icon(Icons.Default.Delete, contentDescription = "Uninstall ${manifest.name}") },
                     label = "Uninstall ${manifest.name}",
-                    onClick = onRemove
+                    onClick = onRemove,
+                    modifier = Modifier.restorableFocus("addons:remove:${item.transportUrl}", focusMemory)
                 )
             } else if (!configurationRequired && installable) {
                 AddonIconAction(
                     icon = { Icon(Icons.Default.Add, contentDescription = "Install ${manifest.name}") },
                     label = "Install ${manifest.name}",
-                    onClick = onInstall
+                    onClick = onInstall,
+                    modifier = Modifier.restorableFocus("addons:install:${item.transportUrl}", focusMemory)
                 )
             } else if (!installable) {
                 Text("Unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
@@ -422,14 +489,15 @@ private fun AddonCatalogRow(
 internal fun AddonIconAction(
     icon: @Composable () -> Unit,
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     IconButton(
         onClick = onClick,
         interactionSource = interaction,
-        modifier = Modifier.size(44.dp)
+        modifier = modifier.size(44.dp)
             .semantics { contentDescription = label }
             .border(
                 if (focused) 2.dp else 1.dp,
@@ -455,14 +523,21 @@ private fun AddonBadge(label: String) {
 }
 
 private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (state.catalogSource) {
+    AddonCatalogSource.ALL -> AddonCatalogSource.ALL.displayName
     AddonCatalogSource.STREMIO_ADDONS_NET -> AddonCatalogSource.STREMIO_ADDONS_NET.displayName
     AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
     AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
     AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName
 }
 
-private fun normalizeCatalogTransportUrl(url: String): String =
-    url.removeSuffix("/manifest.json").trimEnd('/').lowercase()
+/** Keep configured paths and query parameters distinct; only strip the manifest suffix. */
+internal fun normalizeCatalogTransportUrl(url: String): String {
+    val trimmed = url.trim()
+    val base = trimmed.substringBefore('?')
+    val query = trimmed.substringAfter('?', "").takeIf { '?' in trimmed }
+    val withoutManifest = base.removeSuffix("/manifest.json").trimEnd('/')
+    return withoutManifest + (query?.let { "?$it" } ?: "")
+}
 
 private fun isLocalTransport(url: String): Boolean {
     val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true

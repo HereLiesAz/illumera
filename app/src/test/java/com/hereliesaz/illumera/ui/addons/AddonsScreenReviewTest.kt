@@ -19,39 +19,40 @@ class AddonsScreenReviewTest {
     )
 
     @Test
-    fun catalogUninstallKeepsConfiguredCredentialsByMatchingTheExactTransport() {
-        val a = installed("https://example.org/a/manifest.json?token=alpha")
-        val b = installed("https://example.org/b/manifest.json?token=beta")
+    fun exactConfigurationMatchesStoredBaseWithoutManifestSuffix() {
+        val alpha = installed("https://example.org/config?token=alpha")
+        val beta = installed("https://example.org/config?token=beta")
         val catalog = AddonCatalogItem(
-            transportUrl = b.transportUrl,
+            transportUrl = "https://example.org/config/manifest.json?token=beta",
             manifest = Manifest(id = "com.example.addon")
         )
-
-        assertEquals(listOf(b), addonRemovalCandidates(catalog, listOf(a, b)))
+        assertEquals(listOf(beta), addonRemovalCandidates(catalog, listOf(alpha, beta)))
     }
 
     @Test
-    fun ambiguousManifestIdReturnsEveryCandidateForExplicitUserSelection() {
-        val a = installed("https://example.org/a/manifest.json?token=alpha")
-        val b = installed("https://example.org/b/manifest.json?token=beta")
-        val catalog = AddonCatalogItem(
-            transportUrl = "https://example.org/manifest.json",
+    fun manifestIdAloneNeverAuthorizesUninstallingAnUnrelatedConfiguration() {
+        val a = installed("https://example.org/a?token=alpha")
+        val b = installed("https://example.org/b?token=beta")
+        val unrelated = AddonCatalogItem(
+            transportUrl = "https://example.org/c/manifest.json",
             manifest = Manifest(id = "com.example.addon")
         )
-
-        assertEquals(listOf(a, b), addonRemovalCandidates(catalog, listOf(a, b)))
-        assertTrue(addonRemovalCandidates(
-            AddonCatalogItem(transportUrl = "https://missing.org/manifest.json",
-                manifest = Manifest(id = "unknown")), listOf(a, b)
-        ).isEmpty())
+        assertTrue(addonRemovalCandidates(unrelated, listOf(a, b)).isEmpty())
     }
 
     @Test
-    fun compactHeaderUsesStackedControlsBeforeTheyWouldOverflow() {
-        assertEquals(true, compactAddonHeader(230f))
-        assertEquals(true, compactAddonHeader(300f))
-        assertEquals(true, compactAddonHeader(371f))
-        assertEquals(false, compactAddonHeader(372f))
-        assertEquals(false, compactAddonHeader(640f))
+    fun queryParametersAndConfiguredPathsAreNotDiscarded() {
+        assertEquals(
+            "https://example.org/a?token=x",
+            normalizeCatalogTransportUrl("https://example.org/a/manifest.json?token=x")
+        )
+        assertEquals(
+            "https://example.org/b?token=y",
+            normalizeCatalogTransportUrl("https://example.org/b/?token=y")
+        )
+        assertEquals(
+            "https://example.org/b?token=y",
+            normalizeCatalogTransportUrl("https://example.org/b/manifest.json?token=y")
+        )
     }
 }

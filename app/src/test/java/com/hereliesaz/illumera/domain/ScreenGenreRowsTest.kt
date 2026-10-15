@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.domain
 
 import com.hereliesaz.illumera.data.model.stremio.CatalogExtra
 import com.hereliesaz.illumera.data.model.stremio.CatalogManifest
+import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -141,4 +142,37 @@ class ScreenGenreRowsTest {
         assertEquals("Sci-Fi", ScreenGenreRows.canonicalGenre("Science Fiction"))
         assertEquals("Reality-TV", ScreenGenreRows.canonicalGenre("Reality TV"))
     }
+    @Test fun genreTitleOrdersAreDeterministicAndPreserveCatalogOrderByDefault() {
+        val catalog = listOf(
+            MetaItem(id = "first", name = "Zebra", releaseInfo = "1991", imdbRating = "6.0"),
+            MetaItem(id = "second", name = "Albatross", releaseInfo = "2024", imdbRating = "9.0"),
+            MetaItem(id = "third", name = "Crane", releaseInfo = "2005")
+        )
+        assertEquals(listOf("first", "second", "third"),
+            ScreenGenreRows.sortTitles(catalog, ScreenGenreRows.TitleOrder.CATALOG).map { it.id })
+        assertEquals(listOf("second", "first", "third"),
+            ScreenGenreRows.sortTitles(catalog, ScreenGenreRows.TitleOrder.RATING).map { it.id })
+        assertEquals(listOf("second", "third", "first"),
+            ScreenGenreRows.sortTitles(catalog, ScreenGenreRows.TitleOrder.NEWEST).map { it.id })
+        assertEquals(listOf("first", "third", "second"),
+            ScreenGenreRows.sortTitles(catalog, ScreenGenreRows.TitleOrder.OLDEST).map { it.id })
+        assertEquals(listOf("second", "third", "first"),
+            ScreenGenreRows.sortTitles(catalog, ScreenGenreRows.TitleOrder.TITLE_ASC).map { it.id })
+    }
+
+    @Test fun genreAffinityCreditsViewingAndBookmarkingWithoutDoubleCountingOtherTitles() {
+        val items = listOf(
+            MetaItem(id = "viewed", name = "Viewed"),
+            MetaItem(id = "liked", name = "Liked"),
+            MetaItem(id = "both", name = "Both"),
+            MetaItem(id = "unknown", name = "Unwatched")
+        )
+        assertEquals(10, ScreenGenreRows.affinityScore(
+            items,
+            watchedIds = setOf("viewed", "both", "elsewhere"),
+            likedIds = setOf("liked", "both")
+        ))
+        assertEquals(0, ScreenGenreRows.affinityScore(items, emptySet(), emptySet()))
+    }
+
 }
