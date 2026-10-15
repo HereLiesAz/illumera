@@ -340,7 +340,8 @@ class AddonRepository @Inject constructor(
         screen: String,
         skipConfigs: Int = 0,
         maxConfigs: Int = Int.MAX_VALUE,
-        catalogTimeoutMs: Long = CATALOG_TIMEOUT_MS
+        catalogTimeoutMs: Long = CATALOG_TIMEOUT_MS,
+        curatedHomeOnly: Boolean = false
     ): List<HomeRow> = withContext(Dispatchers.IO) {
         val addons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled } ?: emptyList()
         val configs = dao.getAllCatalogConfigs().firstOrNull() ?: emptyList()
@@ -348,6 +349,10 @@ class AddonRepository @Inject constructor(
 
         val filteredConfigs = configs
             .filter { config ->
+                // A mixed Home feed replaces automatically seeded movie/series
+                // source rows. Explicitly titled user-curated rows remain
+                // available without duplicating every stock provider category.
+                (!curatedHomeOnly || screen != "home" || !config.customTitle.isNullOrBlank()) &&
                 when(screen) {
                     "home" -> config.showInHome
                     "movies" -> config.showInMovies
