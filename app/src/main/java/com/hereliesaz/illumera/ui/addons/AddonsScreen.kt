@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,29 +36,23 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.withFrameNanos
 import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
 import com.hereliesaz.illumera.ui.navigation.focus.focusMemoryRoot
 import com.hereliesaz.illumera.ui.navigation.focus.rememberFocusMemory
-import com.hereliesaz.illumera.data.model.AddonEntity
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 
 internal const val STREMIO_ADDONS_URL = "https://web.stremio.com/#/addons"
 internal const val THIRD_PARTY_ADDONS_URL = "https://stremio-addons.net/"
 
-/** Prefer the exact installed transport, including configuration/token parameters. */
+/** Match only the exact installed endpoint, never a shared manifest ID. */
 internal fun addonRemovalCandidates(
     item: AddonCatalogItem,
-    installed: List<AddonEntity>
-): List<AddonEntity> {
-    val exact = installed.filter { it.transportUrl == item.transportUrl }
-    return if (exact.isNotEmpty()) exact else installed.filter { it.id == item.manifest.id }
+    installed: List<com.hereliesaz.illumera.data.model.AddonEntity>
+): List<com.hereliesaz.illumera.data.model.AddonEntity> {
+    val url = normalizeCatalogTransportUrl(item.transportUrl)
+    return installed.filter { normalizeCatalogTransportUrl(it.transportUrl) == url }
 }
-
-/** The original TV header needs 132 + 176 + 44 + two 10dp gaps. */
-internal fun compactAddonHeader(availableWidthDp: Float): Boolean =
-    availableWidthDp < 372f
 
 /**
  * Full-screen, scrollable browser and installed-addon manager.
@@ -74,28 +68,24 @@ fun AddonsScreen(
     val context = LocalContext.current
     var showingInstalled by remember { mutableStateOf(false) }
     var showRemotePaste by remember { mutableStateOf(false) }
+    var showInstallUrl by remember { mutableStateOf(false) }
     var installUrl by remember { mutableStateOf("") }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
     var removalGuidance by remember { mutableStateOf<String?>(null) }
-    var restoreBrowseFocus by remember { mutableStateOf(false) }
+    var handoffToInstalled by remember { mutableStateOf(false) }
     val focusMemory = rememberFocusMemory()
     RestoreFocusOnResume(memory = focusMemory, fallback = entryRequester)
-
-    LaunchedEffect(showingInstalled, restoreBrowseFocus) {
-        if (!showingInstalled && restoreBrowseFocus) {
+    LaunchedEffect(showingInstalled, handoffToInstalled) {
+        if (showingInstalled && handoffToInstalled) {
             withFrameNanos { }
-            runCatching { entryRequester.requestFocus() }
-            restoreBrowseFocus = false
+            if (!focusMemory.screenHasFocus) focusMemory.requestFocus("addons:installed")
+            handoffToInstalled = false
         }
     }
 
     // A root screen's Back opens the main navigation. Only close our own
     // Installed subview here; root Back is handled by MainRootBackHandler.
-    BackHandler(enabled = showingInstalled) {
-        showingInstalled = false
-        restoreBrowseFocus = true
-        removalGuidance = null
-    }
+    BackHandler(enabled = showingInstalled) { showingInstalled = false; removalGuidance = null }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -108,161 +98,97 @@ fun AddonsScreen(
                 bottom = 20.dp
             )
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            if (compactAddonHeader(maxWidth.value)) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        VoidButton(
-                            text = "Browse",
-                            onClick = {
-                                showingInstalled = false
-                                restoreBrowseFocus = true
-                                removalGuidance = null
-                            },
-                            isPrimary = !showingInstalled,
-                            modifier = Modifier.weight(1f).focusRequester(entryRequester)
-                        )
-                        VoidButton(
-                            text = "Installed (${state.addons.size})",
-                            onClick = {
-                                showingInstalled = true
-                                removalGuidance = null
-                            },
-                            isPrimary = showingInstalled,
-                            modifier = Modifier.weight(1f)
-                        )
+        AddonCatalogContent(
+            modifier = Modifier.weight(1f),
+            state = state,
+            onLoad = viewModel::loadCatalog,
+            onSourceSelected = { source ->
+                showingInstalled = false
+                removalGuidance = null
+                viewModel.selectCatalogSource(source)
+            },
+            onAddCollection = { url ->
+                showingInstalled = false
+                viewModel.addCollection(url)
+            },
+            onCollectionSelected = { collection ->
+                showingInstalled = false
+                viewModel.selectCollection(collection)
+            },
+            onCollectionRemoved = viewModel::removeCollection,
+            onRetry = viewModel::retryCatalog,
+            onInstall = { viewModel.prepareInstall(it.transportUrl) },
+            onRemove = { item: AddonCatalogItem ->
+                val matches = addonRemovalCandidates(item, state.addons)
+                when (matches.size) {
+                    1 -> pendingRemoval = matches.single().transportUrl
+                    0 -> removalGuidance = "No installed addon matches this exact configuration."
+                    else -> {
+                        removalGuidance = "Choose the configured installation below."
+                        showingInstalled = true
+                        handoffToInstalled = true
                     }
-                    AddonIconAction(
-                        icon = { Icon(Icons.Default.Link, contentDescription = "Paste an addon link from phone") },
-                        label = "Paste an addon link from phone",
-                        onClick = { showRemotePaste = true }
-                    )
                 }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    VoidButton(
-                        text = "Browse",
-                        onClick = {
-                            showingInstalled = false
-                            restoreBrowseFocus = true
-                            removalGuidance = null
-                        },
-                        isPrimary = !showingInstalled,
-                        modifier = Modifier.width(132.dp).focusRequester(entryRequester)
-                    )
-                    VoidButton(
-                        text = "Installed (${state.addons.size})",
-                        onClick = {
-                            showingInstalled = true
-                            removalGuidance = null
-                        },
-                        isPrimary = showingInstalled,
-                        modifier = Modifier.width(176.dp)
-                    )
-                    AddonIconAction(
-                        icon = { Icon(Icons.Default.Link, contentDescription = "Paste an addon link from phone") },
-                        label = "Paste an addon link from phone",
-                        onClick = { showRemotePaste = true }
-                    )
+            },
+            onConfigure = { item ->
+                item.configureUrl?.let { url ->
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
-            }
+            },
+            showingInstalled = showingInstalled,
+            onInstalledSelected = { showingInstalled = true; removalGuidance = null },
+            onRemoveInstalled = { pendingRemoval = it },
+            onInstallUrl = { showInstallUrl = true },
+            entryRequester = entryRequester,
+            focusMemory = focusMemory
+        )
+        removalGuidance?.let { guidance ->
+            Text(guidance, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
         }
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+        state.error?.let { error ->
+            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+        }
+    }
+    if (showInstallUrl) {
+        VoidDialog(
+            title = "Install addon URL",
+            onDismissRequest = { showInstallUrl = false }
         ) {
             VoidInput(
                 value = installUrl,
                 onValueChange = { installUrl = it },
                 placeholder = "Addon manifest URL or stremio:// link",
-                onDone = { if (installUrl.isNotBlank()) viewModel.prepareInstall(installUrl) },
-                modifier = Modifier.weight(1f)
-            )
-            AddonIconAction(
-                icon = { Icon(Icons.Default.Add, contentDescription = "Install addon URL") },
-                label = "Install addon URL",
-                onClick = { if (installUrl.isNotBlank() && !state.isLoading) viewModel.prepareInstall(installUrl) }
-            )
-        }
-
-        removalGuidance?.let { guidance ->
-            Text(
-                guidance,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-
-        state.error?.let { error ->
-            Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
-        }
-
-        Spacer(Modifier.height(8.dp))
-        if (showingInstalled) {
-            Text("Installed Add-ons", style = MaterialTheme.typography.titleLarge, color = Color.White)
-            Spacer(Modifier.height(10.dp))
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(state.addons, key = { it.transportUrl }) { addon ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.05f))
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(addon.nickname ?: addon.name, color = Color.White)
-                            Text(
-                                addon.transportUrl,
-                                color = Color.Gray,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        AddonIconAction(
-                            icon = {
-                                Icon(Icons.Default.Delete, contentDescription = "Uninstall ${addon.nickname ?: addon.name}")
-                            },
-                            label = "Uninstall ${addon.nickname ?: addon.name}",
-                            onClick = { pendingRemoval = addon.transportUrl }
-                        )
-                    }
-                }
-            }
-        } else {
-            AddonCatalogContent(
-                modifier = Modifier.weight(1f),
-                state = state,
-                onLoad = { viewModel.loadCatalog() },
-                onSourceSelected = viewModel::selectCatalogSource,
-                onAddCollection = viewModel::addCollection,
-                onCollectionSelected = viewModel::selectCollection,
-                onCollectionRemoved = viewModel::removeCollection,
-                onRetry = viewModel::retryCatalog,
-                onInstall = { viewModel.prepareInstall(it.transportUrl) },
-                onRemove = { item: AddonCatalogItem ->
-                    val matches = addonRemovalCandidates(item, state.addons)
-                    when (matches.size) {
-                        1 -> pendingRemoval = matches.single().transportUrl
-                        0 -> removalGuidance = "This addon has no matching installation."
-                        else -> {
-                            // Multiple installed configurations share a manifest ID.
-                            // Never select one arbitrarily; show their exact URLs.
-                            removalGuidance = "Choose the configured installation to uninstall below."
-                            showingInstalled = true
-                        }
+                onDone = {
+                    if (installUrl.isNotBlank()) {
+                        viewModel.prepareInstall(installUrl)
+                        showInstallUrl = false
                     }
                 },
-                onConfigure = { item ->
-                    item.configureUrl?.let { url ->
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                modifier = Modifier.fillMaxWidth(),
+                compact = true
+            )
+            Spacer(Modifier.height(10.dp))
+            VoidButton(
+                text = "Paste link from phone",
+                onClick = {
+                    showInstallUrl = false
+                    showRemotePaste = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+                compact = true
+            )
+            VoidButton(
+                text = "Install",
+                onClick = {
+                    if (installUrl.isNotBlank()) {
+                        viewModel.prepareInstall(installUrl)
+                        showInstallUrl = false
                     }
-                }
+                },
+                enabled = installUrl.isNotBlank() && !state.isLoading,
+                isPrimary = true,
+                modifier = Modifier.fillMaxWidth(),
+                compact = true
             )
         }
     }
