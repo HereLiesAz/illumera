@@ -736,7 +736,9 @@ private fun InfiniteGridContent(
                                 currentFocusedIndex = scrollIndex
                                 val logicalIndex = scrollIndex % sectionSize
                                 if (logicalIndex < imageUrls.size) {
-                                    ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
+                                    if (isLandscapeCards)
+                                        ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, logicalIndex)
+                                    else ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
                                 }
                                 onFocused(item.movie, uniqueKey)
                             },
@@ -758,7 +760,9 @@ private fun InfiniteGridContent(
                                 currentFocusedIndex = scrollIndex
                                 val logicalIndex = scrollIndex % sectionSize
                                 if (logicalIndex < imageUrls.size) {
-                                    ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
+                                    if (isLandscapeCards)
+                                        ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, logicalIndex)
+                                    else ImagePrefetcher.prefetchAround(context, imageUrls, logicalIndex)
                                 }
                                 onFocused(item.movie, uniqueKey)
                             },
@@ -776,6 +780,7 @@ private fun InfiniteGridContent(
                     val uniqueKey = "${rowIndex}_viewmore_$scrollIndex"
                     
                     InfiniteViewMoreCard(
+                        isLandscapeCards = isLandscapeCards,
                         isTopNav = isTopNav,
                         isFirstRow = isFirstRow,
                         drawerRequester = drawerRequester,
@@ -973,7 +978,9 @@ private fun FiniteGridContent(
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
-                                ImagePrefetcher.prefetchAround(context, imageUrls, index)
+                                if (isLandscapeCards)
+                                    ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
+                                else ImagePrefetcher.prefetchAround(context, imageUrls, index)
                                 onFocused(item.movie, uniqueKey)
                             },
                             modifier = Modifier.then(
@@ -991,7 +998,9 @@ private fun FiniteGridContent(
                             progress = item.movie.progress,
                             isWatched = rowIndex != -1 && item.movie.id in watchedIds,
                             onFocused = {
-                                ImagePrefetcher.prefetchAround(context, imageUrls, index)
+                                if (isLandscapeCards)
+                                    ImagePrefetcher.prefetchAroundLandscape(context, imageUrls, index)
+                                else ImagePrefetcher.prefetchAround(context, imageUrls, index)
                                 onFocused(item.movie, uniqueKey)
                             },
                             modifier = Modifier.then(
@@ -1007,7 +1016,7 @@ private fun FiniteGridContent(
                 is GridRowItem.ViewMoreItem -> {
                     Box(
                         modifier = Modifier
-                            .width(ITEM_WIDTH)
+                            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -1036,6 +1045,7 @@ private fun FiniteGridContent(
                             }
                     ) {
                         ViewMoreCard(
+                            isLandscape = isLandscapeCards,
                             onClick = onViewMore,
                             onFocused = { 
                                 onFocused(null, uniqueKey) 
@@ -1062,6 +1072,7 @@ private fun FiniteGridContent(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun InfiniteViewMoreCard(
+    isLandscapeCards: Boolean,
     isTopNav: Boolean,
     isFirstRow: Boolean,
     drawerRequester: FocusRequester,
@@ -1091,7 +1102,7 @@ private fun InfiniteViewMoreCard(
 
     Box(
         modifier = modifier
-            .width(ITEM_WIDTH)
+            .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
             .graphicsLayer {
                 clip = false
                 alpha = animatedAlpha
@@ -1136,7 +1147,8 @@ private fun InfiniteViewMoreCard(
     ) {
         ViewMoreCard(
             onClick = onClick,
-            onFocused = null
+            onFocused = null,
+            isLandscape = isLandscapeCards
         )
     }
 }
