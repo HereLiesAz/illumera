@@ -78,7 +78,7 @@ class WatchlistViewModelTest {
             entry("tt0000033", "series", "The Return", 200L, 0L, year = "2024"),
             entry("tt0000044", "movie", "Another Return", 300L, 0L, year = "2024")
         )
-        val merged = mergeLibraryEntries(input)
+        val merged = aggregateLibraryEntries(input)
         assertEquals(3, merged.size)
         val film = merged.first { it.item.type == "movie" && it.item.id == "tt0000033" }
         assertEquals("artwork", film.item.poster)
@@ -99,7 +99,7 @@ class WatchlistViewModelTest {
                 addedAt = 1L, lastWatched = 0L, watched = false, timesWatched = 0
             )
         }
-        assertEquals(2, mergeLibraryEntries(originals).size)
+        assertEquals(2, aggregateLibraryEntries(originals).size)
     }
 
     @Test
