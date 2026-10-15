@@ -91,3 +91,10 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Unit assertions cover column capacity for small phone, ordinary phone, compact tablet and TV widths; expected values are fixed independently from implementation arithmetic.
 
 **Still required:** Android build, FOSS variant unit tests, cold adversarial GLEE review, Android TV/device D-pad and focus restoration, empty/disabled-suggestions scenarios, large libraries and sort changes. Do not treat this as device-verified completion.
+
+### PR #246 review follow-ups
+
+- QueueManager persists empty suggestions as soon as a source, unseen-only, or allowed-content preference changes; Watchlist `ensureSuggestions` reconstructs the row after Settings is dismissed, even when a view-local coroutine was cancelled and the previous row had ten suggestions. Existing manual Queue items and per-profile preferences remain intact.
+- Left-arrow navigation in the poster grid shares one repeat debounce across cells. Reaching column zero by holding Left does not immediately escape to the drawer; a fresh deliberate press does.
+- Grid children are composed with stable `key(media.type, media.id)` identities, preserving card/long-press state across reorders or deduplication within a row.
+- QueueManager regression tests cover persistence and manual-queue retention after invalidation. Full Android builds and remote-device verification remain required.
