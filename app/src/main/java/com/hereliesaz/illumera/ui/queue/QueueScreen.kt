@@ -168,7 +168,7 @@ fun QueueSection(
             val neighbour = queueFocusNeighbour(
                 key = key,
                 previousRows = listOf(previousRows[0], previousRows[1]),
-                currentRows = listOf(manualKeys, suggestionKeys)
+                currentRows = listOf(suggestionKeys, manualKeys)
             )
             if (neighbour != null) {
                 onQueueFocused(neighbour) // the card's own LaunchedEffect focuses it
@@ -180,8 +180,8 @@ fun QueueSection(
                 }
             }
         }
-        previousRows[0] = manualKeys
-        previousRows[1] = suggestionKeys
+        previousRows[0] = suggestionKeys
+        previousRows[1] = manualKeys
     }
 
     Column(
@@ -285,6 +285,12 @@ fun QueueSection(
             )
         }
 
+        Text(
+            text = "Queue",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = startPadding)
+        )
         if (state.manualItems.isEmpty()) {
             Text(
                 text = "Nothing queued yet.",
@@ -294,6 +300,7 @@ fun QueueSection(
         } else {
             QueueCardRow(
                 title = "Queue",
+                showTitle = false,
                 items = state.manualItems,
                 startPadding = startPadding,
                 onOpenItem = onOpenItem,
