@@ -15,5 +15,6 @@ data class HomeRow(
     val secondCatalogUrl: String? = null,         // Paired TV/movie catalog on Home
     val secondSupportsSkip: Boolean = false,
     val fetchedPrimaryCount: Int = 0,             // Raw source counts (before dedup)
-    val fetchedSecondCount: Int = 0
+    val fetchedSecondCount: Int = 0,
+    val primarySupportsSkip: Boolean = false
 )
