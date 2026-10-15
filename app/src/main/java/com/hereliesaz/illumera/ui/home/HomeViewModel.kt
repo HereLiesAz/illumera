@@ -50,8 +50,9 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     /**
-     * Resolve a trailer through the bundled addon, then extract its YouTube playback URL.
-     * A missing, malformed or unavailable trailer never replaces the poster artwork.
+     * Resolve an autoplay trailer independently of the user's addon selection:
+     * configured trailer addon first, TMDB when a key is available, then public
+     * Cinemeta trailer metadata. Failed sources never remove the background art.
      */
     private data class CachedTrailer(val url: String, val fetchedAtMs: Long)
     private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedTrailer>()
@@ -59,54 +60,111 @@ class HomeViewModel @Inject constructor(
     suspend fun resolveTrailer(item: MetaItem): String? {
         if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
         val trailerKey = "${item.type}:${item.id}"
-
-        // An addon removed or disabled by the user must never receive trailer requests.
-        val trailer = dao.getAddon("https://stremio-trailer-addon.vercel.app") ?: return null
-        if (!trailer.isEnabled) return null
         trailerUrlCache[trailerKey]?.let { cached ->
-            // Googlevideo URLs are signed and expire. Never permanently cache one.
             if (System.currentTimeMillis() - cached.fetchedAtMs < 5 * 60_000L) return cached.url
             trailerUrlCache.remove(trailerKey)
         }
         return try {
-            // Source discovery, YouTube page/player extraction and a reachable
-            // signed media URL are separate network operations. 12 seconds
-            // cancelled working extraction before it could start playback.
-            kotlinx.coroutines.withTimeout(45_000L) {
-                // The trailer addon accepts IMDb IDs. Look up a non-IMDb catalog
-                // item by exact title (and release year when known) before calling it.
+            kotlinx.coroutines.withTimeout(55_000L) {
+                val candidates = linkedSetOf<String>()
                 val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
-                    ?: run {
-                        val wantedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
-                        val wantedYear = Regex("(?:19|20)[0-9]{2}")
+                    ?: kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                        val normalizedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
+                        val year = Regex("(?:19|20)[0-9]{2}")
                             .find(item.releaseInfo.orEmpty())?.value
-                        kotlinx.coroutines.withTimeoutOrNull(5_000L) {
-                            repository.searchMovies(item.name)
-                        }?.firstOrNull { candidate ->
-                            candidate.type == item.type &&
-                                candidate.name.lowercase().filter { it.isLetterOrDigit() } == wantedTitle &&
-                                (wantedYear == null ||
-                                    Regex("(?:19|20)[0-9]{2}")
-                                        .find(candidate.releaseInfo.orEmpty())?.value == wantedYear) &&
-                                Regex("^tt[0-9]+$").matches(candidate.id)
+                        repository.searchMovies(item.name).firstOrNull { found ->
+                            found.type == item.type &&
+                                found.name.lowercase().filter { it.isLetterOrDigit() } == normalizedTitle &&
+                                (year == null || Regex("(?:19|20)[0-9]{2}")
+                                    .find(found.releaseInfo.orEmpty())?.value == year) &&
+                                Regex("^tt[0-9]+$").matches(found.id)
                         }?.id
-                    } ?: return@withTimeout null
-                val response = trailerApi.getStreams(
-                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/$imdbId.json"
-                )
-                val youtubeLink = response.streams.orEmpty().firstNotNullOfOrNull { stream ->
-                    stream.externalUrl ?: stream.ytId?.let { "https://www.youtube.com/watch?v=$it" }
-                } ?: return@withTimeout null
-                val source = youtubeExtractor.extractPlaybackSource(youtubeLink, preferCompatiblePreview = true)
-                source?.videoUrl?.also { mediaUrl ->
-                    if (trailerUrlCache.size > 128) trailerUrlCache.clear()
-                    trailerUrlCache[trailerKey] = CachedTrailer(mediaUrl, System.currentTimeMillis())
+                    }
+
+                if (imdbId != null) {
+                    val trailerAddon = dao.getAddon("https://stremio-trailer-addon.vercel.app")
+                    if (trailerAddon?.isEnabled == true) {
+                        try {
+                            val response = kotlinx.coroutines.withTimeout(7_000L) {
+                                trailerApi.getStreams(
+                                    "https://stremio-trailer-addon.vercel.app/stream/${item.type}/$imdbId.json"
+                                )
+                            }
+                            response.streams.orEmpty().forEach { stream ->
+                                stream.ytId?.let { candidates += it }
+                                stream.externalUrl?.let { candidates += it }
+                                stream.url?.takeIf { it.contains("youtu", ignoreCase = true) }
+                                    ?.let { candidates += it }
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            Log.w("HomeTrailer", "Trailer addon failed for $trailerKey", error)
+                        }
+                    }
                 }
+
+                // TMDB's video index is app-level metadata, not a Stremio addon.
+                if (com.hereliesaz.illumera.BuildConfig.TMDB_API_KEY.isNotBlank()) {
+                    try {
+                        val tmdbId = tmdbService.ensureTmdbId(item.id, item.type)
+                        if (tmdbId != null) {
+                            tmdbMetadataService.fetchBestTrailerKey(tmdbId, item.type)
+                                ?.key?.let { candidates += it }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w("HomeTrailer", "TMDB trailer lookup failed for $trailerKey", error)
+                    }
+                }
+
+                if (imdbId != null) {
+                    try {
+                        val meta = kotlinx.coroutines.withTimeout(6_000L) {
+                            trailerApi.getJson("https://v3-cinemeta.strem.io/meta/${item.type}/$imdbId.json")
+                                .asJsonObject.getAsJsonObject("meta")
+                        }
+                        for (field in listOf("trailerStreams", "trailers")) {
+                            val trailers = meta?.get(field)?.takeIf { it.isJsonArray }?.asJsonArray
+                                ?: continue
+                            trailers.forEach { entry ->
+                                if (!entry.isJsonObject) return@forEach
+                                val trailer = entry.asJsonObject
+                                trailer.get("ytId")?.takeIf { it.isJsonPrimitive }
+                                    ?.asString?.let { candidates += it }
+                                trailer.get("id")?.takeIf { it.isJsonPrimitive }
+                                    ?.asString?.takeIf { it.length == 11 }
+                                    ?.let { candidates += it }
+                            }
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Log.w("HomeTrailer", "Cinemeta trailer lookup failed for $trailerKey", error)
+                    }
+                }
+
+                for (candidate in candidates) {
+                    val source = kotlinx.coroutines.withTimeoutOrNull(16_000L) {
+                        youtubeExtractor.extractPlaybackSource(
+                            candidate, preferCompatiblePreview = true
+                        )
+                    }
+                    if (source != null) {
+                        if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+                        trailerUrlCache[trailerKey] = CachedTrailer(
+                            source.videoUrl, System.currentTimeMillis()
+                        )
+                        return@withTimeout source.videoUrl
+                    }
+                }
+                null
             }
         } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
             Log.w("HomeTrailer", "Trailer resolution timed out for $trailerKey")
             null
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+        } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             Log.w("HomeTrailer", "Trailer resolution failed for $trailerKey", error)
@@ -277,19 +335,46 @@ class HomeViewModel @Inject constructor(
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
                     }
-                    // First visit searches every addon source group in the first layer
-                    // so a later provider can populate a row even if earlier addons are empty.
-                    // Subsequent horizontal browsing fetches source batches lazily.
-                    val probes = if (nextPage < firstLayerCount) {
+                    // Hidden genre rows must probe their catalog sources, including a
+                    // bounded second layer; an empty first page cannot trap TV focus.
+                    val probes = if (!isHomePair && existing.isEmpty()) {
+                        (firstLayerCount * 2 - nextPage).coerceAtLeast(0)
+                    } else if (nextPage < firstLayerCount) {
                         firstLayerCount - nextPage
-                    } else 4
-                    repeat(probes.coerceAtLeast(0)) {
+                    } else 1
+                    repeat(probes) {
                         if (unique.isEmpty()) {
                             val fetched = when {
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
-                            unique = distinctAggregatedMetas(existing, fetched)
+                            val unseen = distinctAggregatedMetas(existing, fetched)
+                            unique = if (genre == null) unseen else {
+                                kotlinx.coroutines.coroutineScope {
+                                    unseen.chunked(6).flatMap { group ->
+                                        group.map { candidate ->
+                                            async {
+                                                // Cinemeta's lead genre takes priority over
+                                                // the arbitrary genre order from each addon.
+                                                val canonical = repository.primaryGenreFor(candidate)
+                                                val lead = canonical
+                                                    ?: candidate.genres.orEmpty()
+                                                        .map(ScreenGenreRows::canonicalGenre)
+                                                        .sorted()
+                                                        .firstOrNull()
+                                                val assigned = when (lead) {
+                                                    "Action & Adventure" -> "Action"
+                                                    "Sci-Fi & Fantasy" -> "Sci-Fi"
+                                                    else -> lead
+                                                }
+                                                candidate.takeIf {
+                                                    assigned?.equals(genre, ignoreCase = true) == true
+                                                }
+                                            }
+                                        }.awaitAll().filterNotNull()
+                                    }
+                                }
+                            }
                         }
                     }
                     // Never let an old profile's in-flight catalogs contaminate a
@@ -974,9 +1059,26 @@ class HomeViewModel @Inject constructor(
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Every genre and paired Home category loads independently as it enters
-                // the viewport; warm only two to avoid flooding enabled providers.
-                initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                // Genre shells are hidden until populated. Probe ALL enabled genres
+                // with bounded concurrency: otherwise empty first rows prevent users
+                // ever scrolling far enough to trigger later rows' lazy loading.
+                if (screenName in setOf("movies", "series")) {
+                    val generation = screenDataGeneration
+                    repeat(3) { lane ->
+                        launch {
+                            initialRows.filterIndexed { index, _ -> index % 3 == lane }
+                                .forEach { row ->
+                                    if (generation != screenDataGeneration) return@launch
+                                    loadMoreItems(row.configId)
+                                    while (row.configId in loadingMoreRows &&
+                                        generation == screenDataGeneration
+                                    ) kotlinx.coroutines.delay(80)
+                                }
+                        }
+                    }
+                } else {
+                    initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
