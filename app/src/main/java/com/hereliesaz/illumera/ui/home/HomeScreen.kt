@@ -1609,7 +1609,7 @@ internal fun TrailerPreview(
     val player = remember(videoUrl, item?.id, item?.type) {
         videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = if (soundEnabled) 1f else 0f
+                volume = if (soundEnabled) 0.6f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1629,7 +1629,7 @@ internal fun TrailerPreview(
     // identity changes. The lifecycle observer reads the latest play condition.
     val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
     SideEffect {
-        player?.volume = if (soundEnabled) 1f else 0f
+        player?.volume = if (soundEnabled) 0.6f else 0f
         player?.playWhenReady = shouldPlay &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
     }
