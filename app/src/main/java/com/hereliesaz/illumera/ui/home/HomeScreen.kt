@@ -450,7 +450,10 @@ fun CinematicLayout(
                                     resolveTrailer = resolveTrailer,
                                     autoPlayPreviews = autoPlayPreviews,
                                     previewSound = previewSound,
-                                    previewVisible = heroVisible,
+                                    // Only one preview owns audio: once a row is focused,
+                                    // the Hero cannot continue playing underneath it.
+                                    previewVisible = heroVisible &&
+                                        (activeCinematicRow == null || activeCinematicRow == "__hero__"),
                                     onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
