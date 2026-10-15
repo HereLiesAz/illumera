@@ -46,3 +46,9 @@ Source-level remedies added:
 The previous combined All Movies/All Series row was explicitly **not** requested. Movies and Series now render a separate row per enabled Stremio genre and no catch-all or per-addon category rows. All genres are enabled by default; Settings → Screen Editor → Movies/Series → Manage Genres allows disabling each genre or all genres. Every genre row merges title results from every eligible enabled catalog source, deduplicates titles and fetches more batches as the row is browsed. Unseen rows defer network loading until they enter the vertical viewport.
 
 TV acceptance: fresh install defaults to 19 Movie and 22 Series genre rows; no All Movies/All Series row is visible; disabling e.g. Horror only hides Horror on the chosen screen and persists after relaunch; no options that are actually years are displayed as genres; Movies and Series have separate choices; Home remains unchanged.
+
+## Mixed Home and Watchlist Library aggregation
+
+The new Home catalog includes both movies and series from every enabled addon, using interleaved, deduplicated, lazily fetched pages. Existing custom Hubs and Continue Watching remain independent intentional collections. In Watchlist, Queue is still first, and Library now has **one** Movies & Series row populated by a type-aware deduplicated merge of saved titles and synchronized history, with the prior sorting options preserved. The Movies and Series tabs are unchanged and retain their genre-first rows.
+
+**Required verification:** test a movie plus a series with the same provider ID (both retained), duplicate source hits (one card), movie/series page continuation, removal of a saved bookmark without a blank focus target, restored focus from the previous Series row, sorting after a newly synchronized episode, and Hero content loading when the Home mixed row first arrives. Build and Android TV verification are pending.
