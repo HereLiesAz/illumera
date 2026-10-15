@@ -66,7 +66,9 @@ class HomeViewModel @Inject constructor(
         }
         return try {
             kotlinx.coroutines.withTimeout(95_000L) {
-                val candidates = linkedSetOf<String>()
+                val addonCandidates = linkedSetOf<String>()
+                val tmdbCandidates = linkedSetOf<String>()
+                val cinemetaCandidates = linkedSetOf<String>()
                 val imdbId = Regex("^tt[0-9]+$").matchEntire(item.id)?.value
                     ?: kotlinx.coroutines.withTimeoutOrNull(5_000L) {
                         val normalizedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
@@ -91,10 +93,10 @@ class HomeViewModel @Inject constructor(
                                 )
                             }
                             response?.streams.orEmpty().forEach { stream ->
-                                stream.ytId?.let { candidates += it }
-                                stream.externalUrl?.let { candidates += it }
+                                stream.ytId?.let { addonCandidates += it }
+                                stream.externalUrl?.let { addonCandidates += it }
                                 stream.url?.takeIf { it.contains("youtu", ignoreCase = true) }
-                                    ?.let { candidates += it }
+                                    ?.let { addonCandidates += it }
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -107,11 +109,11 @@ class HomeViewModel @Inject constructor(
                 // TMDB's video index is app-level metadata, not a Stremio addon.
                 if (com.hereliesaz.illumera.BuildConfig.TMDB_API_KEY.isNotBlank()) {
                     try {
-                        val tmdbId = tmdbService.ensureTmdbId(item.id, item.type)
+                        val tmdbId = tmdbService.ensureTmdbId(imdbId ?: item.id, item.type)
                         if (tmdbId != null) {
                             kotlinx.coroutines.withTimeoutOrNull(8_000L) {
                                 tmdbMetadataService.fetchBestTrailerKey(tmdbId, item.type)
-                            }?.key?.let { candidates += it }
+                            }?.key?.let { tmdbCandidates += it }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -133,10 +135,10 @@ class HomeViewModel @Inject constructor(
                                 if (!entry.isJsonObject) return@forEach
                                 val trailer = entry.asJsonObject
                                 trailer.get("ytId")?.takeIf { it.isJsonPrimitive }
-                                    ?.asString?.let { candidates += it }
+                                    ?.asString?.let { cinemetaCandidates += it }
                                 trailer.get("id")?.takeIf { it.isJsonPrimitive }
                                     ?.asString?.takeIf { it.length == 11 }
-                                    ?.let { candidates += it }
+                                    ?.let { cinemetaCandidates += it }
                             }
                         }
                     } catch (cancelled: CancellationException) {
@@ -146,18 +148,29 @@ class HomeViewModel @Inject constructor(
                     }
                 }
 
-                for (candidate in candidates) {
-                    val source = kotlinx.coroutines.withTimeoutOrNull(32_000L) {
-                        youtubeExtractor.extractPlaybackSource(
-                            candidate, preferCompatiblePreview = true
-                        )
-                    }
-                    if (source != null) {
-                        if (trailerUrlCache.size > 128) trailerUrlCache.clear()
-                        trailerUrlCache[trailerKey] = CachedTrailer(
-                            source.videoUrl, System.currentTimeMillis()
-                        )
-                        return@withTimeout source.videoUrl
+                // Bound each source separately: unplayable addon entries must
+                // not exhaust the resolver before TMDB or Cinemeta is tried.
+                // Limit extraction to four candidates, with a total bound of 60s.
+                val attempted = mutableSetOf<String>()
+                for (sourceCandidates in listOf(
+                    addonCandidates.take(1),
+                    tmdbCandidates.take(1),
+                    cinemetaCandidates.take(2)
+                )) {
+                    for (candidate in sourceCandidates) {
+                        if (!attempted.add(candidate)) continue
+                        val source = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                            youtubeExtractor.extractPlaybackSource(
+                                candidate, preferCompatiblePreview = true
+                            )
+                        }
+                        if (source != null) {
+                            if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+                            trailerUrlCache[trailerKey] = CachedTrailer(
+                                source.videoUrl, System.currentTimeMillis()
+                            )
+                            return@withTimeout source.videoUrl
+                        }
                     }
                 }
                 null
@@ -336,27 +349,32 @@ class HomeViewModel @Inject constructor(
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
                     }
-                    // Hidden genre rows must probe their catalog sources, including a
-                    // bounded second layer; an empty first page cannot trap TV focus.
+                    // Previously a later empty page halted pagination permanently.
+                    // Probe a bounded number until there is actual NEW primary-row content.
                     val probes = if (!isHomePair && existing.isEmpty()) {
                         (firstLayerCount * 2 - nextPage).coerceAtLeast(0)
                     } else if (nextPage < firstLayerCount) {
                         firstLayerCount - nextPage
-                    } else 1
+                    } else 4
                     repeat(probes) {
                         if (unique.isEmpty()) {
                             val fetched = when {
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
-                            val unseen = distinctAggregatedMetas(existing, fetched)
-                            unique = if (genre == null) unseen else {
-                                kotlinx.coroutines.coroutineScope {
-                                    unseen.chunked(6).flatMap { group ->
+                            val currentItems = _state.value.rows
+                                .firstOrNull { it.configId == configId }?.items.orEmpty()
+                            val unseen = distinctAggregatedMetas(currentItems, fetched)
+                            if (genre == null) {
+                                unique = unseen
+                            } else {
+                                // Incremental genre classification: show the FIRST completed
+                                // batch instead of hiding a whole row while 100 slow Cinemeta
+                                // requests finish. Still classify/route the complete page.
+                                for (group in unseen.chunked(6)) {
+                                    val classified = kotlinx.coroutines.coroutineScope {
                                         group.map { candidate ->
                                             async {
-                                                // Cinemeta's lead genre takes priority over
-                                                // the arbitrary genre order from each addon.
                                                 val canonical = repository.primaryGenreFor(candidate)
                                                 val lead = canonical
                                                     ?: candidate.genres.orEmpty()
@@ -368,25 +386,44 @@ class HomeViewModel @Inject constructor(
                                                     "Sci-Fi & Fantasy" -> "Sci-Fi"
                                                     else -> lead
                                                 }
-                                                candidate.takeIf {
-                                                    assigned?.equals(genre, ignoreCase = true) == true
-                                                }
+                                                assigned to candidate
                                             }
-                                        }.awaitAll().filterNotNull()
+                                        }.awaitAll()
+                                    }
+                                    // Check the owner BEFORE every incremental UI append.
+                                    if (generation != screenDataGeneration ||
+                                        _state.value.loadedProfileId != initiatingProfileId ||
+                                        _state.value.loadedScreen != initiatingScreen ||
+                                        profileConfigurationManager.activeProfileId.value != initiatingProfileId
+                                    ) return@launch
+                                    val byDestination = classified.groupBy { (primary, _) ->
+                                        _state.value.rows.firstOrNull { row ->
+                                            row.title.equals(primary, ignoreCase = true)
+                                        }?.configId
+                                    }
+                                    byDestination.forEach { (destination, entries) ->
+                                        if (destination != null) {
+                                            val titles = entries.map { it.second }
+                                            appendItemsToRow(destination, titles)
+                                            if (destination == configId) {
+                                                unique = unique + titles
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    // Never let an old profile's in-flight catalogs contaminate a
-                    // newly loaded profile with the same genre row IDs.
+                    // All catalog rows are scoped to their profile and screen.
                     if (generation != screenDataGeneration ||
                         _state.value.loadedProfileId != initiatingProfileId ||
                         _state.value.loadedScreen != initiatingScreen ||
                         profileConfigurationManager.activeProfileId.value != initiatingProfileId
                     ) return@launch
                     rowFetchOffsets[configId] = nextPage
-                    if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
+                    if (genre == null && unique.isNotEmpty()) {
+                        appendItemsToRow(configId, unique)
+                    }
                 } catch (ce: CancellationException) {
                     throw ce
                 } finally {
@@ -474,8 +511,9 @@ class HomeViewModel @Inject constructor(
     private fun appendItemsToRow(configId: String, newItems: List<MetaItem>) {
         _state.update { current ->
             val updatedRows = current.rows.map { r ->
-                if (r.configId == configId) r.copy(items = r.items + newItems)
-                else r
+                if (r.configId == configId) {
+                    r.copy(items = r.items + distinctAggregatedMetas(r.items, newItems))
+                } else r
             }
 
             val updatedMixed = current.mixedRows.map { item ->
