@@ -148,8 +148,22 @@ fun WatchlistScreen(
         }
     }
 
-    LaunchedEffect(libraryItems) {
-        libraryItems.forEach { viewModel.resolvePosterIfNeeded(it) }
+    // Do not start a metadata request for every item in a large Library.
+    // Resolve blank artwork plus genuinely ambiguous same-title provider IDs;
+    // release-year enrichment can then safely collapse true duplicates.
+    val ambiguousIds = remember(libraryItems) {
+        libraryItems.groupBy { item ->
+            "${item.type}:${item.name.lowercase().filter { it.isLetterOrDigit() }}"
+        }.values.filter { group ->
+            group.map { it.id }.distinct().size > 1
+        }.flatten().mapTo(mutableSetOf()) { "${it.type}:${it.id}" }
+    }
+    LaunchedEffect(libraryItems, ambiguousIds) {
+        libraryItems.forEach { item ->
+            if (item.poster.isNullOrBlank() || "${item.type}:${item.id}" in ambiguousIds) {
+                viewModel.resolvePosterIfNeeded(item)
+            }
+        }
     }
 
     val isTopNav = currentProfile?.navPosition == "top"
