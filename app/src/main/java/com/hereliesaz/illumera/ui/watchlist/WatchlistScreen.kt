@@ -121,7 +121,15 @@ fun WatchlistScreen(
         // Resolve by ID into the new single row so restored remote focus
         // continues to point to the same title after aggregation or sorting.
         val id = key.substringAfter('_', "").substringBeforeLast('_', "")
-        val index = libraryItems.indexOfFirst { it.id == id }
+        val previousRow = key.substringBefore('_').toIntOrNull()
+        val expectedType = when (previousRow) {
+            1 -> "series" // legacy Series row
+            else -> viewModel.lastFocusedMediaType
+        }
+        val typedIndex = libraryItems.indexOfFirst {
+            it.id == id && it.type == expectedType
+        }
+        val index = if (typedIndex >= 0) typedIndex else libraryItems.indexOfFirst { it.id == id }
         if (index >= 0) {
             val updated = "0_${libraryItems[index].id}_$index"
             if (updated != key) {
@@ -156,7 +164,8 @@ fun WatchlistScreen(
     val hasFilteredMedia = libraryItems.isNotEmpty()
 
     androidx.compose.runtime.CompositionLocalProvider(
-        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
+        com.hereliesaz.illumera.ui.components.LocalWatchedIds provides
+            (watchedIds + sortedLibrary.filter { it.watched }.map { it.item.id })
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().focusMemoryRoot(focusMemory),
@@ -250,7 +259,8 @@ fun WatchlistScreen(
                         items = libraryItems,
                         onMovieClick = onMovieClick,
                         onViewMore = {},
-                        onFocused = { _: MetaItem?, key: String ->
+                        onFocused = { focused: MetaItem?, key: String ->
+                            viewModel.lastFocusedMediaType = focused?.type
                             lastFocusedKey = key
                             viewModel.lastFocusedKey = key
                             lastQueueFocusedKey = null
