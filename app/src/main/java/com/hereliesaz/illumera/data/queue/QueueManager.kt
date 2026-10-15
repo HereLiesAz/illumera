@@ -197,42 +197,72 @@ class QueueManager @Inject constructor(
     @Synchronized
     fun setEnabled(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if (_state.value.preferences.enabled == enabled) return
         updatePreferences(scope) { copy(enabled = enabled) }
+        // A settings panel may be disposed before its coroutine refreshes.
+        // Persistently invalidate the prior suggestions so ensureSuggestions()
+        // rebuilds for the NEW preference on the next Watchlist visit.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
     fun setIncludeMovies(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if (_state.value.preferences.includeMovies == enabled) return
         updatePreferences(scope) { copy(includeMovies = enabled) }
+        // A settings panel may be disposed before its coroutine refreshes.
+        // Persistently invalidate the prior suggestions so ensureSuggestions()
+        // rebuilds for the NEW preference on the next Watchlist visit.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
     fun setIncludeEpisodes(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if (_state.value.preferences.includeEpisodes == enabled) return
         updatePreferences(scope) { copy(includeEpisodes = enabled) }
+        // A settings panel may be disposed before its coroutine refreshes.
+        // Persistently invalidate the prior suggestions so ensureSuggestions()
+        // rebuilds for the NEW preference on the next Watchlist visit.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
     fun setIncludeWholeShows(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if (_state.value.preferences.includeWholeShows == enabled) return
         updatePreferences(scope) { copy(includeWholeShows = enabled) }
+        // A settings panel may be disposed before its coroutine refreshes.
+        // Persistently invalidate the prior suggestions so ensureSuggestions()
+        // rebuilds for the NEW preference on the next Watchlist visit.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
     fun setOnlyUnseenSuggestions(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if (_state.value.preferences.onlyUnseenSuggestions == enabled) return
         updatePreferences(scope) { copy(onlyUnseenSuggestions = enabled) }
+        // A settings panel may be disposed before its coroutine refreshes.
+        // Persistently invalidate the prior suggestions so ensureSuggestions()
+        // rebuilds for the NEW preference on the next Watchlist visit.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
     fun setSuggestionSource(source: QueueSuggestionSource, enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
+        if ((source in _state.value.preferences.suggestionSources) == enabled) return
         updatePreferences(scope) {
             val next = suggestionSources.toMutableSet().apply {
                 if (enabled) add(source) else remove(source)
             }
             copy(suggestionSources = next)
         }
+        // Drop results from a now-disabled source before the Settings
+        // composition is destroyed. QueueSection will rebuild an empty row
+        // with the current sources even when its old count was already full.
+        commit(scope, _state.value.copy(suggestions = emptyList()))
     }
 
     @Synchronized
