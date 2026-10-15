@@ -55,3 +55,10 @@ TV acceptance: fresh install defaults to 19 Movie and 22 Series genre rows; no A
 - Watchlist itself has Queue, Movies and Series Library rows, not a discover/genre-row source. No Watchlist titles should be removed to solve this issue.
 
 Check the focused panel-to-card distance with short and long descriptions and with a TV remote. Android build/device validation is still outstanding.
+
+## Paired Home categories and mixed Watchlist acceptance
+
+- Home does **not** display one giant Movies & Series row. Latest Movies + Latest Series produce one **Latest** row; Popular Movies + Popular Series produce one **Popular** row; Netflix Movie + Netflix Series produce one **Netflix** row, etc. Unrelated categories and providers remain separate.
+- Every paired row preserves the two original catalog URLs and its own pagination progress per source, deduplicates provider aliases and retains each item's original movie/series type.
+- Watchlist Queue remains above a **single combined Library row**, which keeps the Stremio sorting controls and optional type filter. Series episode history must become one show card; movie and show with the same name must not merge.
+- Acceptance requires CI plus Android TV focus, paging, sorting and profile-switch verification. These changes are committed but not runtime-verified.
