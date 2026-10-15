@@ -274,6 +274,12 @@ internal fun isCinematicRowActive(
 ): Boolean = focusedRowKey == rowKey ||
     (focusedRowKey == null && restoredCardKey?.startsWith(cardKeyPrefix) == true)
 
+/** Height covers the 210dp poster, its 1.05x focus scale, and a safety margin. */
+internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 116.dp
+
+/** Reserve actual space after expanded artwork, rather than drawing onto the next heading. */
+internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CinematicLayout(
@@ -548,7 +554,7 @@ fun CinematicLayout(
                                     // portrait posters and one expanded inline preview.
                                     isLandscapeCards = !historyRowActive,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = if (historyRowActive) 220.dp else 116.dp,
+                                    rowHeight = cinematicRailHeight(historyRowActive),
                                     inlineCinematicPreview = { poster ->
                                         InlineFocusedPosterPreview(
                                             poster, state, resolveTrailer, autoPlayPreviews, previewSound
@@ -562,6 +568,7 @@ fun CinematicLayout(
                                         }
                                     }
                                 )
+                                Spacer(Modifier.height(cinematicRailTrailingSpace(historyRowActive)))
                                 }
                             }
                         }
@@ -710,7 +717,7 @@ fun CinematicLayout(
                                         repeatGate = dpadRepeatGate,
                                         isLandscapeCards = !categoryRowActive,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = if (categoryRowActive) 220.dp else 116.dp,
+                                        rowHeight = cinematicRailHeight(categoryRowActive),
                                         inlineCinematicPreview = { poster ->
                                             InlineFocusedPosterPreview(
                                             poster, state, resolveTrailer, autoPlayPreviews, previewSound
@@ -724,6 +731,7 @@ fun CinematicLayout(
                                             }
                                         }
                                     )
+                                    Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
                                     }
                                 }
                             }
