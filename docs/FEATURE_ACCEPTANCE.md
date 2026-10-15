@@ -203,3 +203,14 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - The `NavDrawerRail` focus group still restricts entry to an explicit drawer open or Left from focused content. Individual boundaries now additionally set `down = FocusRequester.Cancel` on Exit and `up = FocusRequester.Cancel` on Profile; this prevents Compose's focus-search from leaving the menu at its ends while retaining Up/Down movement *within* the rail.
 - Robolectric regression asserts that explicitly opening Exit succeeds, Down cannot leave it, Up reaches Settings, and Down returns to Exit. Right, Back, tap-to-dismiss and focus restoration remain unchanged.
 - Acceptance gate: `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist, the configured Play release unit tests, and actual Android TV D-pad focus transitions must pass before declaring delivery.
+
+## Follow-up review fixes for PRs #254 and #257 (October 15, 2026)
+
+- Opening Add-ons from the side or top navigation must move focus to Browse; returning from a detail/back-stack entry should also land on Browse if no better saved control exists.
+- Back from the Installed subview and pressing Browse restores Browse focus after recomposition instead of leaving focus on the removed Installed list or inactive control.
+- A catalog removal with an exact configured URL selects that URL. When multiple installations share a manifest ID without an exact URL match, no instance is chosen automatically: show Installed, with each complete URL visible for explicit deletion.
+- At compact available widths (230dp/300dp), the Browse, Installed and phone-link actions remain reachable without horizontal overflow; wider widths retain the original row.
+- Hero return targets the first **focusable** populated row, not a retained but empty previously revealed genre. Focus keys preserve their original indices.
+- The navigation drawer boundary regression asserts that Search opens and is focused before exercising its Up/Top boundary.
+- Device-focused checks still required: TV D-pad focus across Add-ons transitions, phone header width, Installed deletion dialog; Android FOSS tests and release build before publication.
+

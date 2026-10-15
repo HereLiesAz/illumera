@@ -193,7 +193,10 @@ class NavDrawerFocusTest {
         menuItem("Exit").assertIsFocused()
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Down) }
         menuItem("Exit").assertIsFocused()
-        compose.runOnIdle { requesters.getValue(NavDestination.Search).openNavDrawer() }
+        compose.runOnIdle {
+            assertTrue(requesters.getValue(NavDestination.Search).openNavDrawer())
+        }
+        menuItem("Search").assertIsFocused()
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Up) }
         compose.runOnIdle { focusManager.moveFocus(FocusDirection.Up) }
         compose.onNodeWithTag("first").assertIsNotFocused()
