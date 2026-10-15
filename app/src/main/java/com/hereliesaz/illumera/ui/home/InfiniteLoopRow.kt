@@ -218,8 +218,6 @@ internal fun cinematicInlineWidth(screenWidth: Dp, startPadding: Dp): Dp =
         (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
     )
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
-@Composable
 /** Cinematic geometry has one owner: inactive rows cannot display portraits. */
 internal fun useLandscapeMediaCard(
     hasInlinePreview: Boolean,
@@ -227,6 +225,8 @@ internal fun useLandscapeMediaCard(
     configuredLandscape: Boolean
 ): Boolean = if (hasInlinePreview) !isActiveCinematicRow else configuredLandscape
 
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
 fun InfiniteLoopRow(
     startPadding: Dp,
     isTopNav: Boolean,
