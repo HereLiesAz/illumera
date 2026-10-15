@@ -1509,6 +1509,12 @@ internal fun TrailerPreview(
             AndroidView(
                 factory = {
                     PlayerView(it).apply {
+                        // The preview is passive media *inside a focusable poster*.
+                        // Never let its Android view steal D-pad or touch focus.
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        isClickable = false
+                        descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         useController = false
                         this.player = player
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
