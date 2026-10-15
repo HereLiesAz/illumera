@@ -1806,53 +1806,6 @@ private fun VoidSliderButton(
 }
 
 @Composable
-fun LayoutOptionItem(
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f)
-    val bgColor = Color.White.copy(0.07f)
-    val textColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary
-        isFocused -> Color.White
-        else -> Color.White.copy(0.7f)
-    }
-    val borderColor by animateColorAsState(
-        when {
-            isFocused -> Color.White
-            isSelected -> MaterialTheme.colorScheme.primary
-            else -> Color.White.copy(0.15f)
-        }
-    )
-    val borderWidth = if (isFocused || isSelected) 2.dp else 1.dp
-
-    Box(
-        modifier = modifier
-            .height(36.dp)
-            .scale(scale)
-            .clip(RoundedCornerShape(8.dp))
-            .background(bgColor)
-            .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
-            .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
 fun VoidEditorRow(
     title: String,
     subtitle: String,
