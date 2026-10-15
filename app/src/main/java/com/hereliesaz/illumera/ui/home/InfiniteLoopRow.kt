@@ -374,7 +374,10 @@ private fun LinearContent(
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
     enrichedItems: Map<String, MetaItem> = emptyMap(),
-    effectiveItemWidth: Dp = ITEM_WIDTH
+    effectiveItemWidth: Dp = ITEM_WIDTH,
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
 
@@ -438,7 +441,9 @@ private fun LinearContent(
 
             Box(
                 modifier = Modifier
-                    .width(effectiveItemWidth)
+                    .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
+                        inlineCinematicWidth
+                    } else effectiveItemWidth)
                     .graphicsLayer { clip = false }
                     .onPreviewKeyEvent { keyEvent ->
                         if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -525,6 +530,9 @@ private fun LinearContent(
                         progress = item.progress,
                         isWatched = rowIndex != -1 && item.id in watchedIds,
                         hasNewEpisode = item.hasNewEpisode,
+                        inlineCinematicPreview = inlineCinematicPreview,
+                        inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
+                        inlineCinematicWidth = inlineCinematicWidth,
                         onFocused = {
                             ImagePrefetcher.prefetchAround(context, imageUrls, index)
                             onFocused(item, uniqueKey)
@@ -586,7 +594,10 @@ private fun InfiniteGridContent(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
 
@@ -853,7 +864,10 @@ private fun FiniteGridContent(
     repeatGate: DpadRepeatGate,
     pivotFocusRequester: FocusRequester? = null,
     isLandscapeCards: Boolean = false,
-    enrichedItems: Map<String, MetaItem> = emptyMap()
+    enrichedItems: Map<String, MetaItem> = emptyMap(),
+    inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
+    activeCardKey: String? = null,
+    inlineCinematicWidth: Dp = 340.dp
 ) {
     val context = LocalContext.current
     
