@@ -17,6 +17,8 @@ This is the source-of-truth checklist for the requested Home, Movies, Series, Ad
 | Watchlist setup under Settings → Watchlist | Cloud-storage controls and default sort moved | Verify cloud play/delete routing, D-pad access |
 | Two-way Stremio Library sync includes unplayed saved-only titles | PR #234 includes bookmarks in outbound reconciliation and baseline snapshots | Stremio sign-in and multi-profile integration tests, remote deletes, and local re-add protection |
 
+**Current Watchlist order (October 15):** Suggested Next → Queue → compact Library sorting → poster grid; earlier Queue-first/Library-rail descriptions below are historical and superseded by the October 15 Watchlist follow-up.
+
 ## Release gate
 
 Before describing this as done:
@@ -79,3 +81,13 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
 
 **Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
+
+## Watchlist reorganization (October 15, 2026) — awaiting device verification
+
+- Suggested Next, with **Refresh** directly beside the heading, is the first screen element. It remains visible even when there are no suggestions; the refresh control still accepts focus when suggestions are disabled and explains where to enable them.
+- Queue follows Suggested Next, preserving manual reordering and removal. Suggestion thumbs, moving, dismissals, and refresh behavior are unchanged. All seven queue option controls formerly above the cards (enabled, movie, episode, whole-show, play-history, Trakt and unseen-only toggles) now live in Settings → Watchlist; the same QueueManager updates them.
+- Library uses a responsive **vertical grid** of posters in the parent LazyColumn rather than a horizontal rail, with 122dp poster slots on compact screens and 140dp on TV. The sort buttons above the Library are smaller (11sp labels, 8dp horizontal × 5dp vertical padding), keeping all existing sort modes.
+- Profile sorting, mixed movie/series identities, watched badges, lazy metadata enrichment, card actions and saved focus keys must remain intact. The parent vertical scroll state is retained in WatchlistViewModel.
+- Unit assertions cover column capacity for small phone, ordinary phone, compact tablet and TV widths; expected values are fixed independently from implementation arithmetic.
+
+**Still required:** Android build, FOSS variant unit tests, cold adversarial GLEE review, Android TV/device D-pad and focus restoration, empty/disabled-suggestions scenarios, large libraries and sort changes. Do not treat this as device-verified completion.
