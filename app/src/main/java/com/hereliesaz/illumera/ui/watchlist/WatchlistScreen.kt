@@ -26,7 +26,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -195,7 +198,8 @@ fun WatchlistScreen(
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
 
-    // Avoid nested vertical scrolling: each poster grid row is a LazyColumn item.
+    // One actual lazy grid gives every poster its own stable item key, even
+    // when reordering moves a card across row boundaries.
     val gridCardWidth = if (isCompactWatchlist) 122.dp else 140.dp
     val gridGap = 12.dp
     val gridColumnCount = watchlistGridColumnCount(
@@ -204,26 +208,20 @@ fun WatchlistScreen(
         gridCardWidth.value.toInt(),
         gridGap.value.toInt()
     )
-    val libraryGridRows = remember(libraryItems, gridColumnCount) {
-        libraryItems.chunked(gridColumnCount)
-    }
-
     // Enrich only nearby visible posters, not an entire potentially huge library.
     LaunchedEffect(libraryItems, ambiguousIds, gridColumnCount) {
         libraryItems.take(gridColumnCount * 2).filter(::shouldEnrich)
             .forEach(viewModel::resolvePosterIfNeeded)
     }
-    LaunchedEffect(viewModel.watchlistColumnState, libraryGridRows, ambiguousIds) {
+    LaunchedEffect(viewModel.watchlistGridState, libraryItems, ambiguousIds) {
         snapshotFlow {
-            viewModel.watchlistColumnState.layoutInfo.visibleItemsInfo.map { it.index }
+            viewModel.watchlistGridState.layoutInfo.visibleItemsInfo.map { it.index }
         }.collect { visible ->
-            visible.flatMap { listIndex ->
-                ((listIndex - 2) - 1)..((listIndex - 2) + 1)
-            }.distinct().forEach { gridRowIndex ->
-                libraryGridRows.getOrNull(gridRowIndex).orEmpty()
-                    .filter(::shouldEnrich)
-                    .forEach(viewModel::resolvePosterIfNeeded)
-            }
+            visible.flatMap { listIndex -> (listIndex - 3)..(listIndex - 1) }
+                .distinct()
+                .mapNotNull(libraryItems::getOrNull)
+                .filter(::shouldEnrich)
+                .forEach(viewModel::resolvePosterIfNeeded)
         }
     }
 
@@ -233,16 +231,21 @@ fun WatchlistScreen(
     androidx.compose.runtime.CompositionLocalProvider(
         com.hereliesaz.illumera.ui.components.LocalWatchedIds provides libraryWatchedIds
     ) {
-        LazyColumn(
-            state = viewModel.watchlistColumnState,
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(gridColumnCount),
+            state = viewModel.watchlistGridState,
             modifier = Modifier.fillMaxSize().focusMemoryRoot(focusMemory),
-            contentPadding = PaddingValues(top = topPadding + 20.dp, bottom = 48.dp),
+            contentPadding = PaddingValues(
+                start = startPadding, end = 24.dp,
+                top = topPadding + 20.dp, bottom = 48.dp
+            ),
+            horizontalArrangement = Arrangement.spacedBy(gridGap),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
+            item(key = "watchlist_queue", span = { GridItemSpan(maxLineSpan) }) {
                 QueueSection(
                     entryRequester = entryRequester,
-                    startPadding = startPadding,
+                    startPadding = 0.dp,
                     requestEntryFocus = lastFocusedKey == null && lastQueueFocusedKey == null,
                     focusedQueueKey = lastQueueFocusedKey,
                     restoreEntryFocusWhenFocusedKeyMissing = true,
@@ -259,8 +262,8 @@ fun WatchlistScreen(
                     }
                 )
             }
-            item(key = "library_sort") {
-                Column(modifier = Modifier.padding(start = startPadding, top = 12.dp, end = 12.dp)) {
+            item(key = "library_sort", span = { GridItemSpan(maxLineSpan) }) {
+                Column(modifier = Modifier.padding(top = 12.dp, end = 12.dp)) {
                     Text("Library", style = MaterialTheme.typography.titleLarge, color = Color.White)
                     val modes = listOf(
                         "recent" to "Recent", "added" to "Recently added",
@@ -304,34 +307,24 @@ fun WatchlistScreen(
                 }
             }
             if (libraryItems.isEmpty()) {
-                item {
+                item(key = "empty_library", span = { GridItemSpan(maxLineSpan) }) {
                     Text(
                         text = "Your watchlist is empty",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(start = startPadding, top = 12.dp, bottom = 4.dp)
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
                 }
             }
 
-            if (libraryGridRows.isNotEmpty()) {
-                itemsIndexed(
-                    items = libraryGridRows,
-                    key = { _, row -> "library_grid_${row.first().type}_${row.first().id}" },
-                    contentType = { _, _ -> "library_poster_grid_row" }
-                ) { gridRowIndex, row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .padding(start = startPadding, end = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(gridGap)
-                    ) {
-                        row.forEachIndexed { columnIndex, media ->
-                            val index = gridRowIndex * gridColumnCount + columnIndex
-                            val focusKey = "0_${media.id}_$index"
-                            // Identity keys keep Compose focus and menus bound to
-                            // the media item, not to its old grid column position.
-                            androidx.compose.runtime.key(media.type, media.id) {
-                            Box(
+            itemsIndexed(
+                items = libraryItems,
+                key = { _, media -> "library_${media.type}_${media.id}" },
+                contentType = { _, _ -> "library_poster" }
+            ) { index, media ->
+                val columnIndex = index % gridColumnCount
+                val focusKey = "0_${media.id}_$index"
+                Box(
                                 modifier = Modifier.width(gridCardWidth)
                                     .onPreviewKeyEvent { event ->
                                         if (event.type == KeyEventType.KeyDown &&
@@ -381,14 +374,8 @@ fun WatchlistScreen(
                                         )
                                         .restorableFocusIfTracked(focusKey, focusMemory)
                                 )
-                            }
-                            }
-                        }
-                    }
                 }
             }
-
-
         }
     }
 }
