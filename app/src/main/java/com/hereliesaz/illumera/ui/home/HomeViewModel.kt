@@ -345,32 +345,36 @@ class HomeViewModel @Inject constructor(
                     val existing = _state.value.rows.firstOrNull { it.configId == configId }
                         ?.items.orEmpty()
                     var unique = emptyList<MetaItem>()
-                    val routedGenreItems = mutableMapOf<String, MutableList<MetaItem>>()
                     val firstLayerCount = when {
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
                     }
-                    // Hidden genre rows must probe their catalog sources, including a
-                    // bounded second layer; an empty first page cannot trap TV focus.
+                    // Previously a later empty page halted pagination permanently.
+                    // Probe a bounded number until there is actual NEW primary-row content.
                     val probes = if (!isHomePair && existing.isEmpty()) {
                         (firstLayerCount * 2 - nextPage).coerceAtLeast(0)
                     } else if (nextPage < firstLayerCount) {
                         firstLayerCount - nextPage
-                    } else 1
+                    } else 4
                     repeat(probes) {
                         if (unique.isEmpty()) {
                             val fetched = when {
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
-                            val unseen = distinctAggregatedMetas(existing, fetched)
-                            unique = if (genre == null) unseen else {
-                                val classified = kotlinx.coroutines.coroutineScope {
-                                    unseen.chunked(6).flatMap { group ->
+                            val currentItems = _state.value.rows
+                                .firstOrNull { it.configId == configId }?.items.orEmpty()
+                            val unseen = distinctAggregatedMetas(currentItems, fetched)
+                            if (genre == null) {
+                                unique = unseen
+                            } else {
+                                // Incremental genre classification: show the FIRST completed
+                                // batch instead of hiding a whole row while 100 slow Cinemeta
+                                // requests finish. Still classify/route the complete page.
+                                for (group in unseen.chunked(6)) {
+                                    val classified = kotlinx.coroutines.coroutineScope {
                                         group.map { candidate ->
                                             async {
-                                                // Cinemeta's lead genre, not an addon's
-                                                // arbitrary genre ordering, determines placement.
                                                 val canonical = repository.primaryGenreFor(candidate)
                                                 val lead = canonical
                                                     ?: candidate.genres.orEmpty()
@@ -386,40 +390,40 @@ class HomeViewModel @Inject constructor(
                                             }
                                         }.awaitAll()
                                     }
-                                }
-                                // A provider can list a title only in its secondary-genre
-                                // catalog: route it to the canonical row, do not discard it.
-                                classified.forEach { (primary, candidate) ->
-                                    val destination = _state.value.rows.firstOrNull { row ->
-                                        row.title.equals(primary, ignoreCase = true)
-                                    }?.configId
-                                    if (destination != null) {
-                                        routedGenreItems.getOrPut(destination) { mutableListOf() }
-                                            .add(candidate)
+                                    // Check the owner BEFORE every incremental UI append.
+                                    if (generation != screenDataGeneration ||
+                                        _state.value.loadedProfileId != initiatingProfileId ||
+                                        _state.value.loadedScreen != initiatingScreen ||
+                                        profileConfigurationManager.activeProfileId.value != initiatingProfileId
+                                    ) return@launch
+                                    val byDestination = classified.groupBy { (primary, _) ->
+                                        _state.value.rows.firstOrNull { row ->
+                                            row.title.equals(primary, ignoreCase = true)
+                                        }?.configId
+                                    }
+                                    byDestination.forEach { (destination, entries) ->
+                                        if (destination != null) {
+                                            val titles = entries.map { it.second }
+                                            appendItemsToRow(destination, titles)
+                                            if (destination == configId) {
+                                                unique = unique + titles
+                                            }
+                                        }
                                     }
                                 }
-                                classified.filter { (primary, _) ->
-                                    primary?.equals(genre, ignoreCase = true) == true
-                                }.map { it.second }
                             }
                         }
                     }
-                    // Never let an old profile's in-flight catalogs contaminate a
-                    // newly loaded profile with the same genre row IDs.
+                    // All catalog rows are scoped to their profile and screen.
                     if (generation != screenDataGeneration ||
                         _state.value.loadedProfileId != initiatingProfileId ||
                         _state.value.loadedScreen != initiatingScreen ||
                         profileConfigurationManager.activeProfileId.value != initiatingProfileId
                     ) return@launch
                     rowFetchOffsets[configId] = nextPage
-                    if (genre != null) {
-                        // Route secondary-catalog finds into the correct row even if
-                        // that row has not yet begun its own source pagination.
-                        routedGenreItems.forEach { (destination, titles) ->
-                            if (destination != configId) appendItemsToRow(destination, titles)
-                        }
+                    if (genre == null && unique.isNotEmpty()) {
+                        appendItemsToRow(configId, unique)
                     }
-                    if (unique.isNotEmpty()) appendItemsToRow(configId, unique)
                 } catch (ce: CancellationException) {
                     throw ce
                 } finally {
