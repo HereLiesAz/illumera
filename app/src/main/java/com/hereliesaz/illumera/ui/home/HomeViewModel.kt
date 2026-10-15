@@ -477,6 +477,10 @@ class HomeViewModel @Inject constructor(
                     }
                 } catch (ce: CancellationException) {
                     throw ce
+                } catch (error: Exception) {
+                    // A failed catalog source must not crash the Movies/Series
+                    // screen or turn a D-pad focus change into an app shutdown.
+                    Log.w("HomeGenreRows", "Catalog load failed for $configId", error)
                 } finally {
                     if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
                 }
