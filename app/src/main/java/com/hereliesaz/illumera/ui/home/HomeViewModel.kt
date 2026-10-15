@@ -1166,25 +1166,10 @@ class HomeViewModel @Inject constructor(
                             ?: if (screenName == "home")
                                 repository.getHomePairRowForConfig(heroConfig.categoryId)
                             else null
-                        if (screenName == "home" && configured?.configId?.startsWith("catalog-home:") == true &&
-                            configured.items.isEmpty()
-                        ) {
-                            // A user-selected Hero may be outside the first two lazily
-                            // warmed rows. Fetch its content independently now rather
-                            // than displaying a permanently empty row shell.
-                            val pages = repository.homePairFirstLayerPageCount(configured.configId)
-                            var items = emptyList<MetaItem>()
-                            for (page in 0 until pages) {
-                                if (items.isEmpty()) {
-                                    items = repository.getHomePairCatalogPage(configured.configId, page)
-                                }
-                            }
-                            configured.copy(items = items.take(heroConfig.posterCount))
-                        } else configured ?: repository.getCategoryRowPreview(
-                            configId = heroConfig.categoryId,
-                            maxItems = heroConfig.posterCount,
-                            timeoutMs = initialDashboardTimeoutMs
-                        )
+                        // Do not wait for hero network content before showing
+                        // the screen and accepting focus. A selected Hero source
+                        // is filled after the first composition below.
+                        configured
                     }
                     screenName in setOf("movies", "series") ->
                         initialRows.firstOrNull { it.items.isNotEmpty() }
@@ -1213,27 +1198,76 @@ class HomeViewModel @Inject constructor(
                     )
                 }
 
+                // Resolve an explicitly chosen Hero after the rest of the
+                // screen is interactive. An addon/network timeout must not
+                // delay the browse surface or first DPAD event.
+                val selectedHeroId = heroConfig?.categoryId
+                if (selectedHeroId != null && selectedHeroId != HERO_DISABLED_MARKER &&
+                    heroRow?.items?.isNotEmpty() != true
+                ) {
+                    val generation = screenDataGeneration
+                    launch {
+                        val loadedHero = try {
+                            val configuredPair = heroRow?.takeIf {
+                                screenName == "home" && it.configId.startsWith("catalog-home:")
+                            }
+                            if (configuredPair != null) {
+                                val pages = repository.homePairFirstLayerPageCount(configuredPair.configId)
+                                var items = emptyList<MetaItem>()
+                                for (page in 0 until pages) {
+                                    if (items.isEmpty()) {
+                                        items = repository.getHomePairCatalogPage(configuredPair.configId, page)
+                                    }
+                                }
+                                configuredPair.copy(items = items.take(heroConfig?.posterCount ?: 10))
+                            } else repository.getCategoryRowPreview(
+                                configId = selectedHeroId,
+                                maxItems = heroConfig?.posterCount ?: 10,
+                                timeoutMs = initialDashboardTimeoutMs
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (loadedHero != null &&
+                            generation == screenDataGeneration &&
+                            profileConfigurationManager.activeProfileId.value == currentProfileId
+                        ) {
+                            _state.update { current ->
+                                if (current.loadedScreen == screenName &&
+                                    current.loadedProfileId == currentProfileId &&
+                                    current.heroRow?.items?.isNotEmpty() != true
+                                ) current.copy(heroRow = loadedHero) else current
+                            }
+                        }
+                    }
+                }
+
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Genre shells are hidden until populated. Probe ALL enabled genres
-                // with bounded concurrency: otherwise empty first rows prevent users
-                // ever scrolling far enough to trigger later rows' lazy loading.
+                // Present the scrollable screen first. Then fill the earliest
+                // focusable genre rows before probing later rows. A shared queue
+                // avoids a slow provider holding its entire fixed-index lane
+                // hostage while other workers have already finished.
                 if (screenName in setOf("movies", "series")) {
                     val generation = screenDataGeneration
-                    repeat(3) { lane ->
+                    val queuedRows = java.util.ArrayDeque(initialRows)
+                    repeat(minOf(3, initialRows.size)) {
                         launch {
-                            initialRows.filterIndexed { index, _ -> index % 3 == lane }
-                                .forEach { row ->
-                                    if (generation != screenDataGeneration) return@launch
-                                    loadMoreItems(row.configId)
-                                    while (row.configId in loadingMoreRows &&
-                                        generation == screenDataGeneration
-                                    ) kotlinx.coroutines.delay(80)
-                                }
+                            while (queuedRows.isNotEmpty() && generation == screenDataGeneration) {
+                                val row = queuedRows.removeFirst()
+                                loadMoreItems(row.configId)
+                                while (row.configId in loadingMoreRows &&
+                                    generation == screenDataGeneration
+                                ) kotlinx.coroutines.delay(80)
+                            }
                         }
                     }
                 } else {
+                    // Render the page before beginning network discovery. Only
+                    // its first two Home rails need a warm cache immediately.
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
                 }
             } catch (cancelled: CancellationException) {

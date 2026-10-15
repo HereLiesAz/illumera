@@ -5,11 +5,12 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.key.type
 
 /**
- * Rate-limits repeated DPAD key-down events so long-press feels like paced
- * single presses instead of turbo acceleration.
+ * Debounces duplicate initial DPAD presses but lets native repeat events
+ * through unchanged, so holding a direction accelerates traversal.
  */
 class DpadRepeatGate(
     private val horizontalRepeatIntervalMs: Long = 120L,
@@ -28,6 +29,14 @@ class DpadRepeatGate(
         if (event.type != KeyEventType.KeyDown) return false
 
         val eventTimeMs = SystemClock.uptimeMillis()
+        // Hardware remotes already emit paced key-repeat events. Let every
+        // repeat through: throttling them makes long-press scrolling slower
+        // than individual taps. Explicit drawer/first-row boundaries still
+        // protect accidental focus escape.
+        if (event.nativeKeyEvent.repeatCount > 0) {
+            lastAcceptedByKey[key] = eventTimeMs
+            return false
+        }
         val lastAcceptedEventTimeMs = lastAcceptedByKey[key]
         if (lastAcceptedEventTimeMs == null) {
             lastAcceptedByKey[key] = eventTimeMs

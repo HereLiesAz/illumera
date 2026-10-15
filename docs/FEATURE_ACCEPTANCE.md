@@ -233,3 +233,10 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - For Play fallback announcements without a versionCode, dismissals must key on the announced version, so the next announcement still pops up.
 - Existing opt-out preference for GitHub automatic popups remains functional. Verify offline/error handling does not claim an update exists.
 - Gates: Android FOSS debug/release unit tests, Play build compile, GitHub APK release build, Android TV with Play and GitHub installations, and actual Google Play release visibility.
+## Fast navigation and deferred previews (October 15, 2026) — validation pending
+
+- Home and genre screen shells should become navigable without waiting on selected-Hero catalog network requests; configured Hero previews populate afterward.
+- The first two Home rows begin loading after the initial screen state is published. All Movies/Series genre rows are eventually probed with no more than three concurrent workers, distributing completed work across later rows even if an early provider times out.
+- D-pad held Left/Right/Up/Down must accept every Android `repeatCount > 0` event. Separate zero-repeat duplicate presses still respect the gate; exiting to the navigation rail remains subject to existing boundaries.
+- While any directional input is active, poster/hero art stays visible and trailer extraction is disabled/cancelled. Resume only after 750ms idle plus the trailer preview's startup delay. Scrolling never waits for the trailer resolver's long network timeout.
+- Run `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.
