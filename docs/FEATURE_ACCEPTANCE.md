@@ -133,6 +133,35 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - When authoritative Cinemeta genre classification recovers after a temporary outage, the title migrates out of any previous fallback genre row before being appended to its canonical destination. The existing cross-provider dedup identity helper is reused.
 - Regression checks cover title-without-year and the search-page-before-video-ID case; TV playback, Android build and full integration remain release gates.
 
+## Active-row cinematic hierarchy (October 15, 2026) — supersedes earlier row-shape descriptions
+
+- Home, Movies and Series: on initial entry, only the restored/focused content row uses portrait posters; **all other media rows render 190dp-wide landscape thumbnails at 116dp rail height**. Continue Watching follows the same rule. When focus changes rows, the former row immediately condenses and the new one expands. The active row reserves 220dp and keeps its compact inline trailer on the focused poster; there is no dedicated preview panel.
+- The vertical LazyColumn uses a **positive 20dp row gap** (replaces -12dp), so poster focus scaling does not overlap the next row title. The 175dp focus pivot leaves most of the preceding inactive rail visible. The Hero scrolls away normally.
+- A row-mode switch restores focus to the same media card after landscape/portrait recomposition; left/right navigation, View More, hold-to-open menus and progress decorations remain available.
+- Settings → Screen Editor → Home no longer has Simple/Cinematic buttons; Personalization no longer has the Continue Watching poster/landscape selector. Stored preferences are preserved to avoid database migrations, but cinematic geometry is not user-overridable.
+- Regression unit assertions cover active row selection, inactive rows, Hero/Hub focus, and restored keys. TV D-pad and release build are still required before publication.
+
+## Preview autoplay, audio and crop-to-fill (October 15, 2026) — device verification pending
+
+- Settings → Personalization exposes independently persisted, per-profile **Autoplay previews**, **Preview sound**, and **Navigation sounds**. Defaults: autoplay enabled, trailers silent, D-pad sound feedback enabled. Turn autoplay off and verify no trailer URL lookup, ExoPlayer allocation, or autoplay in Hero or inline poster; backdrop remains visible. Sound toggle changes the current player's volume without discarding the frame. Profile switching must restore that profile's choices.
+- D-pad Up/Down/Left/Right invoke Android's built-in navigation click through the MainShell preview-key listener, returning `false` so key focus movement/held-key behavior is preserved. Throttle repeated sounds to 110ms; Enter/Center/Back must not play navigation clicks.
+- Both Hero and inline cards use Media3 `RESIZE_MODE_ZOOM` to eliminate letterboxing, intentionally cropping edges of wider/taller trailers. Hero remains full screen width and scrolls away. Leaving the Hero's viewport or entering a content row stops its trailer; it must not play sound behind the active row.
+- Inline preview width is ~373dp on large screens (for a 210dp-tall 16:9 video), or the available screen width minus navigation inset and 20dp. Unit tests assert fixed TV/phone/minimum values, preference keys, and direction-to-sound mappings; physical TV, video aspect-ratio, lifecycle pause/resume, and sound routing still require device tests.
+
+## Cross-row left-edge navigation (October 15, 2026)
+
+- From the wide focused inline preview, press Up/Down into an adjacent compact landscape row. Focus must land on the title whose **left edge** aligns most closely with the preview's left edge—not the second title at the preview's horizontal center.
+- Repeat when coming back to a portrait row, when horizontal rows have different scroll offsets, and in linear, finite and looping rails. Candidate positions are measured in window coordinates, not inferred from poster width or saved indexes.
+- Genre rows with disabled/empty predecessors and intervening Hub rows must not be skipped. Hero, Hub, View More, and offscreen targets retain normal focus fallback.
+- Unit assertions use fixed left-edge coordinates (120/330/540dp, and independently offset rows) so a center-based selection fails the test; physical Android TV D-pad validation remains required.
+
+## Movies/Series genre reload and D-pad crash regression (October 15, 2026)
+
+- Genre batches no longer write the **destination** HomeRow into every CategoryRow: mixed rows are projected from the HomeRow matching **their own configId**. Canonical reclassification removes only duplicate media identities from other genres, leaving unrelated cards, category titles, IDs, and LazyColumn item keys untouched.
+- Idempotent catalog batches preserve unchanged HomeRow object references and do not emit a new StateFlow value. A fallback page cannot reintroduce an item already classified into its primary row.
+- Aggregate genres are initially probed only by the ViewModel's bounded lanes; remounting a visible LazyColumn item no longer retriggers empty-genre fetches. Horizontal paging is not restarted by changed item counts; a new visible scroll index must cross the end threshold. A failed source logs a warning instead of terminating the screen coroutine.
+- Regression fixtures assert canonical moves, unchanged unrelated rows, duplicate-batch replay, fallback suppression, and provider aliases. Additional TV checks: open Movies and Series, allow all genres to populate, navigate between rows in either direction, verify active portrait/inactive landscape switching, inspect empty/late rows, and leave/re-enter via drawer without crashing or repeated reloads.
+
 ## Genre row stability and crash prevention (October 15, 2026)
 
 - Genre reclassification must update every row by its **own** config ID. Never copy the destination row into unrelated mixed rows; the old implementation did so when canonical classification arrived, making rows repeatedly disappear/reappear and invalidating D-pad focus identities.
@@ -140,3 +169,6 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - The ViewModel warms enabled genre rows once in bounded lanes. Later fetches require focusing a card near the **end** of the horizontal row; initial layoutInfo emission must not automatically fetch more. A stable row ID retains the same LazyColumn key while other rows populate.
 - Three pure unit regressions assert canonical reclassification does not clone titles into unrelated genres, repeated updates do not change rows, and noncanonical source discoveries leave existing genres unchanged.
 - **Remaining release gates:** FOSS Debug/Release Gradle unit tests, installed-device focus switching, and full Movies/Series scrolling with slow/failing addons. Avoid claiming the crash is fixed on-device without logcat.
+
+
+**Merged conflict resolution:** Main's catalog exhaustion tracking and regression fixtures are retained alongside the active/inactive cinematic row focus work in PR #250. Android device validation is still required.

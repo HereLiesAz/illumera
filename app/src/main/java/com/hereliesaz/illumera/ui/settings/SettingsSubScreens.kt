@@ -6,6 +6,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalContext
 import com.hereliesaz.illumera.crash.CrashReporting
+import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
+import com.hereliesaz.illumera.ui.audio.setCinematicAudioPreference
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import com.hereliesaz.illumera.ui.addons.VoidInput
 import com.hereliesaz.illumera.ui.components.ButtonEmphasis
@@ -145,6 +147,8 @@ fun PersonalizationSettings(
     val roundCorners = currentProfile.roundCorners
     val hubRoundCorners = currentProfile.hubRoundCorners
     val navPos = currentProfile.navPosition
+    val audioSettings = rememberCinematicAudioPreferences(currentProfile.id)
+    val context = LocalContext.current
 
     // Changing Menu Position swaps only the menu chrome (MainShell): this screen, and the
     // option's focus, stay where they are.
@@ -198,20 +202,6 @@ fun PersonalizationSettings(
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
-        // CONTINUE WATCHING SHAPE
-        SettingRow("Continue Watching") {
-            VoidSegmentedControl(
-                options = listOf("Poster" to "poster", "Landscape" to "landscape"),
-                selectedOption = currentProfile.continueWatchingShape,
-                onOptionSelected = { viewModel.updateContinueWatchingShape(currentProfile.id, it) },
-                onBack = onGoBack,
-                blockUp = false
-            )
-        }
-        Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
-        Spacer(Modifier.height(15.dp))
-
         // MENU POSITION
         SettingRow("Menu Position") {
             VoidSegmentedControl(
@@ -237,6 +227,43 @@ fun PersonalizationSettings(
             )
         }
 
+        Spacer(Modifier.height(15.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Spacer(Modifier.height(15.dp))
+
+        Text(
+            "Cinematic previews",
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+            color = Color.White.copy(0.7f),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        SettingToggleRow(
+            label = "Autoplay previews",
+            subtitle = "Automatically play trailers in the Hero and focused poster",
+            isChecked = audioSettings.autoPlayPreviews,
+            onCheckedChange = {
+                setCinematicAudioPreference(context, currentProfile.id, "autoplay", it)
+            },
+            onBack = onGoBack
+        )
+        SettingToggleRow(
+            label = "Preview sound",
+            subtitle = "Play trailer audio when previews autoplay",
+            isChecked = audioSettings.previewSound,
+            onCheckedChange = {
+                setCinematicAudioPreference(context, currentProfile.id, "preview_sound", it)
+            },
+            onBack = onGoBack
+        )
+        SettingToggleRow(
+            label = "Navigation sounds",
+            subtitle = "Play subtle system sounds when navigating with the remote",
+            isChecked = audioSettings.navigationSounds,
+            onCheckedChange = {
+                setCinematicAudioPreference(context, currentProfile.id, "navigation_sounds", it)
+            },
+            onBack = onGoBack
+        )
         Spacer(Modifier.height(15.dp))
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
         Spacer(Modifier.height(15.dp))

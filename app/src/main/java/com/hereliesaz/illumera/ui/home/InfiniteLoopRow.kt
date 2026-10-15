@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +32,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import kotlin.math.abs
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -125,6 +129,95 @@ private class RowKeyRepeatDebouncer {
     var lastTime: Long = 0L
 }
 
+/**
+ * Pick the card with the closest LEFT edge, not the closest center. A wide
+ * cinematic preview must not shift vertical D-pad focus one title to the right.
+ */
+internal fun closestCinematicCardLeft(
+    sourceLeft: Float,
+    candidates: List<Pair<String, Float>>
+): String? = candidates.minWithOrNull(
+    compareBy<Pair<String, Float>> { abs(it.second - sourceLeft) }.thenBy { it.second }
+)?.first
+
+/** Step through the actual visible row order, including non-media Hub rows. */
+internal fun adjacentCinematicRowIndex(
+    orderedRows: List<Int>,
+    currentRow: Int,
+    down: Boolean
+): Int? {
+    val current = orderedRows.indexOf(currentRow)
+    if (current < 0) return null
+    return orderedRows.getOrNull(current + if (down) 1 else -1)
+}
+
+/** Coordinates only the visible cards of adjacent cinematic media rows. */
+class CinematicVerticalFocusCoordinator {
+    var orderedRowIndices: List<Int> = emptyList()
+
+    private data class Target(val left: Float, val requester: FocusRequester)
+    private val targets = mutableMapOf<Int, MutableMap<String, Target>>()
+
+    fun record(rowIndex: Int, itemKey: String, left: Float, requester: FocusRequester) {
+        targets.getOrPut(rowIndex) { mutableMapOf() }[itemKey] = Target(left, requester)
+    }
+
+    fun unregister(rowIndex: Int, itemKey: String, requester: FocusRequester) {
+        val registered = targets[rowIndex]?.get(itemKey)
+        if (registered?.requester == requester) {
+            targets[rowIndex]?.remove(itemKey)
+            if (targets[rowIndex]?.isEmpty() == true) targets.remove(rowIndex)
+        }
+    }
+
+    fun move(rowIndex: Int, itemKey: String, down: Boolean): Boolean {
+        val destinationIndex = adjacentCinematicRowIndex(
+            orderedRowIndices, rowIndex, down
+        ) ?: return false
+        val sourceLeft = targets[rowIndex]?.get(itemKey)?.left ?: return false
+        val destination = targets[destinationIndex].orEmpty()
+        val closest = closestCinematicCardLeft(
+            sourceLeft, destination.map { (key, target) -> key to target.left }
+        ) ?: return false
+        val requester = destination[closest]?.requester ?: return false
+        return runCatching { requester.requestFocus() }.getOrDefault(false)
+    }
+}
+
+/** Register the actual card bounds and preserve normal navigation as fallback. */
+@Composable
+private fun rememberCinematicVerticalFocusModifier(
+    coordinator: CinematicVerticalFocusCoordinator?,
+    rowIndex: Int,
+    itemKey: String
+): Modifier {
+    val requester = remember(rowIndex, itemKey) { FocusRequester() }
+    DisposableEffect(coordinator, rowIndex, itemKey, requester) {
+        onDispose { coordinator?.unregister(rowIndex, itemKey, requester) }
+    }
+    if (coordinator == null) return Modifier
+    return Modifier
+        .focusRequester(requester)
+        .onGloballyPositioned { coordinates ->
+            coordinator.record(rowIndex, itemKey, coordinates.positionInWindow().x, requester)
+        }
+        .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionUp -> coordinator.move(rowIndex, itemKey, down = false)
+                Key.DirectionDown -> coordinator.move(rowIndex, itemKey, down = true)
+                else -> false
+            }
+        }
+}
+
+/** 16:9 preview width bounded by the actual space beside the navigation chrome. */
+internal fun cinematicInlineWidth(screenWidth: Dp, startPadding: Dp): Dp =
+    minOf(
+        210.dp * (16f / 9f),
+        (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
+    )
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun InfiniteLoopRow(
@@ -152,7 +245,9 @@ fun InfiniteLoopRow(
     isLandscapeCards: Boolean = false,
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
-    isInlineRowActive: Boolean = false
+    isInlineRowActive: Boolean = false,
+    onRowFocusExited: (() -> Unit)? = null,
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val density = LocalDensity.current
     val paddingPx = remember(density, startPadding) { with(density) { startPadding.toPx() } }
@@ -191,9 +286,8 @@ fun InfiniteLoopRow(
     }
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
-    val inlineCinematicWidth = minOf(
-        340.dp, (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
-    )
+    // Native 16:9 previews need roughly 373dp at 210dp high, screen permitting.
+    val inlineCinematicWidth = cinematicInlineWidth(screenWidth, startPadding)
     val endPadding = remember(
         screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
         isInfiniteLoopEnabled, isLandscapeCards
@@ -227,14 +321,48 @@ fun InfiniteLoopRow(
         }
     }
 
-    // The focused poster stays mounted while its artwork becomes the preview.
+    // Transforming a focused 16:9 Surface into a portrait Surface detaches
+    // its focus target for one frame. Don't confuse that handoff with focus
+    // leaving the row for another row or the navigation drawer.
     var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
+    var rowPreviouslyHeldFocus by remember(rowIndex, title) { mutableStateOf(false) }
+    var focusHandoffPending by remember(rowIndex, title) { mutableStateOf(false) }
+    val inlineTransitionRequester = remember(rowIndex, title) { FocusRequester() }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
+
+    LaunchedEffect(isInlineRowActive, activeCardKey) {
+        if (isInlineRowActive && focusHandoffPending && activeCardKey != null) {
+            withFrameNanos { }
+            val regained = runCatching { inlineTransitionRequester.requestFocus() }.isSuccess
+            focusHandoffPending = false
+            if (!regained) {
+                activeCardKey = null
+                onRowFocusExited?.invoke()
+            }
+        }
+    }
+    LaunchedEffect(isInlineRowActive) {
+        if (!isInlineRowActive) {
+            activeCardKey = null
+            focusHandoffPending = false
+        }
+    }
 
     Column(
         modifier = Modifier
             .graphicsLayer { clip = false }
-            .onFocusChanged { if (!it.hasFocus) activeCardKey = null }
+            .onFocusChanged { state ->
+                if (state.hasFocus) {
+                    rowPreviouslyHeldFocus = true
+                } else if (rowPreviouslyHeldFocus && !focusHandoffPending) {
+                    // Initial unattached/empty LazyRows also report hasFocus=false.
+                    // Only an actual focused->unfocused transition can collapse
+                    // the row; otherwise every remount toggles the active genre.
+                    rowPreviouslyHeldFocus = false
+                    activeCardKey = null
+                    onRowFocusExited?.invoke()
+                }
+            }
     ) {
         Text(
             text = title,
@@ -248,6 +376,9 @@ fun InfiniteLoopRow(
 
         // Stable reference to avoid recomposition from lambda re-allocation
         val wrappedOnFocused: (MetaItem?, String) -> Unit = { item, key ->
+            if (item != null && inlineCinematicPreview != null && !isInlineRowActive) {
+                focusHandoffPending = true
+            }
             activeCardKey = if (item == null) null else key
             onFocused(item, key)
         }
@@ -283,7 +414,10 @@ fun InfiniteLoopRow(
                         effectiveItemWidth = effectiveItemWidth,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -317,7 +451,10 @@ fun InfiniteLoopRow(
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -349,7 +486,10 @@ fun InfiniteLoopRow(
                         enrichedItems = enrichedItems,
                         inlineCinematicPreview = inlineCinematicPreview,
                         activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth
+                        inlineCinematicWidth = inlineCinematicWidth,
+                        isInlineRowActive = isInlineRowActive,
+                        inlineTransitionRequester = inlineTransitionRequester,
+                        verticalFocusCoordinator = verticalFocusCoordinator
                     )
                 }
             }
@@ -391,7 +531,10 @@ private fun LinearContent(
     effectiveItemWidth: Dp = ITEM_WIDTH,
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
 
@@ -462,6 +605,8 @@ private fun LinearContent(
                     .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                         inlineCinematicWidth
                     } else effectiveItemWidth)
+                    .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                        Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                     .graphicsLayer { clip = false }
                     .onPreviewKeyEvent { keyEvent ->
                         if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -512,6 +657,9 @@ private fun LinearContent(
                             }
                         } else false
                     }
+                    .then(rememberCinematicVerticalFocusModifier(
+                        verticalFocusCoordinator, rowIndex, uniqueKey
+                    ))
             ) {
                 if (isLandscapeCards) {
                     val enriched = enrichedItems["${item.type}:${item.id}"]
@@ -616,7 +764,10 @@ private fun InfiniteGridContent(
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
 
@@ -734,6 +885,8 @@ private fun InfiniteGridContent(
                             .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                                 inlineCinematicWidth
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
+                            .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                                Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -782,6 +935,9 @@ private fun InfiniteGridContent(
                                     }
                                 } else false
                             }
+                            .then(rememberCinematicVerticalFocusModifier(
+                                verticalFocusCoordinator, rowIndex, uniqueKey
+                            ))
                     ) {
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
@@ -893,7 +1049,10 @@ private fun FiniteGridContent(
     enrichedItems: Map<String, MetaItem> = emptyMap(),
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     activeCardKey: String? = null,
-    inlineCinematicWidth: Dp = 340.dp
+    inlineCinematicWidth: Dp = 340.dp,
+    isInlineRowActive: Boolean = false,
+    inlineTransitionRequester: FocusRequester = FocusRequester(),
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
 ) {
     val context = LocalContext.current
     
@@ -976,6 +1135,8 @@ private fun FiniteGridContent(
                             .width(if (inlineCinematicPreview != null && activeCardKey == uniqueKey) {
                                 inlineCinematicWidth
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
+                            .then(if (isInlineRowActive && activeCardKey == uniqueKey)
+                                Modifier.focusRequester(inlineTransitionRequester) else Modifier)
                             .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
@@ -1018,6 +1179,9 @@ private fun FiniteGridContent(
                                     }
                                 } else false
                             }
+                            .then(rememberCinematicVerticalFocusModifier(
+                                verticalFocusCoordinator, rowIndex, uniqueKey
+                            ))
                     ) {
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(

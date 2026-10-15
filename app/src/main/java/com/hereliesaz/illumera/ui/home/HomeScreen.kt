@@ -48,6 +48,8 @@ import androidx.media3.common.MediaItem as PlayerMediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
+import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -77,7 +79,6 @@ import com.hereliesaz.illumera.domain.CategoryRow
 import com.hereliesaz.illumera.domain.HomeRowItem
 import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
-import com.hereliesaz.illumera.domain.layoutFor
 import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
@@ -117,12 +118,11 @@ fun HomeScreen(
             }
         }
     }
-    // Movies and Series always combine the hero carousel with the inline cinematic
-    // preview. Home retains its profile-selected layout.
-    val layoutMode = if (tab == DashboardTab.HOME) {
-        currentProfile?.layoutFor(tab) ?: "cinematic"
-    } else "cinematic"
+    // All discovery tabs share the non-configurable cinematic row hierarchy:
+    // inactive landscape rails and portrait cards only in the focused row.
+    val layoutMode = "cinematic"
     val isTopNav = currentProfile?.navPosition == "top"
+    val cinematicAudio = rememberCinematicAudioPreferences(currentProfile?.id)
     val isLandscapeContinueWatching = currentProfile?.continueWatchingShape == "landscape"
     // 120dp clears the side NavDrawer (80dp collapsed) plus a comfortable margin on a
     // wide/TV screen; on a phone that margin alone eats a third of the available width,
@@ -195,6 +195,8 @@ fun HomeScreen(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
+                    autoPlayPreviews = cinematicAudio.autoPlayPreviews,
+                    previewSound = cinematicAudio.previewSound,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
                     state = displayState,
@@ -261,12 +263,23 @@ fun HomeScreen(
 }
 }
 
+/** Restore a row's portrait geometry only for its actual focus owner. */
+internal fun isCinematicRowActive(
+    focusedRowKey: String?,
+    rowKey: String,
+    restoredCardKey: String?,
+    cardKeyPrefix: String
+): Boolean = focusedRowKey == rowKey ||
+    (focusedRowKey == null && restoredCardKey?.startsWith(cardKeyPrefix) == true)
+
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
+    autoPlayPreviews: Boolean,
+    previewSound: Boolean,
     startPadding: androidx.compose.ui.unit.Dp,
     isTopNav: Boolean,
     state: HomeViewModel.HomeState,
@@ -304,14 +317,40 @@ fun CinematicLayout(
 
     // Empty genres have no focusable row. Preserve the original index for
     // persisted poster keys while assigning compact indices to LazyColumn.
-    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen) {
+    // A genre may become empty when canonical metadata moves its final title.
+    // Once a row has been shown, keep its key mounted until the screen changes:
+    // disposing/remounting focused LazyColumn rows produces a focus crash.
+    val revealedGenres = remember(state.loadedScreen, state.loadedProfileId) {
+        mutableStateListOf<String>()
+    }
+    state.mixedRows.forEach { row ->
+        if (row is CategoryRow && row.items.isNotEmpty() && row.id !in revealedGenres) {
+            revealedGenres.add(row.id)
+        }
+    }
+    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, revealedGenres.toList()) {
         state.mixedRows.withIndex().filter { indexed ->
             val row = indexed.value
             state.loadedScreen !in setOf("movies", "series") ||
-                row !is CategoryRow || row.items.isNotEmpty()
+                row !is CategoryRow || row.items.isNotEmpty() || row.id in revealedGenres
         }
     }
     val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
+    // All visible rows (including Hub spacers) participate in vertical order.
+    // Only media rails register cards, so navigation into a Hub/Hero keeps its
+    // original focus behavior instead of jumping over that row.
+    val verticalFocusCoordinator = remember(state.loadedScreen) {
+        CinematicVerticalFocusCoordinator()
+    }
+    val verticalRowOrder = remember(historyItems, visibleMixedRows) {
+        buildList {
+            if (historyItems.isNotEmpty()) add(-1)
+            visibleMixedRows.forEach { add(it.index) }
+        }
+    }
+    SideEffect {
+        verticalFocusCoordinator.orderedRowIndices = verticalRowOrder
+    }
 
     // Proactive metadata fetch for continue watching cards (posters + landscape)
     LaunchedEffect(historyItems) {
@@ -336,8 +375,9 @@ fun CinematicLayout(
     )
 
     val density = LocalDensity.current
-    // Adjust pivot with 40dp offset to prevent slide-up (5.dp content padding + 40.dp)
-    val titleHeadroomPx = remember(density) { with(density) { 45.dp.toPx() } }
+    // Keep the preceding compact landscape rail almost entirely on-screen
+    // when a newly focused portrait row reaches its vertical pivot.
+    val titleHeadroomPx = remember(density) { with(density) { 175.dp.toPx() } }
     
     // Skip vertical scroll on restoration (when we have a saved focus key)
     val isVerticalRestoration = effectiveLastFocusedKey != null
@@ -401,12 +441,23 @@ fun CinematicLayout(
                         }
                     }
 
+                    // The Hero is part of the scrolling column, not a persistent
+                    // background player. Stop fetching/playing once it leaves view.
+                    val heroVisible by remember(verticalListState) {
+                        derivedStateOf {
+                            verticalListState.layoutInfo.visibleItemsInfo.any {
+                                it.key == "cinematic_hero_carousel"
+                            }
+                        }
+                    }
+
                     LazyColumn(
                         state = verticalListState,
                         modifier = Modifier
                             .fillMaxSize(), // Focus managed by items
                         contentPadding = PaddingValues(top = 5.dp, bottom = 400.dp),
-                        verticalArrangement = Arrangement.spacedBy((-12).dp)
+                        // A negative gap placed the active poster over the next row heading.
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         if (heroItems.isNotEmpty()) {
                             // Ordinary list item: the Hero must scroll away entirely.
@@ -422,6 +473,12 @@ fun CinematicLayout(
                                     },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
+                                    autoPlayPreviews = autoPlayPreviews,
+                                    previewSound = previewSound,
+                                    // Only one preview owns audio: once a row is focused,
+                                    // the Hero cannot continue playing underneath it.
+                                    previewVisible = heroVisible &&
+                                        (activeCinematicRow == null || activeCinematicRow == "__hero__"),
                                     onNavigateDown = { runCatching { firstRowPivotRequester.requestFocus() } },
                                     entryRequester = if (effectiveLastFocusedKey == null ||
                                         effectiveLastFocusedKey.startsWith("hero_")) entryRequester else null,
@@ -442,6 +499,9 @@ fun CinematicLayout(
                         if (historyItems.isNotEmpty()) {
                             item(key = "history_header", contentType = "row") {
                                 Column {
+                                val historyRowActive = isCinematicRowActive(
+                                    activeCinematicRow, "history", effectiveLastFocusedKey, "-1_"
+                                )
                                 // Reset scroll position when focus was redirected (cleared item removed)
                                 val savedPosition = if (historyFocusRedirected) Pair(0, 0)
                                     else rowScrollPositions["history"] ?: Pair(0, 0)
@@ -482,17 +542,23 @@ fun CinematicLayout(
                                     externalListState = historyRowState,
                                     upKeyDebouncer = upKeyDebouncer,
                                     repeatGate = dpadRepeatGate,
-                                    // All cinematic media rows use portrait posters. The
-                                    // focused card itself expands; no panel is mounted above.
-                                    isLandscapeCards = false,
+                                    // Inactive rows are 16:9 rails; the active row uses
+                                    // portrait posters and one expanded inline preview.
+                                    isLandscapeCards = !historyRowActive,
                                     enrichedItems = state.enrichedMeta,
-                                    rowHeight = 210.dp,
+                                    rowHeight = if (historyRowActive) 220.dp else 116.dp,
                                     inlineCinematicPreview = { poster ->
-                                        InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                        InlineFocusedPosterPreview(
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                        )
                                     },
-                                    isInlineRowActive = activeCinematicRow == "history" ||
-                                        (activeCinematicRow == null &&
-                                            effectiveLastFocusedKey?.startsWith("-1_") == true)
+                                    isInlineRowActive = historyRowActive,
+                                    verticalFocusCoordinator = verticalFocusCoordinator,
+                                    onRowFocusExited = {
+                                        if (activeCinematicRow == "history") {
+                                            activeCinematicRow = "__navigation__"
+                                        }
+                                    }
                                 )
                                 }
                             }
@@ -567,6 +633,9 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
+                                    val categoryRowActive = isCinematicRowActive(
+                                        activeCinematicRow, rowKey, effectiveLastFocusedKey, "${index}_"
+                                    )
                                     val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
@@ -588,18 +657,17 @@ fun CinematicLayout(
                                     // A genre row is created without eagerly querying all
                                     // addon catalogs. Fetch when its LazyColumn item first
                                     // enters view, then keep pagination on horizontal scrolling.
+                                    // Genre probes are already owned by the ViewModel's
+                                    // one-shot background lanes. A row entering/re-entering
+                                    // the LazyColumn must not restart an empty genre fetch.
                                     LaunchedEffect(item.id) {
-                                        // Genre rows are already warmed by the ViewModel.
-                                        // Retried empty rows here were repeatedly composed,
-                                        // re-fetched, and dropped as focus moved between them.
                                         if (item.id.startsWith("catalog-home:") &&
                                             item.items.isEmpty()
                                         ) onLoadMore(item.id)
                                     }
 
-                                    // Explicit focus at the end of the horizontal row
-                                    // drives pagination; simply showing a genre row never
-                                    // starts another request (or enters an empty-row loop).
+                                    // Explicit card focus, not layout measurements
+                                    // emitted during a row shape switch, drives paging.
                                     val itemId = item.id
                                     val itemSize = item.items.size
 
@@ -618,9 +686,12 @@ fun CinematicLayout(
                                             focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
                                             val focusedIndex = key.substringAfterLast('_').toIntOrNull()
-                                            if (focusItem != null && itemSize > 0 &&
+                                            // A tiny genre batch is not a pagination trigger:
+                                            // otherwise *every* focus/re-focus starts more
+                                            // catalog requests while the row is recomposing.
+                                            if (focusItem != null && itemSize >= 8 &&
                                                 focusedIndex != null &&
-                                                focusedIndex >= (itemSize - 3).coerceAtLeast(0)
+                                                focusedIndex >= itemSize - 3
                                             ) onLoadMore(itemId)
                                         },
                                         entryRequester = entryRequester,
@@ -635,15 +706,21 @@ fun CinematicLayout(
                                         externalListState = rowListState,
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
-                                        isLandscapeCards = false,
+                                        isLandscapeCards = !categoryRowActive,
                                         enrichedItems = state.enrichedMeta,
-                                        rowHeight = 210.dp,
+                                        rowHeight = if (categoryRowActive) 220.dp else 116.dp,
                                         inlineCinematicPreview = { poster ->
-                                            InlineFocusedPosterPreview(poster, state, resolveTrailer)
+                                            InlineFocusedPosterPreview(
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                        )
                                         },
-                                        isInlineRowActive = activeCinematicRow == rowKey ||
-                                            (activeCinematicRow == null &&
-                                                effectiveLastFocusedKey?.startsWith("${index}_") == true)
+                                        isInlineRowActive = categoryRowActive,
+                                        verticalFocusCoordinator = verticalFocusCoordinator,
+                                        onRowFocusExited = {
+                                            if (activeCinematicRow == rowKey) {
+                                                activeCinematicRow = "__navigation__"
+                                            }
+                                        }
                                     )
                                     }
                                 }
@@ -664,7 +741,9 @@ fun CinematicLayout(
 private fun InlineFocusedPosterPreview(
     item: MetaItem,
     state: HomeViewModel.HomeState,
-    resolveTrailer: suspend (MetaItem) -> String?
+    resolveTrailer: suspend (MetaItem) -> String?,
+    autoPlayPreviews: Boolean,
+    previewSound: Boolean
 ) {
     val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
@@ -678,6 +757,8 @@ private fun InlineFocusedPosterPreview(
         TrailerPreview(
             item = current,
             resolveTrailer = resolveTrailer,
+            autoPlay = autoPlayPreviews,
+            soundEnabled = previewSound,
             modifier = Modifier.fillMaxSize()
         )
         Box(
@@ -1442,6 +1523,10 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
         ?.first
 }
 
+/** Do not resolve media or start a player for a disabled/offscreen preview. */
+internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
+    autoPlay && visible
+
 /**
  * The image underneath stays visible until ExoPlayer reports that the extracted
  * trailer video is ready. Switching titles cancels resolution and disposes the player.
@@ -1451,13 +1536,18 @@ internal fun resolveHomeFocusNeighbour(savedKey: String, keys: Collection<String
 internal fun TrailerPreview(
     item: MetaItem?,
     resolveTrailer: suspend (MetaItem) -> String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    autoPlay: Boolean = true,
+    soundEnabled: Boolean = false,
+    isVisible: Boolean = true
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val videoUrl by produceState<String?>(initialValue = null, item?.id, item?.type) {
+    val videoUrl by produceState<String?>(
+        initialValue = null, item?.id, item?.type, autoPlay, isVisible
+    ) {
         value = null
-        if (item != null) {
+        if (item != null && shouldResolveCinematicPreview(autoPlay, isVisible)) {
             delay(500)
             value = resolveTrailer(item)
         }
@@ -1466,7 +1556,7 @@ internal fun TrailerPreview(
     val player = remember(videoUrl, item?.id, item?.type) {
         videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = 0f
+                volume = if (soundEnabled) 1f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1478,9 +1568,17 @@ internal fun TrailerPreview(
                 })
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
-                playWhenReady = true
+                playWhenReady = autoPlay && isVisible
             }
         }
+    }
+    // Settings/viewport changes shouldn't dispose a player until its own URL
+    // identity changes. The lifecycle observer reads the latest play condition.
+    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
+    SideEffect {
+        player?.volume = if (soundEnabled) 1f else 0f
+        player?.playWhenReady = shouldPlay &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
     }
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1492,7 +1590,7 @@ internal fun TrailerPreview(
                     player?.pause()
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (player != null) player.playWhenReady = true
+                    if (player != null) player.playWhenReady = shouldPlay
                 }
                 else -> Unit
             }
@@ -1516,6 +1614,9 @@ internal fun TrailerPreview(
                         isClickable = false
                         descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         useController = false
+                        // Fill the available video box, cropping vertical excess
+                        // rather than displaying letterbox bars on TV screens.
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         this.player = player
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)

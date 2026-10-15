@@ -51,27 +51,48 @@ internal fun prioritizedYouTubePreviewCandidates(values: Iterable<String>): List
 }
 
 /**
- * Return only the rows that actually changed. Canonical metadata can reclassify
- * a title, but must not copy the destination row into every other genre.
+ * Reconcile a catalog batch without changing other genre identities.
+ * Canonical matches move out of former fallback rows; fallback batches never
+ * re-add a title already assigned elsewhere.
  */
-internal fun mergeClassifiedGenreRows(
+internal fun reconcileGenreRows(
     rows: List<HomeRow>,
-    destinationId: String,
-    incoming: List<MetaItem>,
+    destination: String,
+    newItems: List<MetaItem>,
     authoritative: Boolean
 ): List<HomeRow> {
-    if (incoming.isEmpty() || rows.none { it.configId == destinationId }) return rows
+    if (newItems.isEmpty()) return rows
     return rows.map { row ->
-        val next = when {
-            row.configId == destinationId ->
-                row.items + distinctAggregatedMetas(row.items, incoming)
-            authoritative && row.configId.startsWith("catalog-aggregate:") ->
-                // Only remove exact/cross-provider identities from OTHER rows.
-                // distinctAggregatedMetas returns new survivors, not a merged list.
-                distinctAggregatedMetas(incoming, row.items)
+        val items = when {
+            row.configId == destination -> {
+                val elsewhere = if (authoritative) emptyList() else
+                    rows.filter { it.configId != destination }.flatMap { it.items }
+                val additions = distinctAggregatedMetas(row.items + elsewhere, newItems)
+                if (additions.isEmpty()) row.items else row.items + additions
+            }
+            authoritative && row.configId.startsWith("catalog-aggregate:") -> {
+                row.items.filter { item ->
+                    distinctAggregatedMetas(newItems, listOf(item)).isNotEmpty()
+                }
+            }
             else -> row.items
         }
-        if (next == row.items) row else row.copy(items = next)
+        if (items === row.items) row else row.copy(items = items)
+    }
+}
+
+/** Project each row under its own stable LazyColumn key, never the updated destination key. */
+internal fun reconcileGenreMixedRows(
+    mixedRows: List<HomeRowItem>,
+    rows: List<HomeRow>
+): List<HomeRowItem> {
+    val byId = rows.associateBy { it.configId }
+    return mixedRows.map { mixed ->
+        if (mixed !is CategoryRow) mixed else {
+            val own = byId[mixed.id]
+            if (own != null && own.items != mixed.items) CategoryRow.fromHomeRow(own)
+            else mixed
+        }
     }
 }
 
@@ -405,7 +426,6 @@ class HomeViewModel @Inject constructor(
                         return@launch
                     }
                     var emptyStreak = emptyCatalogPageStreak[configId] ?: 0
-
                     // Previously a later empty page halted pagination permanently.
                     // Probe a bounded number until there is actual NEW primary-row content.
                     val probes = if (!isHomePair && existing.isEmpty()) {
@@ -419,18 +439,13 @@ class HomeViewModel @Inject constructor(
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
-                            // A full empty source layer means no more skips are
-                            // yielding data. Stop permanently for this screen rather
-                            // than re-requesting empty pages on every row recompose.
-                            val seen = seenAggregateCandidates.getOrPut(configId) {
-                                mutableListOf()
-                            }
+                            // Keep the identities of titles routed to other primary
+                            // genres, preventing their source pages reappearing forever.
+                            val seen = seenAggregateCandidates.getOrPut(configId) { mutableListOf() }
                             val freshCandidates = distinctAggregatedMetas(seen, fetched)
                             seen.addAll(freshCandidates)
                             emptyStreak = if (freshCandidates.isEmpty()) emptyStreak + 1 else 0
-                            if (emptyStreak >= firstLayerCount) {
-                                exhaustedCatalogRows.add(configId)
-                            }
+                            if (emptyStreak >= firstLayerCount) exhaustedCatalogRows.add(configId)
                             val currentItems = _state.value.rows
                                 .firstOrNull { it.configId == configId }?.items.orEmpty()
                             val unseen = distinctAggregatedMetas(currentItems, freshCandidates)
@@ -502,6 +517,10 @@ class HomeViewModel @Inject constructor(
                     }
                 } catch (ce: CancellationException) {
                     throw ce
+                } catch (error: Exception) {
+                    // A failed catalog source must not crash the Movies/Series
+                    // screen or turn a D-pad focus change into an app shutdown.
+                    Log.w("HomeGenreRows", "Catalog load failed for $configId", error)
                 } finally {
                     if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
                 }
@@ -590,22 +609,10 @@ class HomeViewModel @Inject constructor(
         authoritative: Boolean = false
     ) {
         _state.update { current ->
-            val updatedRows = mergeClassifiedGenreRows(
+            val updatedRows = reconcileGenreRows(
                 current.rows, configId, newItems, authoritative
             )
-            if (updatedRows == current.rows) return@update current
-            val changedRows = updatedRows.associateBy { it.configId }
-            val updatedMixed = current.mixedRows.map { item ->
-                if (item is CategoryRow) {
-                    // Each mixed row must reflect ITS OWN matching HomeRow.
-                    // Using destinationId here cloned the destination genre
-                    // into every other category and destabilized TV focus keys.
-                    val matching = changedRows[item.id]
-                    if (matching != null && matching.items != item.items)
-                        CategoryRow.fromHomeRow(matching)
-                    else item
-                } else item
-            }
+            val updatedMixed = reconcileGenreMixedRows(current.mixedRows, updatedRows)
 
             val configuredHero = current.loadedScreen?.let { screen ->
                 tmdbProfileCache?.heroFor(DashboardTab.fromString(screen))
@@ -623,7 +630,10 @@ class HomeViewModel @Inject constructor(
                     updatedRows.firstOrNull { it.items.isNotEmpty() }
                 else -> null
             }
-            current.copy(
+            if (updatedRows == current.rows &&
+                updatedMixed == current.mixedRows &&
+                automaticHero == current.heroRow
+            ) current else current.copy(
                 rows = updatedRows,
                 mixedRows = updatedMixed,
                 heroRow = automaticHero
