@@ -86,6 +86,20 @@ import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/**
+ * Empty genre rows stay mounted to preserve TV focus history, but cannot own
+ * Hero-return focus. Only a row with an actual focusable card qualifies.
+ */
+internal fun firstFocusableCinematicRowIndex(
+    rows: List<IndexedValue<HomeRowItem>>
+): Int? = rows.firstOrNull { indexed ->
+    when (val row = indexed.value) {
+        is CategoryRow -> row.items.isNotEmpty()
+        is HubGroupRow -> row.items.isNotEmpty()
+        else -> false
+    }
+}?.index
+
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
 
@@ -344,7 +358,9 @@ fun CinematicLayout(
                 row !is CategoryRow || row.items.isNotEmpty() || row.id in revealedGenres
         }
     }
-    val firstVisibleRowIndex = visibleMixedRows.firstOrNull()?.index
+    val firstFocusableRowIndex = remember(visibleMixedRows) {
+        firstFocusableCinematicRowIndex(visibleMixedRows)
+    }
     // All visible rows (including Hub spacers) participate in vertical order.
     // Only media rails register cards, so navigation into a Hub/Hero keeps its
     // original focus behavior instead of jumping over that row.
@@ -616,13 +632,13 @@ fun CinematicLayout(
                                 is HubGroupRow -> {
                                     Column(modifier = Modifier.then(
                                         if (heroItems.isNotEmpty() && historyItems.isEmpty() &&
-                                            index == firstVisibleRowIndex
+                                            index == firstFocusableRowIndex
                                         ) returnToHeroFromFirstRow else Modifier
                                     )) {
                                     // Create list state with saved scroll position for this hub row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val hubKey = "hub_${item.id}"
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstFocusableRowIndex
                                     val savedHubPosition = if (resetScroll) null else rowScrollPositions[hubKey]
                                     val hubListState = rememberLazyListState(
                                         initialFirstVisibleItemIndex = savedHubPosition?.first ?: 0,
@@ -653,9 +669,9 @@ fun CinematicLayout(
                                         upKeyDebouncer = upKeyDebouncer,
                                         repeatGate = dpadRepeatGate,
                                         isLastRow = index == visibleMixedRows.lastOrNull()?.index,
-                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex,
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
-                                            historyItems.isEmpty() && index == firstVisibleRowIndex
+                                            historyItems.isEmpty() && index == firstFocusableRowIndex
                                         ) firstRowPivotRequester else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
                                         forceLandscape = true
@@ -665,7 +681,7 @@ fun CinematicLayout(
                                 is CategoryRow -> {
                                     Column(modifier = Modifier.then(
                                         if (heroItems.isNotEmpty() && historyItems.isEmpty() &&
-                                            index == firstVisibleRowIndex
+                                            index == firstFocusableRowIndex
                                         ) returnToHeroFromFirstRow else Modifier
                                     )) {
                                     // Create list state with saved scroll position for this row
@@ -674,7 +690,7 @@ fun CinematicLayout(
                                     val categoryRowActive = isCinematicRowActive(
                                         activeCinematicRow, rowKey, effectiveLastFocusedKey, "${index}_"
                                     )
-                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstVisibleRowIndex
+                                    val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstFocusableRowIndex
                                     val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
 
                                     val initialIndex = savedPosition?.first ?: 0
@@ -736,8 +752,8 @@ fun CinematicLayout(
                                         drawerRequester = drawerRequester,
                                         locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
                                         isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex,
-                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstVisibleRowIndex) firstRowPivotRequester else null,
+                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex,
+                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex) firstRowPivotRequester else null,
                                         isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
                                         visibleItemCount = item.visibleItemCount,
                                         isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
