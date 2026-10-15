@@ -98,8 +98,14 @@ fun WatchlistScreen(
             else -> library.sortedWith(recent)
         }
     }
-    val movies = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "movie" }.map { it.item } }
-    val series = remember(sortedLibrary) { sortedLibrary.filter { it.item.type == "series" }.map { it.item } }
+    // A single sorted collection: movie/show type is retained for playback,
+    // not used to segregate titles into separate Library poster rows.
+    val libraryItems = remember(sortedLibrary, mediaTypeFilter) {
+        sortedLibrary.asSequence()
+            .map { it.item }
+            .filter { mediaTypeFilter == "all" || it.type == mediaTypeFilter }
+            .toList()
+    }
 
     // Main-screen Back is MainRootBackHandler's: every in-screen Back action (Queue reorder
     // mode, item menus) has its own handler composed later, so it runs first.
@@ -115,38 +121,34 @@ fun WatchlistScreen(
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
     var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
 
-    LaunchedEffect(movies, series) {
+    LaunchedEffect(libraryItems) {
         val key = lastFocusedKey ?: return@LaunchedEffect
-        val parts = key.split("_")
-        val rowIndex = parts.getOrNull(0)?.toIntOrNull()
-        val itemId = parts.getOrNull(1)
-        if (itemId == null) return@LaunchedEffect
-
-        val rowItems = if (rowIndex == 0) movies else series
-        val stillExists = rowItems.any { it.id == itemId }
-        if (!stillExists && rowItems.isNotEmpty()) {
-            // Removed (e.g. taken off the watchlist from its details page): focus its nearest
-            // remaining neighbour at the same position, not the end or start of the row.
-            val fallbackIndex = resolveRowRestoreIndex(key, rowIndex ?: 0, rowItems.map { it.id })
-                ?: rowItems.lastIndex
-            val fallbackItem = rowItems[fallbackIndex]
-            lastFocusedKey = "${rowIndex}_${fallbackItem.id}_$fallbackIndex"
-            viewModel.lastFocusedKey = lastFocusedKey
-        } else if (!stillExists && rowItems.isEmpty()) {
-            val otherItems = if (rowIndex == 0) series else movies
-            if (otherItems.isNotEmpty()) {
-                val otherRow = if (rowIndex == 0) 1 else 0
-                lastFocusedKey = "${otherRow}_${otherItems.first().id}_0"
-                viewModel.lastFocusedKey = lastFocusedKey
-            } else {
-                lastFocusedKey = null
-                viewModel.lastFocusedKey = null
+        // Existing versions stored Series in row 1 and Movies in row 0.
+        // Resolve by ID into the new single row so restored remote focus
+        // continues to point to the same title after aggregation or sorting.
+        val id = key.substringAfter('_', "").substringBeforeLast('_', "")
+        val index = libraryItems.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            val updated = "0_${libraryItems[index].id}_$index"
+            if (updated != key) {
+                lastFocusedKey = updated
+                viewModel.lastFocusedKey = updated
             }
+        } else if (libraryItems.isNotEmpty()) {
+            val previousIndex = key.substringAfterLast('_').toIntOrNull() ?: 0
+            val replacementIndex = previousIndex.coerceIn(0, libraryItems.lastIndex)
+            val updated = "0_${libraryItems[replacementIndex].id}_$replacementIndex"
+            lastFocusedKey = updated
+            viewModel.lastFocusedKey = updated
+        } else {
+            lastFocusedKey = null
+            viewModel.lastFocusedKey = null
         }
     }
 
-    LaunchedEffect(movies) { movies.forEach { viewModel.resolvePosterIfNeeded(it) } }
-    LaunchedEffect(series) { series.forEach { viewModel.resolvePosterIfNeeded(it) } }
+    LaunchedEffect(libraryItems) {
+        libraryItems.forEach { viewModel.resolvePosterIfNeeded(it) }
+    }
 
     val isTopNav = currentProfile?.navPosition == "top"
     val isCompactWatchlist = LocalConfiguration.current.screenWidthDp < 600
@@ -156,12 +158,8 @@ fun WatchlistScreen(
         else -> 120.dp
     }
     val topPadding = if (isTopNav) 24.dp else 16.dp
-    val hasWatchlistMedia = movies.isNotEmpty() || series.isNotEmpty()
-    val hasFilteredMedia = when (mediaTypeFilter) {
-        "movie" -> movies.isNotEmpty()
-        "series" -> series.isNotEmpty()
-        else -> hasWatchlistMedia
-    }
+    val hasWatchlistMedia = sortedLibrary.isNotEmpty()
+    val hasFilteredMedia = libraryItems.isNotEmpty()
 
     androidx.compose.runtime.CompositionLocalProvider(
         com.hereliesaz.illumera.ui.components.LocalWatchedIds provides watchedIds
@@ -269,14 +267,14 @@ fun WatchlistScreen(
                 }
             }
 
-            if (movies.isNotEmpty() && mediaTypeFilter != "series") {
-                item {
+            if (libraryItems.isNotEmpty()) {
+                item(key = "combined_library") {
                     InfiniteLoopRow(
                         startPadding = startPadding,
                         isTopNav = isTopNav,
                         rowIndex = 0,
-                        title = "Movies",
-                        items = movies,
+                        title = "Movies & Series",
+                        items = libraryItems,
                         onMovieClick = onMovieClick,
                         onViewMore = {},
                         onFocused = { _: MetaItem?, key: String ->
@@ -287,42 +285,14 @@ fun WatchlistScreen(
                         },
                         entryRequester = entryRequester,
                         drawerRequester = drawerRequester,
-                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true) lastFocusedKey else null,
+                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("0_") == true)
+                            lastFocusedKey else null,
                         isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = false, // Queue now precedes Library
+                        isFirstRow = false, // Queue remains the entry row
                         isInfiniteLoopEnabled = false,
                         upKeyDebouncer = upKeyDebouncer,
                         repeatGate = dpadRepeatGate,
-                        externalListState = viewModel.movieRowState
-                    )
-                }
-            }
-
-            if (series.isNotEmpty() && mediaTypeFilter != "movie") {
-                item {
-                    InfiniteLoopRow(
-                        startPadding = startPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = 1,
-                        title = "Series",
-                        items = series,
-                        onMovieClick = onMovieClick,
-                        onViewMore = {},
-                        onFocused = { _: MetaItem?, key: String ->
-                            lastFocusedKey = key
-                            viewModel.lastFocusedKey = key
-                            lastQueueFocusedKey = null
-                            viewModel.lastQueueFocusedKey = null
-                        },
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = if (lastFocusedKey?.startsWith("1_") == true) lastFocusedKey else null,
-                        isGlobalFocusPresent = lastFocusedKey != null,
-                        isFirstRow = false, // Queue now precedes Library
-                        isInfiniteLoopEnabled = false,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = dpadRepeatGate,
-                        externalListState = viewModel.seriesRowState
+                        externalListState = viewModel.libraryRowState
                     )
                 }
             }
