@@ -338,7 +338,7 @@ class AddonRepository @Inject constructor(
         // A category may call its halves "Popular Movies" and "Popular Series".
         // Pairing requires the SAME provider and opposite media types.
         fun categoryKey(value: String): String = value.trim().lowercase()
-            .replace(Regex("""[-_: ]+(?:movies?|series|shows?|tv)$"""), "")
+            .replace(Regex("""[-_: ]+(?:tv[ -]?shows?|tv[ -]?series|movies?|series|shows?|tv)$"""), "")
             .replace(Regex("""[^a-z0-9]+"""), "")
         fun matches(a: CatalogConfigEntity, b: CatalogConfigEntity): Boolean {
             if (a.transportUrl != b.transportUrl ||
@@ -395,7 +395,7 @@ class AddonRepository @Inject constructor(
                 }
                 val categoryTitle = (primary.customTitle ?: secondary?.customTitle
                     ?: primary.catalogName ?: primary.catalogId)
-                    .replace(Regex("""[-_: ]+(?:Movies?|Series|Shows?|TV)$""",
+                    .replace(Regex("""[-_: ]+(?:TV[ -]?Shows?|TV[ -]?Series|Movies?|Series|Shows?|TV)$""",
                         RegexOption.IGNORE_CASE), "")
                 HomeRow(
                     configId = primary.uniqueId,
