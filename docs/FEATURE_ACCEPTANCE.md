@@ -46,3 +46,12 @@ Source-level remedies added:
 The previous combined All Movies/All Series row was explicitly **not** requested. Movies and Series now render a separate row per enabled Stremio genre and no catch-all or per-addon category rows. All genres are enabled by default; Settings → Screen Editor → Movies/Series → Manage Genres allows disabling each genre or all genres. Every genre row merges title results from every eligible enabled catalog source, deduplicates titles and fetches more batches as the row is browsed. Unseen rows defer network loading until they enter the vertical viewport.
 
 TV acceptance: fresh install defaults to 19 Movie and 22 Series genre rows; no All Movies/All Series row is visible; disabling e.g. Horror only hides Horror on the chosen screen and persists after relaunch; no options that are actually years are displayed as genres; Movies and Series have separate choices; Home remains unchanged.
+
+## Cinematic aspect ratio, gap and genre-filter regression
+
+- Cinematic Home, Movies and Series content rows all render horizontal 16:9 cards, including Continue Watching and custom Hub rows. The Simple layout retains its own preferences.
+- The row-local cinematic preview has been shortened from 360dp to 282dp, its title/description is bottom-aligned, and the landscape poster rail reserves 122dp rather than an unused 210dp; heading spacing is tighter.
+- Movie/Series genre rows are restricted to genuine film/TV genres. Addon-supplied language, country, video-quality and release-recency options are not genres and must not appear as rows or Screen Editor choices. Separate regression tests cover these examples.
+- Watchlist itself has Queue, Movies and Series Library rows, not a discover/genre-row source. No Watchlist titles should be removed to solve this issue.
+
+Check the focused panel-to-card distance with short and long descriptions and with a TV remote. Android build/device validation is still outstanding.
