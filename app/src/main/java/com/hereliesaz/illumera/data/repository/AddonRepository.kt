@@ -67,7 +67,7 @@ fun distinctAggregatedMetas(
     existing.forEach(::register)
     return incoming.filter { meta ->
         val id = "${meta.type}:${meta.id}"
-        val imdb = meta.id.takeIf { imdbRegex.matches(it) }
+        val imdb = imdbRegex.find(meta.id)?.value
         val title = titleKey(meta)
         val old = title?.let { titleIdentities[it] }
         val duplicate = id in seenIds ||
@@ -329,12 +329,12 @@ class AddonRepository @Inject constructor(
             ?: config.catalogId.replace('-', ' ').replace('_', ' ')
         // Whole-label generic names must pair ("Movies" + "Series").
         // Match TV Shows before plain Shows so no stray "TV" grouping remains.
-        val mediaSuffix = "(?:tv\\\\s*shows?|tv\\\\s*series|movies?|films?|series|shows?|tv)"
+        val mediaSuffix = """(?:tv\s*shows?|tv\s*series|movies?|films?|series|shows?|tv)"""
         val withoutParen = candidate.replace(
-            Regex("(?i)\\\\s*\\\\($mediaSuffix\\\\)\\\\s*$"), ""
+            Regex("""(?i)\s*\($mediaSuffix\)\s*$"""), ""
         )
         val normalized = withoutParen.replace(
-            Regex("(?i)(?:^|[-:/\\\\s]+)$mediaSuffix\\\\s*$"), ""
+            Regex("""(?i)(?:^|[-:/\s]+)$mediaSuffix\s*$"""), ""
         ).trim()
         return normalized.ifBlank { config.addonName }
     }
@@ -343,11 +343,16 @@ class AddonRepository @Inject constructor(
         val activeAddons = dao.getAllAddons().firstOrNull().orEmpty()
             .filter { it.isEnabled }.mapTo(mutableSetOf()) { it.transportUrl.trimEnd('/') }
         val configs = dao.getAllCatalogConfigs().firstOrNull().orEmpty()
-            .filter { it.showInHome && it.catalogType in setOf("movie", "series") &&
-                it.transportUrl.trimEnd('/') in activeAddons }
+            .filter { it.showInHome && it.transportUrl.trimEnd('/') in activeAddons }
             .sortedWith(compareBy({ it.homeOrder }, { it.uniqueId }))
         return configs.groupBy { config ->
-            homeCategoryTitle(config).lowercase().filter { it.isLetterOrDigit() }
+            if (config.catalogType in setOf("movie", "series")) {
+                homeCategoryTitle(config).lowercase().filter { it.isLetterOrDigit() }
+            } else {
+                // Non-movie catalog types (channels, live TV) remain individually
+                // configured Home rows rather than silently disappearing.
+                "standalone:" + config.uniqueId
+            }
         }.map { (key, group) ->
             HomeCatalogPair(
                 id = "catalog-home:$key",
@@ -442,11 +447,13 @@ class AddonRepository @Inject constructor(
             }.awaitAll().flatten()
             val movies = fetched.filter { it.type == "movie" }
             val series = fetched.filter { it.type == "series" }
+            val standalone = fetched.filterNot { it.type in setOf("movie", "series") }
             distinctAggregatedMetas(emptyList(), buildList {
                 for (index in 0 until maxOf(movies.size, series.size)) {
                     movies.getOrNull(index)?.let { add(it) }
                     series.getOrNull(index)?.let { add(it) }
                 }
+                addAll(standalone)
             })
         }
     }
