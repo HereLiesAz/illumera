@@ -105,6 +105,18 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun verticalFocusDoesNotSkipHubRowsOrHiddenGenreIndices() {
+        // The visible order contains a Hub at index 3 and genre gaps where
+        // unpopulated rails were omitted. Navigation must respect that order.
+        val visibleRows = listOf(-1, 0, 3, 9)
+        assertEquals(3, adjacentCinematicRowIndex(visibleRows, 0, down = true))
+        assertEquals(3, adjacentCinematicRowIndex(visibleRows, 9, down = false))
+        assertEquals(0, adjacentCinematicRowIndex(visibleRows, 3, down = false))
+        assertEquals(null, adjacentCinematicRowIndex(visibleRows, -1, down = false))
+        assertEquals(null, adjacentCinematicRowIndex(visibleRows, 9, down = true))
+    }
+
+    @Test
     fun verticalFocusUsesNearestLeftEdgeAcrossDifferentCardWidths() {
         // Source and destination can have different horizontal scroll offsets
         // and independently sized cards; never match by their list indices.
