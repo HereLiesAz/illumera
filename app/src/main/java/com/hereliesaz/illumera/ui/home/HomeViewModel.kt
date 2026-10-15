@@ -37,6 +37,19 @@ import com.hereliesaz.illumera.domain.heroFor
 import com.hereliesaz.illumera.domain.HERO_DISABLED_MARKER
 import com.hereliesaz.illumera.domain.ScreenGenreRows
 
+/**
+ * Keep usable YouTube trailer references ahead of addon search/results links.
+ * Limited to two candidates so a dead addon does not starve TMDB/Cinemeta.
+ */
+internal fun prioritizedYouTubePreviewCandidates(values: Iterable<String>): List<String> {
+    val videoId = Regex("^[A-Za-z0-9_-]{11}$")
+    return values.filter { value ->
+        videoId.matches(value) ||
+            listOf("watch?v=", "youtu.be/", "/embed/", "/shorts/", "/live/")
+                .any { marker -> marker in value }
+    }.sortedByDescending(videoId::matches).take(2)
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: AddonRepository,
@@ -65,7 +78,7 @@ class HomeViewModel @Inject constructor(
             trailerUrlCache.remove(trailerKey)
         }
         return try {
-            kotlinx.coroutines.withTimeout(95_000L) {
+            kotlinx.coroutines.withTimeout(115_000L) {
                 val addonCandidates = linkedSetOf<String>()
                 val tmdbCandidates = linkedSetOf<String>()
                 val cinemetaCandidates = linkedSetOf<String>()
@@ -74,11 +87,12 @@ class HomeViewModel @Inject constructor(
                         val normalizedTitle = item.name.lowercase().filter { it.isLetterOrDigit() }
                         val year = Regex("(?:19|20)[0-9]{2}")
                             .find(item.releaseInfo.orEmpty())?.value
+                            ?: return@withTimeoutOrNull null
                         repository.searchMovies(item.name).firstOrNull { found ->
                             found.type == item.type &&
                                 found.name.lowercase().filter { it.isLetterOrDigit() } == normalizedTitle &&
-                                (year == null || Regex("(?:19|20)[0-9]{2}")
-                                    .find(found.releaseInfo.orEmpty())?.value == year) &&
+                                Regex("(?:19|20)[0-9]{2}")
+                                    .find(found.releaseInfo.orEmpty())?.value == year &&
                                 Regex("^tt[0-9]+$").matches(found.id)
                         }?.id
                     }
@@ -150,10 +164,10 @@ class HomeViewModel @Inject constructor(
 
                 // Bound each source separately: unplayable addon entries must
                 // not exhaust the resolver before TMDB or Cinemeta is tried.
-                // Limit extraction to four candidates, with a total bound of 60s.
+                // Limit extraction to five candidates, with a total bound of 75s.
                 val attempted = mutableSetOf<String>()
                 for (sourceCandidates in listOf(
-                    addonCandidates.take(1),
+                    prioritizedYouTubePreviewCandidates(addonCandidates),
                     tmdbCandidates.take(1),
                     cinemetaCandidates.take(2)
                 )) {
@@ -386,7 +400,7 @@ class HomeViewModel @Inject constructor(
                                                     "Sci-Fi & Fantasy" -> "Sci-Fi"
                                                     else -> lead
                                                 }
-                                                assigned to candidate
+                                                Triple(assigned, candidate, canonical != null)
                                             }
                                         }.awaitAll()
                                     }
@@ -396,17 +410,23 @@ class HomeViewModel @Inject constructor(
                                         _state.value.loadedScreen != initiatingScreen ||
                                         profileConfigurationManager.activeProfileId.value != initiatingProfileId
                                     ) return@launch
-                                    val byDestination = classified.groupBy { (primary, _) ->
+                                    val byDestination = classified.groupBy { (primary, _, _) ->
                                         _state.value.rows.firstOrNull { row ->
                                             row.title.equals(primary, ignoreCase = true)
                                         }?.configId
                                     }
                                     byDestination.forEach { (destination, entries) ->
                                         if (destination != null) {
-                                            val titles = entries.map { it.second }
-                                            appendItemsToRow(destination, titles)
+                                            val authoritative = entries.filter { it.third }.map { it.second }
+                                            val fallback = entries.filterNot { it.third }.map { it.second }
+                                            // A new canonical match removes stale fallback
+                                            // copies previously assigned to other genres.
+                                            if (authoritative.isNotEmpty()) {
+                                                appendItemsToRow(destination, authoritative, authoritative = true)
+                                            }
+                                            if (fallback.isNotEmpty()) appendItemsToRow(destination, fallback)
                                             if (destination == configId) {
-                                                unique = unique + titles
+                                                unique = unique + entries.map { it.second }
                                             }
                                         }
                                     }
@@ -508,16 +528,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun appendItemsToRow(configId: String, newItems: List<MetaItem>) {
+    private fun appendItemsToRow(
+        configId: String,
+        newItems: List<MetaItem>,
+        authoritative: Boolean = false
+    ) {
         _state.update { current ->
             val updatedRows = current.rows.map { r ->
-                if (r.configId == configId) {
-                    r.copy(items = r.items + distinctAggregatedMetas(r.items, newItems))
-                } else r
+                when {
+                    r.configId == configId ->
+                        r.copy(items = r.items + distinctAggregatedMetas(r.items, newItems))
+                    authoritative && r.configId.startsWith("catalog-aggregate:") ->
+                        r.copy(items = distinctAggregatedMetas(newItems, r.items))
+                    else -> r
+                }
             }
 
             val updatedMixed = current.mixedRows.map { item ->
-                if (item is CategoryRow && item.id == configId) {
+                if (item is CategoryRow && (item.id == configId ||
+                    (authoritative && item.id.startsWith("catalog-aggregate:")))) {
                     val updatedRow = updatedRows.find { it.configId == configId }
                     if (updatedRow != null) CategoryRow.fromHomeRow(updatedRow) else item
                 } else item

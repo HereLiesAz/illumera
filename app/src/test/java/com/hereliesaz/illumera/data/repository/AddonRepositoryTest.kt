@@ -924,6 +924,20 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun providerSpecificIdWithoutReleaseYearMustNotGuessAnImdbRemake() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val repository = AddonRepository(api, dao)
+
+        assertEquals(null, repository.primaryGenreFor(MetaItem(
+            id = "addon:ambiguous", type = "movie", name = "The Return",
+            releaseInfo = null, genres = listOf("Drama")
+        )))
+        coVerify(exactly = 0) { api.getCatalog(any()) }
+        coVerify(exactly = 0) { api.getMeta(any()) }
+    }
+
+    @Test
     fun alternateProviderIdUsesExactCinemetaTitleAndYearToFindGenre() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>(relaxed = true)

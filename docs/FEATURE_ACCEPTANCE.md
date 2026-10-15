@@ -124,3 +124,11 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 
 - Review follow-up: Suggested Next and Refresh stack vertically on compact screens while retaining a horizontal header on TV.
 - Review follow-up: disabled suggestions retain a visibly focused Refresh control; last Library card consumes Right when top navigation is active.
+
+## Follow-up to the post-merge #244 adversarial review
+
+- The earlier Hero Down requester issue is already corrected in the merged inline-poster layout: CinematicLayout attaches it to `firstVisibleRowIndex` for both Category and Hub rows (not the original empty genre index).
+- IMDb IDs inferred from provider-specific catalog entries must have a matching release year. Bare title matches are ambiguous across remakes and no longer identify metadata or TMDB trailers.
+- Autoplay trailer extraction prioritizes direct YouTube video IDs, skips addon search-result links, and tries up to two addon candidates before TMDB/Cinemeta. Candidate budgets remain bounded; a bad first addon entry must not starve a later playable one.
+- When authoritative Cinemeta genre classification recovers after a temporary outage, the title migrates out of any previous fallback genre row before being appended to its canonical destination. The existing cross-provider dedup identity helper is reused.
+- Regression checks cover title-without-year and the search-page-before-video-ID case; TV playback, Android build and full integration remain release gates.
