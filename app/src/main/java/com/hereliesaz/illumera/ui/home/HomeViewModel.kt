@@ -269,7 +269,9 @@ class HomeViewModel @Inject constructor(
                     val existing = _state.value.rows.firstOrNull { it.configId == configId }
                         ?.items.orEmpty()
                     var unique = emptyList<MetaItem>()
-                    val firstLayerCount = repository.aggregatedFirstLayerPageCount(type, genre)
+                    val firstLayerCount = if (type == "mixed")
+                        repository.mixedCatalogFirstLayerPageCount()
+                    else repository.aggregatedFirstLayerPageCount(type, genre)
                     // First visit searches every addon source group in the first layer
                     // so a later provider can populate a row even if earlier addons are empty.
                     // Subsequent horizontal browsing fetches source batches lazily.
@@ -278,7 +280,9 @@ class HomeViewModel @Inject constructor(
                     } else 4
                     repeat(probes.coerceAtLeast(0)) {
                         if (unique.isEmpty()) {
-                            val fetched = repository.getAggregatedCatalogPage(type, genre, nextPage++)
+                            val fetched = if (type == "mixed")
+                                repository.getMixedCatalogPage(nextPage++)
+                            else repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             unique = distinctAggregatedMetas(existing, fetched)
                         }
                     }
@@ -368,11 +372,20 @@ class HomeViewModel @Inject constructor(
                 } else item
             }
 
-            val automaticHero = current.heroRow ?: if (
-                current.loadedScreen in setOf("movies", "series") &&
-                tmdbProfileCache?.heroFor(DashboardTab.fromString(current.loadedScreen!!))
-                    ?.categoryId != HERO_DISABLED_MARKER
-            ) updatedRows.firstOrNull { it.items.isNotEmpty() } else null
+            val configuredHero = current.loadedScreen?.let { screen ->
+                tmdbProfileCache?.heroFor(DashboardTab.fromString(screen))
+            }
+            val automaticHero = when {
+                configuredHero?.categoryId == HERO_DISABLED_MARKER -> null
+                current.loadedScreen == "home" && configuredHero?.categoryId == null ->
+                    updatedRows.firstOrNull {
+                        it.configId == "catalog-aggregate:mixed:all" && it.items.isNotEmpty()
+                    } ?: current.heroRow
+                current.heroRow != null -> current.heroRow
+                current.loadedScreen in setOf("movies", "series") ->
+                    updatedRows.firstOrNull { it.items.isNotEmpty() }
+                else -> null
+            }
             current.copy(
                 rows = updatedRows,
                 mixedRows = updatedMixed,
@@ -859,7 +872,20 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                 } else emptyList()
-                val initialRows = if (screenName == "home") configuredRows else genreRows
+                // The primary Home collection combines movies and series from
+                // every enabled addon, retaining each item's media type. Existing
+                // user-customized category/Hub rows are kept after this feed.
+                val mixedHomeRow = HomeRow(
+                    configId = "catalog-aggregate:mixed:all",
+                    title = "Movies & Series",
+                    items = emptyList(),
+                    isInfiniteScrollingEnabled = true,
+                    supportsSkip = true,
+                    order = -1000
+                )
+                val initialRows = if (screenName == "home")
+                    listOf(mixedHomeRow) + configuredRows
+                else genreRows
                 val hubRows = hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
@@ -920,6 +946,8 @@ class HomeViewModel @Inject constructor(
                 // dozens of genre network requests on one screen open.
                 if (screenName in setOf("movies", "series")) {
                     initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                } else if (screenName == "home") {
+                    loadMoreItems(mixedHomeRow.configId)
                 }
 
                 // Home alone retains its individually configured addon/hub rows.
