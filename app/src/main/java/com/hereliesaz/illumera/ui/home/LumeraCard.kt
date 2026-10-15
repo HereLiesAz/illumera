@@ -61,7 +61,8 @@ fun LumeraCard(
     onFocused: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onRemotePressChanged: ((Boolean) -> Unit)? = null,
-    mediaItem: MetaItem? = null
+    mediaItem: MetaItem? = null,
+    cardWidth: androidx.compose.ui.unit.Dp = 140.dp
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
@@ -89,7 +90,7 @@ fun LumeraCard(
 
     Box(
         modifier = modifier
-            .width(140.dp)
+            .width(cardWidth)
             .aspectRatio(2f / 3f)
             .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
             .graphicsLayer { clip = false }
