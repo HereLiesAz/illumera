@@ -60,6 +60,28 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun libraryGridKeysDoNotChangeWhenMoviesShiftAcrossRowBoundaries() {
+        val first = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+            id = "tt0000001", type = "movie", name = "First"
+        )
+        val second = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+            id = "tt0000002", type = "movie", name = "Second"
+        )
+        val third = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+            id = "tt0000002", type = "series", name = "Second"
+        )
+
+        assertEquals(
+            listOf("library_movie_tt0000001", "library_movie_tt0000002", "library_series_tt0000002"),
+            listOf(first, second, third).map(::watchlistGridMediaKey)
+        )
+        assertEquals(
+            listOf("library_series_tt0000002", "library_movie_tt0000001", "library_movie_tt0000002"),
+            listOf(third, first, second).map(::watchlistGridMediaKey)
+        )
+    }
+
+    @Test
     fun watchlistGridFitsTwoPortraitPostersOnCompactScreens() {
         assertEquals(2, watchlistGridColumnCount(393, 96, 122))
         assertEquals(1, watchlistGridColumnCount(260, 96, 122))

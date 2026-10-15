@@ -51,7 +51,8 @@ class WatchlistViewModel @Inject constructor(
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
     // Parent LazyColumn holds the Queue + virtualized Library grid together.
-    val watchlistColumnState = androidx.compose.foundation.lazy.LazyListState()
+    // Each Library poster is its own stable lazy item, even across grid rows.
+    val watchlistGridState = androidx.compose.foundation.lazy.grid.LazyGridState()
 
     data class LibraryEntry(
         val item: MetaItem,
