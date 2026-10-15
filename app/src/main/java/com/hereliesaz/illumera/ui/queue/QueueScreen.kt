@@ -50,6 +50,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -136,6 +138,7 @@ fun QueueSection(
 ) {
     val state by queueManager.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(state.preferences.enabled, state.preferences.suggestionSources) {
         if (state.preferences.enabled) {
@@ -202,8 +205,16 @@ fun QueueSection(
             val refreshFocused by refreshInteraction.collectIsFocusedAsState()
             val refreshColors = buttonColors(focused = refreshFocused, enabled = state.preferences.enabled)
             Button(
-                onClick = { scope.launch { queueManager.refreshSuggestions(rotate = true) } },
-                enabled = state.preferences.enabled,
+                onClick = {
+                    if (state.preferences.enabled) {
+                        scope.launch { queueManager.refreshSuggestions(rotate = true) }
+                    } else {
+                        Toast.makeText(context, "Enable suggestions in Settings → Watchlist", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                // Disabled buttons cannot take TV focus; leave it focusable so
+                // the initial Watchlist entry always has a real target.
+                enabled = true,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = refreshColors.container,
                     contentColor = refreshColors.content,
