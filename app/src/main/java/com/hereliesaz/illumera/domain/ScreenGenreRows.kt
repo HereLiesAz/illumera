@@ -116,7 +116,7 @@ object ScreenGenreRows {
         if (screen !in setOf("movies", "series")) return emptySet()
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getStringSet(preferenceKey(profileId, screen), emptySet())
-            ?.toSet().orEmpty()
+            ?.map(::canonicalGenre)?.toSet().orEmpty()
     }
 
     fun enabledGenres(
