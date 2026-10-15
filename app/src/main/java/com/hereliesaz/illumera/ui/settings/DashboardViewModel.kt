@@ -88,6 +88,17 @@ class DashboardViewModel @Inject constructor(
         dashboardModified = true
     }
 
+    fun titleOrder(profileId: Int, screen: String, genre: String): ScreenGenreRows.TitleOrder =
+        ScreenGenreRows.titleOrder(appContext, profileId, screen, genre)
+
+    fun cycleTitleOrder(profileId: Int, screen: String, genre: String) {
+        val orders = ScreenGenreRows.TitleOrder.entries
+        val current = titleOrder(profileId, screen, genre)
+        ScreenGenreRows.setTitleOrder(appContext, profileId, screen, genre,
+            orders[(current.ordinal + 1) % orders.size])
+        dashboardModified = true
+    }
+
     fun setAllGenresEnabled(profileId: Int, screen: String, enabled: Boolean) {
         val all = availableGenres(screen).value
         ScreenGenreRows.setDisabledGenres(
