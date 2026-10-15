@@ -221,7 +221,8 @@ fun NavDrawerRail(
         NavDestination.Home,
         NavDestination.Movies,
         NavDestination.Series,
-        NavDestination.Watchlist
+        NavDestination.Watchlist,
+        NavDestination.Addons
     )
 
     Box(modifier = modifier.fillMaxSize()) {
