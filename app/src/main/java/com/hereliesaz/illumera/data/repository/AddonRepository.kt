@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -85,6 +86,62 @@ class AddonRepository @Inject constructor(
     private val dao: AddonDao
 ) {
     private val gson = Gson()
+    // Cinemeta is a fixed public metadata source, independent of installed addons.
+    // Never cache failures: a temporary network error must not become a permanent genre.
+    private val primaryGenreCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val primaryGenreRequests = kotlinx.coroutines.sync.Semaphore(6)
+
+    /**
+     * Resolve a stable, provider-independent lead genre before assigning an item
+     * to exactly one Movies/Series row. Addon genre order is not authoritative.
+     */
+    suspend fun primaryGenreFor(meta: MetaItem): String? = withContext(Dispatchers.IO) {
+        if (meta.type !in setOf("movie", "series")) return@withContext null
+        val title = meta.name.lowercase(java.util.Locale.ROOT).filter { it.isLetterOrDigit() }
+        val year = Regex("(?:19|20)[0-9]{2}").find(meta.releaseInfo.orEmpty())?.value
+        val titleKey = if (title.isNotBlank() && year != null) "${meta.type}:$title:$year" else null
+        val directId = Regex("tt[0-9]+").find(meta.id)?.value
+        val cached = directId?.let { primaryGenreCache["${meta.type}:$it"] }
+            ?: titleKey?.let { primaryGenreCache[it] }
+        if (cached != null) return@withContext cached
+
+        val imdbId = directId ?: try {
+            withTimeout(4_000L) {
+                searchMovies(meta.name).firstOrNull { candidate ->
+                    candidate.type == meta.type &&
+                        candidate.name.lowercase(java.util.Locale.ROOT)
+                            .filter { it.isLetterOrDigit() } == title &&
+                        (year == null || Regex("(?:19|20)[0-9]{2}")
+                            .find(candidate.releaseInfo.orEmpty())?.value == year) &&
+                        Regex("^tt[0-9]+$").matches(candidate.id)
+                }?.id
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return@withContext null
+
+        val primary = try {
+            primaryGenreRequests.withPermit {
+                withTimeout(4_000L) {
+                    api.getMeta("https://v3-cinemeta.strem.io/meta/${meta.type}/$imdbId.json")
+                        .meta.sanitize()?.genres.orEmpty()
+                        .map(ScreenGenreRows::canonicalGenre)
+                        .firstOrNull { it.isNotBlank() }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (primary != null) {
+            primaryGenreCache["${meta.type}:$imdbId"] = primary
+            if (titleKey != null) primaryGenreCache[titleKey] = primary
+        }
+        primary
+    }
 
     /** Filter out MetaItems where Gson injected null into non-null Kotlin fields */
     private fun List<MetaItem>.sanitize(): List<MetaItem> = filter { item ->
