@@ -140,6 +140,17 @@ internal fun closestCinematicCardLeft(
     compareBy<Pair<String, Float>> { abs(it.second - sourceLeft) }.thenBy { it.second }
 )?.first
 
+/** Step through the actual visible row order, including non-media Hub rows. */
+internal fun adjacentCinematicRowIndex(
+    orderedRows: List<Int>,
+    currentRow: Int,
+    down: Boolean
+): Int? {
+    val current = orderedRows.indexOf(currentRow)
+    if (current < 0) return null
+    return orderedRows.getOrNull(current + if (down) 1 else -1)
+}
+
 /** Coordinates only the visible cards of adjacent cinematic media rows. */
 class CinematicVerticalFocusCoordinator {
     var orderedRowIndices: List<Int> = emptyList()
@@ -160,10 +171,9 @@ class CinematicVerticalFocusCoordinator {
     }
 
     fun move(rowIndex: Int, itemKey: String, down: Boolean): Boolean {
-        val current = orderedRowIndices.indexOf(rowIndex)
-        if (current < 0) return false
-        val next = current + if (down) 1 else -1
-        val destinationIndex = orderedRowIndices.getOrNull(next) ?: return false
+        val destinationIndex = adjacentCinematicRowIndex(
+            orderedRowIndices, rowIndex, down
+        ) ?: return false
         val sourceLeft = targets[rowIndex]?.get(itemKey)?.left ?: return false
         val destination = targets[destinationIndex].orEmpty()
         val closest = closestCinematicCardLeft(
