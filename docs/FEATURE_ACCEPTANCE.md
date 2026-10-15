@@ -58,7 +58,7 @@ In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Ser
 ## Cinematic aspect ratio, gap and genre-filter regression
 
 - Cinematic Home, Movies and Series content rows all render horizontal 16:9 cards, including Continue Watching and custom Hub rows. The Simple layout retains its own preferences.
-- The row-local cinematic preview has been shortened from 360dp to 282dp, its title/description is bottom-aligned, and the landscape poster rail reserves 122dp rather than an unused 210dp; heading spacing is tighter.
+- October 14 shortened the row-local preview from 360dp to 282dp; October 15 further shortened it to **184dp** without inflating its artwork. Title/description remain bottom-aligned; the landscape poster rail reserves 122dp rather than an unused 210dp.
 - Movie/Series genre rows are restricted to genuine film/TV genres. Addon-supplied language, country, video-quality and release-recency options are not genres and must not appear as rows or Screen Editor choices. Separate regression tests cover these examples.
 - Watchlist itself has Queue, Movies and Series Library rows, not a discover/genre-row source. No Watchlist titles should be removed to solve this issue.
 
@@ -70,3 +70,12 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 - Every paired row preserves the two original catalog URLs and its own pagination progress per source, deduplicates provider aliases and retains each item's original movie/series type.
 - Watchlist Queue remains above a **single combined Library row**, which keeps the Stremio sorting controls and optional type filter. Series episode history must become one show card; movie and show with the same name must not merge.
 - Acceptance requires CI plus Android TV focus, paging, sorting and profile-switch verification. These changes are committed but not runtime-verified.
+
+## October 15 cinematic/genre/trailer fixes — verification pending
+
+- Movies and Series omit empty genre rows from the vertical LazyColumn and D-pad focus chain; the original row index remains stable for poster focus keys. Three background lanes probe all enabled genres instead of requiring a user to focus empty rows to load later content. Initial genre probes cover up to two source layers, where paging is supported.
+- Catalog items are routed to only their lead genre, prioritizing public Cinemeta metadata by IMDb ID or verified title/year instead of addon genre order. When the central lookup is unavailable, a stable sorted addon-genre fallback prevents relying on the first addon label. Unclassified items are withheld rather than duplicated across multiple rows.
+- Cinematic previews are 184dp tall. Autoplay trailer candidates use the enabled addon, TMDB video metadata when configured, and public Cinemeta trailer records. Silent previews prefer muxed hardware-compatible video when available.
+- Regression unit tests cover canonical vs addon genre order, canonical-source retry after network failure, and exact title/year matching for non-IMDb IDs.
+
+**Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
