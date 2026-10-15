@@ -323,6 +323,9 @@ class AddonRepository @Inject constructor(
         val candidate = config.customTitle?.takeIf { it.isNotBlank() }
             ?: config.catalogName?.takeIf { it.isNotBlank() }
             ?: config.catalogId.replace('-', ' ').replace('_', ' ')
+        // TV/channel rows aren't movie/series halves. Preserve titles such as
+        // "Live TV" instead of stripping their category names.
+        if (config.catalogType !in setOf("movie", "series")) return candidate.trim()
         // Whole-label generic names must pair ("Movies" + "Series").
         // Match TV Shows before plain Shows so no stray "TV" grouping remains.
         val mediaSuffix = """(?:tv\s*shows?|tv\s*series|movies?|films?|series|shows?|tv)"""
