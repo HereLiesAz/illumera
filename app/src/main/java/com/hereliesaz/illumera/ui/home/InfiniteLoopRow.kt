@@ -212,7 +212,10 @@ fun InfiniteLoopRow(
             text = title,
             color = Color.White.copy(0.9f),
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.padding(start = startPadding, bottom = 12.dp)
+            modifier = Modifier.padding(
+                start = startPadding,
+                bottom = if (isLandscapeCards) 4.dp else 12.dp
+            )
         )
 
         // Stable reference to avoid recomposition from lambda re-allocation
@@ -221,7 +224,10 @@ fun InfiniteLoopRow(
         when {
             // CASE A: Grid View OFF - Standard linear list
             // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
-            !isInfiniteLoopEnabled -> {
+            // Cinematic landscape rails must not revert to portrait when a
+            // catalog is configured as an infinite or finite grid.
+            // A standard LazyRow also supports per-genre incremental paging.
+            isLandscapeCards || !isInfiniteLoopEnabled -> {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
                     LinearContent(
                         listState = listState,
