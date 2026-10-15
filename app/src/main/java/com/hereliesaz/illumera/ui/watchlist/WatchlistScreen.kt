@@ -135,6 +135,9 @@ fun WatchlistScreen(
 
     var lastFocusedKey by remember { mutableStateOf(viewModel.lastFocusedKey) }
     var lastQueueFocusedKey by remember { mutableStateOf(viewModel.lastQueueFocusedKey) }
+    // Shared across all grid cells: a held Left key must stop at column zero,
+    // not send the next auto-repeat immediately into the navigation drawer.
+    var lastGridLeftPressAt by remember { mutableStateOf(0L) }
 
     LaunchedEffect(libraryItems) {
         val key = lastFocusedKey ?: return@LaunchedEffect
@@ -325,15 +328,24 @@ fun WatchlistScreen(
                         row.forEachIndexed { columnIndex, media ->
                             val index = gridRowIndex * gridColumnCount + columnIndex
                             val focusKey = "0_${media.id}_$index"
+                            // Identity keys keep Compose focus and menus bound to
+                            // the media item, not to its old grid column position.
+                            androidx.compose.runtime.key(media.type, media.id) {
                             Box(
                                 modifier = Modifier.width(gridCardWidth)
                                     .onPreviewKeyEvent { event ->
-                                        if (columnIndex == 0 && !isTopNav &&
-                                            event.type == KeyEventType.KeyDown &&
+                                        if (event.type == KeyEventType.KeyDown &&
                                             event.key == Key.DirectionLeft
                                         ) {
-                                            drawerRequester.openNavDrawer()
-                                            true
+                                            val now = System.currentTimeMillis()
+                                            val deliberate = now - lastGridLeftPressAt > 350L
+                                            lastGridLeftPressAt = now
+                                            if (columnIndex == 0) {
+                                                if (!isTopNav && deliberate) {
+                                                    drawerRequester.openNavDrawer()
+                                                }
+                                                true
+                                            } else false
                                         } else false
                                     }
                             ) {
@@ -361,6 +373,7 @@ fun WatchlistScreen(
                                         )
                                         .restorableFocusIfTracked(focusKey, focusMemory)
                                 )
+                            }
                             }
                         }
                     }
