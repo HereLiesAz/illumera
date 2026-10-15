@@ -86,6 +86,7 @@ import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 /**
  * Empty genre rows stay mounted to preserve TV focus history, but cannot own
@@ -101,8 +102,9 @@ internal fun firstFocusableCinematicRowIndex(
     }
 }?.index
 
-private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
-private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
+private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 60L
+private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 70L
+private const val PREVIEW_NAVIGATION_IDLE_MS = 750L
 
 @Composable
 fun HomeScreen(
@@ -189,10 +191,34 @@ fun HomeScreen(
     // it goes back to that card's key (or the row's nearest card) before entryRequester.
     val focusMemory = rememberFocusMemory()
 
+    // Directional input is never held hostage by network trailer extraction.
+    // Mark navigation busy on the very first D-pad key event. The poster
+    // artwork remains visible while all outstanding previews are cancelled;
+    // only after the user stops browsing may trailer resolution begin.
+    val navigationScope = rememberCoroutineScope()
+    val resumePreviewJob = remember { arrayOfNulls<Job>(1) }
+    var isNavigating by remember(screenName) { mutableStateOf(false) }
+    DisposableEffect(screenName) {
+        onDispose { resumePreviewJob[0]?.cancel() }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .focusMemoryRoot(focusMemory)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    event.key in setOf(Key.DirectionLeft, Key.DirectionRight, Key.DirectionUp, Key.DirectionDown)
+                ) {
+                    isNavigating = true
+                    resumePreviewJob[0]?.cancel()
+                    resumePreviewJob[0] = navigationScope.launch {
+                        delay(PREVIEW_NAVIGATION_IDLE_MS)
+                        isNavigating = false
+                    }
+                }
+                false // Never consume a navigation event at screen level.
+            }
     ) {
         LumeraBackground {
         CompositionLocalProvider(
@@ -227,7 +253,7 @@ fun HomeScreen(
                     heroItems = heroItems,
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
-                    autoPlayPreviews = cinematicAudio.autoPlayPreviews,
+                    autoPlayPreviews = cinematicAudio.autoPlayPreviews && !isNavigating,
                     previewSound = cinematicAudio.previewSound,
                     startPadding = startPadding,
                     isTopNav = isTopNav,
