@@ -132,3 +132,11 @@ These are source-reviewed fixes, not proof of Android TV playback; Gradle and de
 - Autoplay trailer extraction prioritizes direct YouTube video IDs, skips addon search-result links, and tries up to two addon candidates before TMDB/Cinemeta. Candidate budgets remain bounded; a bad first addon entry must not starve a later playable one.
 - When authoritative Cinemeta genre classification recovers after a temporary outage, the title migrates out of any previous fallback genre row before being appended to its canonical destination. The existing cross-provider dedup identity helper is reused.
 - Regression checks cover title-without-year and the search-page-before-video-ID case; TV playback, Android build and full integration remain release gates.
+
+## Genre row stability and crash prevention (October 15, 2026)
+
+- Genre reclassification must update every row by its **own** config ID. Never copy the destination row into unrelated mixed rows; the old implementation did so when canonical classification arrived, making rows repeatedly disappear/reappear and invalidating D-pad focus identities.
+- Source-page identities are remembered even if their titles are classified into other genre rows. A full source layer returning no unseen candidates marks that row exhausted until the screen is invalidated (profile change, screen reload, catalog settings change). No sources means immediate exhaustion. Empty-row visibility/recomposition cannot automatically retry these pages.
+- The ViewModel warms enabled genre rows once in bounded lanes. Later fetches require focusing a card near the **end** of the horizontal row; initial layoutInfo emission must not automatically fetch more. A stable row ID retains the same LazyColumn key while other rows populate.
+- Three pure unit regressions assert canonical reclassification does not clone titles into unrelated genres, repeated updates do not change rows, and noncanonical source discoveries leave existing genres unchanged.
+- **Remaining release gates:** FOSS Debug/Release Gradle unit tests, installed-device focus switching, and full Movies/Series scrolling with slow/failing addons. Avoid claiming the crash is fixed on-device without logcat.

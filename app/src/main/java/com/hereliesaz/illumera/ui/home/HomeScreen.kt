@@ -589,25 +589,19 @@ fun CinematicLayout(
                                     // addon catalogs. Fetch when its LazyColumn item first
                                     // enters view, then keep pagination on horizontal scrolling.
                                     LaunchedEffect(item.id) {
-                                        if ((item.id.startsWith("catalog-aggregate:") ||
-                                            item.id.startsWith("catalog-home:")) &&
+                                        // Genre rows are already warmed by the ViewModel.
+                                        // Retried empty rows here were repeatedly composed,
+                                        // re-fetched, and dropped as focus moved between them.
+                                        if (item.id.startsWith("catalog-home:") &&
                                             item.items.isEmpty()
                                         ) onLoadMore(item.id)
                                     }
 
-                                    // Lazy pagination: load more items when scrolling near the end
-                                    // Use snapshotFlow to avoid reading layoutInfo during composition
+                                    // Explicit focus at the end of the horizontal row
+                                    // drives pagination; simply showing a genre row never
+                                    // starts another request (or enters an empty-row loop).
                                     val itemId = item.id
                                     val itemSize = item.items.size
-                                    LaunchedEffect(rowListState, itemId, itemSize) {
-                                        snapshotFlow {
-                                            rowListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                                        }.collect { lastVisibleIndex ->
-                                            if (itemSize > 0 && lastVisibleIndex >= itemSize - 10) {
-                                                onLoadMore(itemId)
-                                            }
-                                        }
-                                    }
 
                                     InfiniteLoopRow(
                                         startPadding = startPadding,
@@ -623,6 +617,11 @@ fun CinematicLayout(
                                             activeCinematicRow = rowKey
                                             focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
+                                            val focusedIndex = key.substringAfterLast('_').toIntOrNull()
+                                            if (focusItem != null && itemSize > 0 &&
+                                                focusedIndex != null &&
+                                                focusedIndex >= (itemSize - 3).coerceAtLeast(0)
+                                            ) onLoadMore(itemId)
                                         },
                                         entryRequester = entryRequester,
                                         drawerRequester = drawerRequester,
