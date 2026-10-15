@@ -82,26 +82,8 @@ import com.hereliesaz.illumera.ui.components.LumeraBackground
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import kotlinx.coroutines.delay
 
-private const val RAPID_VERTICAL_NAV_WINDOW_MS = 220L
-private const val RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS = 120L
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
-
-private class HomeFocusTimingTracker {
-    var previous: Long = 0L
-    var current: Long = 0L
-
-    fun mark(now: Long = System.currentTimeMillis()) {
-        previous = current
-        current = now
-    }
-
-    fun isRapid(windowMs: Long): Boolean = current - previous in 1..windowMs
-}
-
-private class PreviewUpdateGate {
-    var lastUpdateMs: Long = 0L
-}
 
 @Composable
 fun HomeScreen(
@@ -304,12 +286,9 @@ fun CinematicLayout(
     onVerticalScrollChange: (Pair<Int, Int>) -> Unit,
     onPreviewItemVisible: (MetaItem) -> Unit
 ) {
-    // Track the *currently* focused row rather than relying on a previously
-    // restored poster key. The preview expands immediately above its own row.
+    // The row only controls whether its active poster expands inline.
+    // The Hero is an ordinary LazyColumn item, never a sticky header.
     var activeCinematicRow by remember(state.loadedScreen) { mutableStateOf<String?>(null) }
-    var instantFocusItem by remember { mutableStateOf<MetaItem?>(null) }
-    var displayedItem by remember { mutableStateOf<MetaItem?>(null) }
-    val previewUpdateGate = remember { PreviewUpdateGate() }
 
     // Cache the history items transformation to avoid allocating new list on every recomposition
     // Stable key: only rebuild when items/order/watched-state change, not when images update
@@ -344,38 +323,6 @@ fun CinematicLayout(
     }
     val historyFocusRedirected = effectiveLastFocusedKey != lastFocusedKey
 
-    val restoredPreviewItem = remember(effectiveLastFocusedKey, state.mixedRows, historyItems) {
-        resolveCinematicPreviewItem(
-            lastFocusedKey = effectiveLastFocusedKey,
-            mixedRows = state.mixedRows,
-            historyItems = historyItems
-        )
-    }
-    val renderedPreviewItem = remember(displayedItem, state.mixedRows, state.heroRow, historyItems, state.enrichedMeta) {
-        resolveLatestPreviewItem(
-            current = displayedItem,
-            state = state,
-            historyItems = historyItems
-        )
-    }
-
-    LaunchedEffect(state.rows, state.history, restoredPreviewItem, effectiveLastFocusedKey) {
-        if (instantFocusItem == null) {
-            val first = when {
-                restoredPreviewItem != null -> restoredPreviewItem
-                // Returning from details with a saved focus key: avoid showing the wrong
-                // poster while focus restoration is still in progress.
-                effectiveLastFocusedKey != null -> null
-                else -> historyItems.firstOrNull() ?: state.rows.firstOrNull()?.items?.firstOrNull()
-            }
-            instantFocusItem = first
-            displayedItem = first
-            if (first != null) {
-                onPreviewItemVisible(first)
-            }
-        }
-    }
-
     // Focus the remembered item (entryRequester follows it) once there is something to focus:
     // on resume, and again if a refresh takes the focused card away.
     val firstRowPivotRequester = remember { FocusRequester() }
@@ -386,12 +333,6 @@ fun CinematicLayout(
         enabled = heroItems.isNotEmpty() || historyItems.isNotEmpty() || state.mixedRows.isNotEmpty(),
         neighbour = { resolveHomeFocusNeighbour(it, focusMemory.registeredKeys) }
     )
-
-    LaunchedEffect(instantFocusItem) {
-        val target = instantFocusItem ?: return@LaunchedEffect
-        delay(300)
-        displayedItem = target
-    }
 
     val density = LocalDensity.current
     // Adjust pivot with 40dp offset to prevent slide-up (5.dp content padding + 40.dp)
@@ -409,9 +350,6 @@ fun CinematicLayout(
         }
     }
 
-    // Track focus timing without triggering recomposition on every focus hop.
-    val verticalFocusTiming = remember { HomeFocusTimingTracker() }
-
     val verticalPivot = remember(titleHeadroomPx) {
         FocusPivotSpec(
             customOffset = titleHeadroomPx,
@@ -419,32 +357,8 @@ fun CinematicLayout(
             stiffnessProvider = { Spring.StiffnessLow }
         )
     }
-    
-    // Wrap onFocusChange to track timing for vertical dynamic stiffness
-    val wrappedOnFocusChange: (String) -> Unit = remember(onFocusChange) {
-        { key ->
-            verticalFocusTiming.mark()
-            onFocusChange(key)
-        }
-    }
 
-    fun updatePreviewItem(item: MetaItem?, rowJustChanged: Boolean = false) {
-        if (item == null) return
-        onPreviewItemVisible(item)
-        val now = System.currentTimeMillis()
-        val isRapid = verticalFocusTiming.isRapid(RAPID_VERTICAL_NAV_WINDOW_MS)
-        // A new row must show its own first poster immediately. Only throttle
-        // rapid lateral moves inside the same poster row.
-        val allowUpdate = rowJustChanged || !isRapid ||
-            now - previewUpdateGate.lastUpdateMs >= RAPID_PREVIEW_UPDATE_MIN_INTERVAL_MS
-        if (allowUpdate && (instantFocusItem?.id != item.id || instantFocusItem?.type != item.type)) {
-            instantFocusItem = item
-            if (rowJustChanged) displayedItem = item
-            previewUpdateGate.lastUpdateMs = now
-        } else if (allowUpdate) {
-            previewUpdateGate.lastUpdateMs = now
-        }
-    }
+    val wrappedOnFocusChange: (String) -> Unit = onFocusChange
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -550,9 +464,8 @@ fun CinematicLayout(
                                     onMovieClick = onMovieClick,
                                     onViewMore = { onViewMore("Continue Watching", historyItems, "") },
                                     onFocused = { item: MetaItem?, key: String ->
-                                        val changedRow = activeCinematicRow != "history"
                                         activeCinematicRow = "history"
-                                        updatePreviewItem(item, rowJustChanged = changedRow)
+                                        item?.let(onPreviewItemVisible)
                                         wrappedOnFocusChange(key)
                                     },
                                     entryRequester = entryRequester,
@@ -627,8 +540,7 @@ fun CinematicLayout(
                                         onHubClick = onHubClick,
                                         onFocused = { _, focusKey ->
                                             activeCinematicRow = "__hub__"
-                                            instantFocusItem = null
-                                            wrappedOnFocusChange("hub_$focusKey")
+                                             wrappedOnFocusChange("hub_$focusKey")
                                         },
                                         entryRequester = entryRequester,
                                         drawerRequester = drawerRequester,
@@ -706,9 +618,8 @@ fun CinematicLayout(
                                             { onViewMore(item.title, item.items, item.id) }
                                         },
                                         onFocused = { focusItem: MetaItem?, key: String ->
-                                            val changedRow = activeCinematicRow != rowKey
                                             activeCinematicRow = rowKey
-                                            updatePreviewItem(focusItem, rowJustChanged = changedRow)
+                                            focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
                                         },
                                         entryRequester = entryRequester,
@@ -848,30 +759,6 @@ private fun resolveEffectiveFocusKey(
     return lastFocusedKey
 }
 
-private fun resolveCinematicPreviewItem(
-    lastFocusedKey: String?,
-    mixedRows: List<HomeRowItem>,
-    historyItems: List<MetaItem>
-): MetaItem? {
-    if (lastFocusedKey.isNullOrEmpty()) return null
-    if (lastFocusedKey.startsWith("hub_") || lastFocusedKey.startsWith("hero_")) return null
-
-    val firstSeparator = lastFocusedKey.indexOf('_')
-    if (firstSeparator <= 0) return null
-
-    val rowToken = lastFocusedKey.substring(0, firstSeparator)
-    val itemToken = lastFocusedKey.substring(firstSeparator + 1).substringBeforeLast("_")
-    if (itemToken.isEmpty() || itemToken == "viewmore") return null
-
-    if (rowToken == "-1") {
-        return historyItems.firstOrNull { it.id == itemToken }
-    }
-
-    val rowIndex = rowToken.toIntOrNull() ?: return null
-    val row = mixedRows.getOrNull(rowIndex) as? CategoryRow ?: return null
-    return row.items.firstOrNull { it.id == itemToken }
-}
-
 /**
  * Continue Watching holds only movies and series, one card per title. Episodes are saved
  * under their own ids and, depending on the catalog, typed "series", "tv" or "episode";
@@ -985,33 +872,6 @@ private fun isEpisodePlaybackId(playbackId: String): Boolean {
     val parts = playbackId.split(":")
     if (parts.size < 3) return false
     return parts[parts.lastIndex - 1].toIntOrNull() != null && parts.last().toIntOrNull() != null
-}
-
-private fun resolveLatestPreviewItem(
-    current: MetaItem?,
-    state: HomeViewModel.HomeState,
-    historyItems: List<MetaItem>
-): MetaItem? {
-    val item = current ?: return null
-
-    // Check enriched metadata cache (handles items not in any category row, e.g. from search)
-    val enriched = state.enrichedMeta["${item.type}:${item.id}"]
-    if (enriched != null && !enriched.logo.isNullOrEmpty()) return enriched
-
-    val fromHistory = historyItems.firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromHistory != null && !fromHistory.logo.isNullOrEmpty()) return fromHistory
-
-    val fromHero = state.heroRow?.items?.firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromHero != null && !fromHero.logo.isNullOrEmpty()) return fromHero
-
-    val fromRows = state.mixedRows
-        .asSequence()
-        .filterIsInstance<CategoryRow>()
-        .flatMap { row -> row.items.asSequence() }
-        .firstOrNull { it.type == item.type && it.id == item.id }
-    if (fromRows != null && !fromRows.logo.isNullOrEmpty()) return fromRows
-
-    return item
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
