@@ -436,6 +436,8 @@ private fun UpdateReadyToInstallDialog(
 
 @Composable
 private fun PlayStoreUpdateAvailableDialog(
+    fromPlay: Boolean,
+    announcedVersion: String?,
     onUpdate: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -456,7 +458,11 @@ private fun PlayStoreUpdateAvailableDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "A newer version of illumera is available from Google Play. Update now to get the latest fixes and features.",
+                    if (fromPlay) {
+                        "A newer version of illumera is available from Google Play. Update now to get the latest fixes and features."
+                    } else {
+                        "A newer version${announcedVersion?.let { " ($it)" }.orEmpty()} has been announced. Check Google Play for availability; installation stays with the Play Store."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -511,6 +517,9 @@ class MainActivity : ComponentActivity() {
             playStoreUpdateManager.resumeInterruptedUpdate(playUpdateLauncher)
             // A long-lived session (TV) still hears about a release published since launch.
             playStoreUpdateManager.checkForUpdate(force = false)
+        } else if (::appUpdateManager.isInitialized && BuildConfig.ENABLE_SELF_UPDATE) {
+            // GitHub installs must be checked again after resuming a long-running session.
+            lifecycleScope.launch { appUpdateManager.checkForUpdate(force = false) }
         }
     }
 
@@ -744,13 +753,14 @@ class MainActivity : ComponentActivity() {
             // Distribution-specific update checks on launch.
             val updateState by appUpdateManager.state.collectAsState()
             val playUpdateState by playStoreUpdateManager.state.collectAsState()
-            var updateDismissed by rememberSaveable { mutableStateOf(false) }
+            // Dismiss the currently offered version only; new releases re-open the popup.
+            var updateDismissedFor by rememberSaveable { mutableStateOf<String?>(null) }
             // "Later" hides the prompt for that version only; a newer release asks again.
             var playUpdateDismissedFor by rememberSaveable { mutableStateOf<Int?>(null) }
             val updateScope = rememberCoroutineScope()
             LaunchedEffect(Unit) {
                 when {
-                    BuildConfig.ENABLE_SELF_UPDATE -> appUpdateManager.checkForUpdate()
+                    BuildConfig.ENABLE_SELF_UPDATE -> appUpdateManager.checkForUpdate(force = false)
                     BuildConfig.USE_PLAY_UPDATES -> playStoreUpdateManager.checkForUpdate()
                 }
             }
@@ -1355,18 +1365,20 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Update dialogs (auto-shown after splash)
-                    if (BuildConfig.ENABLE_SELF_UPDATE && _splashFinished.value && !updateDismissed && appUpdateManager.isPopupEnabled) {
+                    if (BuildConfig.ENABLE_SELF_UPDATE && _splashFinished.value) {
                         when (val state = updateState) {
-                            is UpdateState.UpdateAvailable -> {
+                            is UpdateState.UpdateAvailable -> if (
+                                appUpdateManager.isPopupEnabled && updateDismissedFor != state.info.versionName
+                            ) {
                                 UpdateAvailableDialog(
                                     info = state.info,
                                     onUpdate = {
                                         updateScope.launch { appUpdateManager.downloadAndInstall(state.info.apkUrl) }
                                     },
-                                    onDismiss = { updateDismissed = true },
+                                    onDismiss = { updateDismissedFor = state.info.versionName },
                                     onDontShowAgain = {
                                         appUpdateManager.setPopupEnabled(false)
-                                        updateDismissed = true
+                                        updateDismissedFor = state.info.versionName
                                     }
                                 )
                             }
@@ -1386,7 +1398,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onDismiss = {
                                         appUpdateManager.resetState()
-                                        updateDismissed = true
+                                        updateDismissedFor = (updateState as? UpdateState.UpdateAvailable)?.info?.versionName
                                     }
                                 )
                             }
@@ -1395,7 +1407,7 @@ class MainActivity : ComponentActivity() {
                                     onInstall = { appUpdateManager.retryInstall() },
                                     onDismiss = {
                                         appUpdateManager.resetState()
-                                        updateDismissed = true
+                                        updateDismissedFor = (updateState as? UpdateState.UpdateAvailable)?.info?.versionName
                                     }
                                 )
                             }
@@ -1409,6 +1421,8 @@ class MainActivity : ComponentActivity() {
                         when (val playState = playUpdateState) {
                             is PlayStoreUpdateState.UpdateAvailable -> if (playUpdateDismissedFor != playState.versionCode) {
                                 PlayStoreUpdateAvailableDialog(
+                                    fromPlay = playState.fromPlay,
+                                    announcedVersion = playState.announcedVersion,
                                     onUpdate = { playStoreUpdateManager.startUpdate(playUpdateLauncher) },
                                     onDismiss = { playUpdateDismissedFor = playState.versionCode }
                                 )
