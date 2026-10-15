@@ -274,7 +274,13 @@ class YouTubeExtractor @Inject constructor() {
         // Fall back to progressive, then adaptive video-only, then HLS manifest.
         val videoUrl: String
         val audioUrl: String?
-        if (bestVideo != null && bestAudio != null) {
+        if (preferCompatiblePreview && bestProgressive != null) {
+            // Autoplay previews are silent. One hardware-friendly muxed AVC/MP4
+            // stream avoids adaptive track merging, missing audio, and TV decode
+            // failures that left the background looking like a still image.
+            videoUrl = resolveReachableUrl(bestProgressive.url)
+            audioUrl = null
+        } else if (bestVideo != null && bestAudio != null) {
             videoUrl = resolveReachableUrl(bestVideo.url)
             audioUrl = resolveReachableUrl(bestAudio.url)
         } else if (bestProgressive != null) {
