@@ -69,6 +69,14 @@ class HomeFocusNeighbourTest {
     }
 
     @Test
+    fun disabledOrOffscreenPreviewNeverResolvesTrailer() {
+        assertEquals(false, shouldResolveCinematicPreview(false, true))
+        assertEquals(false, shouldResolveCinematicPreview(true, false))
+        assertEquals(false, shouldResolveCinematicPreview(false, false))
+        assertEquals(true, shouldResolveCinematicPreview(true, true))
+    }
+
+    @Test
     fun cinematicPreviewMatchesWideVideoWhileRespectingNarrowViewport() {
         // Expected sizes are independent measurements, not calls to the production formula.
         assertEquals(373.3333f, cinematicInlineWidth(1920.dp, 120.dp).value, 0.02f)
