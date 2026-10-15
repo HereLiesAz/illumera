@@ -170,7 +170,7 @@ internal class CinematicVerticalFocusCoordinator {
             sourceLeft, destination.map { (key, target) -> key to target.left }
         ) ?: return false
         val requester = destination[closest]?.requester ?: return false
-        return runCatching { requester.requestFocus() }.isSuccess
+        return runCatching { requester.requestFocus() }.getOrDefault(false)
     }
 }
 
