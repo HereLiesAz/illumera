@@ -150,7 +150,7 @@ class HomeViewModel @Inject constructor(
 
                 // Bound each source separately: unplayable addon entries must
                 // not exhaust the resolver before TMDB or Cinemeta is tried.
-                // Limit extraction to four candidates, with a total bound of 72s.
+                // Limit extraction to four candidates, with a total bound of 60s.
                 val attempted = mutableSetOf<String>()
                 for (sourceCandidates in listOf(
                     addonCandidates.take(1),
@@ -159,7 +159,7 @@ class HomeViewModel @Inject constructor(
                 )) {
                     for (candidate in sourceCandidates) {
                         if (!attempted.add(candidate)) continue
-                        val source = kotlinx.coroutines.withTimeoutOrNull(18_000L) {
+                        val source = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
                             youtubeExtractor.extractPlaybackSource(
                                 candidate, preferCompatiblePreview = true
                             )
