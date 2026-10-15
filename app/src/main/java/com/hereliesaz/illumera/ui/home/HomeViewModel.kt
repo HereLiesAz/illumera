@@ -265,7 +265,8 @@ class HomeViewModel @Inject constructor(
             viewModelScope.launch {
                 try {
                     val parts = configId.split(':', limit = 3)
-                    if (!isHomePair && parts.size != 3) return@launch
+                    if (!isHomePair && (parts.size != 3 ||
+                        parts[1] !in setOf("movie", "series"))) return@launch
                     val type = if (isHomePair) "home" else parts[1]
                     val genre = if (isHomePair) null else parts[2].takeUnless { it == "all" }
                     var nextPage = rowFetchOffsets.getOrPut(configId) { 0 }
@@ -274,7 +275,6 @@ class HomeViewModel @Inject constructor(
                     var unique = emptyList<MetaItem>()
                     val firstLayerCount = when {
                         isHomePair -> repository.homePairFirstLayerPageCount(configId)
-                        type == "mixed" -> repository.mixedCatalogFirstLayerPageCount()
                         else -> repository.aggregatedFirstLayerPageCount(type, genre)
                     }
                     // First visit searches every addon source group in the first layer
@@ -287,7 +287,6 @@ class HomeViewModel @Inject constructor(
                         if (unique.isEmpty()) {
                             val fetched = when {
                                 isHomePair -> repository.getHomePairCatalogPage(configId, nextPage++)
-                                type == "mixed" -> repository.getMixedCatalogPage(nextPage++)
                                 else -> repository.getAggregatedCatalogPage(type, genre, nextPage++)
                             }
                             unique = distinctAggregatedMetas(existing, fetched)
