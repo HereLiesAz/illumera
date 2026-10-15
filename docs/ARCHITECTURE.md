@@ -152,7 +152,7 @@ token, proving the phone actually scanned the QR code first.
 
 ## Watchlist and Stremio Library
 
-The main Android Watchlist is a viewing surface: Queue is always first, then one mixed Movies & Series Library rail. `WatchlistEntity` bookmarks and active `WatchHistoryEntity` entries are merged and deduplicated by media type, canonical IMDb ID, or title/year when one side has a non-IMDb ID. Episode history collapses to the parent series ID, while different movie/series adaptations remain separate. Library sorting controls are directly accessible without dropdown menus. Sort selection is saved per profile in `illumera_watchlist_ui`.
+The main Android Watchlist is a vertically scrolling viewing surface: Suggested Next with an adjacent refresh control is first, the manually managed Queue is beneath it, and the mixed Movies & Series Library is a responsive portrait-poster grid. `WatchlistEntity` bookmarks and active `WatchHistoryEntity` entries are merged and deduplicated by media type, canonical IMDb ID, or title/year when one side has a non-IMDb ID. Episode history collapses to the parent series ID, while different movie/series adaptations remain separate. Compact Library sorting chips are directly above the grid without dropdown menus; sort selection remains per-profile in `illumera_watchlist_ui`. All queue configuration toggles (enabled, movies, episodes, whole shows, suggestion sources, unseen-only) are under Settings → Watchlist; the refresh action stays beside Suggested Next.
 
 Stremio library synchronization now imports unwatched/unplayed remote bookmarks into the local watchlist, including series with no current `videoId`. Imports are profile-scoped and tagged as remote-owned; remote deletion removes only bookmarks previously imported by synchronization, preserving local additions. Watch counts from Stremio are recorded for sorting, with local watch completion used as a fallback when a remote count is absent. The previous cloud-storage management list and its play/delete actions live in Settings → Watchlist.
 
@@ -176,21 +176,29 @@ Home retains **separate category/provider groupings**: Latest, Popular, Trending
 
 The Home Hero Carousel uses the first populated merged category by default; Continue Watching and custom Hub rows remain separate. Existing user-selected Hero category previews continue to work. Movies and Series remain genre-first and do not receive catch-all rows.
 
-The Watchlist Library now presents a single sorted collection containing both media types, preserving type-specific details navigation and per-profile sorting. The old two-row focus key migrates into row zero and one remembered horizontal scroll position is used for the mixed rail.
+The Watchlist Library keeps one deduplicated sorted collection containing both media types, preserving type-specific details navigation and per-profile sorting. The old two-row focus key migrates into row zero; the WatchlistViewModel retains the parent LazyColumn's vertical scroll state across navigation rather than a horizontal Library rail cursor.
 
 
 ### Cinematic rail geometry
 
 All cinematic content rows use horizontal 16:9 media cards, including Continue Watching, configured catalogs and custom Hub rows. Landscape rails render as ordinary LazyRows, preserving loaded items and lazy fetch-more behavior instead of falling through portrait-only grid paths. The focused preview is 282dp high with bottom-aligned metadata, and the landscape card rail is 122dp high. The preview's heading and artwork are adjacent to the cards with compact header padding and no extra Hub spacer.
 
-The Watchlist screen itself presents Queue then Movies/Series Library rows, not genre buckets. The language/country/quality/release-date pseudo-genre rows were originating from Movie and Series addon options, so they are filtered at ScreenGenreRows, without altering Watchlist items.
+The Watchlist screen itself presents Suggested Next, Queue, and the Movies/Series Library grid, not genre buckets. The language/country/quality/release-date pseudo-genre rows were originating from Movie and Series addon options, so they are filtered at ScreenGenreRows, without altering Watchlist items.
 
 ## Paired Home catalogs and combined Watchlist Library
 
 Home groups enabled catalog configurations **by provider and logical catalog category before the rows are paginated**, pairing each category's movie and series versions in one row (e.g. Latest, Popular, Trending, Netflix and HBO Max remain separate). Paired results retain original item media types and are interleaved and deduplicated. Individual movie/series source pagination counters are tracked separately so loading more of one half never skips items from the other. Unpaired categories remain visible, and user-set Home ordering and visibility are respected. The automatic Hero uses Home rows, not a global mixed catch-all. Movies and Series themselves remain separately browsable, genre-first screens.
 
-Watchlist keeps the Queue at the top. The Library below is one independently sortable and type-filterable Movies & Series row; saved items and watch history are deduplicated by canonical media identity without merging movies and TV series that share a name. A movie/series filter narrows the same Library row rather than introducing separate category rows.
+Watchlist keeps Suggested Next (with refresh) at the top, then Queue. The Library below is one independently sortable Movies & Series poster grid; saved items and watch history are deduplicated by canonical media identity without merging movies and TV series that share a name. A movie/series filter narrows the same Library row rather than introducing separate category rows.
 
 ## Cinematic preview and trailer fallback (October 15, 2026)
 
 The per-row preview is 184dp tall, instead of the previous 282dp, to return vertical space to the poster rails. The backdrop remains until a playable trailer renders its first frame. Trailer discovery first consults the enabled Stremio trailer addon, then TMDB if the build has an API key, then Cinemeta's public trailer metadata. Each source failure or timeout is isolated; preview extraction prefers a muxed AVC/MP4 stream to avoid unnecessary adaptive-media merging for silent TV previews. Signed YouTube extraction remains inherently network-dependent and must be tested on a TV device.
+
+## Watchlist grid navigation and control relocation (October 15, 2026)
+
+`QueueSection` now renders Suggested Next and its focusable refresh action before the manual Queue, even if either set of cards is empty. The queue enabled/type/source/unseen controls moved without changing their QueueManager persistence or actions into `SettingsScreen.WatchlistSettings`, using the existing `QueueOption` renderer through `QueuePreferencesSettings`. The QueueManager is Hilt-singleton/profile-scoped.
+
+`WatchlistScreen` renders Library as responsive portrait poster rows inside one LazyColumn rather than nested vertical scrolling. `watchlistGridColumnCount` uses the available width after navigation and screen padding; compact devices get smaller cards, retaining two columns where practical. The parent list state is held in `WatchlistViewModel.watchlistColumnState`. Existing `0_<id>_<index>` restore keys and media-type identity survive sorting and aggregation, while visible and near-viewport cells trigger lazy metadata enrichment. Sort chips use 11sp labels with 8×5dp padding. Queue suggestions retain their rating/reorder/removal controls, and disabled generation still leaves a focusable refresh target that directs the viewer to Settings.
+
+**Device checks required:** D-pad traversal across Suggested Next, Queue, Library chips and grid; focus on disappearing cards; portrait poster sizing in phone and TV widths; Library sort/progress badges; profile switch, reopen/resume and Settings toggles; refresh when suggestions are disabled. Compile/TV integration has not been verified.
