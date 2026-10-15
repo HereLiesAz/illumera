@@ -664,7 +664,8 @@ fun CinematicLayout(
                                         pivotFocusRequester = if (heroItems.isNotEmpty() &&
                                             historyItems.isEmpty() && index == 0
                                         ) firstRowPivotRequester else null,
-                                        isGlobalFocusPresent = effectiveLastFocusedKey != null
+                                        isGlobalFocusPresent = effectiveLastFocusedKey != null,
+                                        forceLandscape = true
                                     )
                                     }
                                 }
