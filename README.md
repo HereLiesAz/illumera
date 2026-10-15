@@ -48,7 +48,7 @@ import your existing addon collection and sync Continue Watching progress.
 ### Content Discovery
 - Movies and Series show a unified content catalog assembled from every enabled addon's matching catalogs, deduplicated by canonical IMDb ID or title and release year; catalog providers are traversed lazily rather than selected through nested dropdowns.
 - Movies and Series are genre-first: one independently browsable row for **every** official Stremio genre, plus recognized genuine genres offered by enabled addons (not languages, countries, resolution tiers or release-date filters). There is no combined All Movies / All Series poster row. All genre rows are enabled by default. Disable individual rows (or use Enable All / Disable All) separately under **Settings → Screen Editor → Movies/Series → Manage Genres**; preferences are profile-specific.
-- Home uses cinematic previews directly above focused horizontal 16:9 card rows and a Hero Carousel at the top; Movies and Series use the same dual cinematic layout. Continue Watching and custom Hub cards are landscape in cinematic mode. Hero sources default to the first populated row or unified media catalog and can be explicitly disabled in Screen Editor.
+- Home keeps distinct categories (Latest, Popular, Trending, Netflix, HBO Max and others), merging movies and series within each category into one independently paginated, deduplicated horizontal row. The Hero Carousel and focused-row cinematic previews remain; Movies and Series retain their genre-first screens.
 - Hero carousel with auto-scrolling featured content
 - Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history
 - Continue watching with progress tracking and auto-resume
@@ -56,9 +56,9 @@ import your existing addon collection and sync Continue Watching progress.
 - Row display modes: infinite scroll, finite with a "View More" card that opens a grid, or linear
 
 ### Watchlist and Stremio Library
-- Watchlist opens with the Queue row first, followed by Library sections for Movies and Series.
+- Watchlist opens with Queue first, followed by one mixed Movies & Series Library row, deduplicated across providers and watch history.
 - Library combines manually bookmarked titles with locally synchronized Stremio Library entries, including unplayed Stremio bookmarks; saved-only titles now also participate in outbound synchronization and snapshot baselines.
-- Direct type selectors (All, Movies, Series) and sorting choices (Recent, Recently added, A–Z, Z–A, Last watched, Watched, Not watched, Most watched), without dropdown menus.
+- Library sorting choices (Recent, Recently added, A–Z, Z–A, Last watched, Watched, Not watched, Most watched), without dropdown menus.
 - The default Library sort is saved separately for each profile under **Settings → Watchlist**. Connected cloud-storage item management is located there as well.
 - Stremio-sourced bookmarks are tracked so removing a remote item does not inadvertently delete a bookmark the user created locally. Watch counts reported by Stremio are used for Most watched when available.
 
