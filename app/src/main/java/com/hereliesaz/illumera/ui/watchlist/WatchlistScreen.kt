@@ -219,7 +219,7 @@ fun WatchlistScreen(
         }.collect { visible ->
             visible.flatMap { listIndex -> (listIndex - 3)..(listIndex - 1) }
                 .distinct()
-                .mapNotNull(libraryItems::getOrNull)
+                .mapNotNull { libraryItems.getOrNull(it) }
                 .filter(::shouldEnrich)
                 .forEach(viewModel::resolvePosterIfNeeded)
         }
