@@ -194,9 +194,19 @@ fun InfiniteLoopRow(
     val inlineCinematicWidth = minOf(
         340.dp, (screenWidth - startPadding - 20.dp).coerceAtLeast(140.dp)
     )
-    val endPadding = remember(screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth) {
-        val widestCard = if (inlineCinematicPreview != null) inlineCinematicWidth else effectiveItemWidth
-        (screenWidth - startPadding - widestCard).coerceAtLeast(20.dp)
+    val endPadding = remember(
+        screenWidth, startPadding, effectiveItemWidth, inlineCinematicWidth,
+        isInfiniteLoopEnabled, isLandscapeCards
+    ) {
+        // Finite/infinite grid modes end with a 120dp View More card (190dp
+        // in landscape), never the widened cinematic poster. Use its REAL
+        // width so the final item can reach the normal left focus pivot.
+        val terminalWidth = if (isInfiniteLoopEnabled) {
+            if (isLandscapeCards) 190.dp else ITEM_WIDTH
+        } else if (inlineCinematicPreview != null) {
+            inlineCinematicWidth
+        } else effectiveItemWidth
+        (screenWidth - startPadding - terminalWidth).coerceAtLeast(20.dp)
     }
 
     // Use external state if provided, otherwise create local state
@@ -221,7 +231,11 @@ fun InfiniteLoopRow(
     var activeCardKey by remember(rowIndex, title) { mutableStateOf<String?>(null) }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
 
-    Column(modifier = Modifier.graphicsLayer { clip = false }) {
+    Column(
+        modifier = Modifier
+            .graphicsLayer { clip = false }
+            .onFocusChanged { if (!it.hasFocus) activeCardKey = null }
+    ) {
         Text(
             text = title,
             color = Color.White.copy(0.9f),
@@ -392,7 +406,11 @@ private fun LinearContent(
                     ?: item.poster?.takeIf { it.isNotBlank() }
             }
         } else {
-            items.map { it.poster }
+            items.map { item ->
+                enrichedItems["${item.type}:${item.id}"]?.poster
+                    ?.takeIf { it.isNotBlank() }
+                    ?: item.poster
+            }
         }
     }
 
@@ -524,7 +542,8 @@ private fun LinearContent(
                     val watchedIds = LocalWatchedIds.current
                     LumeraCard(
                         title = item.name,
-                        posterUrl = item.poster,
+                        posterUrl = enrichedItems["${item.type}:${item.id}"]?.poster
+                            ?.takeIf { it.isNotBlank() } ?: item.poster,
                         onClick = { onMovieClick(item) },
                         mediaItem = item,
                         progress = item.progress,
@@ -619,7 +638,8 @@ private fun InfiniteGridContent(
         truncatedMovies.map { item ->
             if (isLandscapeCards)
                 item.background?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
-            else item.poster?.takeIf { it.isNotBlank() }
+            else enrichedItems["${item.type}:${item.id}"]?.poster
+                ?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
         }
     }
     
@@ -766,7 +786,8 @@ private fun InfiniteGridContent(
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
                             title = item.movie.name,
-                            posterUrl = item.movie.poster,
+                            posterUrl = enrichedItems["${item.movie.type}:${item.movie.id}"]?.poster
+                                ?.takeIf { it.isNotBlank() } ?: item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
@@ -885,7 +906,8 @@ private fun FiniteGridContent(
         truncatedMovies.map { item ->
             if (isLandscapeCards)
                 item.background?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
-            else item.poster?.takeIf { it.isNotBlank() }
+            else enrichedItems["${item.type}:${item.id}"]?.poster
+                ?.takeIf { it.isNotBlank() } ?: item.poster?.takeIf { it.isNotBlank() }
         }
     }
     
@@ -1000,7 +1022,8 @@ private fun FiniteGridContent(
                         val watchedIds = LocalWatchedIds.current
                         GridMediaCard(
                             title = item.movie.name,
-                            posterUrl = item.movie.poster,
+                            posterUrl = enrichedItems["${item.movie.type}:${item.movie.id}"]?.poster
+                                ?.takeIf { it.isNotBlank() } ?: item.movie.poster,
                             onClick = { onMovieClick(item.movie) },
                             mediaItem = item.movie,
                             isLandscapeCards = isLandscapeCards,
