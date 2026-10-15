@@ -61,6 +61,7 @@ fun LumeraLandscapeCard(
     modifier: Modifier = Modifier,
     progress: Float = 0f,
     hasNewEpisode: Boolean = false,
+    isWatched: Boolean = false,
     onFocused: (() -> Unit)? = null,
     mediaItem: MetaItem? = null
 ) {
@@ -148,7 +149,8 @@ fun LumeraLandscapeCard(
             )
         ) {
             val context = LocalContext.current
-            val imageUrl = backdropUrl ?: posterUrl
+            val imageUrl = backdropUrl?.takeIf { it.isNotBlank() }
+                ?: posterUrl?.takeIf { it.isNotBlank() }
             val imageRequest = remember(imageUrl) {
                 ImageRequest.Builder(context)
                     .data(imageUrl)
@@ -222,6 +224,21 @@ fun LumeraLandscapeCard(
                             color = Color.White,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (isWatched) {
+                    Box(
+                        modifier = Modifier.align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            "✓", color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
