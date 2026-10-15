@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
@@ -58,6 +59,20 @@ class AddonCatalogRepository @Inject constructor(
         collection: SavedAddonCollection? = null
     ): List<AddonCatalogItem> = withContext(Dispatchers.IO) {
         val items = when (source) {
+            AddonCatalogSource.ALL -> supervisorScope {
+                val sources = listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET)
+                val tasks = (sources.map { it to null } + getSavedCollections().map { AddonCatalogSource.COLLECTION to it })
+                    .map { (catalogSource, saved) ->
+                        async {
+                            try { fetch(catalogSource, saved) } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) { null }
+                        }
+                    }
+                val results = tasks.awaitAll()
+                if (results.all { it == null }) throw IllegalStateException("No addon catalogs are available")
+                results.filterNotNull().flatten().distinctBy { it.transportUrl.trimEnd('/').lowercase() }
+            }
             AddonCatalogSource.OFFICIAL -> fetchOfficial()
             AddonCatalogSource.COMMUNITY -> fetchCommunity()
             AddonCatalogSource.STREMIO_ADDONS_NET -> fetchStremioAddonsNet()
