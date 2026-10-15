@@ -1626,7 +1626,11 @@ internal fun TrailerPreview(
             val (coverWidth, coverHeight) = cinematicVideoCoverSize(maxWidth, maxHeight)
             AndroidView(
                 factory = {
-                    PlayerView(it).apply {
+                    (android.view.LayoutInflater.from(it).inflate(
+                        R.layout.cinematic_trailer_player, null
+                    ) as PlayerView).apply {
+                        // TextureView clips correctly to the centered viewport,
+                        // unlike SurfaceView on some Android TV render pipelines.
                         // The preview is passive media *inside a focusable poster*.
                         // Never let its Android view steal D-pad or touch focus.
                         isFocusable = false
