@@ -81,6 +81,21 @@ internal fun reconcileGenreRows(
     }
 }
 
+/** Project each row under its own stable LazyColumn key, never the updated destination key. */
+internal fun reconcileGenreMixedRows(
+    mixedRows: List<HomeRowItem>,
+    rows: List<HomeRow>
+): List<HomeRowItem> {
+    val byId = rows.associateBy { it.configId }
+    return mixedRows.map { mixed ->
+        if (mixed !is CategoryRow) mixed else {
+            val own = byId[mixed.id]
+            if (own != null && own.items != mixed.items) CategoryRow.fromHomeRow(own)
+            else mixed
+        }
+    }
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: AddonRepository,
@@ -572,17 +587,7 @@ class HomeViewModel @Inject constructor(
             val updatedRows = reconcileGenreRows(
                 current.rows, configId, newItems, authoritative
             )
-            val updatedMixed = current.mixedRows.map { item ->
-                if (item !is CategoryRow) item else {
-                    // Read the matching row, never the destination for every
-                    // category. The old mapping duplicated keys and caused
-                    // genres to disappear/reappear and crash on focus.
-                    val ownRow = updatedRows.firstOrNull { it.configId == item.id }
-                    if (ownRow != null && ownRow.items != item.items) {
-                        CategoryRow.fromHomeRow(ownRow)
-                    } else item
-                }
-            }
+            val updatedMixed = reconcileGenreMixedRows(current.mixedRows, updatedRows)
 
             val configuredHero = current.loadedScreen?.let { screen ->
                 tmdbProfileCache?.heroFor(DashboardTab.fromString(screen))
