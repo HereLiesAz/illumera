@@ -80,8 +80,13 @@ class WatchlistViewModel @Inject constructor(
                             ?: extra.logo?.takeIf { it.isNotBlank() }
                     )
                 }
-                val historyEntries = history.map { entry ->
+                val historyEntries = history.mapNotNull { entry ->
+                    if (entry.type !in setOf("movie", "series", "tv", "episode")) return@mapNotNull null
                     val parts = entry.id.split(':')
+                    if (entry.type == "episode" && entry.seriesId.isNullOrBlank() &&
+                        (parts.size < 3 ||
+                            parts.takeLast(2).any { it.toIntOrNull() == null })
+                    ) return@mapNotNull null
                     val episodeParent = if (
                         entry.type in setOf("series", "tv", "episode") && parts.size >= 3 &&
                         parts.takeLast(2).all { it.toIntOrNull() != null }
