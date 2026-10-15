@@ -326,8 +326,8 @@ class AddonRepository @Inject constructor(
             val interleaved = buildList {
                 val maximum = maxOf(movieItems.size, seriesItems.size)
                 for (index in 0 until maximum) {
-                    movieItems.getOrNull(index)?.let(::add)
-                    seriesItems.getOrNull(index)?.let(::add)
+                    movieItems.getOrNull(index)?.let { add(it) }
+                    seriesItems.getOrNull(index)?.let { add(it) }
                 }
             }
             distinctAggregatedMetas(emptyList(), interleaved)
