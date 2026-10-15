@@ -322,9 +322,12 @@ class AddonRepository @Inject constructor(
         val candidate = config.customTitle?.takeIf { it.isNotBlank() }
             ?: config.catalogName?.takeIf { it.isNotBlank() }
             ?: config.catalogId.replace('-', ' ').replace('_', ' ')
-        val normalized = candidate.replace(
-            Regex("(?i)\\s*(?:[-:/]|\\s)\\s*(?:movies?|series|tv shows?|shows?)\\s*$"),
-            ""
+        val mediaSuffix = "(?:movies?|films?|series|tv(?:\\s*shows?)?|shows?)"
+        val withoutParen = candidate.replace(
+            Regex("(?i)\\s*\\($mediaSuffix\\)\\s*$"), ""
+        )
+        val normalized = withoutParen.replace(
+            Regex("(?i)\\s*(?:[-:/]|\\s)\\s*$mediaSuffix\\s*$"), ""
         ).trim()
         return normalized.ifBlank { config.addonName }
     }
