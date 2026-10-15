@@ -259,8 +259,6 @@ fun HomeScreen(
 }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
-@Composable
 /** Restore a row's portrait geometry only for its actual focus owner. */
 internal fun isCinematicRowActive(
     focusedRowKey: String?,
@@ -270,6 +268,8 @@ internal fun isCinematicRowActive(
 ): Boolean = focusedRowKey == rowKey ||
     (focusedRowKey == null && restoredCardKey?.startsWith(cardKeyPrefix) == true)
 
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
 fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
