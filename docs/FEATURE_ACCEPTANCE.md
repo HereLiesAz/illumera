@@ -214,3 +214,12 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - The navigation drawer boundary regression asserts that Search opens and is focused before exercising its Up/Top boundary.
 - Device-focused checks still required: TV D-pad focus across Add-ons transitions, phone header width, Installed deletion dialog; Android FOSS tests and release build before publication.
 
+
+## Add-ons, Hero, genre ordering and menu review follow-up (October 15, 2026) — device verification pending
+
+- The old header above **Browse Add-ons** is gone. The compact tabs beneath the heading start with All then Installed, followed by Official, Community, 3rd Party and collections; search is compact. All combines sources without making one failed provider fatal. Installed list, configured URL installation and remote paste remain available.
+- A catalog uninstall requires a normalized **exact configured transport** including query parameters, never a shared manifest ID. Back/All/Installed remain focusable and bookmarked in FocusMemory; switching to Installed from a catalog removal requests its persistent tab only when no newer target has focus.
+- From Hero, Down scrolls to the first genuinely focusable content row before requesting it; Up from that first row scrolls back to Hero and restores focus, including with empty genre shells. The drawer Profile boundary test checks the focused control both before and after the extra Up attempt.
+- Every enabled movie/series genre is kept as a stable row while remote content loads. Rows rank by watched and watchlisted titles per profile; Screen Editor allows an independent catalog/rating/date/title sort for the titles **within** each genre.
+- Menu selection navigates and dismisses the menu. Details' source/episode glyphs match Player's. Trailer-preview and trailer-only player audio are capped at 60%.
+- **Still required:** Android FOSS Debug and Release unit tests, a successful CI build, Android TV focus checks (especially Hero↔later genres, Installed selection and menu closure), and live addon/trailer verification. Do not claim the changes are device-verified on source review alone.
