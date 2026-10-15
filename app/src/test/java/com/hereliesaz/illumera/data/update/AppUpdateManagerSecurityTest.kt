@@ -57,6 +57,29 @@ class AppUpdateManagerSecurityTest {
     }
 
     @Test
+    fun githubReleaseUsesApkBuildComponentRatherThanOnlyThreePartTag() {
+        assertEquals(
+            "0.12.46.1",
+            AppUpdateManager.githubReleaseVersion("0.12.46", "illumera-0.12.46.1-release.apk")
+        )
+        assertTrue(AppUpdateManager.isVersionNewer("0.12.46.1", "0.12.45.1"))
+        assertTrue(AppUpdateManager.isVersionNewer("0.12.46.2", "0.12.46.1"))
+        assertFalse(AppUpdateManager.isVersionNewer("0.12.46.1", "0.12.46.1"))
+    }
+
+    @Test
+    fun githubReleaseIgnoresAssetVersionsThatDoNotMatchItsTag() {
+        assertEquals(
+            "0.12.46",
+            AppUpdateManager.githubReleaseVersion("0.12.46", "illumera-0.12.47.1-release.apk")
+        )
+        assertEquals(
+            "0.12.46",
+            AppUpdateManager.githubReleaseVersion("0.12.46", "not-the-app.apk")
+        )
+    }
+
+    @Test
     fun prereleaseIsOlderThanSameStableVersion() {
         // A prerelease never supersedes its stable release...
         assertFalse(callBoolean("isNewerVersion", "1.2.3-beta", "1.2.3"))
