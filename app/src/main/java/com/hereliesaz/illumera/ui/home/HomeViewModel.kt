@@ -50,6 +50,37 @@ internal fun prioritizedYouTubePreviewCandidates(values: Iterable<String>): List
     }.sortedByDescending(videoId::matches).take(2)
 }
 
+/**
+ * Reconcile a catalog batch without changing other genre identities.
+ * Canonical matches move out of former fallback rows; fallback batches never
+ * re-add a title already assigned elsewhere.
+ */
+internal fun reconcileGenreRows(
+    rows: List<HomeRow>,
+    destination: String,
+    newItems: List<MetaItem>,
+    authoritative: Boolean
+): List<HomeRow> {
+    if (newItems.isEmpty()) return rows
+    return rows.map { row ->
+        val items = when {
+            row.configId == destination -> {
+                val elsewhere = if (authoritative) emptyList() else
+                    rows.filter { it.configId != destination }.flatMap { it.items }
+                val additions = distinctAggregatedMetas(row.items + elsewhere, newItems)
+                if (additions.isEmpty()) row.items else row.items + additions
+            }
+            authoritative && row.configId.startsWith("catalog-aggregate:") -> {
+                row.items.filter { item ->
+                    distinctAggregatedMetas(newItems, listOf(item)).isNotEmpty()
+                }
+            }
+            else -> row.items
+        }
+        if (items === row.items) row else row.copy(items = items)
+    }
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: AddonRepository,
@@ -534,22 +565,19 @@ class HomeViewModel @Inject constructor(
         authoritative: Boolean = false
     ) {
         _state.update { current ->
-            val updatedRows = current.rows.map { r ->
-                when {
-                    r.configId == configId ->
-                        r.copy(items = r.items + distinctAggregatedMetas(r.items, newItems))
-                    authoritative && r.configId.startsWith("catalog-aggregate:") ->
-                        r.copy(items = distinctAggregatedMetas(newItems, r.items))
-                    else -> r
-                }
-            }
-
+            val updatedRows = reconcileGenreRows(
+                current.rows, configId, newItems, authoritative
+            )
             val updatedMixed = current.mixedRows.map { item ->
-                if (item is CategoryRow && (item.id == configId ||
-                    (authoritative && item.id.startsWith("catalog-aggregate:")))) {
-                    val updatedRow = updatedRows.find { it.configId == configId }
-                    if (updatedRow != null) CategoryRow.fromHomeRow(updatedRow) else item
-                } else item
+                if (item !is CategoryRow) item else {
+                    // Read the matching row, never the destination for every
+                    // category. The old mapping duplicated keys and caused
+                    // genres to disappear/reappear and crash on focus.
+                    val ownRow = updatedRows.firstOrNull { it.configId == item.id }
+                    if (ownRow != null && ownRow.items != item.items) {
+                        CategoryRow.fromHomeRow(ownRow)
+                    } else item
+                }
             }
 
             val configuredHero = current.loadedScreen?.let { screen ->
@@ -568,7 +596,10 @@ class HomeViewModel @Inject constructor(
                     updatedRows.firstOrNull { it.items.isNotEmpty() }
                 else -> null
             }
-            current.copy(
+            if (updatedRows == current.rows &&
+                updatedMixed == current.mixedRows &&
+                automaticHero == current.heroRow
+            ) current else current.copy(
                 rows = updatedRows,
                 mixedRows = updatedMixed,
                 heroRow = automaticHero
