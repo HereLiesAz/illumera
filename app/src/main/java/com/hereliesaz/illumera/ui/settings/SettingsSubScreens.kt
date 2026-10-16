@@ -611,8 +611,9 @@ fun PlaybackSettings(
                 currentDisplayName = "Manage",
                 isSet = currentProfile.subtitleSize != 100 ||
                         currentProfile.subtitleOffset != 0 ||
-                        currentProfile.subtitleTextColor != 0xFFFFFFFFL ||
-                        currentProfile.subtitleBackgroundColor != 0x00000000L,
+                        // Masked: rows from MIGRATION_31_32 store white as signed -1.
+                        (currentProfile.subtitleTextColor and 0xFFFFFFFFL) != 0xFFFFFFFFL ||
+                        (currentProfile.subtitleBackgroundColor and 0xFFFFFFFFL) != 0x00000000L,
                 onClick = { showSubtitleStyleSidebar = true },
                 onBack = onGoBack,
                 focusRequester = subtitleStyleFR
@@ -1367,7 +1368,8 @@ private fun SubtitleColorChipRow(
             SubtitleColorChip(
                 label = label,
                 color = Color(colorValue.toInt()),
-                isSelected = selectedColor == colorValue,
+                // Compare as unsigned 32-bit ARGB; migrated rows hold sign-extended values.
+                isSelected = (selectedColor and 0xFFFFFFFFL) == (colorValue and 0xFFFFFFFFL),
                 onClick = { onSelect(colorValue) },
                 isTransparent = colorValue == 0x00000000L
             )
@@ -1961,8 +1963,7 @@ fun SourcePreferencesSettings(
             }
 
             fun toggleQuality(key: String) {
-                val newKeys = if (key in enabledKeys) enabledKeys - key else enabledKeys + key
-                viewModel.updateSourceEnabledQualities(currentProfile.id, newKeys.joinToString(","))
+                viewModel.toggleSourceEnabledQuality(currentProfile.id, key)
             }
 
             FlowRow(
@@ -2028,8 +2029,7 @@ fun SourcePreferencesSettings(
             }
 
             fun toggleFormat(key: String) {
-                val newFormats = if (key in excludedFormats) excludedFormats - key else excludedFormats + key
-                viewModel.updateSourceExcludedFormats(currentProfile.id, newFormats.joinToString(","))
+                viewModel.toggleSourceExcludedFormat(currentProfile.id, key)
             }
 
             FlowRow(

@@ -502,18 +502,25 @@ private fun WatchlistSettings(
             }
             items(modes) { mode ->
                 val selected = defaultSort == mode.first
+                val interactionSource = remember { MutableInteractionSource() }
+                val focused by interactionSource.collectIsFocusedAsState()
                 Text(
                     text = "${if (selected) "✓  " else ""}${mode.second}",
                     color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = if (selected) 0.13f else 0.05f))
-                        .clickable {
+                        .background(Color.White.copy(alpha = if (focused) 0.2f else if (selected) 0.13f else 0.05f))
+                        // D-pad users need to see which row has focus.
+                        .border(
+                            width = 2.dp,
+                            color = if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable(interactionSource = interactionSource, indication = null) {
                             defaultSort = mode.first
                             prefs.edit().putString("sort_${currentProfile?.id}", mode.first).apply()
                         }
-                        .focusable()
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 )
             }

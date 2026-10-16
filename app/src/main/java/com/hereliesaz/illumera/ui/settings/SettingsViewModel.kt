@@ -159,6 +159,19 @@ class SettingsViewModel @Inject constructor(
         updateProfile(profileId) { it.copy(sourceExcludedFormats = formats) }
     }
 
+    /**
+     * Toggles one quality key against the profile's CURRENT value inside the mutation
+     * coordinator, so rapid taps don't each overwrite the other with a stale snapshot.
+     */
+    fun toggleSourceEnabledQuality(profileId: Int, key: String) {
+        updateProfile(profileId) { it.copy(sourceEnabledQualities = toggleCsvKey(it.sourceEnabledQualities, key)) }
+    }
+
+    /** Like [toggleSourceEnabledQuality], for the excluded-format keys. */
+    fun toggleSourceExcludedFormat(profileId: Int, key: String) {
+        updateProfile(profileId) { it.copy(sourceExcludedFormats = toggleCsvKey(it.sourceExcludedFormats, key)) }
+    }
+
     fun updateSourceEpisodeTargetSizeMb(profileId: Int, sizeMb: Int) {
         updateProfile(profileId) { it.copy(sourceEpisodeTargetSizeMb = sizeMb) }
     }
@@ -202,4 +215,10 @@ class SettingsViewModel @Inject constructor(
     fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
         updateProfile(profileId) { it.copy(menuWatchlistEnabled = enabled) }
     }
+}
+
+/** Adds or removes [key] in a comma-separated key set, preserving the order of the rest. */
+internal fun toggleCsvKey(csv: String, key: String): String {
+    val keys = csv.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    return (if (key in keys) keys - key else keys + key).joinToString(",")
 }
