@@ -280,7 +280,18 @@ fun BasePlayerScaffold(
     // Countdown-expiry, STATE_ENDED and the manual "next episode" buttons can all fire
     // onAutoplayNextEpisode for the same episode transition (e.g. ended arrives the same
     // tick the countdown hits zero) — this latch makes sure only one of them triggers it.
+    // It only blocks while a hand-off is in progress: once the episode-switch loading/source
+    // list that the hand-off opened is dismissed it is reset, so the manual buttons work again.
     var autoplayFired by remember(playbackController) { mutableStateOf(false) }
+    var handOffSeen by remember(playbackController) { mutableStateOf(false) }
+    LaunchedEffect(isEpisodeSwitchLoading, episodeSwitchSources != null) {
+        if (isEpisodeSwitchLoading || episodeSwitchSources != null) {
+            handOffSeen = true
+        } else if (handOffSeen) {
+            handOffSeen = false
+            autoplayFired = false
+        }
+    }
 
     /** The single path to the next episode: latches [autoplayFired] and stops the countdown. */
     fun fireNext(): Boolean {
