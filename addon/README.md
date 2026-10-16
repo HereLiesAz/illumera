@@ -27,3 +27,5 @@ npm run deploy
 ~~~
 
 Install in Stremio or Illumera with `https://open-archive-addon.<subdomain>.workers.dev/manifest.json`.
+
+In Illumera, only the streams and metas are used: its search is Cinemeta's, and a catalog with a required `search` extra is skipped on the Movies and Series screens and gives nothing on Home, so these catalogs don't appear. Stremio shows them in its search.
