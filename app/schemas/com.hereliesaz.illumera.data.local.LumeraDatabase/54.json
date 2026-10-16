@@ -1,0 +1,1081 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 54,
+    "identityHash": "672d99e85871826d9179aa96cacdfe25",
+    "entities": [
+      {
+        "tableName": "addons",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`transportUrl` TEXT NOT NULL, `id` TEXT NOT NULL, `name` TEXT NOT NULL, `version` TEXT NOT NULL, `description` TEXT, `iconUrl` TEXT, `isTrusted` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL, `nickname` TEXT, `catalogsJson` TEXT NOT NULL, `supportsMeta` INTEGER NOT NULL, `supportsStream` INTEGER NOT NULL, `typesJson` TEXT NOT NULL, `idPrefixesJson` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL, PRIMARY KEY(`transportUrl`))",
+        "fields": [
+          {
+            "fieldPath": "transportUrl",
+            "columnName": "transportUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "iconUrl",
+            "columnName": "iconUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isTrusted",
+            "columnName": "isTrusted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEnabled",
+            "columnName": "isEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "catalogsJson",
+            "columnName": "catalogsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsMeta",
+            "columnName": "supportsMeta",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsStream",
+            "columnName": "supportsStream",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "typesJson",
+            "columnName": "typesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "idPrefixesJson",
+            "columnName": "idPrefixesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sortOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "transportUrl"
+          ]
+        }
+      },
+      {
+        "tableName": "profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `themeId` TEXT NOT NULL, `avatarRef` TEXT NOT NULL, `roundCorners` INTEGER NOT NULL, `hubRoundCorners` INTEGER NOT NULL, `continueWatchingShape` TEXT NOT NULL, `navPosition` TEXT NOT NULL, `splashEnabled` INTEGER NOT NULL, `menuMoviesEnabled` INTEGER NOT NULL, `menuSeriesEnabled` INTEGER NOT NULL, `menuWatchlistEnabled` INTEGER NOT NULL, `homeTabLayout` TEXT NOT NULL, `moviesTabLayout` TEXT NOT NULL, `seriesTabLayout` TEXT NOT NULL, `homeHeroCategory` TEXT, `homeHeroPosterCount` INTEGER NOT NULL, `homeHeroAutoScrollSeconds` INTEGER NOT NULL, `moviesHeroCategory` TEXT, `moviesHeroPosterCount` INTEGER NOT NULL, `moviesHeroAutoScrollSeconds` INTEGER NOT NULL, `seriesHeroCategory` TEXT, `seriesHeroPosterCount` INTEGER NOT NULL, `seriesHeroAutoScrollSeconds` INTEGER NOT NULL, `tunnelingEnabled` INTEGER NOT NULL, `mapDV7ToHevc` INTEGER NOT NULL, `decoderPriority` INTEGER NOT NULL, `frameRateMatching` INTEGER NOT NULL, `playerPreference` TEXT NOT NULL, `autoplayNextEpisode` INTEGER NOT NULL, `autoplayThresholdMode` TEXT NOT NULL, `autoplayThresholdPercent` INTEGER NOT NULL, `autoplayThresholdSeconds` INTEGER NOT NULL, `autoSelectSource` INTEGER NOT NULL, `rememberSourceSelection` INTEGER NOT NULL, `sourceSortingEnabled` INTEGER NOT NULL, `sourceSortPrimary` TEXT NOT NULL, `sourceSortSecondary` TEXT NOT NULL, `sourceEnabledQualities` TEXT NOT NULL, `sourceExcludePhrases` TEXT NOT NULL, `sourceMaxSizeGb` INTEGER NOT NULL, `sourceExcludedFormats` TEXT NOT NULL, `sourceSkipSeedless` INTEGER NOT NULL, `sourceAudioLanguageRequirement` TEXT NOT NULL, `sourceSubtitleLanguageRequirement` TEXT NOT NULL, `sourceEpisodeTargetSizeMb` INTEGER NOT NULL, `sourceMovieTargetSizeMb` INTEGER NOT NULL, `sourceMinimumSeeds` INTEGER NOT NULL, `sourceAutoFallback` INTEGER NOT NULL, `sourceDebridMaxWaitSeconds` INTEGER NOT NULL, `skipIntro` INTEGER NOT NULL, `preferredAudioLanguage` TEXT NOT NULL, `preferredAudioLanguageSecondary` TEXT NOT NULL, `preferredSubtitleLanguage` TEXT NOT NULL, `preferredSubtitleLanguageSecondary` TEXT NOT NULL, `subtitleSize` INTEGER NOT NULL, `subtitleOffset` INTEGER NOT NULL, `subtitleTextColor` INTEGER NOT NULL, `subtitleBackgroundColor` INTEGER NOT NULL, `assRendererEnabled` INTEGER NOT NULL, `watchedThreshold` INTEGER NOT NULL, `tmdbEnabled` INTEGER NOT NULL, `tmdbLanguage` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "themeId",
+            "columnName": "themeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "avatarRef",
+            "columnName": "avatarRef",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roundCorners",
+            "columnName": "roundCorners",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hubRoundCorners",
+            "columnName": "hubRoundCorners",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "continueWatchingShape",
+            "columnName": "continueWatchingShape",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "navPosition",
+            "columnName": "navPosition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "splashEnabled",
+            "columnName": "splashEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "menuMoviesEnabled",
+            "columnName": "menuMoviesEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "menuSeriesEnabled",
+            "columnName": "menuSeriesEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "menuWatchlistEnabled",
+            "columnName": "menuWatchlistEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeTabLayout",
+            "columnName": "homeTabLayout",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moviesTabLayout",
+            "columnName": "moviesTabLayout",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesTabLayout",
+            "columnName": "seriesTabLayout",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeHeroCategory",
+            "columnName": "homeHeroCategory",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "homeHeroPosterCount",
+            "columnName": "homeHeroPosterCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeHeroAutoScrollSeconds",
+            "columnName": "homeHeroAutoScrollSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moviesHeroCategory",
+            "columnName": "moviesHeroCategory",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "moviesHeroPosterCount",
+            "columnName": "moviesHeroPosterCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moviesHeroAutoScrollSeconds",
+            "columnName": "moviesHeroAutoScrollSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesHeroCategory",
+            "columnName": "seriesHeroCategory",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seriesHeroPosterCount",
+            "columnName": "seriesHeroPosterCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesHeroAutoScrollSeconds",
+            "columnName": "seriesHeroAutoScrollSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tunnelingEnabled",
+            "columnName": "tunnelingEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mapDV7ToHevc",
+            "columnName": "mapDV7ToHevc",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "decoderPriority",
+            "columnName": "decoderPriority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frameRateMatching",
+            "columnName": "frameRateMatching",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "playerPreference",
+            "columnName": "playerPreference",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoplayNextEpisode",
+            "columnName": "autoplayNextEpisode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoplayThresholdMode",
+            "columnName": "autoplayThresholdMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoplayThresholdPercent",
+            "columnName": "autoplayThresholdPercent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoplayThresholdSeconds",
+            "columnName": "autoplayThresholdSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoSelectSource",
+            "columnName": "autoSelectSource",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rememberSourceSelection",
+            "columnName": "rememberSourceSelection",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSortingEnabled",
+            "columnName": "sourceSortingEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSortPrimary",
+            "columnName": "sourceSortPrimary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSortSecondary",
+            "columnName": "sourceSortSecondary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceEnabledQualities",
+            "columnName": "sourceEnabledQualities",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceExcludePhrases",
+            "columnName": "sourceExcludePhrases",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceMaxSizeGb",
+            "columnName": "sourceMaxSizeGb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceExcludedFormats",
+            "columnName": "sourceExcludedFormats",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSkipSeedless",
+            "columnName": "sourceSkipSeedless",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceAudioLanguageRequirement",
+            "columnName": "sourceAudioLanguageRequirement",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceSubtitleLanguageRequirement",
+            "columnName": "sourceSubtitleLanguageRequirement",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceEpisodeTargetSizeMb",
+            "columnName": "sourceEpisodeTargetSizeMb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceMovieTargetSizeMb",
+            "columnName": "sourceMovieTargetSizeMb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceMinimumSeeds",
+            "columnName": "sourceMinimumSeeds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceAutoFallback",
+            "columnName": "sourceAutoFallback",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceDebridMaxWaitSeconds",
+            "columnName": "sourceDebridMaxWaitSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skipIntro",
+            "columnName": "skipIntro",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preferredAudioLanguage",
+            "columnName": "preferredAudioLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preferredAudioLanguageSecondary",
+            "columnName": "preferredAudioLanguageSecondary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preferredSubtitleLanguage",
+            "columnName": "preferredSubtitleLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "preferredSubtitleLanguageSecondary",
+            "columnName": "preferredSubtitleLanguageSecondary",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitleSize",
+            "columnName": "subtitleSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitleOffset",
+            "columnName": "subtitleOffset",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitleTextColor",
+            "columnName": "subtitleTextColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subtitleBackgroundColor",
+            "columnName": "subtitleBackgroundColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assRendererEnabled",
+            "columnName": "assRendererEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "watchedThreshold",
+            "columnName": "watchedThreshold",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tmdbEnabled",
+            "columnName": "tmdbEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tmdbLanguage",
+            "columnName": "tmdbLanguage",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "watch_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `poster` TEXT, `background` TEXT, `logo` TEXT, `seriesId` TEXT, `position` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `lastWatched` INTEGER NOT NULL, `type` TEXT NOT NULL, `watched` INTEGER NOT NULL, `scrobbled` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "poster",
+            "columnName": "poster",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "background",
+            "columnName": "background",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "logo",
+            "columnName": "logo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "seriesId",
+            "columnName": "seriesId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "duration",
+            "columnName": "duration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastWatched",
+            "columnName": "lastWatched",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "watched",
+            "columnName": "watched",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scrobbled",
+            "columnName": "scrobbled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "catalog_configs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uniqueId` TEXT NOT NULL, `transportUrl` TEXT NOT NULL, `addonName` TEXT NOT NULL, `catalogType` TEXT NOT NULL, `catalogId` TEXT NOT NULL, `catalogName` TEXT, `customTitle` TEXT, `showInHome` INTEGER NOT NULL, `showInMovies` INTEGER NOT NULL, `showInSeries` INTEGER NOT NULL, `homeOrder` INTEGER NOT NULL, `moviesOrder` INTEGER NOT NULL, `seriesOrder` INTEGER NOT NULL, `isInfiniteLoopEnabled` INTEGER NOT NULL, `visibleItemCount` INTEGER NOT NULL, `isInfiniteScrollingEnabled` INTEGER NOT NULL, PRIMARY KEY(`uniqueId`))",
+        "fields": [
+          {
+            "fieldPath": "uniqueId",
+            "columnName": "uniqueId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportUrl",
+            "columnName": "transportUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "addonName",
+            "columnName": "addonName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalogType",
+            "columnName": "catalogType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalogId",
+            "columnName": "catalogId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalogName",
+            "columnName": "catalogName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "customTitle",
+            "columnName": "customTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "showInHome",
+            "columnName": "showInHome",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "showInMovies",
+            "columnName": "showInMovies",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "showInSeries",
+            "columnName": "showInSeries",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeOrder",
+            "columnName": "homeOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moviesOrder",
+            "columnName": "moviesOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesOrder",
+            "columnName": "seriesOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isInfiniteLoopEnabled",
+            "columnName": "isInfiniteLoopEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visibleItemCount",
+            "columnName": "visibleItemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isInfiniteScrollingEnabled",
+            "columnName": "isInfiniteScrollingEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "uniqueId"
+          ]
+        }
+      },
+      {
+        "tableName": "themes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `primaryColor` INTEGER NOT NULL, `backgroundColor` INTEGER NOT NULL, `surfaceColor` INTEGER NOT NULL, `textColor` INTEGER NOT NULL, `textMutedColor` INTEGER NOT NULL, `errorColor` INTEGER NOT NULL, `isBuiltIn` INTEGER NOT NULL, `category` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "primaryColor",
+            "columnName": "primaryColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "backgroundColor",
+            "columnName": "backgroundColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surfaceColor",
+            "columnName": "surfaceColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textColor",
+            "columnName": "textColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textMutedColor",
+            "columnName": "textMutedColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorColor",
+            "columnName": "errorColor",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isBuiltIn",
+            "columnName": "isBuiltIn",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "hub_rows",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `shape` TEXT NOT NULL, `showInHome` INTEGER NOT NULL, `showInMovies` INTEGER NOT NULL, `showInSeries` INTEGER NOT NULL, `homeOrder` INTEGER NOT NULL, `moviesOrder` INTEGER NOT NULL, `seriesOrder` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shape",
+            "columnName": "shape",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "showInHome",
+            "columnName": "showInHome",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "showInMovies",
+            "columnName": "showInMovies",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "showInSeries",
+            "columnName": "showInSeries",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "homeOrder",
+            "columnName": "homeOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "moviesOrder",
+            "columnName": "moviesOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesOrder",
+            "columnName": "seriesOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "hub_row_items",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`hubRowId` TEXT NOT NULL, `configUniqueId` TEXT NOT NULL, `title` TEXT NOT NULL, `customImageUrl` TEXT, `itemOrder` INTEGER NOT NULL, PRIMARY KEY(`hubRowId`, `configUniqueId`))",
+        "fields": [
+          {
+            "fieldPath": "hubRowId",
+            "columnName": "hubRowId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "configUniqueId",
+            "columnName": "configUniqueId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "customImageUrl",
+            "columnName": "customImageUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "itemOrder",
+            "columnName": "itemOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "hubRowId",
+            "configUniqueId"
+          ]
+        }
+      },
+      {
+        "tableName": "watchlist",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileId` INTEGER NOT NULL, `id` TEXT NOT NULL, `type` TEXT NOT NULL, `title` TEXT NOT NULL, `poster` TEXT, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`profileId`, `id`))",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "poster",
+            "columnName": "poster",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "addedAt",
+            "columnName": "addedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileId",
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "series_next_up",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileId` INTEGER NOT NULL, `seriesId` TEXT NOT NULL, `title` TEXT NOT NULL, `poster` TEXT, `nextSeason` INTEGER NOT NULL, `nextEpisode` INTEGER NOT NULL, `nextEpisodeTitle` TEXT, `nextReleased` TEXT, `isComplete` INTEGER NOT NULL, `isNewEpisode` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`profileId`, `seriesId`))",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "seriesId",
+            "columnName": "seriesId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "poster",
+            "columnName": "poster",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nextSeason",
+            "columnName": "nextSeason",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextEpisode",
+            "columnName": "nextEpisode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextEpisodeTitle",
+            "columnName": "nextEpisodeTitle",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "nextReleased",
+            "columnName": "nextReleased",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isComplete",
+            "columnName": "isComplete",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isNewEpisode",
+            "columnName": "isNewEpisode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileId",
+            "seriesId"
+          ]
+        }
+      },
+      {
+        "tableName": "recent_searches",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileId` INTEGER NOT NULL, `query` TEXT NOT NULL, `searchedAt` INTEGER NOT NULL, PRIMARY KEY(`profileId`, `query`))",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "query",
+            "columnName": "query",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "searchedAt",
+            "columnName": "searchedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileId",
+            "query"
+          ]
+        }
+      },
+      {
+        "tableName": "history_tombstones",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`profileId` INTEGER NOT NULL, `itemId` TEXT NOT NULL, `deletedAt` INTEGER NOT NULL, PRIMARY KEY(`profileId`, `itemId`))",
+        "fields": [
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemId",
+            "columnName": "itemId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "profileId",
+            "itemId"
+          ]
+        }
+      },
+      {
+        "tableName": "runtime_owner",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `profileId` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profileId",
+            "columnName": "profileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '672d99e85871826d9179aa96cacdfe25')"
+    ]
+  }
+}
