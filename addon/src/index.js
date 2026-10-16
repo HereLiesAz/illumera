@@ -28,9 +28,13 @@ function makeFetchers(ttl) {
 export function parsePath(pathname) {
   const m = /^\/(stream|catalog|meta)\/(movie|series)\/([^/]+?)(?:\/([^/]+))?\.json$/.exec(pathname)
   if (!m) return null
-  const extra = {}
-  if (m[4]) for (const [k, v] of new URLSearchParams(decodeURIComponent(m[4]))) extra[k] = v
-  return { resource: m[1], type: m[2], id: decodeURIComponent(m[3]), extra }
+  try {
+    const extra = {}
+    if (m[4]) for (const [k, v] of new URLSearchParams(decodeURIComponent(m[4]))) extra[k] = v
+    return { resource: m[1], type: m[2], id: decodeURIComponent(m[3]), extra }
+  } catch {
+    return null // malformed percent-encoding is a 404, not a Worker error
+  }
 }
 
 export default {
