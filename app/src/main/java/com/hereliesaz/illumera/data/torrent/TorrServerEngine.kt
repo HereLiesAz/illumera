@@ -51,7 +51,7 @@ class TorrServerEngine @Inject constructor(
         val configDir = File(context.filesDir, "torrserver")
         configDir.mkdirs()
 
-        process = ProcessBuilder(binaryPath, "-p", PORT.toString(), "-d", configDir.absolutePath)
+        process = ProcessBuilder(binaryPath, "-p", PORT.toString(), "--ip", "127.0.0.1", "-d", configDir.absolutePath)
             .redirectErrorStream(true)
             .start()
 
