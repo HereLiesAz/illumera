@@ -575,12 +575,16 @@ class HomeViewModel @Inject constructor(
                 val secondOffset = pairedRowFetchOffsets.getOrPut(configId) {
                     row.fetchedSecondCount
                 }
-                val firstItems = if (row.primarySupportsSkip)
-                    repository.fetchNextCatalogPage(row.catalogUrl, firstOffset)
-                else emptyList()
-                val secondItems = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
-                    repository.fetchNextCatalogPage(row.secondCatalogUrl, secondOffset)
-                else emptyList()
+                // A half that is not requested counts as a successful empty page. A half that
+                // timed out or errored is a failure, which says nothing about the row's end.
+                val firstResult = if (row.primarySupportsSkip)
+                    repository.fetchNextCatalogPageResult(row.catalogUrl, firstOffset)
+                else Result.success(emptyList<MetaItem>())
+                val secondResult = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
+                    repository.fetchNextCatalogPageResult(row.secondCatalogUrl, secondOffset)
+                else Result.success(emptyList<MetaItem>())
+                val firstItems = firstResult.getOrDefault(emptyList())
+                val secondItems = secondResult.getOrDefault(emptyList())
                 // Same owner guard as the aggregate branch: a page that arrives after a
                 // profile/screen switch must not touch the new screen's rows or cursors.
                 if (generation != screenDataGeneration ||
@@ -589,8 +593,11 @@ class HomeViewModel @Inject constructor(
                     profileConfigurationManager.activeProfileId.value != initiatingProfileId
                 ) return@launch
                 if (firstItems.isEmpty() && secondItems.isEmpty()) {
-                    // Nothing left on either cursor: stop re-requesting on every scroll.
-                    exhaustedCatalogRows.add(configId)
+                    // Only a successful empty page on both cursors means nothing is left; a
+                    // timeout or error must stay retryable on the next scroll.
+                    if (firstResult.isSuccess && secondResult.isSuccess) {
+                        exhaustedCatalogRows.add(configId)
+                    }
                     return@launch
                 }
                 rowFetchOffsets[configId] = firstOffset + firstItems.size

@@ -173,19 +173,32 @@ class AddonRepository @Inject constructor(
     /**
      * Fetches a single page of catalog items at the given skip offset.
      * Used for on-demand lazy loading as the user scrolls.
+     *
+     * A failed or timed-out request yields an empty list, indistinguishable from the last page;
+     * callers that must not treat a failure as "no more items" use [fetchNextCatalogPageResult].
      */
-    suspend fun fetchNextCatalogPage(baseUrl: String, skip: Int): List<MetaItem> = withContext(Dispatchers.IO) {
-        try {
-            val url = if (skip == 0) baseUrl else {
-                if (baseUrl.endsWith(".json")) baseUrl.dropLast(5) + "/skip=$skip.json" else baseUrl + "/skip=$skip.json"
-            }
-            withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize()
-        } catch (_: TimeoutCancellationException) {
-            // A slow addon yields no page; it must not cancel the caller.
-            emptyList()
-        } catch (e: CancellationException) { throw e
-        } catch (e: Exception) { emptyList() }
-    }
+    suspend fun fetchNextCatalogPage(baseUrl: String, skip: Int): List<MetaItem> =
+        fetchNextCatalogPageResult(baseUrl, skip).getOrDefault(emptyList())
+
+    /**
+     * Like [fetchNextCatalogPage] but separates a successful (possibly empty) page from a
+     * failure: `success(emptyList())` means the addon really has nothing more at [skip];
+     * `failure` means a timeout, network or parse error and nothing can be said about the end.
+     * Caller cancellation still propagates.
+     */
+    suspend fun fetchNextCatalogPageResult(baseUrl: String, skip: Int): Result<List<MetaItem>> =
+        withContext(Dispatchers.IO) {
+            try {
+                val url = if (skip == 0) baseUrl else {
+                    if (baseUrl.endsWith(".json")) baseUrl.dropLast(5) + "/skip=$skip.json" else baseUrl + "/skip=$skip.json"
+                }
+                Result.success(withTimeout(CATALOG_TIMEOUT_MS) { api.getCatalog(url) }.metas.orEmpty().sanitize())
+            } catch (e: TimeoutCancellationException) {
+                // A slow addon yields no page; it must not cancel the caller.
+                Result.failure(e)
+            } catch (e: CancellationException) { throw e
+            } catch (e: Exception) { Result.failure(e) }
+        }
 
 
     /**
