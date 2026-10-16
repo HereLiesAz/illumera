@@ -2,7 +2,7 @@
 
 Draft answers for Play Console's **Data safety** form and **content rating**
 (IARC) questionnaire, plus what else Play will ask for. Based on an audit of
-what the app actually sends/stores as of v0.6.0 — re-verify anything marked
+what the app actually sends/stores (originally v0.6.0; the integrations and the `play` build type below are current as of October 2026) — re-verify anything marked
 **[confirm]** against the current Play Console UI before submitting, since
 Google revises the exact wording and category boundaries of these forms
 periodically.
@@ -27,10 +27,16 @@ the risk profile above a typical "bring your own addons" client:
 Neither the README's existing disclaimer nor a well-filled-out Data Safety
 form changes this — it's a content-policy risk, not a privacy one. If Play
 distribution is the goal, decide up front whether to submit as-is and expect
-scrutiny/possible rejection, or ship a Play-specific build/flavor with
-torrent and debrid features stripped and closer to a pure Stremio addon
-client. This doc assumes submitting the app as it stands; flag the decision
-back before spending time on a stripped flavor.
+scrutiny/possible rejection, or strip the torrent and debrid features
+from the Play build to make it closer to a pure Stremio addon client.
+
+Status: a `play` build type already exists in `app/build.gradle.kts`
+(`assemblePlay`/`bundlePlay`, a Play-only manifest in `app/src/play/`). It
+turns self-update off and Play in-app updates on, removes
+`REQUEST_INSTALL_PACKAGES`, and keeps crash reporting off. It does **not**
+strip the torrent engine or debrid support, so the risk above applies to it
+as it stands. This doc assumes submitting that build; decide on a stripped
+variant before spending time on one.
 
 ## Data safety form
 
@@ -40,7 +46,7 @@ back before spending time on a stripped flavor.
 ### Is all of the user data collected by your app encrypted in transit?
 **[confirm against the current Play form before submitting.]** Internet-facing
 account/provider integrations (Trakt, Stremio, TMDB, debrid APIs and crash
-reporting) use HTTPS, but the app intentionally also uses cleartext HTTP for
+reporting in the GitHub build) use HTTPS, but the app intentionally also uses cleartext HTTP for
 its loopback TorrServer (`http://127.0.0.1:8090`) and local-LAN pairing flows.
 User-configured addon endpoints may also be plain `http://`. Do **not** claim
 that every network call is HTTPS; if Play's question requires every supported
@@ -63,8 +69,10 @@ illumera's — Play's form has room to note this distinction if asked.
 | Personal info | Email address | Yes | No | Account management | Stremio login only — sent directly from the device to `api.strem.io`, never touches an illumera-operated server. **[confirm]**: Play generally does not count "sent directly to a third-party service the user chose to connect, for that service's own use" as *shared by the app* — but confirm this reading against the current form's help text before answering "No" to Shared. |
 | Personal info | User IDs | Yes | No | Account management | Trakt uses OAuth device-code flow (no password in-app); the app stores only the resulting access/refresh token, not a username/email. Debrid providers: the app stores the provider-returned username for display, plus the user-supplied API key. |
 | App activity | App interactions | Yes | No | App functionality | Continue Watching / playback progress, sent to a connected Stremio account (`datastoreGet`/`Put`) and/or Trakt (scrobbles, watch history) — only when the user has explicitly connected that account. Not collected at all if no account is connected. |
-| App info and performance | Crash logs | Yes | Yes | Analytics (crash reporting) | Via ACRA → the developer's own HereLiesAz/workflows gateway Worker (`/crash-report/illumera`), which files the report as a GitHub issue on the (public) `HereLiesAz/illumera` repo. Payload: stack trace, app version, Android version, device brand/model, display info, memory stats. **No account credentials or tokens are included.** Because the report becomes a public GitHub issue, treat "Shared" as Yes even though the only intentional recipient is the developer. |
-| App info and performance | Diagnostics | Yes | Yes | Analytics (crash reporting) | Same ACRA payload as above (device/performance fields) — some Play form versions split "diagnostics" from "crash logs"; answer both the same way. |
+| App info and performance | Crash logs | No (Play build) | No | Analytics (crash reporting) | The `play` build sets `CRASH_REPORTING_AVAILABLE = false`: ACRA is not initialized and nothing is sent. Only the GitHub release build reports crashes, via ACRA → the developer's HereLiesAz/workflows gateway Worker (`/crash-report/illumera`), which files a GitHub issue (stack trace, app/Android version, device model, memory; no credentials or tokens). **[confirm]** If a Play build ever turns crash reporting on, answer **Yes/Yes** for crash logs and diagnostics, since the report becomes a public GitHub issue. |
+| App info and performance | Diagnostics | No (Play build) | No | Analytics (crash reporting) | Same as above. Play itself still collects crash and ANR data from users who opt in; that is Google's collection, not the app's. |
+| App activity | Search history, in-app content ids | Yes | Yes | App functionality | Titles and IMDb/TMDB ids are sent to **TMDB** (metadata), the **Soundtrack addon** (IMDb ids) and **Tunefind** (page requests from an off-screen web view), and trailers are fetched from **YouTube**; every user-configured addon receives the ids and search text for the requests it serves. No account is involved and no identifiers beyond the device's IP address and the request itself. **[confirm]** whether Play counts these as "shared" (service providers acting on the app's behalf are usually exempt; arbitrary user-chosen addons are not). |
+| Personal info | User IDs (wutch.tv) | Yes | No | Account management | Like Trakt: a personal API key the user pastes, stored encrypted on-device and sent only to `wutch.tv`. |
 
 Everything else on Play's standard list — **location, financial info, health
 &amp; fitness, messages, photos/videos, audio files, files &amp; docs, calendar,
@@ -131,7 +139,7 @@ declaration form/justification. From the manifest:
 
 | Permission | Justification to give Play |
 |---|---|
-| `REQUEST_INSTALL_PACKAGES` | In-app auto-updater (`AppUpdateManager`) downloads new APKs from this project's GitHub Releases and prompts installation — the app is not itself distributed through Play's own update mechanism for this path. **Note**: Play may specifically question why an app distributed *through* Play also self-updates outside Play — be ready to either disable `AppUpdateManager`'s self-update path in the Play-distributed build variant, or justify it as a fallback. |
+| `REQUEST_INSTALL_PACKAGES` | **Not requested by the `play` build**: `app/src/play/AndroidManifest.xml` removes it, `ENABLE_SELF_UPDATE` is false and updates use Play's in-app update flow. Only the GitHub release build declares it, for `AppUpdateManager`'s self-update from GitHub Releases. Don't declare it in Play Console. |
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_DATA_SYNC` | `TorrentService` runs as a foreground service while actively streaming/downloading a torrent, so Android doesn't kill the process mid-playback. |
 | `POST_NOTIFICATIONS` | Required alongside the foreground service above — shows the persistent "Torrent Download" notification Android mandates for a running foreground service. |
 | `WAKE_LOCK` | Keeps the device awake during active torrent streaming so playback doesn't stall. |
@@ -162,15 +170,19 @@ debrid provider's own servers) and stored only on your device, encrypted via
 Android's Keystore-backed encrypted storage. We never see or store your
 credentials on any server we operate.
 
-*Crash reports*: if the app crashes, a report containing the stack trace,
-app/Android version, and device model/memory may be sent to our crash
-reporting endpoint and filed as an issue in our public GitHub repository (or
-emailed to the developer). This report never contains your account
-credentials or personal watch data.
+*Crash reports*: the Google Play build sends none. In the GitHub release
+build, if the app crashes (or stops responding), a report containing the
+stack trace, app/Android version, and device model/memory may be sent to our
+crash reporting endpoint and filed as an issue in our public GitHub
+repository, unless you turn this off in Settings. This report never contains
+your account credentials or personal watch data.
 
-*Third-party services*: connecting Stremio, Trakt, or a debrid provider
-sends the data described above (see the in-app Data Safety details) directly
-to that service, governed by its own privacy policy. Uninstalling addons or
+*Third-party services*: connecting Stremio, Trakt, wutch.tv, or a debrid
+provider sends the data described above directly to that service, governed
+by its own privacy policy. Metadata and playback features also contact TMDB,
+Tunefind and YouTube, and playing a torrent source joins the BitTorrent
+network, whose peers and trackers can see your IP address. See the full
+policy in [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md). Uninstalling addons or
 disconnecting an account (Settings → Integrations) removes the corresponding
 data from your device immediately.
 

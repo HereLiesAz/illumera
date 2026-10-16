@@ -1,6 +1,6 @@
 # Privacy Policy for illumera
 
-**Effective date:** September 7, 2026
+**Effective date:** October 16, 2026
 
 illumera is an Android TV media client developed by **HereLiesAz**. This Privacy Policy explains what information illumera accesses, stores, transmits, and shares when you use the app.
 
@@ -12,7 +12,7 @@ illumera may store information needed to provide its features, including:
 
 - App profiles, preferences, theme settings, addon configuration, and playback settings.
 - Watch history, playback progress, recent searches, queue information, and source-selection preferences.
-- Account connection information and authentication tokens for services you choose to connect, such as Stremio, Trakt, and supported debrid providers.
+- Account connection information and authentication tokens for services you choose to connect, such as Stremio, Trakt, wutch.tv, and supported debrid providers.
 - Profile images, custom hub images, and other files you choose to provide to the app.
 
 This information is used to provide the features you request. illumera does not sell this information.
@@ -23,6 +23,11 @@ illumera connects to internet services only as needed to provide app functionali
 
 - **Stremio services**, for account authentication, addon synchronization, library synchronization, and playback-progress synchronization.
 - **Trakt**, if you connect a Trakt account, for authentication, watch-history synchronization, scrobbling, recommendations, and related account features.
+- **wutch.tv**, if you connect it with a personal API key, to import your watchlist and progress and to write progress and watchlist changes back.
+- **The Movie Database (TMDB)**, for metadata enrichment (titles, descriptions, images, ratings, trailer listings). Requests carry the title or its IMDb/TMDB identifier and the language of your profile.
+- **Tunefind**, for the song list of a movie or episode. illumera loads Tunefind's public pages on your device in an off-screen web view, so Tunefind receives an ordinary page request from your device. Song lists also come from the Soundtrack addon, which receives the IMDb id of the title.
+- **YouTube**, to play trailers. illumera requests the trailer's page and stream details directly from YouTube, which receives ordinary request information from your device.
+- **BitTorrent peers and trackers**, when you play a torrent source. illumera includes a TorrServer engine that runs on your device (`127.0.0.1`) and joins the BitTorrent network to fetch the file; the peers and trackers it contacts can see your IP address and the torrent's identifier. A torrent source can also be played through a TorrServer or Stremio streaming server you run elsewhere.
 - **Debrid providers**, if you configure one, to resolve or manage media sources using the provider's API.
 - **Stremio-compatible addons and other media APIs**, to retrieve catalogs, metadata, subtitles, streams, images, and related media information.
 - **IntroDB or similar metadata services used by the app**, to obtain playback metadata such as intro and outro timing.
@@ -32,9 +37,13 @@ Third-party services process information according to their own privacy policies
 
 ## Crash reports
 
-illumera uses **ACRA** to send crash reports when the app crashes. Crash reports are sent to a developer-operated relay and may be forwarded to the illumera GitHub repository for debugging.
+Crash reporting depends on which build you installed:
 
-A crash report may contain technical information such as the app version, Android version, device characteristics, stack traces, error messages, and other diagnostic information produced at the time of the crash. Crash reporting is used only to diagnose and fix software defects.
+- **GitHub release builds** use **ACRA** to send crash reports, and ANR (app not responding) reports, to a developer-operated relay, which may forward them to the illumera GitHub repository for debugging. It is on by default and you can turn it off in Settings.
+- **Google Play builds** include no crash reporting and send no crash or ANR reports.
+- **Debug builds** do not send them either.
+
+When reporting is on, a crash report may contain technical information such as the app version, Android version, device characteristics, stack traces, error messages, and other diagnostic information produced at the time of the crash. Crash reporting is used only to diagnose and fix software defects.
 
 Crash reports are not used for advertising or profiling and are not sold.
 
@@ -54,7 +63,7 @@ Users are responsible for the addons and services they choose to configure. illu
 
 illumera does not sell personal information.
 
-Information is shared only when necessary to operate a feature you choose to use, such as communicating with a connected Stremio, Trakt, debrid, addon, metadata, update, or crash-reporting service.
+Information is shared only when necessary to operate a feature you choose to use, such as communicating with a connected Stremio, Trakt, wutch.tv, debrid, addon, metadata (such as TMDB, Tunefind or YouTube), BitTorrent, update, or crash-reporting service.
 
 ## Security
 
@@ -68,7 +77,7 @@ Locally stored illumera data remains on your device until you remove it through 
 
 Data transmitted to third-party services is retained according to those services' own policies. If you disconnect a third-party account from illumera, this does not automatically delete information already held by that service.
 
-Crash-report information may be retained for as long as reasonably necessary to investigate, document, and resolve software defects. Public or private GitHub issues created from crash reports may be deleted or redacted when they are no longer needed or when they contain information that should not have been included.
+Where crash reporting is on (GitHub release builds), crash-report information may be retained for as long as reasonably necessary to investigate, document, and resolve software defects. Public or private GitHub issues created from crash reports may be deleted or redacted when they are no longer needed or when they contain information that should not have been included.
 
 illumera does not create or operate a separate illumera cloud account system. To delete data held by a connected third-party account, use that provider's account or deletion controls.
 

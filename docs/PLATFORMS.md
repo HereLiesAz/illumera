@@ -38,10 +38,10 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 - [x] Reset sync: sign out, forget the sync baseline and go back to the default addons, matching the Android reset.
 - [ ] Facebook and Apple sign-in, through Stremio's hosted handoff (`login-fb` / `login-apple`, as on Android).
 
-## Step 3: Web, torrents through the Stremio Service
+## Step 3: Web, torrents through a local streaming server
 
-- [x] Detect a streaming server at `http://127.0.0.1:11470`, or at an address entered in Settings → Torrents (`web/src/core/streamingServer.ts`). An https page can reach loopback but not a LAN server over http, so a LAN address works only from the TV and desktop packages.
-- [x] Play `infoHash` streams through it:
+- [x] Detect a streaming server at the address entered in Settings → Torrents, or by default TorrServer at `http://127.0.0.1:8090` (the desktop app's, which may use another loopback port and announces it) and then Stremio's server at `http://127.0.0.1:11470` (`web/src/core/streamingServer.ts`). An https page can reach loopback but not a LAN server over http, so a LAN address works only from the TV and desktop packages.
+- [x] Play `infoHash` streams through it (Stremio's server shown; TorrServer's own API is used for TorrServer, as on Android):
   - `POST /{hash}/create` with the stream's `tracker:`/`dht:` sources
   - pick the file by `behaviorHints.filename`, then `fileIdx`, then the server's guess, then the largest video (Android's order)
   - play `/{hash}/{index}`
@@ -64,8 +64,8 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
 ## Step 5: Desktop
 
 - [x] **App:** `desktop/` is a Tauri app that wraps `web/` for Windows, macOS and Linux.
-- [x] **Torrents without Stremio Service:** TorrServer (the engine Android uses, GPL-3.0) is bundled as a sidecar. It starts with the app on `127.0.0.1:8090`, and the web app finds it on its own. `npm run fetch-torrserver` downloads the pinned release for the build target.
-- [x] **Releases:** `.github/workflows/desktop-release.yml` builds the desktop installers and the TV packages on pushes that touch `web/` or `desktop/`, then publishes one GitHub release. It's centralized as Multi-Platform App Release (HereLiesAz/workflows).
+- [x] **Torrents without Stremio Service:** TorrServer (the engine Android uses, GPL-3.0) is bundled as a sidecar. It starts with the app on `127.0.0.1:8090` (a free port if that is taken, which the window is told), and the web app finds it on its own. `npm run fetch-torrserver` downloads the pinned release for the build target and checks its SHA-256.
+- [x] **Releases:** `.github/workflows/desktop-release.yml` builds the desktop installers and the TV packages on pushes that touch `web/`, `desktop/` or `roku/`, then publishes one GitHub release. It's centralized as Multi-Platform App Release (HereLiesAz/workflows).
 - [x] Checked locally: the Linux `.deb` builds with TorrServer inside. The app starts TorrServer with its data in the app's data folder, and TorrServer stops when the app exits.
 - [ ] Code signing: an Apple Developer ID (with notarization) for macOS, and an Authenticode certificate for Windows.
 - [ ] Intel Macs. The macOS build is Apple silicon only (`macos-latest`).
@@ -81,14 +81,14 @@ illumera ships on Android (phone, tablet, TV) today. This is the plan for the ot
   - Back on the root screen exits the app, through each platform's API
 - [ ] Sign the `.wgt` with a Samsung certificate (Tizen Studio: `tizen package -t wgt -s <profile>`). This needs a Samsung account and certificate.
 - [ ] Test on real TVs. So far the TV build is tested in headless Chromium from `file://`.
-- [ ] Build the packages in CI and attach them to releases.
+- [x] Build the packages in CI and attach them to releases: `desktop-release.yml` (Step 5) builds the TV packages and the Roku zip with the desktop installers.
 - [ ] Store submissions: Samsung Seller Office, LG Seller Lounge.
 
 ## Step 7: Roku
 
 - [x] **App:** a BrightScript/SceneGraph channel in `roku/`. It has home, search, details, sources, the player, addons and settings. The parser and ranking are ported from Android and `web/`, and unit-tested in the brs interpreter. The whole channel is validated by BrighterScript.
-- [x] **Torrents:** played through a streaming server on the network (TorrServer or Stremio Service), set in Settings.
-- [x] **Releases:** built into the desktop and TV release (`npm run package` produces a sideloadable zip).
+- [x] **Torrents:** played through a TorrServer on the network (for example the desktop app's), set in Settings. Stremio's streaming server isn't supported on Roku.
+- [x] **Releases:** built into the desktop and TV release by `desktop-release.yml` (`npm run package` produces a sideloadable zip).
 - [ ] Test on a Roku device.
 - [ ] Stremio account, Trakt, debrid, profiles and language filters, as on the web.
 - [ ] Roku Channel Store submission. This needs a package signed on a Roku (Utilities → Packager).
