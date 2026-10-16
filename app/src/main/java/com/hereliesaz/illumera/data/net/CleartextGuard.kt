@@ -24,7 +24,11 @@ object CleartextGuard : Interceptor {
         return chain.proceed(request.newBuilder().url(url.newBuilder().scheme("https").port(port).build()).build())
     }
 
-    /** True for this device and private/link-local networks, where cleartext stays local. */
+    /**
+     * True for this device and private/link-local networks, where cleartext stays local.
+     * Includes 100.64.0.0/10 (CGNAT shared space), which Tailscale-style overlay
+     * networks use for peer addresses.
+     */
     fun isLocalHost(host: String): Boolean {
         val h = host.lowercase().trim('[', ']')
         if (h == "localhost" || h.endsWith(".local") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return true
@@ -32,7 +36,8 @@ object CleartextGuard : Interceptor {
         val octets = h.split('.').map { it.toIntOrNull() ?: return false }
         if (octets.size != 4) return false
         val (a, b) = octets
-        return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254)
+        return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 169 && b == 254) ||
+            (a == 100 && b in 64..127)
     }
 }
 
