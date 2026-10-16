@@ -43,4 +43,12 @@ class AppErrorsTest {
         assertFalse(isOffline(IllegalStateException("bad state")))
         assertFalse(isOffline(null))
     }
+
+    @Test
+    fun uncaughtHandlerReceivesRedactedError() {
+        var seen: Throwable? = null
+        val handler = redactingHandler { _, e -> seen = e }
+        handler.uncaughtException(Thread.currentThread(), RuntimeException("GET https://api.example/v1/key123/stream"))
+        assertEquals("java.lang.RuntimeException: GET https://api.example/<redacted>", seen.toString())
+    }
 }

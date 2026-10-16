@@ -85,3 +85,16 @@ private class RedactedError(val originalClass: String, message: String, cause: T
 
 /** A caught error, reported without crashing. The cause is the original exception. */
 class HandledError(message: String, cause: Throwable?) : Exception(message, cause)
+
+/**
+ * Wraps the current default uncaught-exception handler (ACRA's, once initialised) so it only
+ * ever sees [redacted] copies: crash reports become public issues, and a fatal exception
+ * message can embed a tokenised stream URL just like a handled one.
+ */
+internal fun installRedactingExceptionHandler() {
+    val delegate = Thread.getDefaultUncaughtExceptionHandler() ?: return
+    Thread.setDefaultUncaughtExceptionHandler(redactingHandler(delegate))
+}
+
+internal fun redactingHandler(delegate: Thread.UncaughtExceptionHandler) =
+    Thread.UncaughtExceptionHandler { thread, error -> delegate.uncaughtException(thread, redacted(error)) }

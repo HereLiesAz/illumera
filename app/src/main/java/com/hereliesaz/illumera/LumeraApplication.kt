@@ -5,6 +5,7 @@ import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.hereliesaz.illumera.crash.CrashReporting
+import com.hereliesaz.illumera.crash.installRedactingExceptionHandler
 import com.hereliesaz.illumera.data.trakt.TraktSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import org.acra.ReportField
@@ -64,6 +65,8 @@ class LumeraApplication : Application(), ImageLoaderFactory {
                 text = getString(R.string.acra_toast_text)
             }
         }
+        // Fatal crashes bypass AppErrors.report(); keep their messages redacted too.
+        installRedactingExceptionHandler()
     }
 
     override fun onCreate() {
