@@ -49,6 +49,11 @@ class AssMatroskaExtractor(
             "font/woff2",
         )
 
+        /** Upper bound for a single attachment read into memory. */
+        private const val MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+        private val FONT_EXTENSIONS = listOf(".ttf", ".otf", ".ttc")
+
         private var extractorOutputField: java.lang.reflect.Field? = null
 
         init {
@@ -116,16 +121,32 @@ class AssMatroskaExtractor(
 
     override fun binaryElement(id: Int, length: Int, input: ExtractorInput) {
         if (id == ID_FILE_DATA) {
-            val mime = currentFileMimeType?.lowercase() ?: ""
-            val isFont = mime in FONT_MIME_TYPES
-            if (isFont) {
+            // Attachment payloads are ours alone: the base extractor does not know this
+            // element and would reject the stream, so every attachment is consumed here.
+            if (isFontAttachment() && length in 1..MAX_ATTACHMENT_BYTES) {
                 val fontData = ByteArray(length)
                 input.readFully(fontData, 0, length)
                 handler.onFontAttachment(currentFileName ?: "unknown_font", fontData)
-                return
+            } else {
+                if (length > MAX_ATTACHMENT_BYTES) {
+                    Log.w(TAG, "Skipping oversized attachment ${currentFileName} ($length bytes)")
+                }
+                input.skipFully(length)
             }
+            return
         }
         super.binaryElement(id, length, input)
+    }
+
+    /** Font by MIME type, or by extension when muxers label fonts application/octet-stream. */
+    private fun isFontAttachment(): Boolean {
+        val mime = currentFileMimeType?.trim()?.lowercase() ?: ""
+        if (mime in FONT_MIME_TYPES) return true
+        if (mime.isEmpty() || mime == "application/octet-stream") {
+            val name = currentFileName?.lowercase() ?: return false
+            return FONT_EXTENSIONS.any { name.endsWith(it) }
+        }
+        return false
     }
 
     private fun wrapExtractorOutput() {

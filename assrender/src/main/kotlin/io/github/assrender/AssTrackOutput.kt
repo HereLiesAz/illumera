@@ -22,6 +22,20 @@ internal class AssTrackOutput(
 
     companion object {
         private const val TAG = "assrender"
+
+        /** How much of the codec private data is searched for the ASS section markers. */
+        private const val HEADER_SCAN_BYTES = 2048
+
+        /**
+         * Whether [data] is an ASS/SSA script header. Skips a UTF-8 BOM and leading
+         * comments/blank lines by searching a window rather than only the first bytes.
+         */
+        private fun looksLikeAssHeader(data: ByteArray): Boolean {
+            val preview = String(data, 0, minOf(HEADER_SCAN_BYTES, data.size), Charsets.UTF_8)
+                .removePrefix("\uFEFF")
+            return preview.contains("[Script Info]", ignoreCase = true) ||
+                preview.contains("ScriptType:", ignoreCase = true)
+        }
     }
 
     private var isAssTrack = false
@@ -32,24 +46,10 @@ internal class AssTrackOutput(
 
         isAssTrack = mimeType == MimeTypes.TEXT_SSA || mimeType == "text/x-ssa" || mimeType == "text/x-ass"
 
-        if (!isAssTrack && format.initializationData.isNotEmpty()) {
-            for (data in format.initializationData) {
-                val preview = String(data, 0, minOf(50, data.size), Charsets.UTF_8)
-                if (preview.contains("[Script Info]") || preview.contains("ScriptType:")) {
-                    isAssTrack = true
-                    break
-                }
-            }
-        }
-
-        if (isAssTrack && format.initializationData.isNotEmpty()) {
-            for (data in format.initializationData) {
-                val preview = String(data, 0, minOf(50, data.size), Charsets.UTF_8)
-                if (preview.contains("[Script Info]") || preview.contains("ScriptType:")) {
-                    handler.onTrackHeader(trackId, data, format)
-                    break
-                }
-            }
+        val header = format.initializationData.firstOrNull { looksLikeAssHeader(it) }
+        if (header != null) isAssTrack = true
+        if (isAssTrack && header != null) {
+            handler.onTrackHeader(trackId, header, format)
         }
 
         Log.d(TAG, "Track[$trackId] format: mime=$mimeType, isAss=$isAssTrack")
