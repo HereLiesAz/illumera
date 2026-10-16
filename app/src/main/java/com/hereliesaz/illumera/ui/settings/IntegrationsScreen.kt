@@ -90,6 +90,8 @@ fun IntegrationsScreen(
     var showManagementDialog by remember { mutableStateOf(false) }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
     var showResetSyncConfirm by remember { mutableStateOf(false) }
+    var confirmPushCount by remember { mutableStateOf<Int?>(null) }
+    var confirmSyncRemoveCount by remember { mutableStateOf<Int?>(null) }
     var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
@@ -113,6 +115,8 @@ fun IntegrationsScreen(
                 is IntegrationsEvent.PushComplete -> {
                     Toast.makeText(context, "Pushed ${event.count} addon(s) to Stremio", Toast.LENGTH_SHORT).show()
                 }
+                is IntegrationsEvent.ConfirmPushAddons -> confirmPushCount = event.count
+                is IntegrationsEvent.ConfirmSyncAddons -> confirmSyncRemoveCount = event.removeCount
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
                 }
@@ -280,7 +284,7 @@ fun IntegrationsScreen(
             onDismiss = { showManagementDialog = false },
             onSyncAddons = {
                 showManagementDialog = false
-                viewModel.syncAddons()
+                viewModel.requestSyncAddons()
             },
             onSyncLibrary = {
                 showManagementDialog = false
@@ -288,7 +292,7 @@ fun IntegrationsScreen(
             },
             onPushAddons = {
                 showManagementDialog = false
-                viewModel.pushAddonsToStremio()
+                viewModel.requestPushAddons()
             },
             onExportData = {
                 showManagementDialog = false
@@ -339,6 +343,34 @@ fun IntegrationsScreen(
             onConfirm = {
                 showDisconnectConfirm = false
                 viewModel.disconnect()
+            }
+        )
+    }
+
+    confirmPushCount?.let { count ->
+        DisconnectConfirmDialog(
+            title = "Replace Stremio addons?",
+            message = "Your Stremio account's addon collection will be replaced with the $count addon(s) " +
+                "installed on this profile. Addons only in your account are removed there.",
+            confirmText = "Push",
+            onDismiss = { confirmPushCount = null },
+            onConfirm = {
+                confirmPushCount = null
+                viewModel.pushAddonsToStremio()
+            }
+        )
+    }
+
+    confirmSyncRemoveCount?.let { count ->
+        DisconnectConfirmDialog(
+            title = "Import Stremio addons?",
+            message = "$count addon(s) on this profile aren't in your Stremio account and will be removed. " +
+                "Addons from your account are installed.",
+            confirmText = "Import",
+            onDismiss = { confirmSyncRemoveCount = null },
+            onConfirm = {
+                confirmSyncRemoveCount = null
+                viewModel.syncAddons()
             }
         )
     }
@@ -2201,6 +2233,7 @@ private fun WutchDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Paste your wutch.tv API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 onDone = connect
                             )
@@ -2460,6 +2493,7 @@ private fun DebridDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Enter your ${selectedProvider.displayName} API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 modifier = Modifier.fillMaxWidth(),
                                 onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
@@ -2477,6 +2511,7 @@ private fun DebridDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Paste your ${selectedProvider.displayName} API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 modifier = Modifier.fillMaxWidth(),
                                 onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
