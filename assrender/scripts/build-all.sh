@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Build everything: FFmpeg (subtitle-only) + libass + dependencies
+# Build everything: libass + dependencies (FreeType, FriBidi, HarfBuzz)
 # for all target Android architectures.
 #
 # Usage: ./build-all.sh [arm64|arm]
@@ -16,12 +16,8 @@ echo ""
 
 ARCH=${1:-""}
 
-echo "Step 1: Building libass + dependencies..."
+echo "Building libass + dependencies..."
 bash "$SCRIPT_DIR/build-libass.sh" $ARCH
-
-echo ""
-echo "Step 2: Building FFmpeg (subtitle-only)..."
-bash "$SCRIPT_DIR/build-ffmpeg.sh" $ARCH
 
 echo ""
 echo "============================================"
