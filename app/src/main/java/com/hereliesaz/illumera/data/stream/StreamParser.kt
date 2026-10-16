@@ -37,9 +37,10 @@ object StreamParser {
     }
 
     /**
-     * Extract quality by checking each stream field individually (most specific first).
-     * This avoids false positives where e.g. a filename contains "2160p" but the
-     * stream.name says "1080p" — the name/title from the addon is more authoritative.
+     * Extract quality by checking each stream field individually, in order: the
+     * behaviorHints filename first, then title, description and finally name; the first
+     * field that yields a known quality wins. The filename describes the actual file, so
+     * it beats an addon's display name (which may list several resolutions or none).
      */
     private fun extractQuality(stream: Stream): StreamQuality {
         // Check each source individually; return the first that yields a known quality

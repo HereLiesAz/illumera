@@ -20,6 +20,7 @@ import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -119,6 +120,20 @@ class DebridManager @Inject constructor(
         DebridProvider.EASY_DEBRID -> easyDebrid
     }
 
+    /**
+     * Runs a provider call, turning an unexpected parse/runtime exception into a Failure so
+     * one malformed response cannot crash the caller. Cancellation is always rethrown.
+     */
+    private suspend fun <T> guarded(block: suspend () -> DebridResult<T>): DebridResult<T> =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Debrid provider call failed", e)
+            DebridResult.Failure(e.message ?: "Unexpected debrid response")
+        }
+
     fun getApiKey(): String? {
         val profileId = activeProfileId() ?: return null
         return prefs?.getString(profileKey(KEY_API_KEY, profileId), null)
@@ -130,7 +145,7 @@ class DebridManager @Inject constructor(
         val trimmedKey = apiKey.trim()
         if (trimmedKey.isEmpty()) return DebridResult.Failure("API key cannot be empty")
 
-        return when (val result = serviceFor(provider).validateApiKey(trimmedKey)) {
+        return when (val result = guarded { serviceFor(provider).validateApiKey(trimmedKey) }) {
             is DebridResult.Success -> {
                 // Credential persistence and profile deletion share one process-wide
                 // coordinator. If deletion won the race, do not recreate keys for an ID
@@ -183,7 +198,7 @@ class DebridManager @Inject constructor(
     suspend fun listLibrary(): DebridResult<List<DebridItem>> {
         val provider = _connectedProvider.value ?: return DebridResult.Failure("No debrid service connected")
         val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
-        return serviceFor(provider).listLibrary(apiKey)
+        return guarded { serviceFor(provider).listLibrary(apiKey) }
     }
 
     suspend fun getStreamUrl(item: DebridItem): DebridResult<String> {
@@ -192,12 +207,12 @@ class DebridManager @Inject constructor(
         if (item.provider != connected) {
             return DebridResult.Failure("Stream provider ${item.provider} does not match connected provider")
         }
-        return serviceFor(item.provider).getStreamUrl(apiKey, item)
+        return guarded { serviceFor(item.provider).getStreamUrl(apiKey, item) }
     }
 
     suspend fun deleteItem(item: DebridItem): DebridResult<Unit> {
         val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
-        return serviceFor(item.provider).deleteItem(apiKey, item)
+        return guarded { serviceFor(item.provider).deleteItem(apiKey, item) }
     }
 
     /**
@@ -216,8 +231,7 @@ class DebridManager @Inject constructor(
         val apiKey = getApiKey() ?: return null
         val service = serviceFor(provider)
         val wantedHash = infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
-        val wantedName = normalizeFileName(fileName)
-        if (wantedHash == null && wantedName == null) return null
+        if (wantedHash == null && normalizeFileName(fileName) == null) return null
 
         val started = System.currentTimeMillis()
         val deadline = started + maxWaitSeconds * 1_000L
@@ -226,16 +240,13 @@ class DebridManager @Inject constructor(
         var lastAdvanceAt = started
 
         while (System.currentTimeMillis() < deadline) {
-            val library = when (val result = service.listLibrary(apiKey)) {
+            val library = when (val result = guarded { service.listLibrary(apiKey) }) {
                 is DebridResult.Success -> result.value
                 is DebridResult.Failure -> return null
             }
             val item = library.firstOrNull { candidate ->
                 val hashMatches = wantedHash != null && candidate.infoHash?.lowercase() == wantedHash
-                val candidateName = normalizeFileName(candidate.name)
-                val nameMatches = wantedName != null && candidateName != null &&
-                    (candidateName.contains(wantedName) || wantedName.contains(candidateName))
-                hashMatches || nameMatches
+                hashMatches || fileNamesMatch(fileName, candidate.name)
             }
 
             if (item != null) {
@@ -245,7 +256,7 @@ class DebridManager @Inject constructor(
                     "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
                 )
                 if (ready) {
-                    when (val stream = service.getStreamUrl(apiKey, item)) {
+                    when (val stream = guarded { service.getStreamUrl(apiKey, item) }) {
                         is DebridResult.Success -> return stream.value
                         is DebridResult.Failure -> Unit
                     }
@@ -281,11 +292,32 @@ class DebridManager @Inject constructor(
         }
         return null
     }
+}
 
-    private fun normalizeFileName(name: String?): String? {
-        val value = name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
-        return value.substringAfterLast('/').substringBeforeLast('.', value.substringAfterLast('/'))
-            .replace(Regex("[^a-z0-9]+"), "")
-            .takeIf { it.length >= 6 }
-    }
+/**
+ * True when [wanted] and [candidate] name the same release: equal after normalization, or
+ * one contains the other and both carry the same SxxEyy episode token. Containment alone
+ * is too loose: a season pack or a neighbouring episode would otherwise match.
+ */
+internal fun fileNamesMatch(wanted: String?, candidate: String?): Boolean {
+    val wantedName = normalizeFileName(wanted) ?: return false
+    val candidateName = normalizeFileName(candidate) ?: return false
+    if (wantedName == candidateName) return true
+    if (!candidateName.contains(wantedName) && !wantedName.contains(candidateName)) return false
+    val wantedEpisode = episodeToken(wanted) ?: return false
+    return wantedEpisode == episodeToken(candidate)
+}
+
+private val EPISODE_TOKEN = Regex("""s(\d{1,2})[ ._-]?e(\d{1,3})""")
+
+private fun episodeToken(name: String?): Pair<Int, Int>? {
+    val match = EPISODE_TOKEN.find(name?.lowercase() ?: return null) ?: return null
+    return match.groupValues[1].toInt() to match.groupValues[2].toInt()
+}
+
+internal fun normalizeFileName(name: String?): String? {
+    val value = name?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    return value.substringAfterLast('/').substringBeforeLast('.', value.substringAfterLast('/'))
+        .replace(Regex("[^a-z0-9]+"), "")
+        .takeIf { it.length >= 6 }
 }

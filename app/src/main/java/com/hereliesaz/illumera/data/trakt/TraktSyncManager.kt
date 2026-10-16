@@ -977,7 +977,12 @@ class TraktSyncManager @Inject constructor(
                 Log.w(TAG, "Trakt watchlist fetch failed on page $page: ${response.code()}")
                 return null // Fail entirely — never return partial data
             }
-            val items = response.body() ?: break
+            val items = response.body() ?: run {
+                // A 2xx with no parseable body is a failure too: breaking here would
+                // hand back a truncated list as if it were complete.
+                Log.w(TAG, "Trakt watchlist page $page had no body")
+                return null
+            }
             if (items.isEmpty()) break
             allItems.addAll(items)
             if (items.size < 100) break

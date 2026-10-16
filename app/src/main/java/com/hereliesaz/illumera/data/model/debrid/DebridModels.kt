@@ -33,8 +33,18 @@ data class DebridItem(
     val addedAt: String? = null,
     val infoHash: String? = null,
     /** Direct file links already known for this item, if the provider returns them up front. */
-    val directLinks: List<String> = emptyList()
+    val directLinks: List<String> = emptyList(),
+    /** Which provider collection the item came from; decides how it is resolved and deleted. */
+    val origin: DebridItemOrigin = DebridItemOrigin.TORRENT
 )
+
+/** Where a [DebridItem] lives in the provider's account. */
+enum class DebridItemOrigin {
+    /** A torrent/magnet/transfer; its links may still need unrestricting. */
+    TORRENT,
+    /** An already-unrestricted download (e.g. Real-Debrid's /downloads); links play as-is. */
+    DOWNLOAD
+}
 
 /** Minimal account info used to confirm a key is valid and show who's connected. */
 data class DebridAccountInfo(

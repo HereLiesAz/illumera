@@ -4,7 +4,11 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.bool
+import com.hereliesaz.illumera.data.debrid.double
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -21,10 +25,10 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
 
     private fun com.google.gson.JsonElement.unwrap(): DebridResult<com.google.gson.JsonElement> {
         val obj = asObjectOrNull() ?: return DebridResult.Failure("Unexpected TorBox response")
-        return if (obj.get("success")?.asBoolean == true) {
+        return if (obj.bool("success") == true) {
             DebridResult.Success(obj.get("data") ?: com.google.gson.JsonObject())
         } else {
-            DebridResult.Failure(obj.get("detail")?.asString ?: "TorBox error")
+            DebridResult.Failure(obj.str("detail") ?: "TorBox error")
         }
     }
 
@@ -35,8 +39,9 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                     val obj = data.value.asObjectOrNull() ?: return DebridResult.Failure("Unexpected TorBox response")
                     DebridResult.Success(
                         DebridAccountInfo(
-                            username = obj.get("email")?.asString ?: "TorBox user",
-                            premiumUntil = obj.get("plan")?.asString
+                            username = obj.str("email") ?: "TorBox user",
+                            // "plan" is a tier id, not an expiry date.
+                            premiumUntil = obj.str("premium_expires_at")
                         )
                     )
                 }
@@ -59,19 +64,19 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                                 ?: emptyList()
                             // Prefer video file IDs; fall back to all IDs so nothing disappears from the library UI.
                             val videoFileIds = files.filter {
-                                isVideoFilename(it.get("name")?.asString ?: "")
-                            }.mapNotNull { it.get("id")?.asString }
-                            val allFileIds = files.mapNotNull { it.get("id")?.asString }
+                                isVideoFilename(it.str("name") ?: "")
+                            }.mapNotNull { it.str("id") }
+                            val allFileIds = files.mapNotNull { it.str("id") }
                             val fileIds = videoFileIds.ifEmpty { allFileIds }
                             DebridItem(
-                                id = o.get("id")?.asString ?: return@mapNotNull null,
-                                name = o.get("name")?.asString ?: "Unknown",
+                                id = o.str("id") ?: return@mapNotNull null,
+                                name = o.str("name") ?: "Unknown",
                                 provider = DebridProvider.TORBOX,
-                                infoHash = o.get("hash")?.takeUnless { it.isJsonNull }?.asString,
-                                sizeBytes = o.get("size")?.asLong,
-                                status = o.get("download_state")?.asString,
-                                progress = o.get("progress")?.asDouble?.let { (it * 100).toInt() },
-                                addedAt = o.get("created_at")?.asString,
+                                infoHash = o.str("hash"),
+                                sizeBytes = o.long("size"),
+                                status = o.str("download_state"),
+                                progress = o.double("progress")?.let { (it * 100).toInt() },
+                                addedAt = o.str("created_at"),
                                 directLinks = fileIds
                             )
                         }

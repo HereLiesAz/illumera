@@ -25,7 +25,7 @@ class EasyDebridService @Inject constructor(private val http: DebridHttp) : Debr
         return when (val result = http.get("$base/user", auth(apiKey))) {
             is DebridResult.Success -> {
                 val obj = result.value.asObjectOrNull()
-                val email = obj?.get("email")?.asString
+                val email = obj?.str("email")
                 if (email == null) {
                     DebridResult.Failure("Invalid EasyDebrid API key")
                 } else {
