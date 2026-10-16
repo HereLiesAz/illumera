@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.crash.AppErrors
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
+import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
@@ -20,7 +21,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 enum class SetupSocialProvider(val displayName: String) {
@@ -269,8 +269,11 @@ class ProfileViewModel @Inject constructor(
 
         setupSocialLoginJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val authResult = withTimeoutOrNull(5 * 60_000L) {
-                    completeSetupSocialLogin(provider, state)
+                val authResult = pollSocialLogin {
+                    when (provider) {
+                        SetupSocialProvider.FACEBOOK -> stremioAuthManager.completeFacebookLogin(state)
+                        SetupSocialProvider.APPLE -> stremioAuthManager.completeAppleLogin(state)
+                    }
                 }
 
                 if (authResult == null) {
@@ -308,29 +311,6 @@ class ProfileViewModel @Inject constructor(
                     _isInitializingProfile.value = false
                 }
             }
-        }
-    }
-
-    /**
-     * The Stremio service polls Facebook for ~25 seconds and Apple for ~50 seconds per
-     * call. Repeat those bounded polls until our setup flow's five-minute deadline so
-     * normal users are not failed while they are still completing OAuth on another device.
-     */
-    private suspend fun completeSetupSocialLogin(
-        provider: SetupSocialProvider,
-        state: String
-    ): Result<String> {
-        while (true) {
-            val result = when (provider) {
-                SetupSocialProvider.FACEBOOK -> stremioAuthManager.completeFacebookLogin(state)
-                SetupSocialProvider.APPLE -> stremioAuthManager.completeAppleLogin(state)
-            }
-            if (result.isSuccess) return result
-
-            val error = result.exceptionOrNull()
-            val pollWindowExpired = error is StremioAuthError.NetworkError &&
-                error.message.contains("timed out or was not completed", ignoreCase = true)
-            if (!pollWindowExpired) return result
         }
     }
 

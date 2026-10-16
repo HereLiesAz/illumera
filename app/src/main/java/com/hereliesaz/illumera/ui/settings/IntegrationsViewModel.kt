@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
+import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -40,7 +41,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.ui.addons.CINEMETA_TRANSPORT_URL
@@ -267,9 +267,7 @@ class IntegrationsViewModel @Inject constructor(
         _uiState.update { it.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url)) }
 
         facebookLoginJob = viewModelScope.launch {
-            val result = withTimeoutOrNull(5 * 60_000L) {
-                stremioAuthManager.completeFacebookLogin(state)
-            }
+            val result = pollSocialLogin { stremioAuthManager.completeFacebookLogin(state) }
             if (result == null) {
                 _uiState.update { it.copy(
                     facebookLoginState = FacebookLoginState.Error("Facebook login timed out. Please try again.")
@@ -304,7 +302,13 @@ class IntegrationsViewModel @Inject constructor(
         _uiState.update { it.copy(appleLoginState = AppleLoginState.WaitingForUser(url)) }
 
         appleLoginJob = viewModelScope.launch {
-            val result = stremioAuthManager.completeAppleLogin(state)
+            val result = pollSocialLogin { stremioAuthManager.completeAppleLogin(state) }
+            if (result == null) {
+                _uiState.update { it.copy(
+                    appleLoginState = AppleLoginState.Error("Apple login timed out. Please try again.")
+                ) }
+                return@launch
+            }
             result.fold(
                 onSuccess = {
                     _uiState.update { it.copy(appleLoginState = AppleLoginState.Success) }

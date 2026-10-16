@@ -361,7 +361,7 @@ class StremioAuthManager @Inject constructor(
         val prefs = encryptedPrefs ?: return@withContext Result.failure<String>(StremioAuthError.UnknownError("Secure credential storage is unavailable"))
         try {
             val (email, fbToken) = stremioAuthService.pollFacebookLogin(state)
-                ?: return@withContext Result.failure(StremioAuthError.NetworkError("Facebook login timed out or was not completed"))
+                ?: return@withContext Result.failure(StremioAuthError.PollWindowExpired("Facebook login timed out or was not completed"))
 
             val loginResult = stremioAuthService.login(email, fbToken, facebook = true)
 
@@ -391,7 +391,7 @@ class StremioAuthManager @Inject constructor(
         try {
             val credentials = stremioAuthService.pollAppleLogin(state)
                 ?: return@withContext Result.failure(
-                    StremioAuthError.NetworkError("Apple login timed out or was not completed")
+                    StremioAuthError.PollWindowExpired("Apple login timed out or was not completed")
                 )
             val loginResult = stremioAuthService.loginWithApple(credentials)
             val accountLabel = credentials.email.ifBlank { "Apple account" }
