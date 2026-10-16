@@ -136,10 +136,16 @@ class DashboardViewModel @Inject constructor(
     private val _hubRows = MutableStateFlow<List<HubRowWithItems>>(emptyList())
     val hubRows: StateFlow<List<HubRowWithItems>> = _hubRows
 
+    // Reorder writes still in flight. While > 0 the in-memory lists hold the optimistic
+    // order, and a Room emission (which can still carry the pre-write rows) would revert
+    // it, so emissions are ignored until the last write lands; the emission that follows
+    // that write carries the final state.
+    private val pendingLocalWrites = java.util.concurrent.atomic.AtomicInteger(0)
+
     init {
         viewModelScope.launch {
             dao.getAllCatalogConfigs().collect { list ->
-                _configs.value = list
+                if (pendingLocalWrites.get() == 0) _configs.value = list
             }
         }
         viewModelScope.launch {
@@ -157,7 +163,7 @@ class DashboardViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dao.getHubRowsWithItems().collect { list ->
-                _hubRows.value = list
+                if (pendingLocalWrites.get() == 0) _hubRows.value = list
             }
         }
     }
@@ -171,33 +177,37 @@ class DashboardViewModel @Inject constructor(
 
     fun addItemToTab(item: EditorListItem, screen: String) {
         viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-            val currentItems = getEditorItems(screen)
-            val maxOrder = currentItems.maxOfOrNull { it.order } ?: -1
-            val newOrder = maxOrder + 1
+            // After any queued reorder write, so the max order comes from the latest list.
+            reorderMutex.withLock {
+                val currentItems = getEditorItems(screen)
+                val maxOrder = currentItems.maxOfOrNull { it.order } ?: -1
+                val newOrder = maxOrder + 1
 
-            when(item) {
-                is EditorListItem.CategoryItem -> {
-                    val config = item.config
-                    val updated = when(screen) {
-                        "home" -> config.copy(showInHome = true, homeOrder = newOrder)
-                        "movies" -> config.copy(showInMovies = true, moviesOrder = newOrder)
-                        "series" -> config.copy(showInSeries = true, seriesOrder = newOrder)
-                        else -> config
+                when(item) {
+                    is EditorListItem.CategoryItem -> {
+                        // The row as it is now, not the snapshot the UI handed in.
+                        val config = _configs.value.firstOrNull { it.uniqueId == item.config.uniqueId } ?: item.config
+                        val updated = when(screen) {
+                            "home" -> config.copy(showInHome = true, homeOrder = newOrder)
+                            "movies" -> config.copy(showInMovies = true, moviesOrder = newOrder)
+                            "series" -> config.copy(showInSeries = true, seriesOrder = newOrder)
+                            else -> config
+                        }
+                        dao.saveCatalogConfig(updated)
                     }
-                    dao.saveCatalogConfig(updated)
-                }
-                is EditorListItem.HubRowItem -> {
-                    val hub = item.hub
-                    val updated = when(screen) {
-                        "home" -> hub.copy(showInHome = true, homeOrder = newOrder)
-                        "movies" -> hub.copy(showInMovies = true, moviesOrder = newOrder)
-                        "series" -> hub.copy(showInSeries = true, seriesOrder = newOrder)
-                        else -> hub
+                    is EditorListItem.HubRowItem -> {
+                        val hub = _hubRows.value.firstOrNull { it.hub.id == item.hub.id }?.hub ?: item.hub
+                        val updated = when(screen) {
+                            "home" -> hub.copy(showInHome = true, homeOrder = newOrder)
+                            "movies" -> hub.copy(showInMovies = true, moviesOrder = newOrder)
+                            "series" -> hub.copy(showInSeries = true, seriesOrder = newOrder)
+                            else -> hub
+                        }
+                        dao.updateHubRow(updated)
                     }
-                    dao.updateHubRow(updated)
                 }
+                persistProfileState()
             }
-            persistProfileState()
         }
     }
 
@@ -274,11 +284,16 @@ class DashboardViewModel @Inject constructor(
                 hubsById[row.hub.id]?.let { row.copy(hub = it) } ?: row
             }
 
+            pendingLocalWrites.incrementAndGet()
             viewModelScope.launch(Dispatchers.IO + NonCancellable) {
-                reorderMutex.withLock {
-                    if (updatedHubs.isNotEmpty()) dao.updateHubRows(updatedHubs)
-                    if (updatedConfigs.isNotEmpty()) dao.saveCatalogConfigs(updatedConfigs)
-                    persistProfileState()
+                try {
+                    reorderMutex.withLock {
+                        if (updatedHubs.isNotEmpty()) dao.updateHubRows(updatedHubs)
+                        if (updatedConfigs.isNotEmpty()) dao.saveCatalogConfigs(updatedConfigs)
+                        persistProfileState()
+                    }
+                } finally {
+                    pendingLocalWrites.decrementAndGet()
                 }
             }
         }
