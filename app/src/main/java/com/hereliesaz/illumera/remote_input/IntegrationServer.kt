@@ -23,6 +23,7 @@ class IntegrationServer(
 
     companion object {
         private const val TAG = "IntegrationServer"
+        // Upper bound on any request body accepted before parseBody().
         private const val MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5 MB
         private const val MAX_FIELD_LENGTH = 1024
     }
@@ -257,6 +258,7 @@ class IntegrationServer(
     }
 
     private fun handleLogin(session: IHTTPSession): Response {
+        rejectOversizedBody(session, MAX_IMAGE_SIZE.toLong())?.let { return it }
         try {
             val files = mutableMapOf<String, String>()
             session.parseBody(files)

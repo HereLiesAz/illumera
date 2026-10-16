@@ -56,6 +56,23 @@ class PairingSessionTest {
     }
 
     @Test
+    fun wrongPinLockoutIsPerPeer() {
+        val s = session()
+        repeat(PairingSession.MAX_FAILED_ATTEMPTS) { s.check("bad$it", "10.0.0.66") }
+        assertEquals(Result.EXPIRED, s.check(pin, "10.0.0.66"))
+        assertEquals(Result.AUTHORIZED, s.check(pin, "10.0.0.5"))
+        assertFalse(s.isExpired())
+    }
+
+    @Test
+    fun globalCeilingInvalidatesAcrossPeers() {
+        val s = PairingSession(pin, clock = { now }, maxFailedAttempts = 3, maxGlobalFailedAttempts = 5)
+        repeat(5) { s.check("bad", "10.0.0.$it") }
+        assertEquals(Result.EXPIRED, s.check(pin, "10.0.0.99"))
+        assertTrue(s.isExpired())
+    }
+
+    @Test
     fun missingPinDoesNotCountAsGuess() {
         val s = session()
         repeat(PairingSession.MAX_FAILED_ATTEMPTS * 2) { s.check(null) }

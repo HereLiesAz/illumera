@@ -11,33 +11,43 @@ import java.security.MessageDigest
  *
  * The token is only good while the session is live: it expires after
  * [idleTimeoutMs] without an authorized request or [absoluteTimeoutMs] after
- * creation, after [maxFailedAttempts] wrong pins (from any address), or once
- * [invalidate] is called (e.g. after a credential form was submitted).
+ * creation, after [maxGlobalFailedAttempts] wrong pins in total, or once
+ * [invalidate] is called (e.g. after a credential form was submitted). A peer
+ * address that sends [maxFailedAttempts] wrong pins is locked out on its own, so
+ * one misbehaving LAN device cannot end the session for the legitimate phone.
  */
 class PairingSession(
     private val pairingToken: String,
     private val clock: () -> Long = System::currentTimeMillis,
     private val idleTimeoutMs: Long = IDLE_TIMEOUT_MS,
     private val absoluteTimeoutMs: Long = ABSOLUTE_TIMEOUT_MS,
-    private val maxFailedAttempts: Int = MAX_FAILED_ATTEMPTS
+    private val maxFailedAttempts: Int = MAX_FAILED_ATTEMPTS,
+    private val maxGlobalFailedAttempts: Int = MAX_GLOBAL_FAILED_ATTEMPTS
 ) {
     enum class Result { AUTHORIZED, WRONG_PIN, EXPIRED }
 
     private val createdAt = clock()
     private var lastActivity = createdAt
     private var failedAttempts = 0
+    private val failedAttemptsByPeer = HashMap<String, Int>()
     private var invalidated = false
 
     /**
      * Checks a request's pin. A missing pin (e.g. a browser's /favicon.ico) is a
-     * WRONG_PIN but isn't counted as a guess, since it reveals nothing.
+     * WRONG_PIN but isn't counted as a guess, since it reveals nothing. [peer] is
+     * the requester's address; a locked-out peer gets EXPIRED even with the right pin.
      */
     @Synchronized
-    fun check(pin: String?): Result {
+    fun check(pin: String?, peer: String? = null): Result {
         if (isExpiredLocked()) return Result.EXPIRED
+        val peerKey = peer.orEmpty()
+        if ((failedAttemptsByPeer[peerKey] ?: 0) >= maxFailedAttempts) return Result.EXPIRED
         if (pin == null || !constantTimeEquals(pin, pairingToken)) {
-            if (pin != null && ++failedAttempts >= maxFailedAttempts) invalidated = true
-            return if (invalidated) Result.EXPIRED else Result.WRONG_PIN
+            if (pin == null) return Result.WRONG_PIN
+            val peerFailures = (failedAttemptsByPeer[peerKey] ?: 0) + 1
+            failedAttemptsByPeer[peerKey] = peerFailures
+            if (++failedAttempts >= maxGlobalFailedAttempts) invalidated = true
+            return if (invalidated || peerFailures >= maxFailedAttempts) Result.EXPIRED else Result.WRONG_PIN
         }
         lastActivity = clock()
         return Result.AUTHORIZED
@@ -64,7 +74,10 @@ class PairingSession(
     companion object {
         const val IDLE_TIMEOUT_MS = 10 * 60 * 1000L
         const val ABSOLUTE_TIMEOUT_MS = 30 * 60 * 1000L
+        /** Wrong pins allowed per peer address before that peer is locked out. */
         const val MAX_FAILED_ATTEMPTS = 10
+        /** Wrong pins allowed across all peers before the token is invalidated. */
+        const val MAX_GLOBAL_FAILED_ATTEMPTS = 100
 
         /** Constant-time string comparison for pins and CSRF tokens. */
         fun constantTimeEquals(a: String?, b: String?): Boolean {
@@ -127,11 +140,25 @@ abstract class PairedLanServer(
             return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Forbidden")
         }
         if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        return when (pairingSession.check(session.parms["pin"])) {
+        return when (pairingSession.check(session.parms["pin"], session.headers["remote-addr"])) {
             PairingSession.Result.AUTHORIZED -> serveAuthorized(session)
             PairingSession.Result.WRONG_PIN -> wrongPinResponse()
             PairingSession.Result.EXPIRED -> expiredResponse()
         }
+    }
+
+    /**
+     * Returns a 413/411 response when [session]'s declared Content-Length is missing,
+     * malformed or above [maxBytes]; null when the body may be parsed. Call before
+     * parseBody(), which would otherwise buffer an arbitrarily large body.
+     */
+    protected fun rejectOversizedBody(session: IHTTPSession, maxBytes: Long): Response? {
+        val declared = session.headers["content-length"]?.trim()?.toLongOrNull()
+            ?: return newFixedLengthResponse(Response.Status.LENGTH_REQUIRED, MIME_PLAINTEXT, "Length required")
+        if (declared < 0 || declared > maxBytes) {
+            return newFixedLengthResponse(Response.Status.PAYLOAD_TOO_LARGE, MIME_PLAINTEXT, "Request too large")
+        }
+        return null
     }
 
     private fun expiredResponse(): Response {
