@@ -1687,10 +1687,22 @@ internal fun TrailerPreview(
         }
     }
     var ready by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
-    val player = remember(videoUrl, item?.id, item?.type) {
-        videoUrl?.let { url ->
+    // Created in a DisposableEffect, not remember{}: a composition that is abandoned
+    // before it commits would otherwise leak a prepared ExoPlayer that is never released.
+    var player by remember(videoUrl, item?.id, item?.type) { mutableStateOf<ExoPlayer?>(null) }
+    // Settings/viewport changes shouldn't dispose a player until its own URL
+    // identity changes. The lifecycle observer reads the latest play condition.
+    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
+    val latestSoundEnabled by rememberUpdatedState(soundEnabled)
+    SideEffect {
+        player?.volume = if (soundEnabled) 0.6f else 0f
+        player?.playWhenReady = shouldPlay &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    }
+    DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
+        val created = videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = if (soundEnabled) 0.6f else 0f
+                volume = if (latestSoundEnabled) 0.6f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1702,38 +1714,30 @@ internal fun TrailerPreview(
                 })
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
-                playWhenReady = autoPlay && isVisible
+                playWhenReady = shouldPlay &&
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             }
         }
-    }
-    // Settings/viewport changes shouldn't dispose a player until its own URL
-    // identity changes. The lifecycle observer reads the latest play condition.
-    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
-    SideEffect {
-        player?.volume = if (soundEnabled) 0.6f else 0f
-        player?.playWhenReady = shouldPlay &&
-            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-    }
-    DisposableEffect(player, lifecycleOwner) {
+        player = created
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
                     // Pausing does not invalidate the already rendered first frame.
                     // Clearing ready here hid the video permanently on resume:
                     // onRenderedFirstFrame isn't guaranteed to fire a second time.
-                    player?.pause()
+                    created?.pause()
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (player != null) player.playWhenReady = shouldPlay
+                    if (created != null) created.playWhenReady = shouldPlay
                 }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player?.pause()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            player?.release()
+            player = null
+            created?.release()
         }
     }
     if (player != null) {

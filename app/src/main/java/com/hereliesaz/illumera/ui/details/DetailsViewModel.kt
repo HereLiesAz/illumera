@@ -663,7 +663,7 @@ class DetailsViewModel @Inject constructor(
                         releaseInfo = enrichment.releaseInfo ?: currentMeta.releaseInfo,
                         // Rating from TMDB
                         imdbRating = enrichment.rating?.let {
-                            String.format("%.1f", it)
+                            String.format(java.util.Locale.US, "%.1f", it)
                         } ?: currentMeta.imdbRating,
                         // Runtime
                         runtime = enrichment.runtimeMinutes?.let { "${it}m" } ?: currentMeta.runtime
