@@ -44,6 +44,8 @@ class AppUpdateManagerSecurityTest {
         assertFalse(callBoolean("isAllowedDownloadUrl", "https://github.com.evil.example/app.apk"))
         assertFalse(callBoolean("isAllowedDownloadUrl", "https://evilgithub.com/app.apk"))
         assertFalse(callBoolean("isAllowedDownloadUrl", "not a url"))
+        assertFalse(callBoolean("isAllowedDownloadUrl", "https://github.com@evil.example/app.apk"))
+        assertFalse(callBoolean("isAllowedDownloadUrl", "https://evil.example\\@github.com/app.apk"))
     }
 
     @Test

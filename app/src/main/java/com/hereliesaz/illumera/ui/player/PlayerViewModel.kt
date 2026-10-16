@@ -13,6 +13,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +61,31 @@ class PlayerViewModel @Inject constructor(
      */
     private fun launchDetached(block: suspend () -> Unit) {
         viewModelScope.launch(ioDispatcher + NonCancellable) { block() }
+    }
+
+    // Scrobbles run one at a time in the order they were sent, so an episode switch's
+    // stop(old) always reaches Trakt before start(new) (parallel requests could land in
+    // either order and leave Trakt showing the wrong item as playing). The worker is
+    // detached like launchDetached, so scrobbles sent while or after the entry is cleared
+    // still go out; it is started lazily so it picks up the current ioDispatcher.
+    private val scrobbleQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private var scrobbleWorker: Job? = null
+
+    private fun enqueueScrobble(block: suspend () -> Unit) {
+        scrobbleQueue.trySend(block)
+        if (scrobbleWorker == null) {
+            scrobbleWorker = viewModelScope.launch(ioDispatcher + NonCancellable) {
+                for (task in scrobbleQueue) {
+                    try {
+                        task()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (e: Exception) {
+                        com.hereliesaz.illumera.crash.AppErrors.w("PlayerViewModel", "Scrobble failed", e)
+                    }
+                }
+            }
+        }
     }
 
     val watchedThreshold: StateFlow<Double> = profileConfigurationManager.activeProfileId
@@ -191,14 +218,14 @@ class PlayerViewModel @Inject constructor(
 
     fun scrobbleStart(id: String, type: String, positionMs: Long, durationMs: Long) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
-        launchDetached {
+        enqueueScrobble {
             traktScrobbleManager.scrobbleStart(id, type, positionMs, durationMs)
         }
     }
 
     fun scrobblePause(id: String, type: String, positionMs: Long, durationMs: Long, force: Boolean = false) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
-        launchDetached {
+        enqueueScrobble {
             traktScrobbleManager.scrobblePause(id, type, positionMs, durationMs, force = force)
             wutchManager.onPlayback(id, positionMs, finished = false)
         }
@@ -206,7 +233,7 @@ class PlayerViewModel @Inject constructor(
 
     fun scrobbleStop(id: String, type: String, positionMs: Long, durationMs: Long) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
-        launchDetached {
+        enqueueScrobble {
             traktScrobbleManager.scrobbleStop(id, type, positionMs, durationMs)
             wutchManager.onPlayback(id, positionMs, finished = isCompleted(positionMs, durationMs, type))
         }

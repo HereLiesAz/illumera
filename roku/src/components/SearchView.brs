@@ -7,6 +7,7 @@ sub init()
     m.timer = CreateObject("roSGNode", "Timer")
     m.timer.duration = 0.6
     m.timer.ObserveField("fire", "Search")
+    m.searchId = 0
 end sub
 
 sub onParams()
@@ -24,6 +25,9 @@ end sub
 sub Search()
     query = m.keyboard.text.Trim()
     if query = "" then return
+    ' Each search has its own id, carried in the task tags, so a slow answer to an earlier
+    ' query can't add its results to this one.
+    m.searchId = m.searchId + 1
     m.root = CreateObject("roSGNode", "ContentNode")
     m.pending = {}
     for each kind in ["movie", "series"]
@@ -32,7 +36,7 @@ sub Search()
         task = CreateObject("roSGNode", "HttpTask")
         m.pending[kind] = { task: task, row: row }
         task.ObserveField("response", "OnResults")
-        task.request = { kind: "json", tag: kind, url: "https://v3-cinemeta.strem.io/catalog/" + kind + "/top/search=" + query.EncodeUriComponent() + ".json" }
+        task.request = { kind: "json", tag: m.searchId.ToStr() + ":" + kind, url: "https://v3-cinemeta.strem.io/catalog/" + kind + "/top/search=" + query.EncodeUriComponent() + ".json" }
         task.control = "run"
     end for
     m.results.content = m.root
@@ -40,7 +44,10 @@ end sub
 
 sub OnResults(event as Object)
     res = event.GetData()
-    entry = m.pending[res.tag]
+    if res = invalid or res.tag = invalid then return
+    parts = res.tag.Split(":")
+    if parts.Count() <> 2 or parts[0] <> m.searchId.ToStr() then return
+    entry = m.pending[parts[1]]
     if entry = invalid then return
     if res.ok and res.data <> invalid and res.data.metas <> invalid then
         for each meta in res.data.metas

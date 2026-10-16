@@ -47,7 +47,7 @@ used to be free when this integration was originally built, and isn't
 something this repo can work around. If VIP is worth it: register an app at
 https://trakt.tv/oauth/applications (redirect URI `urn:ietf:wg:oauth:2.0:oob`)
 and add these as **Actions secrets** on the `HereLiesAz/workflows` repo, where
-the release build runs (`.github/workflows/release.yml` here only tracks it):
+the release build runs (the Android release stubs in `.github/workflows/` here only hand off to it):
 - `TRAKT_CLIENT_ID`
 - `TRAKT_CLIENT_SECRET`
 

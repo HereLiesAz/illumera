@@ -29,7 +29,7 @@ end function
 
 ' GET JSON with a timeout; invalid on failure.
 function GetJson(url as String, timeoutMs as Integer) as Dynamic
-    t = Transfer(url)
+    t = Transfer(UpgradeUrl(url))
     port = CreateObject("roMessagePort")
     t.SetMessagePort(port)
     if not t.AsyncGetToString() then return invalid
@@ -69,14 +69,17 @@ function Install(req as Object) as Object
     replaced = false
     for each a in Addons()
         if a.transportUrl = base then
-            list.Push({ transportUrl: base, manifest: TrimManifest(manifest), enabled: true })
+            ' Re-installing refreshes the manifest but keeps a disabled addon disabled.
+            list.Push({ transportUrl: base, manifest: TrimManifest(manifest), enabled: a.enabled <> false })
             replaced = true
         else
             list.Push(a)
         end if
     end for
     if not replaced then list.Push({ transportUrl: base, manifest: TrimManifest(manifest), enabled: true })
-    SaveAddons(list)
+    if not SaveAddons(list) then
+        return { tag: req.tag, ok: false, error: "The Roku's storage for this channel is full. Remove an addon first." }
+    end if
     return { tag: req.tag, ok: true, name: manifest.name }
 end function
 

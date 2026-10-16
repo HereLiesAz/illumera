@@ -27,15 +27,6 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
 
-        externalNativeBuild {
-            cmake {
-                cppFlags += ""
-                arguments += listOf(
-                    "-DANDROID_STL=c++_shared"
-                )
-            }
-        }
-
         consumerProguardFiles("consumer-rules.pro")
     }
 

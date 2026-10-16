@@ -2,12 +2,19 @@ package io.github.assrender
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.system.Os
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
+import android.view.Choreographer
 import androidx.media3.common.Format
+import androidx.media3.exoplayer.ExoPlayer
 import java.io.File
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Coordinates the ASS subtitle pipeline:
@@ -15,9 +22,20 @@ import java.io.File
  * - Feeds data to libass via [AssDirectBridge]
  * - Renders subtitle bitmaps synced to playback time
  * - Manages the [SubtitleOverlayView] display
+ *
+ * Threading: extractor callbacks arrive on ExoPlayer's loader thread, rendering
+ * runs on the main thread (Choreographer) and track selection / release come
+ * from the app. A libass context is not thread-safe, so every native call is
+ * made while holding [lock]. The render loop only `tryLock`s, so a long
+ * operation (font loading, event replay) skips frames instead of blocking the
+ * UI thread.
+ *
+ * @param videoWidth initial render width in pixels (and, with [videoHeight], the
+ *   cap on the longest render side). Once the overlay is laid out the render
+ *   bitmap follows the overlay's aspect ratio and size, capped to this.
  */
 class AssHandler(
-    private val context: Context,
+    context: Context,
     val overlayView: SubtitleOverlayView,
     private val videoWidth: Int = 1920,
     private val videoHeight: Int = 1080
@@ -25,24 +43,44 @@ class AssHandler(
     /** Called when the first ASS track is detected — use to hide ExoPlayer subtitles */
     var onAssTrackDetected: (() -> Unit)? = null
 
-    init {
-        setupFontconfig()
-    }
     companion object {
         private const val TAG = "assrender"
+
+        /** Debounce before rebuilding libass' font selector after attachments arrive. */
+        private const val FONT_FINALIZE_DELAY_MS = 300L
+
+        /** libass has no system font provider here, so these are scanned and added. */
+        private val SYSTEM_FONT_DIRS = listOf("/system/fonts", "/system_ext/fonts", "/product/fonts")
     }
 
-    private var nativeHandle: Long = 0L
-    private var renderBitmap: Bitmap? = null
+    private class AssEvent(val startMs: Long, val durationMs: Long, val chunk: ByteArray)
+
+    private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Debounced libass font rebuilds run here, never on the main or loader thread.
+    private val workerThread = HandlerThread("assrender-fonts").apply { start() }
+    private val workerHandler = Handler(workerThread.looper)
+
+    /** Guards every native call and all state below. */
+    private val lock = ReentrantLock()
+
+    @Volatile private var nativeHandle: Long = 0L
+    @Volatile private var initialized = false
+    @Volatile private var released = false
+
+    private var renderBitmap: Bitmap? = null
+    private var renderWidth = 0
+    private var renderHeight = 0
 
     // Track state
     private val trackFormats = mutableMapOf<Int, Format>()
     private val trackHeaders = mutableMapOf<Int, ByteArray>()
-    // Triple: startMs, durationMs, chunkData — thread-safe lists
-    private val trackEvents = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.CopyOnWriteArrayList<Triple<Long, Long, ByteArray>>>()
+    private val trackEvents = mutableMapOf<Int, MutableList<AssEvent>>()
+    // Keys of events already stored per track; the extractor re-emits samples after a seek.
+    private val seenEvents = mutableMapOf<Int, MutableSet<String>>()
     private var activeTrackId: Int = -1
-    private var initialized = false
+    private var fontsDirty = false
 
     // Buffer fonts that arrive before initialization
     private val pendingFonts = mutableListOf<Pair<String, ByteArray>>()
@@ -52,41 +90,69 @@ class AssHandler(
     var currentTimeUs: Long = 0L
 
     // Direct player reference for accurate position
-    var player: androidx.media3.exoplayer.ExoPlayer? = null
+    @Volatile
+    var player: ExoPlayer? = null
 
-    private var lastRenderedMs: Long = Long.MIN_VALUE
-    private var choreographerCallback: android.view.Choreographer.FrameCallback? = null
+    // Main thread only
+    private var choreographerCallback: Choreographer.FrameCallback? = null
+
+    private val finalizeFontsRunnable = Runnable {
+        lock.withLock {
+            if (!initialized || nativeHandle == 0L || !fontsDirty) return@withLock
+            AssDirectBridge.nativeFinalizeFonts(nativeHandle)
+            fontsDirty = false
+        }
+    }
 
     /**
      * Called by [AssTrackOutput] when ASS header (codec private) is available.
      */
     fun onTrackHeader(trackId: Int, headerData: ByteArray, format: Format) {
-        trackFormats[trackId] = format
-        trackHeaders[trackId] = headerData
+        var detected = false
+        lock.withLock {
+            if (released) return
+            trackFormats[trackId] = format
+            trackHeaders[trackId] = headerData
 
-        // Initialize on first ASS track
-        if (!initialized) {
-            nativeHandle = AssDirectBridge.nativeInit(videoWidth, videoHeight, 1.0f)
-            if (nativeHandle == 0L) {
+            // Initialize on first ASS track
+            if (initialized) return
+            val handle = AssDirectBridge.nativeInit(videoWidth, videoHeight, 1.0f)
+            if (handle == 0L) {
                 Log.e(TAG, "Failed to init native context")
                 return
             }
+            nativeHandle = handle
             renderBitmap = Bitmap.createBitmap(videoWidth, videoHeight, Bitmap.Config.ARGB_8888)
+            renderWidth = videoWidth
+            renderHeight = videoHeight
             initialized = true
+            loadFonts(handle)
+            detected = true
             // Don't auto-select track 0 — wait for syncAssTrackWithExoPlayer
             // to call selectTrackByFormat with the correct track
             Log.d(TAG, "Initialized (no track selected yet)")
-            flushPendingFonts()
-            onAssTrackDetected?.invoke()
         }
+        if (detected) onAssTrackDetected?.invoke()
+    }
+
+    /** Add system, app and buffered attachment fonts, then rebuild the selector once. */
+    private fun loadFonts(handle: Long) {
+        for (dir in SYSTEM_FONT_DIRS + File(appContext.filesDir, "fonts").absolutePath) {
+            AssDirectBridge.nativeAddFontDir(handle, dir)
+        }
+        for ((name, data) in pendingFonts) {
+            AssDirectBridge.nativeAddFont(handle, name, data)
+        }
+        Log.d(TAG, "Flushed ${pendingFonts.size} pending fonts")
+        pendingFonts.clear()
+        AssDirectBridge.nativeFinalizeFonts(handle)
+        fontsDirty = false
     }
 
     /**
      * Called by [AssTrackOutput] for each subtitle dialogue line.
      */
     fun onSubtitleSample(trackId: Int, timeUs: Long, data: ByteArray) {
-        if (!initialized || nativeHandle == 0L) return
-
         val line = String(data, Charsets.UTF_8)
         if (!line.startsWith("Dialogue:")) return
 
@@ -98,14 +164,23 @@ class AssHandler(
         val startMs = timeUs / 1000
         val chunkData = "${parts[2].trim()},${parts[3].trim()},${parts[4].trim()},${parts[5].trim()},${parts[6].trim()},${parts[7].trim()},${parts[8].trim()},${parts[9].trim()},${parts[10]}"
         val chunkBytes = chunkData.toByteArray(Charsets.UTF_8)
+        val key = "$startMs|$durationMs|${parts[2].trim()}|${chunkData.hashCode()}"
 
-        // Store event for this track (for replay on track switch)
-        trackEvents.getOrPut(trackId) { java.util.concurrent.CopyOnWriteArrayList() }
-            .add(Triple(startMs, durationMs, chunkBytes))
+        lock.withLock {
+            if (released || !initialized || nativeHandle == 0L) return
 
-        // Only feed to libass if this is the active track
-        if (trackId == activeTrackId) {
-            AssDirectBridge.nativeProcessChunk(nativeHandle, chunkBytes, startMs, durationMs)
+            // A seek makes the extractor emit already-seen samples again; feeding
+            // them to libass twice would draw each line doubled.
+            if (!seenEvents.getOrPut(trackId) { HashSet() }.add(key)) return
+
+            // Store event for this track (for replay on track switch)
+            trackEvents.getOrPut(trackId) { ArrayList() }
+                .add(AssEvent(startMs, durationMs, chunkBytes))
+
+            // Only feed to libass if this is the active track
+            if (trackId == activeTrackId) {
+                AssDirectBridge.nativeProcessChunk(nativeHandle, chunkBytes, startMs, durationMs)
+            }
         }
     }
 
@@ -113,35 +188,30 @@ class AssHandler(
      * Called by [AssMatroskaExtractor] for font attachments.
      */
     fun onFontAttachment(name: String, data: ByteArray) {
-        if (!initialized || nativeHandle == 0L) {
-            // Buffer fonts that arrive before libass is initialized
-            pendingFonts.add(Pair(name, data))
-            return
-        }
-        AssDirectBridge.nativeAddFont(nativeHandle, name, data)
-        Log.d(TAG, "Added font: $name (${data.size} bytes)")
-    }
-
-    private fun flushPendingFonts() {
-        if (pendingFonts.isEmpty()) return
-        for ((name, data) in pendingFonts) {
+        lock.withLock {
+            if (released) return
+            if (!initialized || nativeHandle == 0L) {
+                // Buffer fonts that arrive before libass is initialized
+                pendingFonts.add(Pair(name, data))
+                return
+            }
             AssDirectBridge.nativeAddFont(nativeHandle, name, data)
+            fontsDirty = true
+            Log.d(TAG, "Added font: $name (${data.size} bytes)")
         }
-        Log.d(TAG, "Flushed ${pendingFonts.size} pending fonts")
-        pendingFonts.clear()
+        // Attachments come in bursts; rebuild the font selector once afterwards.
+        workerHandler.removeCallbacks(finalizeFontsRunnable)
+        workerHandler.postDelayed(finalizeFontsRunnable, FONT_FINALIZE_DELAY_MS)
     }
 
     /**
      * Switch to a different subtitle track.
      */
     fun selectTrack(trackId: Int) {
-        if (!initialized || nativeHandle == 0L) return
-        val header = trackHeaders[trackId] ?: return
-
-        // Run on main thread to avoid race with render loop
-        mainHandler.post {
+        lock.withLock {
+            if (released || !initialized || nativeHandle == 0L) return
+            val header = trackHeaders[trackId] ?: return
             activeTrackId = trackId
-            overlayView.clear()
 
             // Flush and reload header
             AssDirectBridge.nativeFlush(nativeHandle)
@@ -150,14 +220,17 @@ class AssHandler(
             // Replay stored events for this track
             val events = trackEvents[trackId]
             if (events != null) {
-                for ((startMs, durationMs, chunkBytes) in events) {
-                    AssDirectBridge.nativeProcessChunk(nativeHandle, chunkBytes, startMs, durationMs)
+                for (event in events) {
+                    AssDirectBridge.nativeProcessChunk(nativeHandle, event.chunk, event.startMs, event.durationMs)
                 }
                 Log.d(TAG, "Switched to track $trackId, replayed ${events.size} events")
             } else {
                 Log.d(TAG, "Switched to track $trackId")
             }
+        }
 
+        runOnMain {
+            overlayView.clear()
             // Restart render loop (may have been stopped by clearOverlay)
             startRenderLoop()
         }
@@ -167,18 +240,21 @@ class AssHandler(
      * Select ASS track by matching language/title from ExoPlayer's format.
      */
     fun selectTrackByFormat(format: Format) {
-        if (!initialized) return
         val targetLang = format.language?.lowercase() ?: ""
         val targetLabel = format.label?.lowercase() ?: ""
 
-        for ((id, fmt) in trackFormats) {
-            val lang = fmt.language?.lowercase() ?: ""
-            val label = fmt.label?.lowercase() ?: ""
-            if ((targetLabel.isNotEmpty() && label == targetLabel) ||
-                (targetLang.isNotEmpty() && lang == targetLang)) {
-                selectTrack(id)
-                return
-            }
+        val match = lock.withLock {
+            if (!initialized) return
+            trackFormats.entries.firstOrNull { (_, fmt) ->
+                val lang = fmt.language?.lowercase() ?: ""
+                val label = fmt.label?.lowercase() ?: ""
+                (targetLabel.isNotEmpty() && label == targetLabel) ||
+                    (targetLang.isNotEmpty() && lang == targetLang)
+            }?.key
+        }
+        if (match != null) {
+            selectTrack(match)
+            return
         }
 
         // No matching ASS track — clear overlay
@@ -186,78 +262,72 @@ class AssHandler(
         Log.d(TAG, "No matching ASS track for lang=$targetLang, label=$targetLabel")
     }
 
+    private fun runOnMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
+    }
+
+    // Main thread only
     private fun startRenderLoop() {
         stopRenderLoop()
+        if (released) return
 
-        val callback = object : android.view.Choreographer.FrameCallback {
+        val callback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
                 renderFrame()
                 // Schedule next frame
                 if (choreographerCallback === this) {
-                    android.view.Choreographer.getInstance().postFrameCallback(this)
+                    Choreographer.getInstance().postFrameCallback(this)
                 }
             }
         }
         choreographerCallback = callback
-        android.view.Choreographer.getInstance().postFrameCallback(callback)
+        Choreographer.getInstance().postFrameCallback(callback)
     }
 
+    // Main thread only
     private fun stopRenderLoop() {
         choreographerCallback?.let {
-            android.view.Choreographer.getInstance().removeFrameCallback(it)
+            Choreographer.getInstance().removeFrameCallback(it)
         }
         choreographerCallback = null
     }
 
-    private fun renderFrame() {
-        if (!initialized || nativeHandle == 0L) return
-        val bitmap = renderBitmap ?: return
-
-        val positionMs = player?.currentPosition ?: (currentTimeUs / 1000)
-        val hasContent = AssDirectBridge.nativeRender(nativeHandle, positionMs, bitmap)
-
-        if (hasContent) {
-            overlayView.updateBitmap(bitmap)
-        } else {
-            overlayView.clear()
-        }
+    /** Render size for the current overlay: its aspect ratio, capped to the configured size. */
+    private fun desiredRenderSize(): Pair<Int, Int> {
+        val viewW = overlayView.width
+        val viewH = overlayView.height
+        if (viewW <= 0 || viewH <= 0) return Pair(videoWidth, videoHeight)
+        val scale = min(1f, max(videoWidth, videoHeight).toFloat() / max(viewW, viewH))
+        return Pair(max(1, (viewW * scale).roundToInt()), max(1, (viewH * scale).roundToInt()))
     }
 
-    /**
-     * Convert MKV ASS dialogue format to standard ASS format.
-     * MKV:      "Dialogue: 0:00:00:00,Duration,ReadOrder,Layer,Style,Name,ML,MR,MV,Effect,Text"
-     *           Start is always 0, Duration is relative. Real start comes from timeUs.
-     * Standard: "Dialogue: Layer,Start,End,Style,Name,ML,MR,MV,Effect,Text"
-     */
-    private fun convertMkvDialogue(line: String, timeUs: Long): String? {
-        if (!line.startsWith("Dialogue:")) return null
+    private fun renderFrame() {
+        // Never block the UI thread behind font loading or an event replay.
+        if (!lock.tryLock()) return
+        try {
+            if (released || !initialized || nativeHandle == 0L) return
 
-        val content = line.removePrefix("Dialogue:").trimStart()
-        val parts = content.split(",", limit = 11)
-        if (parts.size < 11) return null
+            val (width, height) = desiredRenderSize()
+            if (width != renderWidth || height != renderHeight) {
+                if (AssDirectBridge.nativeResize(nativeHandle, width, height) != 0) return
+                renderBitmap?.recycle()
+                renderBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                renderWidth = width
+                renderHeight = height
+            }
+            val bitmap = renderBitmap ?: return
 
-        val durationStr = parts[1].trim() // Duration in H:MM:SS:CC format
-        val readOrder = parts[2].trim()
-        val layer = parts[3].trim()
-        val style = parts[4].trim()
-        val name = parts[5].trim()
-        val marginL = parts[6].trim()
-        val marginR = parts[7].trim()
-        val marginV = parts[8].trim()
-        val effect = parts[9].trim()
-        val text = parts[10]
+            val positionMs = player?.currentPosition ?: (currentTimeUs / 1000)
+            val hasContent = AssDirectBridge.nativeRender(nativeHandle, positionMs, bitmap)
 
-        // Parse duration from the MKV "end" field
-        val durationMs = parseAssTimeMs(durationStr)
-
-        // Calculate real start and end from timeUs
-        val startMs = timeUs / 1000
-        val endMs = startMs + durationMs
-
-        val startStr = formatAssTime(startMs)
-        val endStr = formatAssTime(endMs)
-
-        return "Dialogue: $layer,$startStr,$endStr,$style,$name,$marginL,$marginR,$marginV,$effect,$text"
+            if (hasContent) {
+                overlayView.updateBitmap(bitmap)
+            } else {
+                overlayView.clear()
+            }
+        } finally {
+            lock.unlock()
+        }
     }
 
     /** Parse "H:MM:SS:CC" to milliseconds */
@@ -271,75 +341,45 @@ class AssHandler(
         return h * 3600000 + m * 60000 + s * 1000 + cs * 10
     }
 
-    /** Format milliseconds to "H:MM:SS.CC" */
-    private fun formatAssTime(ms: Long): String {
-        val totalCs = ms / 10
-        val cs = totalCs % 100
-        val totalS = totalCs / 100
-        val s = totalS % 60
-        val totalM = totalS / 60
-        val m = totalM % 60
-        val h = totalM / 60
-        return "%d:%02d:%02d.%02d".format(h, m, s, cs)
-    }
-
     /**
      * Clear the overlay and stop rendering ASS (e.g. when switching to non-ASS track).
      */
     fun clearOverlay() {
-        activeTrackId = -1
-        if (nativeHandle != 0L) {
-            AssDirectBridge.nativeFlush(nativeHandle)
+        lock.withLock {
+            activeTrackId = -1
+            if (nativeHandle != 0L) {
+                AssDirectBridge.nativeFlush(nativeHandle)
+            }
         }
-        stopRenderLoop()
+        runOnMain { stopRenderLoop() }
         mainHandler.post { overlayView.clear() }
     }
 
     /**
-     * Set up fontconfig by extracting fonts.conf to app's files dir
-     * and setting FONTCONFIG_PATH environment variable.
-     */
-    private fun setupFontconfig() {
-        try {
-            val fontconfigDir = File(context.filesDir, "fontconfig")
-            fontconfigDir.mkdirs()
-            val cacheDir = File(context.cacheDir, "fontconfig")
-            cacheDir.mkdirs()
-
-            // Generate fonts.conf with app-writable cache directory
-            val confFile = File(fontconfigDir, "fonts.conf")
-            confFile.writeText("""<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
-<fontconfig>
-    <dir>/system/fonts</dir>
-    <cachedir>${cacheDir.absolutePath}</cachedir>
-    <match target="pattern">
-        <edit name="antialias" mode="assign"><bool>true</bool></edit>
-        <edit name="hinting" mode="assign"><bool>true</bool></edit>
-    </match>
-</fontconfig>""")
-
-            Os.setenv("FONTCONFIG_PATH", fontconfigDir.absolutePath, true)
-            Log.d(TAG, "Fontconfig configured, cache: ${cacheDir.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to setup fontconfig", e)
-        }
-    }
-
-    /**
-     * Release all resources.
+     * Release all resources. The handler cannot be used afterwards; create a new one.
      */
     fun release() {
-        stopRenderLoop()
+        released = true
+        runOnMain { stopRenderLoop() }
+        workerHandler.removeCallbacksAndMessages(null)
+        workerThread.quitSafely()
 
-        if (nativeHandle != 0L) {
-            AssDirectBridge.nativeDestroy(nativeHandle)
-            nativeHandle = 0L
+        lock.withLock {
+            if (nativeHandle != 0L) {
+                AssDirectBridge.nativeDestroy(nativeHandle)
+                nativeHandle = 0L
+            }
+            renderBitmap?.recycle()
+            renderBitmap = null
+            initialized = false
+            activeTrackId = -1
+            fontsDirty = false
+            trackFormats.clear()
+            trackHeaders.clear()
+            trackEvents.clear()
+            seenEvents.clear()
+            pendingFonts.clear()
         }
-        renderBitmap?.recycle()
-        renderBitmap = null
-        initialized = false
-        trackFormats.clear()
         mainHandler.post { overlayView.clear() }
         Log.d(TAG, "Released")
     }

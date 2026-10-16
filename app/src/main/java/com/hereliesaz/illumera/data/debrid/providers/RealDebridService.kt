@@ -4,9 +4,14 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.int
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
+import com.hereliesaz.illumera.data.debrid.strOrNull
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
+import com.hereliesaz.illumera.data.model.debrid.DebridItemOrigin
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import javax.inject.Inject
@@ -23,14 +28,14 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
         return when (val result = http.get("$base/user", auth(apiKey))) {
             is DebridResult.Success -> {
                 val obj = result.value.asObjectOrNull()
-                val username = obj?.get("username")?.asString ?: obj?.get("email")?.asString
+                val username = obj?.str("username") ?: obj?.str("email")
                 if (username == null) {
                     DebridResult.Failure("Unexpected response from Real-Debrid")
                 } else {
                     DebridResult.Success(
                         DebridAccountInfo(
                             username = username,
-                            premiumUntil = obj?.get("expiration")?.asString
+                            premiumUntil = obj?.str("expiration")
                         )
                     )
                 }
@@ -44,15 +49,15 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
             is DebridResult.Success -> result.value.asArrayOrNull()?.mapNotNull { el ->
                 val o = el.asObjectOrNull() ?: return@mapNotNull null
                 DebridItem(
-                    id = o.get("id")?.asString ?: return@mapNotNull null,
-                    name = o.get("filename")?.asString ?: "Unknown",
+                    id = o.str("id") ?: return@mapNotNull null,
+                    name = o.str("filename") ?: "Unknown",
                     provider = DebridProvider.REAL_DEBRID,
-                    sizeBytes = o.get("bytes")?.asLong,
-                    status = o.get("status")?.asString,
-                    progress = o.get("progress")?.asInt,
-                    addedAt = o.get("added")?.asString,
-                    infoHash = o.get("hash")?.asString,
-                    directLinks = o.get("links")?.asArrayOrNull()?.mapNotNull { it.asString } ?: emptyList()
+                    sizeBytes = o.long("bytes"),
+                    status = o.str("status"),
+                    progress = o.int("progress"),
+                    addedAt = o.str("added"),
+                    infoHash = o.str("hash"),
+                    directLinks = o.get("links")?.asArrayOrNull()?.mapNotNull { it.strOrNull() } ?: emptyList()
                 )
             } ?: emptyList()
             is DebridResult.Failure -> return result
@@ -61,15 +66,16 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
         val downloads = when (val result = http.get("$base/downloads", auth(apiKey))) {
             is DebridResult.Success -> result.value.asArrayOrNull()?.mapNotNull { el ->
                 val o = el.asObjectOrNull() ?: return@mapNotNull null
-                val link = o.get("download")?.asString
+                val link = o.str("download")
                 DebridItem(
-                    id = o.get("id")?.asString ?: return@mapNotNull null,
-                    name = o.get("filename")?.asString ?: "Unknown",
+                    id = o.str("id") ?: return@mapNotNull null,
+                    name = o.str("filename") ?: "Unknown",
                     provider = DebridProvider.REAL_DEBRID,
-                    sizeBytes = o.get("filesize")?.asLong,
+                    sizeBytes = o.long("filesize"),
                     status = "downloaded",
-                    addedAt = o.get("generated")?.asString,
-                    directLinks = listOfNotNull(link)
+                    addedAt = o.str("generated"),
+                    directLinks = listOfNotNull(link),
+                    origin = DebridItemOrigin.DOWNLOAD
                 )
             } ?: emptyList()
             is DebridResult.Failure -> emptyList()
@@ -82,7 +88,8 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
         if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
 
         // Pre-unrestricted download links (from the downloads endpoint) need no resolution.
-        if (item.status == "downloaded" && item.directLinks.any { it.contains("/d/") }) {
+        // Torrent links are hoster links (also real-debrid.com/d/...) and must be unrestricted.
+        if (item.origin == DebridItemOrigin.DOWNLOAD) {
             return DebridResult.Success(item.directLinks.first())
         }
 
@@ -92,9 +99,9 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
             val result = http.post("$base/unrestrict/link", auth(apiKey), form = mapOf("link" to link))
             if (result is DebridResult.Success) {
                 val obj = result.value.asObjectOrNull() ?: continue
-                val url = obj.get("download")?.asString ?: continue
-                val filename = obj.get("filename")?.asString ?: ""
-                val type = obj.get("type")?.asString ?: ""
+                val url = obj.str("download") ?: continue
+                val filename = obj.str("filename") ?: ""
+                val type = obj.str("type") ?: ""
                 if (firstUrl == null) firstUrl = url
                 if (type == "video" || isVideoFilename(filename)) return DebridResult.Success(url)
             }
@@ -104,10 +111,9 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
     }
 
     override suspend fun deleteItem(apiKey: String, item: DebridItem): DebridResult<Unit> {
-        val path = if (item.status == "downloaded" && item.directLinks.any { it.contains("/d/") }) {
-            "downloads"
-        } else {
-            "torrents"
+        val path = when (item.origin) {
+            DebridItemOrigin.DOWNLOAD -> "downloads"
+            DebridItemOrigin.TORRENT -> "torrents"
         }
         return when (val result = http.delete("$base/$path/delete/${item.id}", auth(apiKey))) {
             is DebridResult.Success -> DebridResult.Success(Unit)

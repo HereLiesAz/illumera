@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SpaceBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -91,7 +92,7 @@ fun SearchScreen(
     // ("view_more_movies" / "view_more_series") that opened the page above it.
     focusMemory: FocusMemory = rememberFocusMemory()
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val keyboardController = LocalSoftwareKeyboardController.current
 
     // Internal Requesters
@@ -132,11 +133,12 @@ fun SearchScreen(
         neighbour = { null }
     )
 
-    // Continuously maintain focus when system keyboard is active
+    // Keep focus on the field while the system keyboard is up (typing). D-pad navigation
+    // out of the field clears keepFocused, which ends this loop.
     LaunchedEffect(keepFocused) {
         while (keepFocused) {
             delay(100)
-            searchInputFocusRequester.requestFocus()
+            runCatching { searchInputFocusRequester.requestFocus() }
         }
     }
 
@@ -190,7 +192,7 @@ fun SearchScreen(
                     },
                     onOpenSystemKeyboard = {
                         keepFocused = true
-                        searchInputFocusRequester.requestFocus()
+                        runCatching { searchInputFocusRequester.requestFocus() }
                         try { keyboardController?.show() } catch (_: Exception) { }
                     },
                     entryRequester = entryRequester,
@@ -419,14 +421,22 @@ fun SearchScreen(
                                         if (it.type == KeyEventType.KeyDown) {
                                             when (it.key) {
                                                 Key.DirectionLeft -> {
-                                                    entryRequester.requestFocus()
+                                                    keepFocused = false
+                                                    runCatching { entryRequester.requestFocus() }
                                                     true
                                                 }
                                                 Key.DirectionUp -> {
                                                     if (isTopNav) {
-                                                        drawerRequester.requestFocus()
+                                                        keepFocused = false
+                                                        runCatching { drawerRequester.requestFocus() }
                                                     }
                                                     true
+                                                }
+                                                // The user is navigating away, not typing:
+                                                // stop pulling focus back to the field.
+                                                Key.DirectionDown, Key.DirectionRight -> {
+                                                    keepFocused = false
+                                                    false
                                                 }
                                                 else -> false
                                             }
@@ -634,7 +644,7 @@ private fun RecentSearchesList(
             val leftInterceptor = if (keyboardRequester != null) {
                 Modifier.onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
-                        keyboardRequester.requestFocus()
+                        runCatching { keyboardRequester.requestFocus() }
                         true
                     } else false
                 }
@@ -752,7 +762,7 @@ fun TvKeyboard(
                                 isRightEdge && it.key == Key.DirectionRight -> {
                                     if (!hasResults) return@onPreviewKeyEvent true
                                     if (contentEntryRequester != null) {
-                                        contentEntryRequester.requestFocus()
+                                        runCatching { contentEntryRequester.requestFocus() }
                                         return@onPreviewKeyEvent true
                                     }
                                     false
@@ -760,7 +770,7 @@ fun TvKeyboard(
                                 // Up arrow on top row -> go to drawer/topnav
                                 isTopRow && it.key == Key.DirectionUp -> {
                                     if (isTopNav) {
-                                        drawerRequester.requestFocus()
+                                        runCatching { drawerRequester.requestFocus() }
                                     }
                                     true // Always consume to prevent default focus search finding sidebar
                                 }
@@ -817,7 +827,7 @@ fun TvKeyboard(
                         if (it.key == Key.DirectionRight && it.type == KeyEventType.KeyDown) {
                             if (!hasResults) return@onPreviewKeyEvent true
                             if (contentEntryRequester != null) {
-                                contentEntryRequester.requestFocus()
+                                runCatching { contentEntryRequester.requestFocus() }
                                 return@onPreviewKeyEvent true
                             }
                             false

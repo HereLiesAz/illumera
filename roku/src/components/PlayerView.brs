@@ -5,6 +5,8 @@ sub init()
     m.video.ObserveField("position", "OnPosition")
     m.video.ObserveField("duration", "OnDuration")
     m.lastSave = 0
+    m.ready = false
+    m.subtitleNodes = []
 end sub
 
 sub onParams()
@@ -25,12 +27,15 @@ end sub
 ' Stremio subtitles for this video, gathered before playback (Roku reads tracks at start).
 sub LoadSubtitlesThenPlay()
     m.subtitles = []
+    m.subtitleNodes = []
     m.subtitleTasks = 0
     p = m.top.params
     seriesId = p.videoId.Split(":")[0]
     for each addon in EnabledAddons()
         if Supports(addon, "subtitles") and AcceptsId(addon, seriesId) then
             task = CreateObject("roSGNode", "HttpTask")
+            ' Kept in m so the tasks aren't collected before they answer.
+            m.subtitleNodes.Push(task)
             task.ObserveField("response", "OnSubtitles")
             task.request = { kind: "json", url: addon.transportUrl + "/subtitles/" + EncodeId(p.mediaType) + "/" + EncodeId(p.videoId) + ".json" }
             task.control = "run"
@@ -135,6 +140,9 @@ sub PlayUrl(stream as Object, url as String)
         content.HttpHeaders = list
     end if
     m.video.content = content
+    ' A new source reports its own positions; none counts until it is playing.
+    m.ready = false
+    m.lastSave = 0
     if m.resumeAt <> invalid and m.resumeAt > 5 then m.video.seek = m.resumeAt
     m.video.control = "play"
     m.video.SetFocus(true)
@@ -148,13 +156,15 @@ end function
 sub Fallback(reason as Dynamic)
     text = "This source failed to play."
     if reason <> invalid then text = reason
+    ' The next source resumes where the failed one got to (m.resumeAt keeps the saved point otherwise).
+    if m.ready and m.video.position > 5 then m.resumeAt = m.video.position
     m.index = m.index + 1
-    m.resumeAt = invalid
     Say(text + " Trying the next source.")
     PlayCurrent()
 end sub
 
 sub OnState()
+    if m.video.state = "playing" then m.ready = true
     if m.video.state = "error" then Fallback(invalid)
     if m.video.state = "finished" then Save()
 end sub
@@ -170,12 +180,16 @@ sub OnDuration()
     end if
 end sub
 
+' Saves every 10 s of progress, and after a seek back (a jump of more than 2 s backwards).
+' Nothing is saved before the current source is playing, so the position a source reports
+' while it loads (0) can't overwrite the resume point.
 sub OnPosition()
-    if m.video.position - m.lastSave >= 10 or m.video.position < m.lastSave then Save()
+    if not m.ready then return
+    if m.video.position - m.lastSave >= 10 or m.video.position < m.lastSave - 2 then Save()
 end sub
 
 sub Save()
-    if m.video.duration <= 0 then return
+    if m.video.duration <= 0 or not m.ready then return
     m.lastSave = m.video.position
     meta = m.top.params.meta
     SaveProgress({ type: meta.type, id: meta.id, name: meta.name, poster: meta.poster, videoId: m.top.params.videoId, time: m.video.position, duration: m.video.duration, updatedAt: CreateObject("roDateTime").AsSeconds() })

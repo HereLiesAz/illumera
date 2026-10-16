@@ -20,13 +20,14 @@ TV, MVVM with Hilt dependency injection, Room for local persistence.
 ## Data layer (`app/src/main/java/com/hereliesaz/illumera/data/`)
 
 **Persistence** (`data/local/`, `data/model/`): a single Room database
-(`LumeraDatabase`, currently migrated through version 45) with one DAO,
+(`LumeraDatabase`, currently at version 54) with one DAO,
 `AddonDao`, that — despite the name — covers addons, catalog configs, hub
 rows/items, profiles, themes, watch history, watchlist, series
 "next up" tracking, and recent searches. Entities: `AddonEntity`,
 `CatalogConfigEntity`, `HubRowEntity`/`HubRowItemEntity`, `ProfileEntity`,
 `ThemeEntity`, `WatchHistoryEntity`, `WatchlistEntity`,
-`SeriesNextUpEntity`, `RecentSearchEntity`. Model sub-packages
+`SeriesNextUpEntity`, `RecentSearchEntity`, `HistoryTombstoneEntity`,
+`RuntimeOwnerEntity`. Model sub-packages
 (`model/debrid`, `model/introdb`, `model/stremio`, `model/tmdb`,
 `model/trakt`) hold API DTOs.
 
@@ -94,15 +95,16 @@ Feature-per-package, each typically a `Screen` composable plus a
 
 ### Navigation
 
-`MainActivity.kt` does **not** use a Jetpack `NavHost` graph — the
-`androidx.navigation.compose` imports there are unused. Navigation is a
-manual state machine inside one `setContent` block: a `NavDestination` enum
-drives which of `NavDrawer`/`TopNavigationBar` is shown (position is a
-per-profile preference, cross-faded), a `rememberSaveable var activeView`
-string switches between full-screen composables (`"menu"`, `"details"`,
-`"grid"`, `"player"`, trailer, …), and selection/player state travels as
-plain `mutableStateOf` fields rather than route arguments. D-pad focus is
-managed by hand via a map of `FocusRequester`s per destination.
+Navigation uses **Navigation 3** (`androidx.navigation3`): `MainActivity.kt`
+renders a `NavDisplay` over a `NavBackStack<NavKey>` that is saved across
+process death (`ui/navigation/Routes.kt`). The keys are `@Serializable` data
+classes holding only strings and ints. Exactly one `MainRootKey` (`HomeKey`,
+`MoviesKey`, `SeriesKey`, `SearchKey`, `WatchlistKey`, `AddonsKey`, …) sits at
+the bottom of the stack for the screen chosen in the menu, and detail,
+player and other screens are pushed above it. A `NavDestination` enum drives
+which of `NavDrawer`/`TopNavigationBar` is shown (position is a per-profile
+preference, cross-faded) in `MainShell`. D-pad focus is managed by hand via
+`FocusRequester`s per destination.
 
 ### Player
 
@@ -117,9 +119,8 @@ skew there is dangerous.
 
 `data/model/stremio/` holds the manifest/catalog/meta/stream models.
 `AddonRepository` fetches catalogs page-by-page (skip-based pagination,
-terminating when a page comes back empty or entirely duplicate — there is
-currently no hard page-count ceiling despite a `MAX_CATALOG_PAGES = 30`
-constant on the class; it's unused dead code, not an enforced cap),
+terminating when a page comes back empty or entirely duplicate; there is
+no hard page-count ceiling),
 searches Cinemeta directly for movies/series in parallel, sanitizes
 malformed catalog entries, and applies per-request timeouts (10s catalog,
 20s stream) — all through `StremioApiService`
@@ -132,7 +133,9 @@ What illumera reads beyond the protocol, for addon authors, is in
 ## Auto-update
 
 `data/update/AppUpdateManager` polls the GitHub Releases API, compares the
-latest release's tag against `BuildConfig.VERSION_NAME`, validates the
+latest release's version against `BuildConfig.VERSION_NAME` (a four-component
+`major.minor.patch.build` name: the release tag carries the first three and the
+APK filename `illumera-<version>-release.apk` the fourth), validates the
 release's `.apk` asset URL against an allow-list, and drives a
 `StateFlow<UpdateState>` (`Idle → Checking → UpdateAvailable/UpToDate/Error
 → Downloading → ReadyToInstall`) that `MainActivity` renders as dialogs and

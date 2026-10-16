@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -71,11 +72,11 @@ fun DashboardEditorScreen(
             if (viewModel.consumeDashboardModified()) latestOnDashboardChanged()
         }
     }
-    val configs by viewModel.configs.collectAsState()
-    val hubRows by viewModel.hubRows.collectAsState()
+    val configs by viewModel.configs.collectAsStateWithLifecycle()
+    val hubRows by viewModel.hubRows.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf("home") }
     var genreChanges by remember(currentProfile?.id) { mutableIntStateOf(0) }
-    val availableGenres by viewModel.availableGenres(selectedTab).collectAsState()
+    val availableGenres by viewModel.availableGenres(selectedTab).collectAsStateWithLifecycle()
     var focusedTab by remember { mutableStateOf("home") }
 
     var dialogState by remember { mutableStateOf<DialogState>(DialogState.None) }
@@ -538,7 +539,7 @@ fun DashboardEditorScreen(
         DialogState.None -> {}
         is DialogState.ManageGenres -> {
             if (currentProfile != null) {
-                val genres by viewModel.availableGenres(state.screen).collectAsState()
+                val genres by viewModel.availableGenres(state.screen).collectAsStateWithLifecycle()
                 val hidden = remember(currentProfile.id, state.screen, genreChanges) {
                     viewModel.disabledGenres(currentProfile.id, state.screen)
                 }

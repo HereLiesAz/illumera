@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks'
-import { probeServer, server, serverUrl, STREMIO_DEFAULT, TORRSERVER_DEFAULT } from '../core/streamingServer'
+import { probeServer, server, serverUrl, STREMIO_DEFAULT, torrServerDefault } from '../core/streamingServer'
 import { useStored } from './hooks'
 
 /** Settings section: where the streaming server is, and which one answered. */
@@ -24,7 +24,7 @@ export function StreamingServerSection() {
         In a browser, run TorrServer or Stremio Service. Leave the address empty to find either on its usual port.
       </p>
       <form class="hstack" onSubmit={(e) => { e.preventDefault(); check(draft) }}>
-        <input class="field" style={{ maxWidth: '22rem' }} value={draft} placeholder={`${TORRSERVER_DEFAULT} or ${STREMIO_DEFAULT}`}
+        <input class="field" style={{ maxWidth: '22rem' }} value={draft} placeholder={`${torrServerDefault()} or ${STREMIO_DEFAULT}`}
           onInput={(e) => setDraft((e.target as HTMLInputElement).value)} />
         <button class="btn" type="submit" disabled={checking}>{checking ? 'Checking…' : 'Check'}</button>
         <span class={found ? 'muted' : 'error'}>

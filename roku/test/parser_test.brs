@@ -45,6 +45,25 @@ sub Main()
     out = Titles(SortStreams([St("1080p Hindi"), St("1080p 10 GB"), St("1080p ok")], "movie", ["a"], prefs))
     Expect("phrase and max size", out, "1080p ok")
 
+    Expect("public http upgraded", TransportUrl("http://addon.example/x/manifest.json"), "https://addon.example/x")
+    Expect("default port dropped", UpgradeUrl("http://addon.example:80/x"), "https://addon.example/x")
+    Expect("port kept", UpgradeUrl("http://addon.example:7000/x"), "https://addon.example:7000/x")
+    Expect("stremio scheme", TransportUrl("stremio://addon.example/manifest.json"), "https://addon.example")
+    Expect("https untouched", UpgradeUrl("https://addon.example/x"), "https://addon.example/x")
+    Expect("lan ip stays http", UpgradeUrl("http://192.168.1.5:11470/x"), "http://192.168.1.5:11470/x")
+    Expect("172.16 stays http", UpgradeUrl("http://172.16.0.9/x"), "http://172.16.0.9/x")
+    Expect("172.32 upgraded", UpgradeUrl("http://172.32.0.1/x"), "https://172.32.0.1/x")
+    Expect("localhost stays http", UpgradeUrl("http://localhost:8090"), "http://localhost:8090")
+    Expect(".local stays http", UpgradeUrl("http://nas.local:8080/x"), "http://nas.local:8080/x")
+    Expect("ipv6 loopback stays http", UpgradeUrl("http://[::1]:11470/x"), "http://[::1]:11470/x")
+    Expect("public ipv6 upgraded", UpgradeUrl("http://[2001:db8::1]/x"), "https://[2001:db8::1]/x")
+    Expect("look-alike 10. host upgraded", UpgradeUrl("http://10.example.com/x"), "https://10.example.com/x")
+    Expect("look-alike 127. host upgraded", UpgradeUrl("http://127.evil.com/x"), "https://127.evil.com/x")
+    Expect("octet over 255 upgraded", UpgradeUrl("http://300.1.1.1/x"), "https://300.1.1.1/x")
+    Expect("types listed", AcceptsType({ manifest: { types: ["movie"] } }, "series"), false)
+    Expect("types match", AcceptsType({ manifest: { types: ["movie"] } }, "movie"), true)
+    Expect("no types accepts all", AcceptsType({ manifest: {} }, "series"), true)
+
     if m.failures = 0 then print "ALL PASSED" else print m.failures.ToStr() + " FAILED"
 end sub
 

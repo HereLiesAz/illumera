@@ -158,6 +158,8 @@ sealed class StremioAuthError : Exception() {
         override val cause: Throwable? = null
     ) : StremioAuthError()
     data class UnknownError(override val message: String) : StremioAuthError()
+    /** A bounded social-login poll ended before the user finished OAuth; safe to poll again. */
+    data class PollWindowExpired(override val message: String) : StremioAuthError()
 }
 
 @Singleton

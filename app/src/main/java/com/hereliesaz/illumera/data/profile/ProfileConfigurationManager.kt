@@ -428,6 +428,11 @@ class ProfileConfigurationManager @Inject constructor(
             .remove("${profileId}_movies").remove("${profileId}_series")
             .remove("${profileId}_movies_disabled").remove("${profileId}_series_disabled")
             .apply()
+        // Library default sort (WatchlistScreen / SettingsScreen) is keyed per profile id;
+        // a later profile reusing the id must not inherit it.
+        context.getSharedPreferences("illumera_watchlist_ui", Context.MODE_PRIVATE).edit()
+            .remove("sort_$profileId")
+            .apply()
         stremioAuthManager.clearCredentialsForProfile(profileId)
 
         if (getLastActiveProfileId() == profileId) {

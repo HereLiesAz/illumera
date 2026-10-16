@@ -537,6 +537,7 @@ class HomeViewModel @Inject constructor(
             return
         }
         if (configId in loadingMoreRows) return // Already loading
+        if (configId in exhaustedCatalogRows) return // Last page came back empty
 
         // Find the row in the current state
         val currentRows = _state.value.rows
@@ -554,6 +555,9 @@ class HomeViewModel @Inject constructor(
 
         // Pending buffer empty — fetch next page from API
         loadingMoreRows.add(configId)
+        val generation = screenDataGeneration
+        val initiatingProfileId = _state.value.loadedProfileId
+        val initiatingScreen = _state.value.loadedScreen
 
         viewModelScope.launch {
             try {
@@ -571,12 +575,31 @@ class HomeViewModel @Inject constructor(
                 val secondOffset = pairedRowFetchOffsets.getOrPut(configId) {
                     row.fetchedSecondCount
                 }
-                val firstItems = if (row.primarySupportsSkip)
-                    repository.fetchNextCatalogPage(row.catalogUrl, firstOffset)
-                else emptyList()
-                val secondItems = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
-                    repository.fetchNextCatalogPage(row.secondCatalogUrl, secondOffset)
-                else emptyList()
+                // A half that is not requested counts as a successful empty page. A half that
+                // timed out or errored is a failure, which says nothing about the row's end.
+                val firstResult = if (row.primarySupportsSkip)
+                    repository.fetchNextCatalogPageResult(row.catalogUrl, firstOffset)
+                else Result.success(emptyList<MetaItem>())
+                val secondResult = if (row.secondSupportsSkip && row.secondCatalogUrl != null)
+                    repository.fetchNextCatalogPageResult(row.secondCatalogUrl, secondOffset)
+                else Result.success(emptyList<MetaItem>())
+                val firstItems = firstResult.getOrDefault(emptyList())
+                val secondItems = secondResult.getOrDefault(emptyList())
+                // Same owner guard as the aggregate branch: a page that arrives after a
+                // profile/screen switch must not touch the new screen's rows or cursors.
+                if (generation != screenDataGeneration ||
+                    _state.value.loadedProfileId != initiatingProfileId ||
+                    _state.value.loadedScreen != initiatingScreen ||
+                    profileConfigurationManager.activeProfileId.value != initiatingProfileId
+                ) return@launch
+                if (firstItems.isEmpty() && secondItems.isEmpty()) {
+                    // Only a successful empty page on both cursors means nothing is left; a
+                    // timeout or error must stay retryable on the next scroll.
+                    if (firstResult.isSuccess && secondResult.isSuccess) {
+                        exhaustedCatalogRows.add(configId)
+                    }
+                    return@launch
+                }
                 rowFetchOffsets[configId] = firstOffset + firstItems.size
                 pairedRowFetchOffsets[configId] = secondOffset + secondItems.size
 
@@ -607,7 +630,7 @@ class HomeViewModel @Inject constructor(
             } catch (_: Exception) {
                 // Silently fail - user can try scrolling again
             } finally {
-                loadingMoreRows.remove(configId)
+                if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
             }
         }
     }
@@ -929,7 +952,7 @@ class HomeViewModel @Inject constructor(
                     logo = enrichment.logo,
                     description = enrichment.description,
                     releaseInfo = enrichment.releaseInfo,
-                    imdbRating = enrichment.rating?.let { String.format("%.1f", it) },
+                    imdbRating = enrichment.rating?.let { String.format(java.util.Locale.US, "%.1f", it) },
                     runtime = enrichment.runtimeMinutes?.let { "${it}m" },
                     genres = enrichment.genres.ifEmpty { null }
                 )

@@ -57,6 +57,34 @@ Java_io_github_assrender_AssDirectBridge_nativeAddFont(
     if (cname) (*env)->ReleaseStringUTFChars(env, name, cname);
 }
 
+JNIEXPORT jint JNICALL
+Java_io_github_assrender_AssDirectBridge_nativeAddFontDir(
+        JNIEnv *env, jobject thiz, jlong handle, jstring dir) {
+    (void)thiz;
+    AssDirectContext *ctx = (AssDirectContext *)(intptr_t)handle;
+    if (!ctx || !dir) return 0;
+
+    const char *cdir = (*env)->GetStringUTFChars(env, dir, NULL);
+    if (!cdir) return 0;
+    int added = ass_direct_add_font_dir(ctx, cdir);
+    (*env)->ReleaseStringUTFChars(env, dir, cdir);
+    return added;
+}
+
+JNIEXPORT void JNICALL
+Java_io_github_assrender_AssDirectBridge_nativeFinalizeFonts(
+        JNIEnv *env, jobject thiz, jlong handle) {
+    (void)env; (void)thiz;
+    ass_direct_finalize_fonts((AssDirectContext *)(intptr_t)handle);
+}
+
+JNIEXPORT jint JNICALL
+Java_io_github_assrender_AssDirectBridge_nativeResize(
+        JNIEnv *env, jobject thiz, jlong handle, jint width, jint height) {
+    (void)env; (void)thiz;
+    return ass_direct_resize((AssDirectContext *)(intptr_t)handle, width, height);
+}
+
 JNIEXPORT void JNICALL
 Java_io_github_assrender_AssDirectBridge_nativeProcessChunk(
         JNIEnv *env, jobject thiz,
@@ -97,14 +125,31 @@ Java_io_github_assrender_AssDirectBridge_nativeRender(
     AssDirectContext *ctx = (AssDirectContext *)(intptr_t)handle;
     if (!ctx || !bitmap) return JNI_FALSE;
 
+    // The renderer writes width x height RGBA_8888 pixels; refuse any bitmap
+    // that does not match so a stale or foreign bitmap can never be overrun.
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        LOGE("Failed to query bitmap info");
+        return JNI_FALSE;
+    }
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        (int)info.width != ass_direct_width(ctx) ||
+        (int)info.height != ass_direct_height(ctx) ||
+        info.stride < info.width * 4u) {
+        LOGE("Bitmap mismatch: %ux%u format=%d stride=%u, expected %dx%d RGBA_8888",
+             info.width, info.height, info.format, info.stride,
+             ass_direct_width(ctx), ass_direct_height(ctx));
+        return JNI_FALSE;
+    }
+
     void *pixels = NULL;
     int ret = AndroidBitmap_lockPixels(env, bitmap, &pixels);
-    if (ret != ANDROID_BITMAP_RESULT_SUCCESS) {
+    if (ret != ANDROID_BITMAP_RESULT_SUCCESS || !pixels) {
         LOGE("Failed to lock bitmap pixels: %d", ret);
         return JNI_FALSE;
     }
 
-    int has_content = ass_direct_render(ctx, time_ms, (uint8_t *)pixels);
+    int has_content = ass_direct_render(ctx, time_ms, (uint8_t *)pixels, info.stride);
 
     AndroidBitmap_unlockPixels(env, bitmap);
     return has_content ? JNI_TRUE : JNI_FALSE;

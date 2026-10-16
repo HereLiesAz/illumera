@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { internal, magnet, peerSources, pickFileIndex, probeServer, server, serverUrl, torrentUrl } from '../src/core/streamingServer'
+import { internal, magnet, peerSources, pickFileIndex, probeServer, server, torrServerDefault, serverUrl, torrentUrl } from '../src/core/streamingServer'
 import { isPlayable } from '../src/player/session'
 
 const hash = 'a'.repeat(40)
@@ -72,5 +72,17 @@ describe('streaming servers', () => {
     await expect(torrentUrl({ infoHash: 'nope' }, { url: 'http://x', kind: 'stremio' })).rejects.toThrow('no valid torrent hash')
     vi.stubGlobal('fetch', async () => { throw new TypeError('Failed to fetch') })
     await expect(torrentUrl({ infoHash: hash }, { url: 'http://x', kind: 'torrserver' })).rejects.toThrow('isn’t reachable')
+  })
+})
+
+describe('torrServerDefault', () => {
+  afterEach(() => { delete (globalThis as { __ILLUMERA_TORRSERVER__?: string }).__ILLUMERA_TORRSERVER__ })
+
+  it('is 8090 unless the desktop app names another loopback port', () => {
+    expect(torrServerDefault()).toBe('http://127.0.0.1:8090')
+    ;(globalThis as { __ILLUMERA_TORRSERVER__?: string }).__ILLUMERA_TORRSERVER__ = 'http://127.0.0.1:51234'
+    expect(torrServerDefault()).toBe('http://127.0.0.1:51234')
+    ;(globalThis as { __ILLUMERA_TORRSERVER__?: string }).__ILLUMERA_TORRSERVER__ = 'http://evil.test:80'
+    expect(torrServerDefault()).toBe('http://127.0.0.1:8090')
   })
 })

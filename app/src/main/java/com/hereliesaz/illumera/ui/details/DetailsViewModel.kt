@@ -286,9 +286,8 @@ class DetailsViewModel @Inject constructor(
                         } else {
                             // All episodes watched or no history — use next-up if aired
                             val nextUp = dao.getSeriesNextUp(profileId, streamFetchId)
-                            val today = java.time.LocalDate.now().toString()
                             val hasAired = nextUp != null && !nextUp.isComplete &&
-                                (nextUp.nextReleased == null || nextUp.nextReleased <= today)
+                                com.hereliesaz.illumera.data.model.isReleasedBy(nextUp.nextReleased)
                             if (hasAired) {
                                 "${streamFetchId}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
                             } else null
@@ -663,7 +662,7 @@ class DetailsViewModel @Inject constructor(
                         releaseInfo = enrichment.releaseInfo ?: currentMeta.releaseInfo,
                         // Rating from TMDB
                         imdbRating = enrichment.rating?.let {
-                            String.format("%.1f", it)
+                            String.format(java.util.Locale.US, "%.1f", it)
                         } ?: currentMeta.imdbRating,
                         // Runtime
                         runtime = enrichment.runtimeMinutes?.let { "${it}m" } ?: currentMeta.runtime

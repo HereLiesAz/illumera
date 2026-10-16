@@ -154,8 +154,9 @@ function byKey(key: SortKey): (a: Ranked, b: Ranked) => number {
 }
 
 /**
- * Filters and ranks streams from every addon: closeness to the target size, then seeders
- * below the minimum, then addon order, then the chosen sort keys.
+ * Filters and ranks streams from every addon: seeders below the minimum first (the fewer
+ * short, the better), then closeness to the target size, then addon order, then the chosen
+ * sort keys.
  */
 export function sortStreams(streams: Stream[], type: string, addonOrder: string[], prefs: SortPrefs = DEFAULT_SORT_PREFS): Stream[] {
   const phrases = prefs.excludePhrases.map((p) => p.trim().toLowerCase()).filter(Boolean)

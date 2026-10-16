@@ -42,9 +42,9 @@ class CleartextGuardTest {
 
     @Test
     fun `local host detection`() {
-        listOf("localhost", "10.0.0.5", "172.16.0.1", "172.31.255.1", "192.168.0.2", "169.254.1.1", "nas.local", "::1", "fd00::1")
+        listOf("localhost", "10.0.0.5", "172.16.0.1", "172.31.255.1", "192.168.0.2", "169.254.1.1", "nas.local", "::1", "fd00::1", "100.64.0.1", "100.127.255.254")
             .forEach { assertTrue(it, CleartextGuard.isLocalHost(it)) }
-        listOf("8.8.8.8", "172.32.0.1", "192.169.0.1", "example.com", "2001:db8::1", "10.example.com")
+        listOf("8.8.8.8", "172.32.0.1", "192.169.0.1", "example.com", "2001:db8::1", "10.example.com", "100.63.255.255", "100.128.0.1")
             .forEach { assertFalse(it, CleartextGuard.isLocalHost(it)) }
     }
 }

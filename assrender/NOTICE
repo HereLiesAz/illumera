@@ -3,8 +3,18 @@ Copyright 2026 LumeraD3v
 
 This product includes software developed by:
 
-- FFmpeg (https://ffmpeg.org/) — LGPL 2.1+
 - libass (https://github.com/libass/libass) — ISC License
 - FreeType (https://freetype.org/) — FreeType License / GPLv2
-- FriBidi (https://github.com/fribidi/fribidi) — LGPL 2.1+
+- FriBidi (https://github.com/fribidi/fribidi) — LGPL 2.1+ (linked dynamically; replaceable shared library)
 - HarfBuzz (https://github.com/harfbuzz/harfbuzz) — Old MIT License
+
+The native libraries above are the only third-party code shipped by this module
+(prebuilt/ holds their headers and shared objects). FFmpeg, mbedTLS, fontconfig
+and expat are not used or distributed.
+
+Licensing note: the assrender source code is licensed under the Apache License 2.0
+(see LICENSE in this directory). The surrounding Illumera repository is licensed
+under GPLv3; Apache 2.0 code is compatible with GPLv3, so when assrender is built
+into Illumera the combined work is distributed under GPLv3, while this module's own
+code remains available under Apache 2.0 on its own. Bundled third-party libraries
+keep their own licenses as listed above.

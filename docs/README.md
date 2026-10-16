@@ -10,7 +10,8 @@ built internally and how to work on it safely.
   signing, and in detail: the Stremio Media3 fork rebuild that produces the
   app's custom ExoPlayer/decoder binaries. **Read this before touching
   `playbackcore/`, `ci/build-stremio-media.sh`, the `media3` version in
-  `gradle/libs.versions.toml`, or `.github/workflows/release.yml`** — a
+  `gradle/libs.versions.toml`, or the release workflows (hand-off stubs in
+  `.github/workflows/`; the build is in `HereLiesAz/workflows`)** — a
   mismatch there causes a crash that only reproduces when starting
   playback, which has shipped to users before.
 - [**ADDONS.md**](ADDONS.md) — for addon developers: what illumera reads

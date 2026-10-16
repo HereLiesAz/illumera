@@ -25,8 +25,11 @@ export function openStream(meta: Meta, video: MetaVideo | undefined, streams: St
     navigate({ name: 'player' })
     return undefined
   }
-  if (stream.externalUrl) { window.open(stream.externalUrl, '_blank', 'noopener'); return undefined }
-  if (stream.infoHash) return 'Torrent sources need Stremio’s streaming server. Install and start Stremio Service, then check it in Settings.'
+  if (stream.externalUrl) {
+    if (/^https?:/i.test(stream.externalUrl)) { window.open(stream.externalUrl, '_blank', 'noopener'); return undefined }
+    return 'This source opens a link that can’t be used here.'
+  }
+  if (stream.infoHash) return 'Torrent sources need a torrent streaming server: the desktop app’s built-in TorrServer, or Stremio Service. Start one, then check it in Settings.'
   if (stream.ytId) return 'YouTube sources can’t be played here.'
   return 'This source can’t be played.'
 }

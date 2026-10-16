@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const target = process.argv[2]
 if (target !== 'webos' && target !== 'tizen') {
@@ -17,7 +18,7 @@ if (target !== 'webos' && target !== 'tizen') {
   process.exit(2)
 }
 
-const root = new URL('..', import.meta.url).pathname
+const root = fileURLToPath(new URL('..', import.meta.url))
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const run = (cmd, args) => execFileSync(cmd, args, { cwd: root, stdio: 'inherit' })
 

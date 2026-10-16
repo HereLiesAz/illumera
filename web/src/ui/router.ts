@@ -12,7 +12,8 @@ export type Route =
 
 export function parseRoute(hash: string): Route {
   const [path, qs = ''] = hash.replace(/^#/, '').split('?')
-  const parts = path.split('/').filter(Boolean).map(decodeURIComponent)
+  let parts: string[]
+  try { parts = path.split('/').filter(Boolean).map(decodeURIComponent) } catch { return { name: 'home' } } // malformed %-escape
   const params = new URLSearchParams(qs)
   switch (parts[0]) {
     case 'search': return { name: 'search', query: params.get('q') ?? '' }

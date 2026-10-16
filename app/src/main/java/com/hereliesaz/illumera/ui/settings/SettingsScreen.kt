@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -454,8 +455,8 @@ private fun WatchlistSettings(
     onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
     debridViewModel: DebridLibraryViewModel = hiltViewModel()
 ) {
-    val debridProvider by debridViewModel.connectedProvider.collectAsState()
-    val debridState by debridViewModel.uiState.collectAsState()
+    val debridProvider by debridViewModel.connectedProvider.collectAsStateWithLifecycle()
+    val debridState by debridViewModel.uiState.collectAsStateWithLifecycle()
     val latestOnPlay by rememberUpdatedState(onPlayResolvedStream)
     val toastContext = androidx.compose.ui.platform.LocalContext.current
     DisposableEffect(debridViewModel) {
@@ -502,18 +503,25 @@ private fun WatchlistSettings(
             }
             items(modes) { mode ->
                 val selected = defaultSort == mode.first
+                val interactionSource = remember { MutableInteractionSource() }
+                val focused by interactionSource.collectIsFocusedAsState()
                 Text(
                     text = "${if (selected) "✓  " else ""}${mode.second}",
                     color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = if (selected) 0.13f else 0.05f))
-                        .clickable {
+                        .background(Color.White.copy(alpha = if (focused) 0.2f else if (selected) 0.13f else 0.05f))
+                        // D-pad users need to see which row has focus.
+                        .border(
+                            width = 2.dp,
+                            color = if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable(interactionSource = interactionSource, indication = null) {
                             defaultSort = mode.first
                             prefs.edit().putString("sort_${currentProfile?.id}", mode.first).apply()
                         }
-                        .focusable()
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 )
             }

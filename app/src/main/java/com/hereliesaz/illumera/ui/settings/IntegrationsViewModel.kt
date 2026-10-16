@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
+import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -40,7 +41,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.ui.addons.CINEMETA_TRANSPORT_URL
@@ -51,6 +51,10 @@ sealed class IntegrationsEvent {
     data class LoginError(val message: String) : IntegrationsEvent()
     data class SyncComplete(val count: Int) : IntegrationsEvent()
     data class PushComplete(val count: Int) : IntegrationsEvent()
+    /** Ask the user before replacing the account's addon collection with [count] local addons. */
+    data class ConfirmPushAddons(val count: Int) : IntegrationsEvent()
+    /** Ask the user before an addon import that removes [removeCount] local addons. */
+    data class ConfirmSyncAddons(val removeCount: Int) : IntegrationsEvent()
     object Disconnected : IntegrationsEvent()
     data class StremioSyncReset(val removedAddons: Int) : IntegrationsEvent()
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
@@ -115,6 +119,8 @@ class IntegrationsViewModel @Inject constructor(
 
     private var facebookLoginJob: Job? = null
     private var appleLoginJob: Job? = null
+    private var addonSyncJob: Job? = null
+    private var addonPushJob: Job? = null
 
     init {
         // Observe connection state
@@ -267,9 +273,7 @@ class IntegrationsViewModel @Inject constructor(
         _uiState.update { it.copy(facebookLoginState = FacebookLoginState.WaitingForUser(url)) }
 
         facebookLoginJob = viewModelScope.launch {
-            val result = withTimeoutOrNull(5 * 60_000L) {
-                stremioAuthManager.completeFacebookLogin(state)
-            }
+            val result = pollSocialLogin { stremioAuthManager.completeFacebookLogin(state) }
             if (result == null) {
                 _uiState.update { it.copy(
                     facebookLoginState = FacebookLoginState.Error("Facebook login timed out. Please try again.")
@@ -304,7 +308,13 @@ class IntegrationsViewModel @Inject constructor(
         _uiState.update { it.copy(appleLoginState = AppleLoginState.WaitingForUser(url)) }
 
         appleLoginJob = viewModelScope.launch {
-            val result = stremioAuthManager.completeAppleLogin(state)
+            val result = pollSocialLogin { stremioAuthManager.completeAppleLogin(state) }
+            if (result == null) {
+                _uiState.update { it.copy(
+                    appleLoginState = AppleLoginState.Error("Apple login timed out. Please try again.")
+                ) }
+                return@launch
+            }
             result.fold(
                 onSuccess = {
                     _uiState.update { it.copy(appleLoginState = AppleLoginState.Success) }
@@ -375,15 +385,62 @@ class IntegrationsViewModel @Inject constructor(
      * account, replacing what's stored there.
      */
     fun pushAddonsToStremio() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+        if (addonPushJob?.isActive == true) return
+        addonPushJob = viewModelScope.launch {
             val urls = addonRepository.getAddons().firstOrNull()?.map { it.transportUrl } ?: emptyList()
-            val result = stremioAuthManager.pushAddonCollection(urls)
-            _uiState.update { it.copy(isLoading = false) }
-            result.fold(
-                onSuccess = { _events.send(IntegrationsEvent.PushComplete(urls.size)) },
-                onFailure = { error -> _events.send(IntegrationsEvent.LoginError(error.message ?: "Push failed")) }
-            )
+            // Never wipe the account's collection with an empty push.
+            if (urls.isEmpty()) {
+                _events.send(IntegrationsEvent.LoginError("No local addons to push."))
+                return@launch
+            }
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val result = stremioAuthManager.pushAddonCollection(urls)
+                result.fold(
+                    onSuccess = { _events.send(IntegrationsEvent.PushComplete(urls.size)) },
+                    onFailure = { error -> _events.send(IntegrationsEvent.LoginError(error.message ?: "Push failed")) }
+                )
+            } finally {
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    /** Emits [IntegrationsEvent.ConfirmPushAddons] so the UI can confirm before [pushAddonsToStremio]. */
+    fun requestPushAddons() {
+        viewModelScope.launch {
+            val count = addonRepository.getAddons().firstOrNull()?.size ?: 0
+            if (count == 0) {
+                _events.send(IntegrationsEvent.LoginError("No local addons to push."))
+            } else {
+                _events.send(IntegrationsEvent.ConfirmPushAddons(count))
+            }
+        }
+    }
+
+    /**
+     * Manual addon import: if it would remove local addons, emits
+     * [IntegrationsEvent.ConfirmSyncAddons] with the count first; otherwise syncs directly.
+     */
+    fun requestSyncAddons() {
+        if (addonSyncJob?.isActive == true) return
+        viewModelScope.launch {
+            val entries = stremioAuthManager.fetchAddons().getOrElse { error ->
+                _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not import Stremio addons."))
+                return@launch
+            }
+            val remoteSet = entries.map { normalizeTransportUrl(it.transportUrl) }.filter { it.isNotBlank() }.toSet()
+            val removeCount = if (remoteSet.isEmpty()) 0 else {
+                addonRepository.getAddons().first().count { addon ->
+                    val localUrl = normalizeTransportUrl(addon.transportUrl)
+                    localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet
+                }
+            }
+            if (removeCount > 0) {
+                _events.send(IntegrationsEvent.ConfirmSyncAddons(removeCount))
+            } else {
+                syncAddons()
+            }
         }
     }
 
@@ -392,8 +449,9 @@ class IntegrationsViewModel @Inject constructor(
      * Uses the stored authKey - does not require password.
      */
     fun syncAddons() {
+        if (addonSyncJob?.isActive == true) return
         val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId() ?: return
-        viewModelScope.launch {
+        addonSyncJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
                 profileConfigurationManager.withActiveProfileRuntime(initiatingProfileId) {
@@ -424,7 +482,9 @@ class IntegrationsViewModel @Inject constructor(
                     }
 
                     val remoteSet = remoteUrls.toSet()
-                    current.forEach { addon ->
+                    // An empty remote collection (new account, or a server hiccup) must not
+                    // wipe every local addon; only prune when the account lists some.
+                    if (remoteSet.isNotEmpty()) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
                         if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
                             try {
@@ -542,17 +602,17 @@ class IntegrationsViewModel @Inject constructor(
     // ── Debrid ──
 
     fun connectDebrid(provider: DebridProvider, apiKey: String) {
+        // Set synchronously so a second tap (or a phone-sent key) can't start a parallel connect.
+        if (_uiState.value.debridConnecting) return
+        _uiState.update { it.copy(debridConnecting = true) }
         viewModelScope.launch {
-            _uiState.update { it.copy(debridConnecting = true) }
-            when (val result = debridManager.connect(provider, apiKey)) {
-                is DebridResult.Success -> {
-                    _uiState.update { it.copy(debridConnecting = false) }
-                    _events.send(IntegrationsEvent.DebridConnected(provider))
+            try {
+                when (val result = debridManager.connect(provider, apiKey)) {
+                    is DebridResult.Success -> _events.send(IntegrationsEvent.DebridConnected(provider))
+                    is DebridResult.Failure -> _events.send(IntegrationsEvent.DebridError(result.message))
                 }
-                is DebridResult.Failure -> {
-                    _uiState.update { it.copy(debridConnecting = false) }
-                    _events.send(IntegrationsEvent.DebridError(result.message))
-                }
+            } finally {
+                _uiState.update { it.copy(debridConnecting = false) }
             }
         }
     }
@@ -586,11 +646,14 @@ class IntegrationsViewModel @Inject constructor(
 
     fun syncWutch() {
         if (_uiState.value.wutchBusy) return
+        _uiState.update { it.copy(wutchBusy = true) }
         viewModelScope.launch {
-            _uiState.update { it.copy(wutchBusy = true) }
-            wutchManager.importAll()
-                .onFailure { _events.send(IntegrationsEvent.WutchError(it.message ?: "wutch.tv sync failed.")) }
-            _uiState.update { it.copy(wutchBusy = false) }
+            try {
+                wutchManager.importAll()
+                    .onFailure { _events.send(IntegrationsEvent.WutchError(it.message ?: "wutch.tv sync failed.")) }
+            } finally {
+                _uiState.update { it.copy(wutchBusy = false) }
+            }
         }
     }
 

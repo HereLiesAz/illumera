@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -116,7 +117,7 @@ fun HomeScreen(
     onMovieClick: (MetaItem) -> Unit,
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val genreContext = LocalContext.current
     val displayState = remember(tab, state, currentProfile?.id) {
         if (tab != DashboardTab.HOME) {
@@ -1022,14 +1023,14 @@ internal fun buildContinueWatchingItems(
 
     // 2. Next-up entries: series where all in-progress episodes are watched,
     //    but there's a next episode available. Only include if the episode has aired.
-    val today = java.time.LocalDate.now().toString() // "2026-04-06"
+    val today = java.time.LocalDate.now()
     for (nextUp in seriesNextUp) {
         // Already shown as in-progress, or a duplicate next-up row
         if (!seriesIdsIncluded.add(nextUp.seriesId)) continue
 
         // Check if the next episode has aired (null = assume aired)
         val released = nextUp.nextReleased
-        if (released != null && released > today) continue
+        if (!com.hereliesaz.illumera.data.model.isReleasedBy(released, today)) continue
 
         // Complete with no next episode date = truly done, skip
         if (nextUp.isComplete && released == null) continue
@@ -1687,10 +1688,22 @@ internal fun TrailerPreview(
         }
     }
     var ready by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
-    val player = remember(videoUrl, item?.id, item?.type) {
-        videoUrl?.let { url ->
+    // Created in a DisposableEffect, not remember{}: a composition that is abandoned
+    // before it commits would otherwise leak a prepared ExoPlayer that is never released.
+    var player by remember(videoUrl, item?.id, item?.type) { mutableStateOf<ExoPlayer?>(null) }
+    // Settings/viewport changes shouldn't dispose a player until its own URL
+    // identity changes. The lifecycle observer reads the latest play condition.
+    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
+    val latestSoundEnabled by rememberUpdatedState(soundEnabled)
+    SideEffect {
+        player?.volume = if (soundEnabled) 0.6f else 0f
+        player?.playWhenReady = shouldPlay &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    }
+    DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
+        val created = videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = if (soundEnabled) 0.6f else 0f
+                volume = if (latestSoundEnabled) 0.6f else 0f
                 repeatMode = Player.REPEAT_MODE_ONE
                 addListener(object : Player.Listener {
                     override fun onRenderedFirstFrame() {
@@ -1702,38 +1715,30 @@ internal fun TrailerPreview(
                 })
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
-                playWhenReady = autoPlay && isVisible
+                playWhenReady = shouldPlay &&
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             }
         }
-    }
-    // Settings/viewport changes shouldn't dispose a player until its own URL
-    // identity changes. The lifecycle observer reads the latest play condition.
-    val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
-    SideEffect {
-        player?.volume = if (soundEnabled) 0.6f else 0f
-        player?.playWhenReady = shouldPlay &&
-            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-    }
-    DisposableEffect(player, lifecycleOwner) {
+        player = created
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_PAUSE -> {
                     // Pausing does not invalidate the already rendered first frame.
                     // Clearing ready here hid the video permanently on resume:
                     // onRenderedFirstFrame isn't guaranteed to fire a second time.
-                    player?.pause()
+                    created?.pause()
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (player != null) player.playWhenReady = shouldPlay
+                    if (created != null) created.playWhenReady = shouldPlay
                 }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) player?.pause()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            player?.release()
+            player = null
+            created?.release()
         }
     }
     if (player != null) {

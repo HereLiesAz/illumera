@@ -13,7 +13,9 @@ export function TraktSection() {
 
   const poll = (c: DeviceCode, interval: number) => {
     timer.current = window.setTimeout(async () => {
-      const result = await pollDeviceAuth(c).catch(() => 'pending' as const)
+      const result = await pollDeviceAuth(c).catch(() => 'retry' as const)
+      if (result === 'retry') { setMessage({ text: 'Trakt is unreachable right now. Still trying…', error: true }) }
+      else if (result !== 'failed') setMessage(undefined)
       if (result === 'done') { setCode(undefined); setMessage({ text: 'Connected to Trakt. What you watch is scrobbled.' }); return }
       if (result === 'failed') { setCode(undefined); setMessage({ text: 'The code expired or was declined. Try again.', error: true }); return }
       poll(c, result === 'slow_down' ? interval + 1 : interval)

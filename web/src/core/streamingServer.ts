@@ -17,6 +17,15 @@ export type ServerKind = 'torrserver' | 'stremio'
 export interface ServerInfo { url: string; kind: ServerKind }
 
 export const TORRSERVER_DEFAULT = 'http://127.0.0.1:8090'
+
+/**
+ * Where to look for TorrServer by default: the desktop app starts it on a free port when
+ * 8090 is taken and says so in `window.__ILLUMERA_TORRSERVER__` (loopback addresses only).
+ */
+export function torrServerDefault(): string {
+  const told = (globalThis as { __ILLUMERA_TORRSERVER__?: unknown }).__ILLUMERA_TORRSERVER__
+  return typeof told === 'string' && /^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(told) ? told : TORRSERVER_DEFAULT
+}
 export const STREMIO_DEFAULT = 'http://127.0.0.1:11470'
 const VIDEO = /\.(mkv|mp4|m4v|avi|mov|webm|wmv|ts|m2ts|mpg|mpeg|flv|ogv)$/i
 const PROBE_TIMEOUT_MS = 2500
@@ -63,7 +72,7 @@ async function identify(url: string): Promise<ServerKind | null> {
 export async function probeServer(): Promise<ServerInfo | null> {
   const set = trim(serverUrl.get())
   let found: ServerInfo | null = null
-  for (const url of set ? [set] : [TORRSERVER_DEFAULT, STREMIO_DEFAULT]) {
+  for (const url of set ? [set] : [torrServerDefault(), STREMIO_DEFAULT]) {
     const kind = await identify(url)
     if (kind) { found = { url, kind }; break }
   }
