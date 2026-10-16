@@ -1,8 +1,15 @@
 #include "ass_direct.h"
 
+#include <ctype.h>
+#include <dirent.h>
+#include <stdarg.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <android/log.h>
 #include <ass/ass.h>
 
@@ -18,7 +25,53 @@ struct AssDirectContext {
     ASS_Library *ass_library;
     ASS_Renderer *ass_renderer;
     ASS_Track *ass_track;
+
+    // Bytes of font data handed to ass_add_font so far (libass keeps a copy).
+    size_t font_bytes;
 };
+
+// libass copies every font passed to ass_add_font and keeps it for the lifetime
+// of the library, so scanning system font directories is bounded to avoid
+// holding the whole of /system/fonts (CJK collections alone are tens of MB).
+#define MAX_FONT_FILE_BYTES   ((size_t)32 * 1024 * 1024)
+#define MAX_FONT_TOTAL_BYTES  ((size_t)64 * 1024 * 1024)
+
+// Route libass diagnostics to logcat. Levels: 0 fatal, 1 error, 2 warning,
+// 3-4 info, 5 verbose (6-7 are very chatty and dropped).
+static void ass_log_cb(int level, const char *fmt, va_list va, void *data) {
+    (void)data;
+    if (level > 5) return;
+    int prio = level <= 1 ? ANDROID_LOG_ERROR
+             : level == 2 ? ANDROID_LOG_WARN
+             : level <= 4 ? ANDROID_LOG_INFO
+                          : ANDROID_LOG_DEBUG;
+    __android_log_vprint(prio, "libass", fmt, va);
+}
+
+// Last-resort font for glyphs/families nothing else matches. Without a system
+// font provider libass has no other fallback source.
+static const char *find_default_font(void) {
+    static const char *const candidates[] = {
+        "/system/fonts/Roboto-Regular.ttf",
+        "/system/fonts/Roboto[wdth,wght].ttf",
+        "/system/fonts/DroidSans.ttf",
+        "/system/fonts/NotoSans-Regular.ttf",
+        NULL
+    };
+    for (int i = 0; candidates[i]; i++) {
+        if (access(candidates[i], R_OK) == 0) return candidates[i];
+    }
+    return NULL;
+}
+
+// libass here is built WITHOUT fontconfig (see scripts/build-libass.sh), so
+// there is no system font provider: only fonts added through ass_add_font
+// (attachments and ass_direct_add_font_dir) are available. (Re)build the font
+// selector from the fonts added so far.
+static void apply_fonts(AssDirectContext *ctx) {
+    ass_set_fonts(ctx->ass_renderer, find_default_font(), "sans-serif",
+                  ASS_FONTPROVIDER_NONE, NULL, 1);
+}
 
 AssDirectContext *ass_direct_init(int width, int height, float font_scale) {
     if (width <= 0 || height <= 0) return NULL;
@@ -36,9 +89,7 @@ AssDirectContext *ass_direct_init(int width, int height, float font_scale) {
         free(ctx);
         return NULL;
     }
-    // Enable libass debug messages
-    ass_set_message_cb(ctx->ass_library,
-        (void (*)(int, const char *, va_list, void *))NULL, NULL);
+    ass_set_message_cb(ctx->ass_library, ass_log_cb, NULL);
     ass_set_extract_fonts(ctx->ass_library, 1);
 
     ctx->ass_renderer = ass_renderer_init(ctx->ass_library);
@@ -52,13 +103,25 @@ AssDirectContext *ass_direct_init(int width, int height, float font_scale) {
     ass_set_storage_size(ctx->ass_renderer, width, height);
     ass_set_frame_size(ctx->ass_renderer, width, height);
     ass_set_font_scale(ctx->ass_renderer, (double)font_scale);
-    // Use fontconfig to discover system fonts (including CJK fallbacks)
-    ass_set_fonts(ctx->ass_renderer, NULL, "sans-serif",
-                  ASS_FONTPROVIDER_FONTCONFIG, NULL, 1);
+    // No fonts yet; the caller adds system/attachment fonts and then calls
+    // ass_direct_finalize_fonts() once.
+    apply_fonts(ctx);
 
-    LOGI("ass_direct initialized: %dx%d, font_scale=%.2f (with system fonts)", width, height, font_scale);
+    LOGI("ass_direct initialized: %dx%d, font_scale=%.2f", width, height, font_scale);
     return ctx;
 }
+
+int ass_direct_resize(AssDirectContext *ctx, int width, int height) {
+    if (!ctx || width <= 0 || height <= 0) return -1;
+    ctx->width = width;
+    ctx->height = height;
+    ass_set_storage_size(ctx->ass_renderer, width, height);
+    ass_set_frame_size(ctx->ass_renderer, width, height);
+    return 0;
+}
+
+int ass_direct_width(const AssDirectContext *ctx) { return ctx ? ctx->width : 0; }
+int ass_direct_height(const AssDirectContext *ctx) { return ctx ? ctx->height : 0; }
 
 int ass_direct_load_header(AssDirectContext *ctx, const char *header_data, int header_size) {
     if (!ctx || !header_data || header_size <= 0) return -1;
@@ -86,12 +149,97 @@ void ass_direct_add_font(AssDirectContext *ctx, const char *name,
                          const char *data, int data_size) {
     if (!ctx || !data || data_size <= 0) return;
     ass_add_font(ctx->ass_library, name, (char *)data, data_size);
-
-    // Re-configure fonts after adding
-    ass_set_fonts(ctx->ass_renderer, NULL, "sans-serif",
-                  ASS_FONTPROVIDER_AUTODETECT, NULL, 1);
-
+    ctx->font_bytes += (size_t)data_size;
     LOGI("Added font: %s (%d bytes)", name ? name : "unnamed", data_size);
+}
+
+void ass_direct_finalize_fonts(AssDirectContext *ctx) {
+    if (!ctx) return;
+    apply_fonts(ctx);
+    LOGI("Fonts finalized (%zu bytes of font data)", ctx->font_bytes);
+}
+
+typedef struct {
+    char *path;
+    const char *name;
+    off_t size;
+} FontFile;
+
+static int has_font_extension(const char *name) {
+    const char *dot = strrchr(name, '.');
+    if (!dot) return 0;
+    return strcasecmp(dot, ".ttf") == 0 || strcasecmp(dot, ".otf") == 0 ||
+           strcasecmp(dot, ".ttc") == 0;
+}
+
+static int compare_font_size(const void *a, const void *b) {
+    const FontFile *fa = a, *fb = b;
+    if (fa->size != fb->size) return fa->size < fb->size ? -1 : 1;
+    return strcmp(fa->name, fb->name);
+}
+
+int ass_direct_add_font_dir(AssDirectContext *ctx, const char *dir) {
+    if (!ctx || !dir) return 0;
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+
+    FontFile *files = NULL;
+    size_t count = 0, cap = 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (!has_font_extension(ent->d_name)) continue;
+        char *path = NULL;
+        size_t path_len = strlen(dir) + 1 + strlen(ent->d_name) + 1;
+        path = malloc(path_len);
+        if (!path) break;
+        snprintf(path, path_len, "%s/%s", dir, ent->d_name);
+
+        struct stat st;
+        if (stat(path, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0 ||
+            (size_t)st.st_size > MAX_FONT_FILE_BYTES) {
+            free(path);
+            continue;
+        }
+        if (count == cap) {
+            size_t new_cap = cap ? cap * 2 : 64;
+            FontFile *grown = realloc(files, new_cap * sizeof(FontFile));
+            if (!grown) { free(path); break; }
+            files = grown;
+            cap = new_cap;
+        }
+        files[count].path = path;
+        files[count].name = path + strlen(dir) + 1;
+        files[count].size = st.st_size;
+        count++;
+    }
+    closedir(d);
+
+    // Smallest first, so the byte budget covers as many families as possible
+    // before the large CJK collections.
+    if (count > 1) qsort(files, count, sizeof(FontFile), compare_font_size);
+
+    int added = 0;
+    for (size_t i = 0; i < count; i++) {
+        size_t size = (size_t)files[i].size;
+        if (ctx->font_bytes + size > MAX_FONT_TOTAL_BYTES) {
+            LOGI("Font budget reached, skipping %s", files[i].name);
+            continue;
+        }
+        FILE *f = fopen(files[i].path, "rb");
+        if (!f) continue;
+        char *buf = malloc(size);
+        if (buf && fread(buf, 1, size, f) == size) {
+            ass_direct_add_font(ctx, files[i].name, buf, (int)size);
+            added++;
+        }
+        free(buf);
+        fclose(f);
+    }
+
+    for (size_t i = 0; i < count; i++) free(files[i].path);
+    free(files);
+    LOGI("Scanned %s: %d fonts added", dir, added);
+    return added;
 }
 
 void ass_direct_process_chunk(AssDirectContext *ctx, const char *data, int size,
@@ -105,27 +253,13 @@ void ass_direct_process_data(AssDirectContext *ctx, const char *data, int size) 
     ass_process_data(ctx->ass_track, (char *)data, size);
 }
 
-static int rgba_buffer_size(const AssDirectContext *ctx, size_t *out_size) {
-    if (!ctx || !out_size || ctx->width <= 0 || ctx->height <= 0) return 0;
-
-    const size_t width = (size_t)ctx->width;
-    const size_t height = (size_t)ctx->height;
-    if (width > SIZE_MAX / height) return 0;
-
-    const size_t pixels = width * height;
-    if (pixels > SIZE_MAX / 4u) return 0;
-
-    *out_size = pixels * 4u;
-    return 1;
-}
-
-int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixels) {
+int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixels,
+                     size_t stride) {
     if (!ctx || !ctx->ass_track || !ctx->ass_renderer || !out_pixels)
         return 0;
-
-    size_t output_size = 0;
-    if (!rgba_buffer_size(ctx, &output_size)) {
-        LOGE("Invalid render dimensions: %dx%d", ctx->width, ctx->height);
+    if (ctx->width <= 0 || ctx->height <= 0 ||
+        (size_t)ctx->width > SIZE_MAX / 4u || stride < (size_t)ctx->width * 4u) {
+        LOGE("Invalid render dimensions: %dx%d stride=%zu", ctx->width, ctx->height, stride);
         return 0;
     }
 
@@ -133,12 +267,18 @@ int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixel
     ASS_Image *img = ass_render_frame(ctx->ass_renderer, ctx->ass_track,
                                       time_ms, &changed);
 
-    memset(out_pixels, 0, output_size);
+    const size_t row_bytes = (size_t)ctx->width * 4u;
+    for (int y = 0; y < ctx->height; y++) {
+        memset(out_pixels + (size_t)y * stride, 0, row_bytes);
+    }
 
     if (!img) return 0;
 
-    // Composite all ASS_Image layers into the RGBA output buffer. Clip every
-    // libass image to the destination frame before doing pointer arithmetic.
+    // Composite all ASS_Image layers into the output buffer. The destination
+    // is an Android ARGB_8888 bitmap, which is PREMULTIPLIED (bytes R,G,B,A in
+    // memory), so colours are stored already multiplied by alpha and layers
+    // are combined with the premultiplied "over" operator. Clip every libass
+    // image to the destination frame before doing pointer arithmetic.
     int has_content = 0;
     while (img) {
         if (!img->bitmap || img->stride <= 0 || img->w <= 0 || img->h <= 0) {
@@ -191,40 +331,28 @@ int ass_direct_render(AssDirectContext *ctx, int64_t time_ms, uint8_t *out_pixel
             continue;
         }
 
-        has_content = 1;
-        uint8_t r = (img->color >> 24) & 0xFF;
-        uint8_t g = (img->color >> 16) & 0xFF;
-        uint8_t b = (img->color >> 8) & 0xFF;
-        uint8_t a = 255 - (img->color & 0xFF);
+        uint32_t r = (img->color >> 24) & 0xFF;
+        uint32_t g = (img->color >> 16) & 0xFF;
+        uint32_t b = (img->color >> 8) & 0xFF;
+        uint32_t a = 255 - (img->color & 0xFF);
 
         for (int y = 0; y < draw_h; y++) {
             const size_t src_row = (size_t)(src_y + y) * (size_t)img->stride;
             const uint8_t *src = img->bitmap + src_row + (size_t)src_x;
-            const size_t pixel_index =
-                (size_t)(dst_y + y) * (size_t)ctx->width + (size_t)dst_x;
-            uint8_t *dst = out_pixels + pixel_index * 4u;
+            uint8_t *dst = out_pixels + (size_t)(dst_y + y) * stride + (size_t)dst_x * 4u;
 
-            for (int x = 0; x < draw_w; x++) {
-                uint8_t alpha = (uint8_t)(((uint32_t)src[x] * a) >> 8);
-                if (alpha == 0) {
-                    dst += 4;
-                    continue;
-                }
+            for (int x = 0; x < draw_w; x++, dst += 4) {
+                // Glyph coverage scaled by the layer opacity, 0..255.
+                uint32_t sa = ((uint32_t)src[x] * a + 127u) / 255u;
+                if (sa == 0) continue;
 
-                uint8_t dst_a = dst[3];
-                if (dst_a == 0) {
-                    dst[0] = r;
-                    dst[1] = g;
-                    dst[2] = b;
-                    dst[3] = alpha;
-                } else {
-                    uint32_t inv = 255 - alpha;
-                    dst[0] = (uint8_t)((alpha * r + inv * dst[0]) / 255);
-                    dst[1] = (uint8_t)((alpha * g + inv * dst[1]) / 255);
-                    dst[2] = (uint8_t)((alpha * b + inv * dst[2]) / 255);
-                    dst[3] = (uint8_t)(alpha + (inv * dst_a) / 255);
-                }
-                dst += 4;
+                has_content = 1;
+                // Premultiplied over: out = src * sa + dst * (1 - sa).
+                uint32_t inv = 255u - sa;
+                dst[0] = (uint8_t)((r * sa + dst[0] * inv + 127u) / 255u);
+                dst[1] = (uint8_t)((g * sa + dst[1] * inv + 127u) / 255u);
+                dst[2] = (uint8_t)((b * sa + dst[2] * inv + 127u) / 255u);
+                dst[3] = (uint8_t)(sa + (dst[3] * inv + 127u) / 255u);
             }
         }
         img = img->next;
