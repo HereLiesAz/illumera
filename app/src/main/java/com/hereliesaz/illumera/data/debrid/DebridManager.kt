@@ -1,6 +1,7 @@
 package com.hereliesaz.illumera.data.debrid
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -18,6 +19,7 @@ import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,17 +49,40 @@ class DebridManager @Inject constructor(
         private const val STALL_BAIL_MS = 60_000L
     }
 
-    private val prefs by lazy {
+    private val prefs: SharedPreferences? by lazy {
+        try {
+            createEncryptedPrefs()
+        } catch (e: Exception) {
+            // Corrupted file or key mismatch: drop only the debrid prefs file (never the
+            // shared master key, which other integrations also use) and try again.
+            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Debrid secure prefs corrupted, resetting", e)
+            clearCorruptedPrefs()
+            try {
+                createEncryptedPrefs()
+            } catch (e2: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Debrid secure storage unavailable", e2)
+                null
+            }
+        }
+    }
+
+    private fun createEncryptedPrefs(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+    }
+
+    private fun clearCorruptedPrefs() {
+        val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
+        File(prefsDir, "$PREFS_NAME.xml").delete()
+        File(prefsDir, "$PREFS_NAME.xml.bak").delete()
     }
 
     private fun activeProfileId(): Int? = profileConfigurationManager.getLastActiveProfileId()
@@ -79,9 +104,9 @@ class DebridManager @Inject constructor(
             return
         }
         _connectedProvider.value = DebridProvider.fromId(
-            prefs.getString(profileKey(KEY_PROVIDER, profileId), null)
+            prefs?.getString(profileKey(KEY_PROVIDER, profileId), null)
         )
-        _connectedUsername.value = prefs.getString(profileKey(KEY_USERNAME, profileId), null)
+        _connectedUsername.value = prefs?.getString(profileKey(KEY_USERNAME, profileId), null)
     }
 
     private fun serviceFor(provider: DebridProvider): DebridService = when (provider) {
@@ -96,7 +121,7 @@ class DebridManager @Inject constructor(
 
     fun getApiKey(): String? {
         val profileId = activeProfileId() ?: return null
-        return prefs.getString(profileKey(KEY_API_KEY, profileId), null)
+        return prefs?.getString(profileKey(KEY_API_KEY, profileId), null)
     }
 
     suspend fun connect(provider: DebridProvider, apiKey: String): DebridResult<DebridAccountInfo> {
@@ -110,8 +135,10 @@ class DebridManager @Inject constructor(
                 // Credential persistence and profile deletion share one process-wide
                 // coordinator. If deletion won the race, do not recreate keys for an ID
                 // that SQLite may later reuse for a different profile.
+                val securePrefs = prefs
+                    ?: return DebridResult.Failure("Secure storage unavailable")
                 val saved = profileMutationCoordinator.withExistingProfile(profileId) {
-                    prefs.edit()
+                    securePrefs.edit()
                         .putString(profileKey(KEY_PROVIDER, profileId), provider.id)
                         .putString(profileKey(KEY_API_KEY, profileId), trimmedKey)
                         .putString(profileKey(KEY_USERNAME, profileId), result.value.username)
@@ -135,22 +162,22 @@ class DebridManager @Inject constructor(
     fun disconnect() {
         val profileId = activeProfileId()
         if (profileId != null) {
-            prefs.edit()
-                .remove(profileKey(KEY_PROVIDER, profileId))
-                .remove(profileKey(KEY_API_KEY, profileId))
-                .remove(profileKey(KEY_USERNAME, profileId))
-                .apply()
+            prefs?.edit()
+                ?.remove(profileKey(KEY_PROVIDER, profileId))
+                ?.remove(profileKey(KEY_API_KEY, profileId))
+                ?.remove(profileKey(KEY_USERNAME, profileId))
+                ?.apply()
         }
         _connectedProvider.value = null
         _connectedUsername.value = null
     }
 
     fun clearForProfile(profileId: Int) {
-        prefs.edit()
-            .remove(profileKey(KEY_PROVIDER, profileId))
-            .remove(profileKey(KEY_API_KEY, profileId))
-            .remove(profileKey(KEY_USERNAME, profileId))
-            .apply()
+        prefs?.edit()
+            ?.remove(profileKey(KEY_PROVIDER, profileId))
+            ?.remove(profileKey(KEY_API_KEY, profileId))
+            ?.remove(profileKey(KEY_USERNAME, profileId))
+            ?.apply()
     }
 
     suspend fun listLibrary(): DebridResult<List<DebridItem>> {
