@@ -1528,19 +1528,23 @@ private fun StremioExternalLinkDialog(
 // DISCONNECT CONFIRMATION DIALOG
 // =============================================================================
 
+/**
+ * Confirmation for a destructive action. Initial focus is on Cancel so a stray D-pad
+ * press can't confirm it.
+ */
 @Composable
-private fun DisconnectConfirmDialog(
+internal fun DisconnectConfirmDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     title: String = "Log out of Stremio?",
     message: String = "This profile will be signed out of Stremio. Installed addons remain, but account sync stops until you sign in again.",
     confirmText: String = "Log Out"
 ) {
-    val confirmFocusRequester = remember { FocusRequester() }
+    val cancelFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         delay(100)
-        runCatching { confirmFocusRequester.requestFocus() }
+        runCatching { cancelFocusRequester.requestFocus() }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1576,15 +1580,15 @@ private fun DisconnectConfirmDialog(
                     IntegrationButton(
                         text = "Cancel",
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        focusRequester = cancelFocusRequester
                     )
 
                     IntegrationButton(
                         text = confirmText,
                         onClick = onConfirm,
                         isDestructive = true,
-                        modifier = Modifier.weight(1f),
-                        focusRequester = confirmFocusRequester
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -2268,6 +2272,7 @@ private fun DebridDialog(
 ) {
     var selectedProvider by remember { mutableStateOf(connectedProvider ?: DebridProvider.REAL_DEBRID) }
     var apiKey by remember { mutableStateOf("") }
+    var confirmDisconnect by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
@@ -2281,6 +2286,19 @@ private fun DebridDialog(
     LaunchedEffect(Unit) {
         delay(150)
         runCatching { focusRequester.requestFocus() }
+    }
+
+    if (confirmDisconnect && connectedProvider != null) {
+        DisconnectConfirmDialog(
+            title = "Disconnect ${connectedProvider.displayName}?",
+            message = "Your debrid cloud library and cached-stream lookups stop for this profile until you connect again.",
+            confirmText = "Disconnect",
+            onDismiss = { confirmDisconnect = false },
+            onConfirm = {
+                confirmDisconnect = false
+                onDisconnect()
+            }
+        )
     }
 
     LaunchedEffect(deviceFormFactor, selectedProvider, connectedProvider) {
@@ -2364,15 +2382,16 @@ private fun DebridDialog(
                         ) {
                             IntegrationButton(
                                 text = "Disconnect",
-                                onClick = onDisconnect,
+                                onClick = { confirmDisconnect = true },
                                 isDestructive = true,
-                                modifier = Modifier.width(130.dp),
-                                focusRequester = focusRequester
+                                modifier = Modifier.width(130.dp)
                             )
+                            // Initial focus lands on the non-destructive action.
                             IntegrationButton(
                                 text = "Close",
                                 onClick = onDismiss,
-                                modifier = Modifier.width(100.dp)
+                                modifier = Modifier.width(100.dp),
+                                focusRequester = focusRequester
                             )
                         }
                     } else {
@@ -2488,6 +2507,20 @@ private fun TraktAuthDialog(
     onDismiss: () -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+
+    if (confirmDisconnect) {
+        DisconnectConfirmDialog(
+            title = "Disconnect Trakt?",
+            message = "Scrobbling and Trakt sync stop for this profile until you connect again.",
+            confirmText = "Disconnect",
+            onDismiss = { confirmDisconnect = false },
+            onConfirm = {
+                confirmDisconnect = false
+                onDisconnect()
+            }
+        )
+    }
 
     LaunchedEffect(authState) {
         delay(200)
@@ -2536,15 +2569,16 @@ private fun TraktAuthDialog(
                     ) {
                         IntegrationButton(
                             text = "Disconnect",
-                            onClick = onDisconnect,
+                            onClick = { confirmDisconnect = true },
                             isDestructive = true,
-                            modifier = Modifier.width(130.dp),
-                            focusRequester = focusRequester
+                            modifier = Modifier.width(130.dp)
                         )
+                        // Initial focus lands on the non-destructive action.
                         IntegrationButton(
                             text = "Close",
                             onClick = onDismiss,
-                            modifier = Modifier.width(100.dp)
+                            modifier = Modifier.width(100.dp),
+                            focusRequester = focusRequester
                         )
                     }
                 } else {
