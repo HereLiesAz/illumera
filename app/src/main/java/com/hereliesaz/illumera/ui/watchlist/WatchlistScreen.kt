@@ -42,7 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,7 +101,7 @@ fun WatchlistScreen(
     viewModel: WatchlistViewModel = hiltViewModel()
 ) {
 
-    val library by viewModel.libraryEntries.collectAsState()
+    val library by viewModel.libraryEntries.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
     val remoteCounts = remember { context.getSharedPreferences("stremio_library_sync", 0) }

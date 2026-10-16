@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -454,8 +455,8 @@ private fun WatchlistSettings(
     onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
     debridViewModel: DebridLibraryViewModel = hiltViewModel()
 ) {
-    val debridProvider by debridViewModel.connectedProvider.collectAsState()
-    val debridState by debridViewModel.uiState.collectAsState()
+    val debridProvider by debridViewModel.connectedProvider.collectAsStateWithLifecycle()
+    val debridState by debridViewModel.uiState.collectAsStateWithLifecycle()
     val latestOnPlay by rememberUpdatedState(onPlayResolvedStream)
     val toastContext = androidx.compose.ui.platform.LocalContext.current
     DisposableEffect(debridViewModel) {

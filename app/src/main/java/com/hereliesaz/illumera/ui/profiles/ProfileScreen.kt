@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -93,8 +94,8 @@ fun ProfileScreen(
     onProfileSelected: (ProfileEntity) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
-    val wizardStep by viewModel.wizardStep.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val wizardStep by viewModel.wizardStep.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -197,8 +198,8 @@ fun ProfileSelectorView(
     var showCopyFromDialog by remember { mutableStateOf(false) }
     var showScratchConfirmDialog by remember { mutableStateOf(false) }
     var showStremioConnectDialog by remember { mutableStateOf(false) }
-    val isInitializingProfile by viewModel.isInitializingProfile.collectAsState()
-    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsState()
+    val isInitializingProfile by viewModel.isInitializingProfile.collectAsStateWithLifecycle()
+    val setupSocialLoginState by viewModel.setupSocialLoginState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -1323,7 +1324,7 @@ fun WizardThemeStep(onFinish: (String) -> Unit, onBack: () -> Unit) {
     val themeManager: ThemeManager = hiltViewModel()
     // Built-in + custom themes, not just DefaultThemes.ALL — otherwise a theme
     // the user created via the theme editor is unreachable from this wizard.
-    val themes by themeManager.availableThemes.collectAsState()
+    val themes by themeManager.availableThemes.collectAsStateWithLifecycle()
     if (themes.isEmpty()) return
     val initialIndex = themes.indexOfFirst { it.id == DefaultThemes.ILLUMERA.id }.takeIf { it >= 0 } ?: 0
     var previewTheme by remember(themes, initialIndex) { mutableStateOf(themes[initialIndex]) }

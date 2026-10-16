@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,8 +58,8 @@ fun ThemeScreen(
 ) {
     if (currentProfile == null) return
 
-    val availableThemes by themeManager.availableThemes.collectAsState()
-    val currentTheme by themeManager.currentTheme.collectAsState()
+    val availableThemes by themeManager.availableThemes.collectAsStateWithLifecycle()
+    val currentTheme by themeManager.currentTheme.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf("all") }
     var focusedTab by remember { mutableStateOf("all") }

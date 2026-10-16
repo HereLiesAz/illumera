@@ -16,7 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -550,8 +550,8 @@ class ExoPlayerBackend(
 
     @Composable
     override fun Content(modifier: Modifier) {
-        val player by _playerReady.collectAsState()
-        val currentUiState by _uiState.collectAsState()
+        val player by _playerReady.collectAsStateWithLifecycle()
+        val currentUiState by _uiState.collectAsStateWithLifecycle()
         if (player != null) {
             AndroidView(
                 modifier = modifier.fillMaxSize(),

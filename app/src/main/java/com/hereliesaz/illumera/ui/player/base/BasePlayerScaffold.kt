@@ -69,7 +69,7 @@ import androidx.compose.ui.res.painterResource
 import com.hereliesaz.illumera.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -196,12 +196,12 @@ fun BasePlayerScaffold(
     isTrailer: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val uiState by playbackController.uiState.collectAsState()
-    val sources by playbackController.sourceOptions.collectAsState()
-    val excludedSourceIds by playbackController.excludedSourceIds.collectAsState()
-    val sourceListDisabled by playbackController.sourceListDisabled.collectAsState()
-    val audioTracks by playbackController.audioTracks.collectAsState()
-    val subtitleTracks by playbackController.subtitleTracks.collectAsState()
+    val uiState by playbackController.uiState.collectAsStateWithLifecycle()
+    val sources by playbackController.sourceOptions.collectAsStateWithLifecycle()
+    val excludedSourceIds by playbackController.excludedSourceIds.collectAsStateWithLifecycle()
+    val sourceListDisabled by playbackController.sourceListDisabled.collectAsStateWithLifecycle()
+    val audioTracks by playbackController.audioTracks.collectAsStateWithLifecycle()
+    val subtitleTracks by playbackController.subtitleTracks.collectAsStateWithLifecycle()
 
     val currentSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
 

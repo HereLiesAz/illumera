@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -116,7 +117,7 @@ fun HomeScreen(
     onMovieClick: (MetaItem) -> Unit,
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val genreContext = LocalContext.current
     val displayState = remember(tab, state, currentProfile?.id) {
         if (tab != DashboardTab.HOME) {
