@@ -184,17 +184,10 @@ class LibraryRefreshService : Service() {
                     .map { it.uniqueId }
                     .toSet()
 
-                if (staleConfigIds.isNotEmpty()) {
-                    val hubItems = dao.getAllHubRowItems().firstOrNull().orEmpty()
-                        .filter { it.configUniqueId in staleConfigIds }
-                    hubItems.forEach { dao.deleteHubRowItem(it.hubRowId, it.configUniqueId) }
-                }
-
-                // Replace this addon's config set atomically enough for the serialized
-                // profile runtime: retained configs keep their customizations, new ones
+                // Replace this addon's config set and drop hub items for removed catalogs
+                // in one transaction: retained configs keep their customizations, new ones
                 // remain hidden, and removed ones disappear.
-                dao.deleteCatalogConfigs(addon.transportUrl)
-                if (addonConfigs.isNotEmpty()) dao.saveCatalogConfigs(addonConfigs)
+                dao.replaceCatalogConfigsForAddon(addon.transportUrl, addonConfigs, staleConfigIds)
             }.onFailure { error ->
                 failures += "${addon.name}: ${error.message ?: "manifest refresh failed"}"
                 Log.w(TAG, "Could not refresh addon ${addon.name}: ${error.message}")
