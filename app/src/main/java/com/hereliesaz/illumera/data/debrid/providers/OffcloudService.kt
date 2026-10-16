@@ -4,6 +4,8 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
