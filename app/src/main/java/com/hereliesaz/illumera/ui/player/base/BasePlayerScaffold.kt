@@ -127,7 +127,7 @@ import coil.compose.AsyncImage
 private const val CONTROLS_AUTO_HIDE_MS = 3_000L
 private const val SEEK_OVERLAY_AUTO_HIDE_MS = 1_500L
 private const val PAUSE_OVERLAY_IDLE_MS = 10_000L
-private const val SUBTITLE_OFF_TRACK_ID = "#none"
+private const val CONSUME_BACK_WINDOW_MS = 500L
 
 private enum class PlayerPanel {
     NONE,
@@ -247,7 +247,17 @@ fun BasePlayerScaffold(
     var hideSeekOverlaySignal by remember { mutableIntStateOf(0) }
     var interactionSignal by remember { mutableIntStateOf(0) }
 
+    // Set when onPreviewKeyEvent already handled a back key, so the BackHandler dispatch
+    // that follows the same press is swallowed. Cleared by the next non-back key or after
+    // a short window, so a later back press (e.g. one that never reached the key handler)
+    // isn't silently dropped.
     var consumeNextBackHandler by remember { mutableStateOf(false) }
+    LaunchedEffect(consumeNextBackHandler) {
+        if (consumeNextBackHandler) {
+            delay(CONSUME_BACK_WINDOW_MS)
+            consumeNextBackHandler = false
+        }
+    }
 
     // Set when the sources panel was opened by handleBackAction() reacting to a dead
     // source, rather than by the user tapping the sources control — closing it in that
@@ -267,10 +277,20 @@ fun BasePlayerScaffold(
     var autoplayCancelled by remember(playbackController) { mutableStateOf(false) }
     var countdownSeconds by remember(playbackController) { mutableIntStateOf(10) }
     var countdownActive by remember(playbackController) { mutableStateOf(false) }
-    // Countdown-expiry and STATE_ENDED can both fire onAutoplayNextEpisode for the same
-    // episode transition (e.g. ended arrives the same tick the countdown hits zero) — this
-    // latch makes sure only one of them actually triggers it.
+    // Countdown-expiry, STATE_ENDED and the manual "next episode" buttons can all fire
+    // onAutoplayNextEpisode for the same episode transition (e.g. ended arrives the same
+    // tick the countdown hits zero) — this latch makes sure only one of them triggers it.
     var autoplayFired by remember(playbackController) { mutableStateOf(false) }
+
+    /** The single path to the next episode: latches [autoplayFired] and stops the countdown. */
+    fun fireNext(): Boolean {
+        if (autoplayFired) return false
+        val handler = onAutoplayNextEpisode ?: return false
+        autoplayFired = true
+        countdownActive = false
+        handler(currentSourceUrl)
+        return true
+    }
 
     val isNearCompletion = remember(uiState.positionMs, uiState.durationMs, skipSegmentInfo, autoplayThresholdMode, autoplayThresholdPercent, autoplayThresholdSeconds, hasError) {
         if (hasError) return@remember false
@@ -342,9 +362,10 @@ fun BasePlayerScaffold(
         }
         // Countdown finished
         if (countdownActive && !autoplayCancelled && !autoplayFired) {
-            autoplayFired = true
-            onAutoplayNextEpisode?.invoke(currentSourceUrl)
-                ?: com.hereliesaz.illumera.crash.AppErrors.e("Autoplay", "Countdown reached zero with no next-episode handler")
+            if (onAutoplayNextEpisode == null) {
+                com.hereliesaz.illumera.crash.AppErrors.e("Autoplay", "Countdown reached zero with no next-episode handler")
+            }
+            fireNext()
         }
     }
 
@@ -354,8 +375,7 @@ fun BasePlayerScaffold(
         if (uiState.isEnded && autoplayEnabled && nextEpisodeInfo != null && !hasError &&
             !autoplayCancelled && !autoplayFired
         ) {
-            autoplayFired = true
-            onAutoplayNextEpisode?.invoke(currentSourceUrl)
+            fireNext()
         }
     }
 
@@ -652,6 +672,7 @@ fun BasePlayerScaffold(
                     (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN ||
                         keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP)
                 ) {
+                    consumeNextBackHandler = false
                     markInteraction()
                 }
 
@@ -674,6 +695,7 @@ fun BasePlayerScaffold(
                     (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN ||
                         keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_UP)
                 ) {
+                    consumeNextBackHandler = false
                     markInteraction()
                 }
 
@@ -878,7 +900,7 @@ fun BasePlayerScaffold(
                 },
                 onNextEpisode = {
                     markInteraction()
-                    onAutoplayNextEpisode?.invoke(currentSourceUrl)
+                    fireNext()
                 },
                 onShowSourcesPanel = {
                     markInteraction()
@@ -1199,7 +1221,7 @@ fun BasePlayerScaffold(
                 NextEpisodeButton(
                     info = info,
                     countdownSeconds = countdownSeconds,
-                    onPlayNow = { onAutoplayNextEpisode?.invoke(currentSourceUrl) },
+                    onPlayNow = { fireNext() },
                     focusRequester = nextEpisodeFocusRequester
                 )
             }
@@ -1215,7 +1237,7 @@ fun BasePlayerScaffold(
                 .padding(bottom = buttonBottomPadding)
         ) {
             PlayNextEpisodeButton(
-                onPlayNext = { onAutoplayNextEpisode?.invoke(currentSourceUrl) },
+                onPlayNext = { fireNext() },
                 focusRequester = playNextFocusRequester
             )
         }
@@ -1623,10 +1645,10 @@ private fun FocusableSeekBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // Visually a thin 18dp bar (see ProgressBar below), but the touchable area
-            // is grown to Android's 48dp minimum target size so it's reliably tappable
-            // and draggable with a finger, not just precisely clickable with a D-pad
-            // cursor. The bar stays centered within it.
+            // Visually a 4-5dp track inside an 18dp box (see ProgressBar below), but the
+            // touch area is grown to Android's 48dp minimum target size so it's easy to
+            // grab and drag with a finger. Only drags seek (a plain tap doesn't); D-pad
+            // left/right seek when focused. The bar stays centered within it.
             .height(48.dp)
             .then(
                 if (focusRequester != null) Modifier.focusRequester(focusRequester)
@@ -3470,7 +3492,7 @@ private fun labelAlreadyContainsLanguage(
         ?.takeIf { it.isNotEmpty() }
         ?: return false
 
-    return Regex("""\b$primaryLanguageCode\b""").containsMatchIn(normalizedLabel)
+    return Regex("""\b${Regex.escape(primaryLanguageCode)}\b""").containsMatchIn(normalizedLabel)
 }
 
 private fun buildSubtitleLanguageGroups(

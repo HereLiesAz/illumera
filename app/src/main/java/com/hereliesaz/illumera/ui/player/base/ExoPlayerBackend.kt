@@ -82,7 +82,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 
 
-private const val SUBTITLE_OFF_ID = "#none"
 private val BRACKET_CONTENT_REGEX = Regex("\\[[^\\]]*]")
 private val NON_LETTER_DIGIT_REGEX = Regex("[^\\p{L}\\p{N}]")
 private val WHITESPACE_REGEX = Regex("\\s+")
@@ -655,7 +654,7 @@ class ExoPlayerBackend(
             }
             pendingAudioTrackId = normalizedRequest.preferredAudioTrackId
             pendingSubtitleTrackId = normalizeSubtitleSelectionId(normalizedRequest.preferredSubtitleTrackId)
-            wantsSubtitles = pendingSubtitleTrackId.let { !it.isNullOrBlank() && it != SUBTITLE_OFF_ID }
+            wantsSubtitles = pendingSubtitleTrackId.let { !it.isNullOrBlank() && it != SUBTITLE_OFF_TRACK_ID }
             forcedSubtitleTrackId = pendingSubtitleTrackId?.takeIf { it in externalSubtitleSources.keys }
             hasAppliedAudioLanguagePref = false
             hasAppliedSubtitleLanguagePref = false
@@ -834,11 +833,11 @@ class ExoPlayerBackend(
         // Subtitles are wanted but none is showing (the remembered or forced-language track
         // wasn't available yet): pick it from the new arrivals. Shown out of band, no reload.
         val current = _uiState.value.selectedSubtitleTrackId
-        if (wantsSubtitles && (current == null || current == SUBTITLE_OFF_ID)) {
+        if (wantsSubtitles && (current == null || current == SUBTITLE_OFF_TRACK_ID)) {
             val remembered = normalizeSubtitleSelectionId(
                 _uiState.value.subtitleChoiceToRemember ?: request.preferredSubtitleTrackId
             )
-            val options = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_ID }
+            val options = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_TRACK_ID }
             val target = resolveForcedTrack(options, forcedSubtitleLanguages(), remembered) { tracks, language ->
                 findSubtitleTrackByLanguage(tracks, language)
             } ?: remembered?.takeIf { id -> options.any { it.id == id } }
@@ -884,7 +883,7 @@ class ExoPlayerBackend(
             if (outOfBandSubtitleId != id) return@launch
             if (parsed == null) {
                 outOfBandSubtitleId = null
-                _uiState.update { it.copy(selectedSubtitleTrackId = SUBTITLE_OFF_ID) }
+                _uiState.update { it.copy(selectedSubtitleTrackId = SUBTITLE_OFF_TRACK_ID) }
                 exoPlayer?.let { refreshTrackOptions(it.currentTracks) }
                 return@launch
             }
@@ -1024,19 +1023,19 @@ class ExoPlayerBackend(
     override fun selectSubtitleTrack(trackId: String?) {
         if (released) return
         val player = exoPlayer ?: return
-        val id = normalizeSubtitleSelectionId(trackId) ?: SUBTITLE_OFF_ID
+        val id = normalizeSubtitleSelectionId(trackId) ?: SUBTITLE_OFF_TRACK_ID
         _uiState.update { it.copy(subtitleChoiceToRemember = null) }
         stopOutOfBandSubtitle()
         val builder = player.trackSelectionParameters.buildUpon()
         builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
 
-        wantsSubtitles = id != SUBTITLE_OFF_ID
-        if (id == SUBTITLE_OFF_ID) {
+        wantsSubtitles = id != SUBTITLE_OFF_TRACK_ID
+        if (id == SUBTITLE_OFF_TRACK_ID) {
             forcedSubtitleTrackId = null
             builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             player.trackSelectionParameters = builder.build()
             pendingSubtitleTrackId = null
-            _uiState.update { it.copy(selectedSubtitleTrackId = SUBTITLE_OFF_ID) }
+            _uiState.update { it.copy(selectedSubtitleTrackId = SUBTITLE_OFF_TRACK_ID) }
             refreshTrackOptions(player.currentTracks)
             // Stop ASS rendering when subtitles are turned off
             if (playbackSettings.assRendererEnabled) assHandler?.clearOverlay()
@@ -2120,7 +2119,7 @@ class ExoPlayerBackend(
             .toSet()
         val previousSelectedSubtitleId = _uiState.value.selectedSubtitleTrackId
         val resolvedSelectedSubtitleId = when {
-            previousSelectedSubtitleId == SUBTITLE_OFF_ID -> SUBTITLE_OFF_ID
+            previousSelectedSubtitleId == SUBTITLE_OFF_TRACK_ID -> SUBTITLE_OFF_TRACK_ID
             selectedSubtitleId != null && selectedSubtitleId in selectableSubtitleIds -> selectedSubtitleId
             previousSelectedSubtitleId != null && previousSelectedSubtitleId in selectableSubtitleIds -> {
                 previousSelectedSubtitleId
@@ -2128,16 +2127,16 @@ class ExoPlayerBackend(
             forcedSubtitleTrackId != null && forcedSubtitleTrackId in selectableSubtitleIds -> {
                 forcedSubtitleTrackId
             }
-            else -> SUBTITLE_OFF_ID
+            else -> SUBTITLE_OFF_TRACK_ID
         }
 
         _audioTracks.value = audioOptions
         _subtitleTracks.value = buildList {
             add(
                 PlayerTrackOption(
-                    id = SUBTITLE_OFF_ID,
+                    id = SUBTITLE_OFF_TRACK_ID,
                     label = "None",
-                    selected = resolvedSelectedSubtitleId == SUBTITLE_OFF_ID
+                    selected = resolvedSelectedSubtitleId == SUBTITLE_OFF_TRACK_ID
                 )
             )
             mergedSubtitleOptions.forEach { option ->
@@ -2220,16 +2219,16 @@ class ExoPlayerBackend(
         // it starts with subtitles off. The missing check waits for the track list (audio
         // present) so a not-yet-parsed source isn't mistaken for one without the language.
         val subtitleId = pendingSubtitleTrackId
-        val userTurnedSubtitlesOn = !subtitleId.isNullOrBlank() && subtitleId != SUBTITLE_OFF_ID
+        val userTurnedSubtitlesOn = !subtitleId.isNullOrBlank() && subtitleId != SUBTITLE_OFF_TRACK_ID
         if (!hasAppliedSubtitleLanguagePref) {
             if (!userTurnedSubtitlesOn) {
-                selectSubtitleTrack(SUBTITLE_OFF_ID)
+                selectSubtitleTrack(SUBTITLE_OFF_TRACK_ID)
                 hasAppliedSubtitleLanguagePref = true
                 return
             }
             val forcedSubtitleLanguages = forcedSubtitleLanguages()
             if (forcedSubtitleLanguages.isNotEmpty()) {
-                val subtitleOptions = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_ID }
+                val subtitleOptions = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_TRACK_ID }
                 val forcedSubtitleId = resolveForcedTrack(
                     subtitleOptions, forcedSubtitleLanguages, subtitleId
                 ) { tracks, language -> findSubtitleTrackByLanguage(tracks, language) }
@@ -2241,7 +2240,7 @@ class ExoPlayerBackend(
                     return
                 }
                 if (forcedSubtitleMissing) {
-                    selectSubtitleTrack(SUBTITLE_OFF_ID)
+                    selectSubtitleTrack(SUBTITLE_OFF_TRACK_ID)
                     // Off only for this source: the user still wants subtitles next time, and
                     // a forced-language track that arrives late (addExternalSubtitles) is applied.
                     wantsSubtitles = true
@@ -2677,7 +2676,7 @@ class ExoPlayerBackend(
 
     private fun normalizeSubtitleSelectionId(rawId: String?): String? {
         val cleanId = rawId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        if (cleanId == SUBTITLE_OFF_ID) return SUBTITLE_OFF_ID
+        if (cleanId == SUBTITLE_OFF_TRACK_ID) return SUBTITLE_OFF_TRACK_ID
         if (cleanId in externalSubtitleSources.keys) return cleanId
 
         val stableId = externalSubtitleTrackId(cleanId)
