@@ -2,7 +2,11 @@ package com.hereliesaz.illumera.data.soundtrack
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
+import android.webkit.WebResourceRequest
+import android.webkit.WebStorage
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import com.google.gson.Gson
 import dagger.Binds
 import dagger.Module
@@ -32,6 +36,8 @@ interface PageScriptRunner {
 /**
  * [PageScriptRunner] backed by an off-screen WebView on the device. Cookies persist in the
  * shared CookieManager, so an interstitial passed once is not shown again. One page at a time.
+ * Navigation is confined to [url]'s host (and its subdomains) over http(s); intent:, custom
+ * schemes and off-host redirects are blocked. The origin's DOM storage is wiped after each run.
  */
 @Singleton
 class WebViewPageScriptRunner @Inject constructor(
@@ -48,6 +54,13 @@ class WebViewPageScriptRunner @Inject constructor(
             try {
                 webView.settings.javaScriptEnabled = true
                 webView.settings.domStorageEnabled = true
+                webView.settings.allowFileAccess = false
+                webView.settings.allowContentAccess = false
+                val allowedHost = Uri.parse(url).host?.lowercase()
+                webView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
+                        !isAllowedNavigation(request.url, allowedHost)
+                }
                 webView.loadUrl(url)
                 withTimeoutOrNull(timeoutMs) {
                     var result: String? = null
@@ -59,6 +72,9 @@ class WebViewPageScriptRunner @Inject constructor(
                 }
             } finally {
                 webView.stopLoading()
+                webView.clearCache(true)
+                webView.clearHistory()
+                originOf(url)?.let { WebStorage.getInstance().deleteOrigin(it) }
                 webView.destroy()
             }
         }
@@ -74,6 +90,22 @@ class WebViewPageScriptRunner @Inject constructor(
 
     private companion object {
         const val POLL_MS = 750L
+
+        /** Only http(s) navigation to [allowedHost] or one of its subdomains. */
+        fun isAllowedNavigation(target: Uri, allowedHost: String?): Boolean {
+            val scheme = target.scheme?.lowercase()
+            if (scheme != "https" && scheme != "http") return false
+            val host = target.host?.lowercase() ?: return false
+            allowedHost ?: return false
+            return host == allowedHost || host.endsWith(".$allowedHost")
+        }
+
+        fun originOf(url: String): String? {
+            val uri = Uri.parse(url)
+            val scheme = uri.scheme ?: return null
+            val host = uri.host ?: return null
+            return if (uri.port != -1) "$scheme://$host:${uri.port}" else "$scheme://$host"
+        }
     }
 }
 
