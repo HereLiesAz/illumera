@@ -28,6 +28,12 @@ class TorrentService : Service() {
     private var failureStopJob: Job? = null
     private var currentMagnet: String? = null
     @Volatile private var currentAttemptId: Long = 0L
+    // Engine generation returned by the last engine.start() of this instance; onDestroy
+    // passes it to engine.stop() so a stale teardown cannot kill a newer instance's engine.
+    @Volatile private var engineGeneration: Long? = null
+    // Callback generation this instance last started under; onDestroy only clears the
+    // shared callbacks while they still belong to it.
+    @Volatile private var ownedCallbackGeneration: Long? = null
 
     companion object {
         private const val TAG = "LumeraTorrent"
@@ -49,7 +55,19 @@ class TorrentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val magnetLink = intent?.getStringExtra("MAGNET_LINK") ?: return START_NOT_STICKY
+        val magnetLink = intent?.getStringExtra("MAGNET_LINK")
+        if (magnetLink == null) {
+            // Started via startForegroundService(): we must still enter the foreground
+            // before stopping, or the system crashes the app with
+            // ForegroundServiceDidNotStartInTimeException.
+            try {
+                startForegroundService()
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.w(TAG, "Could not enter foreground", e)
+            }
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         val fileIdx = intent.getIntExtra("FILE_IDX", -1)
         val fileName = intent.getStringExtra("FILE_NAME") ?: ""
 
@@ -112,6 +130,7 @@ class TorrentService : Service() {
         val attemptId = System.nanoTime()
         currentAttemptId = attemptId
         val generation = callbackGeneration
+        ownedCallbackGeneration = generation
         // Runs [block] on the main thread only if this attempt still owns the callbacks.
         suspend fun deliver(block: () -> Unit) = withContext(Dispatchers.Main) {
             if (attemptId == currentAttemptId && generation == callbackGeneration) block()
@@ -133,7 +152,7 @@ class TorrentService : Service() {
                 deliver {
                     onStreamProgress?.invoke(TorrentProgress(status = "Starting the torrent engine"))
                 }
-                engine.start()
+                engineGeneration = engine.start()
 
                 // Tune the local transport for this device before adding the source.
                 // Tuning is optional: a settings endpoint failure must never block playback.
@@ -306,9 +325,13 @@ class TorrentService : Service() {
         downloadJob?.cancel()
         val magnetToClean = currentMagnet
         currentMagnet = null
+        // Only touch the shared callbacks while they still belong to this instance: a
+        // newer screen/service may already have installed its own.
+        val ownsCallbacks = ownedCallbackGeneration == callbackGeneration
         // Clear any connection/error overlay before discarding the callback. This also
         // handles direct-URL fallback, which stops the torrent service entirely.
-        onStreamProgress?.invoke(null)
+        if (ownsCallbacks) onStreamProgress?.invoke(null)
+        val generationToStop = engineGeneration
         // onDestroy() runs on the main thread; blocking it on dropTorrent's HTTP call
         // and engine.stop() risks an ANR if TorrServer is slow to respond. Run the
         // cleanup on a background thread instead — nothing here needs to complete
@@ -317,16 +340,39 @@ class TorrentService : Service() {
             try {
                 runBlocking(Dispatchers.IO) {
                     magnetToClean?.let { api.dropTorrent(it) }
-                    engine.stop()
+                    // Never started the engine: nothing of ours to stop.
+                    if (generationToStop != null) engine.stop(generationToStop)
                 }
             } catch (_: Exception) {
             }
         }.start()
         job.cancel()
-        onStreamReady = null
-        onStreamError = null
-        onStreamProgress = null
+        if (ownsCallbacks) {
+            onStreamReady = null
+            onStreamError = null
+            onStreamProgress = null
+        }
         super.onDestroy()
+    }
+
+    // Android 15+ caps dataSync foreground services; when the budget runs out we must
+    // stop promptly or the system crashes the app. Tell the player and shut down.
+    override fun onTimeout(startId: Int) {
+        handleForegroundTimeout()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        handleForegroundTimeout()
+    }
+
+    private fun handleForegroundTimeout() {
+        Log.w(TAG, "Foreground service time limit reached; stopping stream")
+        currentAttemptId = 0L
+        downloadJob?.cancel()
+        if (ownedCallbackGeneration == callbackGeneration) {
+            onStreamError?.invoke("Stream stopped: background time limit reached")
+        }
+        stopSelf()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

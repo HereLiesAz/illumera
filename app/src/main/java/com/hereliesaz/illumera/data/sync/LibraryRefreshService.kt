@@ -322,6 +322,24 @@ class LibraryRefreshService : Service() {
         }
     }
 
+    // Android 15+ caps dataSync foreground services; stop promptly when the budget
+    // runs out instead of letting the system crash the app.
+    override fun onTimeout(startId: Int) {
+        handleForegroundTimeout()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        handleForegroundTimeout()
+    }
+
+    private fun handleForegroundTimeout() {
+        Log.w(TAG, "Foreground service time limit reached; stopping refresh")
+        refreshJob?.cancel()
+        postSummaryNotification("Library refresh stopped: time limit reached")
+        stopForegroundCompat()
+        stopSelf()
+    }
+
     override fun onDestroy() {
         refreshJob?.cancel()
         scope.cancel()
