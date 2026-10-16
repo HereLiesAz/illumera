@@ -49,6 +49,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Movies and Series show a unified content catalog assembled from every enabled addon's matching catalogs, deduplicated by canonical IMDb ID or title and release year; catalog providers are traversed lazily rather than selected through nested dropdowns.
 - Movies and Series are genre-first: one independently browsable row for **every populated** official Stremio genre, plus recognized genuine genres offered by enabled addons (not languages, countries, resolution tiers or release-date filters). Empty rows stay hidden while the app probes later genres in the background, so they cannot trap TV navigation. Titles occupy only one genre row, using independent Cinemeta lead-genre metadata whenever available (falling back deterministically when offline). There is no combined All Movies / All Series poster row. All genre rows are enabled by default. Disable individual rows (or use Enable All / Disable All) separately under **Settings → Screen Editor → Movies/Series → Manage Genres**; preferences are profile-specific.
 - Home keeps distinct categories (Latest, Popular, Trending, Netflix, HBO Max and others), merging movies and series within each category into one independently paginated, deduplicated horizontal row. The Hero Carousel scrolls away normally; all inactive content rows are compact 16:9 landscape rails, while only the focused row becomes portrait posters and expands its focused card into an inline cinematic preview. The previous inactive rail stays largely visible above the focused row; row headings never overlap. Movies and Series retain their genre-first screens.
+- Home keeps separate rows for categories such as Latest, Popular, Trending, Netflix and HBO Max. Each matching **movie + series pair from the same addon** is displayed as a single mixed row with duplicate titles removed. This does **not** create one global catch-all row. Watchlist Library, by contrast, deliberately uses one combined sortable Movies & Series row, with Queue above it.
 - Hero carousel trailers and the focused inline preview crop video to fill their entire frames (no letterboxing), with a responsive 16:9 inline card that can widen to approximately 373dp on TV while remaining screen-bounded. The Hero scrolls off-screen and never continues playing behind a focused row.
 - **Settings → Personalization:** per-profile Autoplay previews, Preview sound, and Navigation sounds toggles. Autoplay defaults on, preview sound off, and D-pad navigation sounds on; Android's built-in focus-navigation sounds require no bundled audio assets. Playback sound is independent of navigation feedback.
 - Hero carousel with auto-scrolling featured content
@@ -130,20 +131,21 @@ import your existing addon collection and sync Continue Watching progress.
    ./gradlew assembleDebug
    ```
 
-   `./gradlew assembleRelease` also works without any extra setup — it falls
-   back to a fixed, non-secret CI keystore (see [`ci/README.md`](ci/README.md))
-   when no real release keystore is configured.
+   `./gradlew assembleRelease` (and `bundleRelease`, `assemblePlay`,
+   `bundlePlay`) requires the real release keystore and fails without it; there
+   is no fallback key (see [`ci/README.md`](ci/README.md)). Use
+   `assembleDebug` for local builds.
 
 ### Releases
 
-Every push to `main` triggers
-[`.github/workflows/release.yml`](.github/workflows/release.yml), which
-builds a signed release APK and publishes it as a GitHub Release that the
-in-app updater (`AppUpdateManager`) checks against — no tag needs to be
-pushed manually; the workflow derives a version (`MAJOR.MINOR.<run number>`)
-and tags the release itself. It can also be run by hand from the Actions
-tab. See [`ci/README.md`](ci/README.md) for how release signing is
-configured.
+Release builds are produced by the centralized workflows in
+[`HereLiesAz/workflows`](https://github.com/HereLiesAz/workflows), invoked
+from the stubs in [`.github/workflows/`](.github/workflows/)
+(`android-github-release.yml`, `android-play-release.yml`,
+`desktop-release.yml`, `web-deploy.yml`). The GitHub release is what the
+in-app updater (`AppUpdateManager`) checks against. See
+[`docs/RELEASING.md`](docs/RELEASING.md) and [`ci/README.md`](ci/README.md)
+for versioning and how release signing is configured.
 
 ## Project Structure
 
@@ -165,6 +167,11 @@ illumera/
 │           ├── settings/   # Settings & dashboard editor
 │           └── theme/      # Theming system
 ├── playbackcore/           # Media3/ExoPlayer wrapper library
+├── assrender/              # Vendored ASS/SSA subtitle renderer
+├── web/                    # Web app (Preact/TypeScript)
+├── addon/                  # Open Archive Stremio addon (Cloudflare Worker)
+├── desktop/                # Tauri desktop shell
+├── roku/                   # Roku channel
 ├── gradle/                 # Gradle wrapper
 └── build.gradle.kts        # Root build configuration
 ```
@@ -185,5 +192,3 @@ illumera is a media client that connects to third-party addons. It does not host
 ## License
 
 This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
-- Home keeps separate rows for categories such as Latest, Popular, Trending, Netflix and HBO Max. Each matching **movie + series pair from the same addon** is displayed as a single mixed row with duplicate titles removed. This does **not** create one global catch-all row. Watchlist Library, by contrast, deliberately uses one combined sortable Movies & Series row, with Queue above it.

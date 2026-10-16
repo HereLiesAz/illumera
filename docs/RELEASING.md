@@ -2,11 +2,12 @@
 
 ## Overview
 
-Every push to `main` (and manual `workflow_dispatch`) runs
-[`.github/workflows/release.yml`](../.github/workflows/release.yml), which
-builds a signed release APK and publishes it as a GitHub Release. No tag
-needs to be pushed by hand — the workflow derives its own version and tags
-the release itself.
+Releases are built by the centralized workflows in
+`HereLiesAz/workflows`, invoked from the stubs in
+[`.github/workflows/`](../.github/workflows/) (`android-github-release.yml`,
+`android-play-release.yml`). They build a signed release APK and publish it
+as a GitHub Release. No tag needs to be pushed by hand — the workflow derives
+its own version and tags the release itself.
 
 `AppUpdateManager` (in-app) polls this repo's *latest* non-prerelease
 release, so the release shape must keep matching what it expects: exactly
@@ -14,10 +15,12 @@ one `*.apk` asset, and a `SHA-256: <64 hex chars>` line in the release body.
 
 ## Versioning
 
-`versionName` is `MAJOR.MINOR.<run number>` — `MAJOR.MINOR` is read from the
-base `versionName` in `app/build.gradle.kts`, and the GitHub Actions run
-number becomes the patch component (e.g. `0.4.23`). This is guaranteed to
-strictly increase every run, which both Android's package installer and
+`versionName` is four-part, `MAJOR.MINOR.PATCH.BUILD` (e.g. `0.12.48.1`). The
+release workflow passes `-PversionName` / `-PversionCode` to Gradle
+(versionCode is one more than the highest Google Play has accepted, and
+versionName raises only its last field); local builds fall back to the pair
+recorded in `version.properties` (`app/build.gradle.kts`). Both must strictly
+increase for every release, which Android's package installer and
 `AppUpdateManager`'s version comparison require to recognize an upgrade.
 
 ## Signing
@@ -67,7 +70,7 @@ first.
 
 ### How the rebuild works
 
-In `release.yml`:
+In the centralized release workflow (`HereLiesAz/workflows`):
 
 1. `STREMIO_MEDIA_REF` (a pinned commit SHA) and `STREMIO_AAR_CACHE_VERSION`
    are set as env vars at the top of the job. Bump

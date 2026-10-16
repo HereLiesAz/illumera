@@ -75,8 +75,8 @@ android {
         buildConfigField("String", "GITHUB_REPO", buildConfigString("illumera"))
         buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
         buildConfigField("boolean", "USE_PLAY_UPDATES", "false")
-        // Automatic crash/ANR reporting. On by default for the GitHub (release) build
-        // until illumera reaches stable production; the user can opt out in Settings.
+        // Automatic crash/ANR reporting. Off in the base config (debug); the `release` build
+        // type turns it on (user can opt out in Settings) and `play` turns it back off.
         buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "false")
 
         buildConfigField("String", "ACRA_URL", buildConfigString(acraUrl))

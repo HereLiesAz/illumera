@@ -5,7 +5,7 @@
 See the main [`README.md`](../README.md#building) for the build
 prerequisites. Read [`RELEASING.md`](RELEASING.md) before touching anything
 under `playbackcore/`, `assrender/`, `ci/build-stremio-media.sh`, or
-`.github/workflows/release.yml` — the video playback stack is the most
+the release workflows in `.github/workflows/` — the video playback stack is the most
 fragile part of this project. A Media3 version mismatch between
 `playbackcore/`'s custom ExoPlayer AAR and the declared `media3` version
 fails silently at runtime until someone hits play; a Media3 version bump
