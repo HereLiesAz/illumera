@@ -13,12 +13,14 @@ sub EnsureDefaults()
         return
     end if
     m.pending = ["https://v3-cinemeta.strem.io", "https://opensubtitles-v3.strem.io"]
+    m.failed = 0
     InstallNext()
 end sub
 
 sub InstallNext()
     if m.pending.Count() = 0 then
         Open("HomeView", {})
+        if m.failed > 0 then WarnOffline()
         return
     end if
     m.installer = CreateObject("roSGNode", "HttpTask")
@@ -27,8 +29,25 @@ sub InstallNext()
     m.installer.control = "run"
 end sub
 
-sub OnDefaultInstalled()
+sub OnDefaultInstalled(event as Object)
+    res = event.GetData()
+    if res = invalid or not res.ok then m.failed = m.failed + 1
     InstallNext()
+end sub
+
+' First run without a network: say why Home is empty. The defaults are tried again next launch.
+sub WarnOffline()
+    dialog = CreateObject("roSGNode", "Dialog")
+    dialog.title = "Couldn't reach the addon servers"
+    dialog.message = "Check the Roku's network connection, then restart illumera to install Cinemeta and OpenSubtitles. You can also add addons under Addons."
+    dialog.buttons = ["OK"]
+    dialog.ObserveField("buttonSelected", "CloseWarning")
+    m.top.dialog = dialog
+    m.warning = dialog
+end sub
+
+sub CloseWarning()
+    m.warning.close = true
 end sub
 
 sub Open(name as String, params as Object)

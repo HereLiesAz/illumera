@@ -5,8 +5,9 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = new URL('..', import.meta.url).pathname
+const root = fileURLToPath(new URL('..', import.meta.url))
 const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 execFileSync('node_modules/.bin/bsc', ['--project', 'bsconfig.json'], { cwd: root, stdio: 'inherit' })
 mkdirSync(join(root, 'packages'), { recursive: true })
