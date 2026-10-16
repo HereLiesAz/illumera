@@ -63,6 +63,7 @@ class MoreLikeThisViewModel @AssistedInject constructor(
     }
 
     private companion object {
-        const val MAX_ITEMS = 40
+        // TMDB returns one page (20 results) of recommendations; asking for more is a no-op.
+        const val MAX_ITEMS = 20
     }
 }

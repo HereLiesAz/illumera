@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.Collections
 import java.util.LinkedHashMap
@@ -17,6 +19,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "TmdbMetadataService"
+private const val SEASON_FETCH_CONCURRENCY = 4
 
 @Singleton
 class TmdbMetadataService @Inject constructor(
@@ -66,12 +69,13 @@ class TmdbMetadataService @Inject constructor(
         val numericId = tmdbId.toIntOrNull() ?: return@withContext null
 
         try {
-            val includeImageLanguage = buildString {
-                append(normalizedLanguage.substringBefore("-"))
-                append(",")
-                append(normalizedLanguage)
-                append(",en,null")
-            }
+            // TMDB's include_image_language takes ISO-639-1 codes only (a region such as
+            // "pt-BR" isn't a valid entry); "null" selects language-neutral images.
+            val includeImageLanguage = listOf(
+                normalizedLanguage.substringBefore("-").lowercase(Locale.US),
+                "en",
+                "null"
+            ).distinct().joinToString(",")
 
             // A failed sub-request (e.g. HTTP 429) yields a null body, not an exception. Track it
             // so a partial enrichment is shown but never cached for the rest of the process.
@@ -259,25 +263,41 @@ class TmdbMetadataService @Inject constructor(
         // Any failed season leaves the result partial; never cache it as final.
         var hadFailure = false
 
-        seasonNumbers.distinct().forEach { season ->
-            try {
-                val response = tmdbApi.getTvSeasonDetails(numericId, season, apiKey, normalizedLanguage)
-                if (!response.isSuccessful) hadFailure = true
-                response.body()?.episodes.orEmpty().forEach { ep ->
-                    val epNum = ep.episodeNumber ?: return@forEach
-                    result[season to epNum] = TmdbEpisodeEnrichment(
-                        title = ep.name?.takeIf { it.isNotBlank() },
-                        overview = ep.overview?.takeIf { it.isNotBlank() },
-                        thumbnail = ep.stillPath?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/w500$it" },
-                        airDate = ep.airDate?.takeIf { it.isNotBlank() },
-                        runtimeMinutes = ep.runtime
-                    )
+        // Seasons are fetched in parallel (bounded, to stay clear of TMDB rate limits);
+        // results are merged afterwards on this coroutine.
+        val seasonGate = Semaphore(SEASON_FETCH_CONCURRENCY)
+        val perSeason = coroutineScope {
+            seasonNumbers.distinct().map { season ->
+                async {
+                    seasonGate.withPermit {
+                        try {
+                            val response = tmdbApi.getTvSeasonDetails(numericId, season, apiKey, normalizedLanguage)
+                            season to (if (response.isSuccessful) response.body()?.episodes.orEmpty() else null)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to fetch TMDB season $season: ${e.message}")
+                            season to null
+                        }
+                    }
                 }
-            } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (e: Exception) {
+            }.awaitAll()
+        }
+
+        perSeason.forEach { (season, episodes) ->
+            if (episodes == null) {
                 hadFailure = true
-                Log.w(TAG, "Failed to fetch TMDB season $season: ${e.message}")
+                return@forEach
+            }
+            episodes.forEach { ep ->
+                val epNum = ep.episodeNumber ?: return@forEach
+                result[season to epNum] = TmdbEpisodeEnrichment(
+                    title = ep.name?.takeIf { it.isNotBlank() },
+                    overview = ep.overview?.takeIf { it.isNotBlank() },
+                    thumbnail = ep.stillPath?.takeIf { it.isNotBlank() }?.let { "https://image.tmdb.org/t/p/w500$it" },
+                    airDate = ep.airDate?.takeIf { it.isNotBlank() },
+                    runtimeMinutes = ep.runtime
+                )
             }
         }
 
@@ -297,7 +317,8 @@ class TmdbMetadataService @Inject constructor(
         val normalizedLanguage = normalizeTmdbLanguage(language)
         val tmdbType = if (mediaType == "tv" || mediaType == "series") "tv" else "movie"
         val cacheKey = "$tmdbId:$tmdbType:$normalizedLanguage:recs"
-        recommendationsCache[cacheKey]?.let { return@withContext it }
+        // The cache holds the full filtered list; each caller takes its own maxItems.
+        recommendationsCache[cacheKey]?.let { return@withContext it.take(maxItems) }
 
         val numericId = tmdbId.toIntOrNull() ?: return@withContext emptyList()
 
@@ -327,7 +348,7 @@ class TmdbMetadataService @Inject constructor(
                 localized || (rec.voteCount ?: 0) >= 20 || (rec.voteAverage ?: 0.0) >= 6.0
             }.ifEmpty { sorted }
 
-            val items = filtered.take(maxItems).mapNotNull { rec ->
+            val items = filtered.mapNotNull { rec ->
                 val title = rec.title?.takeIf { it.isNotBlank() }
                     ?: rec.name?.takeIf { it.isNotBlank() }
                     ?: rec.originalTitle?.takeIf { it.isNotBlank() }
@@ -352,7 +373,7 @@ class TmdbMetadataService @Inject constructor(
             }
 
             recommendationsCache[cacheKey] = items
-            items
+            items.take(maxItems)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
