@@ -1022,14 +1022,14 @@ internal fun buildContinueWatchingItems(
 
     // 2. Next-up entries: series where all in-progress episodes are watched,
     //    but there's a next episode available. Only include if the episode has aired.
-    val today = java.time.LocalDate.now().toString() // "2026-04-06"
+    val today = java.time.LocalDate.now()
     for (nextUp in seriesNextUp) {
         // Already shown as in-progress, or a duplicate next-up row
         if (!seriesIdsIncluded.add(nextUp.seriesId)) continue
 
         // Check if the next episode has aired (null = assume aired)
         val released = nextUp.nextReleased
-        if (released != null && released > today) continue
+        if (!com.hereliesaz.illumera.data.model.isReleasedBy(released, today)) continue
 
         // Complete with no next episode date = truly done, skip
         if (nextUp.isComplete && released == null) continue

@@ -286,9 +286,8 @@ class DetailsViewModel @Inject constructor(
                         } else {
                             // All episodes watched or no history — use next-up if aired
                             val nextUp = dao.getSeriesNextUp(profileId, streamFetchId)
-                            val today = java.time.LocalDate.now().toString()
                             val hasAired = nextUp != null && !nextUp.isComplete &&
-                                (nextUp.nextReleased == null || nextUp.nextReleased <= today)
+                                com.hereliesaz.illumera.data.model.isReleasedBy(nextUp.nextReleased)
                             if (hasAired) {
                                 "${streamFetchId}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
                             } else null
