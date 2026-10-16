@@ -100,14 +100,12 @@ class StremioLibrarySyncManagerTest {
         }
 
         val manager = newManager()
-        var cancelled = false
-        try {
-            manager.syncLibrary()
-        } catch (_: CancellationException) {
-            cancelled = true
-        }
+        // A profile switch is reported as a failed sync, not thrown as a cancellation
+        // into the caller's still-active scope.
+        val result = manager.syncLibrary()
 
-        assertTrue(cancelled)
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is StremioLibrarySyncManager.ProfileChangedException)
         coVerify(exactly = 0) { authService.datastorePut(any(), any()) }
         coVerify(exactly = 0) { authService.datastoreGet(any(), any()) }
     }

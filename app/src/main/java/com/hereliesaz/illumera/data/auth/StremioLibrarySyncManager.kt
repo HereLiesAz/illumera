@@ -14,6 +14,7 @@ import com.hereliesaz.illumera.data.remote.StremioLibraryItemState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -143,8 +144,14 @@ class StremioLibrarySyncManager @Inject constructor(
                     remoteMtime > localMtime -> idsToPull += id
                 }
             }
-            for (id in remoteMtimes.keys) {
-                if (id !in localItems && id !in locallyDeletedIds) idsToPull += id
+            // Remote rows that never materialize locally (e.g. removed tombstones) would
+            // otherwise be re-pulled on every sync; skip those unchanged since last sync.
+            val previousRemoteMtimes = loadRemoteMtimes(profileId, authKey)
+            for ((id, remoteMtime) in remoteMtimes) {
+                if (id in localItems || id in locallyDeletedIds || id in previousLocal) continue
+                val seen = previousRemoteMtimes[id]
+                if (seen != null && remoteMtime <= seen) continue
+                idsToPull += id
             }
 
             if (toPush.isNotEmpty()) {
@@ -168,10 +175,17 @@ class StremioLibrarySyncManager @Inject constructor(
 
                 val refreshedLocal = buildLocalLibraryView(profileId)
                 saveLocalSnapshot(profileId, authKey, refreshedLocal.values.toList())
+                saveRemoteMtimes(profileId, authKey, remoteMtimes)
             }
 
             Log.i(TAG, "Library sync: pushed=${toPush.size}, pulled=${idsToPull.distinct().size}, deleted=${locallyDeletedIds.size}")
             Result.success(Unit)
+        } catch (changed: ProfileChangedException) {
+            // Not a coroutine cancellation: the caller's scope is still live, so report it
+            // as an ordinary failure instead of throwing CancellationException at it.
+            releaseThrottleAfterFailure(profileId, startedAt)
+            Log.i(TAG, "Library sync stopped: ${changed.message}")
+            Result.failure(changed)
         } catch (cancelled: CancellationException) {
             releaseThrottleAfterFailure(profileId, startedAt)
             throw cancelled
@@ -182,16 +196,23 @@ class StremioLibrarySyncManager @Inject constructor(
         }
     }
 
+    /** The active profile changed mid-sync; the sync stops before touching another profile. */
+    class ProfileChangedException : Exception("Active profile changed during Stremio library sync")
+
     private fun ensureProfileStillActive(profileId: Int) {
         if (profileConfigurationManager.getLastActiveProfileId() != profileId) {
-            throw CancellationException("Active profile changed during Stremio library sync")
+            throw ProfileChangedException()
         }
     }
 
+    // NonCancellable: this also runs on the cancellation path, where a plain suspending
+    // withLock would throw immediately and leave the throttle set.
     private suspend fun releaseThrottleAfterFailure(profileId: Int, startedAt: Long) {
-        syncMutex.withLock {
-            if (lastSyncAtMsByProfile[profileId] == startedAt) {
-                lastSyncAtMsByProfile.remove(profileId)
+        withContext(NonCancellable) {
+            syncMutex.withLock {
+                if (lastSyncAtMsByProfile[profileId] == startedAt) {
+                    lastSyncAtMsByProfile.remove(profileId)
+                }
             }
         }
     }
@@ -404,6 +425,19 @@ class StremioLibrarySyncManager @Inject constructor(
         val items = gson.fromJson<List<StremioLibraryItem>>(json, libraryListType).orEmpty()
         items.associateBy { it.id }
     }.getOrDefault(emptyMap())
+
+    // Remote mtimes seen at the last completed sync. Stored under the snapshot key so
+    // clearSyncState() forgets it together with the baseline.
+    private val remoteMtimesType = object : TypeToken<Map<String, Long>>() {}.type
+
+    private fun loadRemoteMtimes(profileId: Int, authKey: String): Map<String, Long> = runCatching {
+        val json = prefs.getString(snapshotKey(profileId, authKey) + "_remote_mtimes", null) ?: return@runCatching emptyMap<String, Long>()
+        gson.fromJson<Map<String, Long>>(json, remoteMtimesType).orEmpty()
+    }.getOrDefault(emptyMap())
+
+    private fun saveRemoteMtimes(profileId: Int, authKey: String, mtimes: Map<String, Long>) {
+        prefs.edit().putString(snapshotKey(profileId, authKey) + "_remote_mtimes", gson.toJson(mtimes)).apply()
+    }
 
     private fun saveLocalSnapshot(
         profileId: Int,
