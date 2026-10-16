@@ -32,10 +32,9 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
         RuntimeOwnerEntity::class
     ],
     version = 54,
-    // A plain ksp room.schemaLocation arg broke release builds: the debug, release and
-    // play KSP tasks wrote the same schemas/<v>.json concurrently and one read it
-    // half-written. Re-enable through the Room Gradle plugin (per-variant), not a ksp arg.
-    exportSchema = false
+    // Exported via the Room Gradle plugin (room { schemaDirectory } in app/build.gradle.kts),
+    // which is per-variant; a plain ksp room.schemaLocation arg raced across variants.
+    exportSchema = true
 )
 abstract class LumeraDatabase : RoomDatabase() {
     abstract fun addonDao(): AddonDao
