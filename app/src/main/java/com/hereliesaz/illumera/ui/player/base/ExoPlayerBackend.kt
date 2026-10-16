@@ -86,6 +86,8 @@ private const val SUBTITLE_OFF_ID = "#none"
 private val BRACKET_CONTENT_REGEX = Regex("\\[[^\\]]*]")
 private val NON_LETTER_DIGIT_REGEX = Regex("[^\\p{L}\\p{N}]")
 private val WHITESPACE_REGEX = Regex("\\s+")
+// "CC" as a standalone word in a subtitle label ("English CC", "[cc]"), not inside "Accent".
+private val CC_WORD_REGEX = Regex("(?<![\\p{L}\\p{N}])cc(?![\\p{L}\\p{N}])")
 private const val AUDIO_SWITCH_RECOVERY_DELAY_MS = 1_500L
 private const val AUDIO_SWITCH_RECOVERY_SEEK_BACK_MS = 500L
 private const val IO_AUTO_RETRY_DELAY_MS = 450L
@@ -109,6 +111,51 @@ internal fun isWithinEndWindow(positionMs: Long, durationMs: Long): Boolean =
 
 internal fun isFailedRuntimeCheckCode(errorCodeName: String): Boolean =
     errorCodeName.equals("ERROR_CODE_FAILED_RUNTIME_CHECK", ignoreCase = true)
+
+internal enum class AdaptiveStreamKind { HLS, DASH, PROGRESSIVE }
+
+private val PROGRESSIVE_EXTENSIONS = setOf(
+    "mkv", "mp4", "m4v", "webm", "avi", "mov", "ts", "m2ts", "mts", "flv", "wmv", "mpg", "mpeg", "3gp", "ogv"
+)
+
+/**
+ * Classifies a stream as HLS / DASH / progressive. An explicit MediaItem mime type wins,
+ * then the URL path's file extension (.m3u8 / .mpd). Path segments such as `/hls/`,
+ * `/dash/` or `/playlist` are only a weak hint, used when the path has no known
+ * progressive file extension — a debrid link like `/dash/Movie.mkv` stays progressive.
+ * Query strings are ignored so `?redirect=foo.m3u8` cannot flip the decision.
+ */
+internal fun detectAdaptiveStreamKind(path: String?, mimeType: String?): AdaptiveStreamKind {
+    when (mimeType?.lowercase(Locale.US)) {
+        "application/x-mpegurl", "application/vnd.apple.mpegurl" -> return AdaptiveStreamKind.HLS
+        "application/dash+xml" -> return AdaptiveStreamKind.DASH
+    }
+    val lowerPath = path.orEmpty().lowercase(Locale.US)
+    val extension = lowerPath.substringAfterLast('/').substringAfterLast('.', "")
+    when (extension) {
+        "m3u8" -> return AdaptiveStreamKind.HLS
+        "mpd" -> return AdaptiveStreamKind.DASH
+    }
+    if (extension in PROGRESSIVE_EXTENSIONS) return AdaptiveStreamKind.PROGRESSIVE
+    val segments = lowerPath.split('/').filter { it.isNotEmpty() }
+    return when {
+        segments.any { it == "hls" || it == "playlist" } -> AdaptiveStreamKind.HLS
+        segments.any { it == "dash" } -> AdaptiveStreamKind.DASH
+        else -> AdaptiveStreamKind.PROGRESSIVE
+    }
+}
+
+/**
+ * Track-language match: exact normalized code first is handled by callers; this is the
+ * primary-subtag comparison (e.g. "pt-br" vs "pt") used as the fallback, mirroring
+ * StreamSortingService.languageCodesMatch.
+ */
+internal fun languagePrimarySubtagsMatch(a: String?, b: String?): Boolean {
+    val left = normalizeLanguageToIso2(a)
+    val right = normalizeLanguageToIso2(b)
+    if (left == "und" || right == "und") return false
+    return left.substringBefore('-').equals(right.substringBefore('-'), ignoreCase = true)
+}
 
 class ExoPlayerBackend(
     private val appContext: Context,
@@ -676,12 +723,12 @@ class ExoPlayerBackend(
         player.play()
         if (wasPaused && player.playbackState == Player.STATE_READY && !isTorrentStream) {
             // Force a codec flush on resume to prevent indefinite buffering on
-            // certain MKV files. Seeking to current position + 1ms ensures
-            // ExoPlayer doesn't optimise the seek away, while CLOSEST_SYNC
-            // snaps to the nearest keyframe (no visible skip).
+            // certain MKV files. EXACT seek parameters keep the playhead where the
+            // viewer paused; CLOSEST_SYNC would jump to the nearest keyframe, which
+            // can be seconds away.
             val pos = player.currentPosition.coerceAtLeast(0L)
-            player.setSeekParameters(SeekParameters.CLOSEST_SYNC)
-            player.seekTo(pos + 1L)
+            player.setSeekParameters(SeekParameters.EXACT)
+            player.seekTo(pos)
         }
     }
 
@@ -816,13 +863,23 @@ class ExoPlayerBackend(
         if (playbackSettings.assRendererEnabled) assHandler?.clearOverlay()
         playerView?.subtitleView?.visibility = android.view.View.VISIBLE
         outOfBandJob = scope.launch {
+            val headers = subtitleRequestHeaders(source.url)
             val parsed = outOfBandCache[source.url] ?: withContext(Dispatchers.IO) {
-                runCatching {
-                    okHttpClient.newCall(okhttp3.Request.Builder().url(source.url).build()).execute().use { response ->
-                        if (!response.isSuccessful) return@use null
-                        response.body?.bytes()?.let { OutOfBandSubtitle.parse(it, inferSubtitleMimeType(source.url)) }
-                    }
-                }.getOrNull()
+                val requestBuilder = okhttp3.Request.Builder().url(source.url)
+                headers.forEach { (name, value) -> requestBuilder.header(name, value) }
+                val call = okHttpClient.newCall(requestBuilder.build())
+                // Cancel the in-flight call when the subtitle is switched or playback stops.
+                val cancelHandle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+                try {
+                    runCatching {
+                        call.execute().use { response ->
+                            if (!response.isSuccessful) return@use null
+                            response.body?.bytes()?.let { OutOfBandSubtitle.parse(it, inferSubtitleMimeType(source.url)) }
+                        }
+                    }.getOrNull()
+                } finally {
+                    cancelHandle?.dispose()
+                }
             }?.also { outOfBandCache[source.url] = it }
             if (outOfBandSubtitleId != id) return@launch
             if (parsed == null) {
@@ -845,6 +902,19 @@ class ExoPlayerBackend(
                 delay(OUT_OF_BAND_SUBTITLE_TICK_MS)
             }
         }
+    }
+
+    /**
+     * The current source's request headers, applied to an out-of-band subtitle only when
+     * it is served from the same host (ExoPlayer's in-band path sends them for every load
+     * through the source's data source; a third-party subtitle host must not get them).
+     */
+    private fun subtitleRequestHeaders(subtitleUrl: String): Map<String, String> {
+        val source = loadRequest?.sources?.firstOrNull { it.id == currentSourceId } ?: return emptyMap()
+        if (source.requestHeaders.isEmpty()) return emptyMap()
+        val subtitleHost = runCatching { Uri.parse(subtitleUrl).host }.getOrNull() ?: return emptyMap()
+        val sourceHost = runCatching { Uri.parse(source.url).host }.getOrNull() ?: return emptyMap()
+        return if (subtitleHost.equals(sourceHost, ignoreCase = true)) source.requestHeaders else emptyMap()
     }
 
     private fun selectSourceAfterSubtitleResolution(sourceId: String, source: PlayerSourceOption) {
@@ -1476,6 +1546,9 @@ class ExoPlayerBackend(
         val isHttp = sourceUri.scheme?.lowercase(Locale.US)?.startsWith("http") == true
 
         if (!isHttp) {
+            // A local file / content URI is never the torrent loopback stream; don't
+            // inherit the previous source's torrent seek/buffer behaviour.
+            isTorrentStream = false
             return DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)
                 .createMediaSource(mediaItem)
         }
@@ -1496,10 +1569,12 @@ class ExoPlayerBackend(
             requestHeaders = streamHeaders
         )
 
-        val urlLower = sourceUrl.lowercase(Locale.US)
-        val isHls = urlLower.contains(".m3u8") || urlLower.contains("/hls") ||
-            urlLower.contains("/playlist")
-        val isDash = urlLower.contains(".mpd") || urlLower.contains("/dash")
+        val streamKind = detectAdaptiveStreamKind(
+            sourceUri.path,
+            mediaItem.localConfiguration?.mimeType
+        )
+        val isHls = streamKind == AdaptiveStreamKind.HLS
+        val isDash = streamKind == AdaptiveStreamKind.DASH
 
         val subtitleConfigs = mediaItem.localConfiguration
             ?.subtitleConfigurations.orEmpty()
@@ -2212,7 +2287,11 @@ class ExoPlayerBackend(
         if (languages.isEmpty() || tracks.isEmpty()) return null
         val forcedKeys = languages.map { normalizeLanguageToIso2(it) }.toSet()
         val remembered = rememberedId?.let { id -> tracks.firstOrNull { it.id == id } }
-        if (remembered != null && normalizeLanguageToIso2(remembered.language) in forcedKeys) return null
+        if (remembered != null && (
+                normalizeLanguageToIso2(remembered.language) in forcedKeys ||
+                    languages.any { languagePrimarySubtagsMatch(remembered.language, it) }
+                )
+        ) return null
         return languages.firstNotNullOfOrNull { find(tracks, it) }?.id
     }
 
@@ -2248,6 +2327,8 @@ class ExoPlayerBackend(
         if (prefKey == "und") return null
         return tracks.firstOrNull { track ->
             normalizeLanguageToIso2(track.language) == prefKey
+        } ?: tracks.firstOrNull { track ->
+            languagePrimarySubtagsMatch(track.language, prefKey)
         }
     }
 
@@ -2264,8 +2345,16 @@ class ExoPlayerBackend(
                 (track.selectionFlags and C.SELECTION_FLAG_FORCED) == 0
         }
         if (normalMatch != null) return normalMatch
-        return tracks.firstOrNull { track ->
+        tracks.firstOrNull { track ->
             normalizeLanguageToIso2(track.language) == prefKey
+        }?.let { return it }
+        // Primary-subtag fallback ("pt-br" track for a "pt" preference), same order.
+        return tracks.firstOrNull { track ->
+            languagePrimarySubtagsMatch(track.language, prefKey) &&
+                (track.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND) == 0 &&
+                (track.selectionFlags and C.SELECTION_FLAG_FORCED) == 0
+        } ?: tracks.firstOrNull { track ->
+            languagePrimarySubtagsMatch(track.language, prefKey)
         }
     }
 
@@ -2502,17 +2591,20 @@ class ExoPlayerBackend(
         return null
     }
 
+    /**
+     * Format tag from the URL path (its file extension) or an explicit `format=` query
+     * parameter. Host names and other query text are ignored: "assets.example.com" or
+     * "?ref=pgs" must not produce an ASS / PGS badge.
+     */
     private fun inferSubtitleFormatTagFromUrl(url: String?): String? {
         val raw = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val normalizedRaw = raw.lowercase(Locale.US)
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+        val path = uri.path.orEmpty().lowercase(Locale.US)
+        val formatParam = runCatching { uri.getQueryParameter("format") }.getOrNull()
+            ?.lowercase(Locale.US)?.trim()?.takeIf { it.isNotEmpty() }
 
-        val uri = runCatching { Uri.parse(raw) }.getOrNull()
-        val path = uri?.path.orEmpty().lowercase(Locale.US)
-        val query = uri?.query.orEmpty().lowercase(Locale.US)
-        val joined = "$path?$query"
-
-        return formatTagFromText(normalizedRaw)
-            ?: formatTagFromText(joined)
+        return formatTagFromText(path)
+            ?: formatParam?.let { formatTagFromText("format=$it") }
     }
 
     private fun formatTagFromMime(mimeType: String?): String? {
@@ -2619,7 +2711,7 @@ class ExoPlayerBackend(
         var flags = 0
         if (
             label.contains("sdh") ||
-            label.contains("cc") ||
+            CC_WORD_REGEX.containsMatchIn(label) ||
             label.contains("hearing impaired")
         ) {
             flags = flags or C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND or C.ROLE_FLAG_CAPTION
