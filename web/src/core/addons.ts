@@ -8,13 +8,28 @@ export const OPENSUBTITLES = 'https://opensubtitles-v3.strem.io'
 
 const TIMEOUT = { catalog: 10_000, stream: 20_000, originMeta: 5_000, meta: 10_000, subtitles: 8_000, manifest: 30_000 }
 
+/** True for a loopback, private or link-local IPv4 literal; the whole dotted quad must match. */
+function isLocalIpv4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (!m) return false
+  const o = m.slice(1).map(Number)
+  if (o.some((n) => n > 255)) return false
+  return o[0] === 127 || o[0] === 10 || (o[0] === 192 && o[1] === 168) || (o[0] === 169 && o[1] === 254) || (o[0] === 172 && o[1] >= 16 && o[1] <= 31)
+}
+
+/** Loopback, unique-local (fc00::/7) and link-local (fe80::/10) IPv6 literals, bracketed as in a URL. */
+function isLocalIpv6(host: string): boolean {
+  if (!/^\[[0-9a-f:.]+\]$/i.test(host)) return false
+  const h = host.slice(1, -1).toLowerCase()
+  return h === '::1' || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h)
+}
+
 /** Local-network hosts stay on http; everything else is upgraded to https (docs/ADDONS.md). */
 export function upgradeUrl(url: string): string {
-  const m = /^http:\/\/([^/:?#]+)(:\d+)?/i.exec(url)
+  const m = /^http:\/\/(\[[^\]/?#]*\]|[^/:?#]+)(:\d+)?/i.exec(url)
   if (!m) return url
   const host = m[1].toLowerCase()
-  const local = host === 'localhost' || /\.(local|lan|home\.arpa)$/.test(host) ||
-    /^(127\.|10\.|192\.168\.|169\.254\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host === '[::1]'
+  const local = host === 'localhost' || /\.(local|lan|home\.arpa)$/.test(host) || isLocalIpv4(host) || isLocalIpv6(host)
   if (local) return url
   const port = m[2] === ':80' ? '' : m[2] ?? ''
   return 'https://' + m[1] + port + url.slice(m[0].length)
@@ -212,10 +227,15 @@ export class AddonStore {
       const path = `${addon.transportUrl}/subtitles/${encodeId(type)}/${encodeId(id)}`
       try {
         const res = await fetchJson<{ subtitles?: Subtitle[] }>(`${path}${extras ? '/' + extras : ''}.json`, TIMEOUT.subtitles)
-        return (res.subtitles ?? [])
-          .filter((s) => !!s.url)
-          .map((s) => ({ ...s, url: new URL(s.url, addon.transportUrl + '/').toString(), name: addon.manifest.name }))
-          .filter((s) => /^https?:/.test(s.url))
+        const out: Subtitle[] = []
+        for (const s of res.subtitles ?? []) {
+          if (!s.url) continue
+          try {
+            const url = new URL(s.url, addon.transportUrl + '/').toString()
+            if (/^https?:/.test(url)) out.push({ ...s, url, name: addon.manifest.name })
+          } catch { /* one malformed subtitle URL must not drop the addon's others */ }
+        }
+        return out
       } catch {
         return []
       }

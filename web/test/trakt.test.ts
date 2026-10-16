@@ -45,6 +45,14 @@ describe('Trakt through the worker', () => {
     expect(await accessToken()).toBe('a')
   })
 
+  it('treats 5xx and network errors while polling as retryable, not failed', async () => {
+    const code = { deviceCode: 'dc', userCode: 'U', verificationUrl: 'v', interval: 5, expiresAt: Date.now() + 60_000 }
+    vi.stubGlobal('fetch', async () => ({ status: 503, json: async () => ({}) }))
+    expect(await pollDeviceAuth(code)).toBe('retry')
+    vi.stubGlobal('fetch', async () => { throw new TypeError('offline') })
+    expect(await pollDeviceAuth(code)).toBe('retry')
+  })
+
   it('refreshes a token close to expiry', async () => {
     traktTokens.set({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() + 1000 })
     vi.stubGlobal('fetch', async (url: string) => {
@@ -53,5 +61,39 @@ describe('Trakt through the worker', () => {
     })
     expect(await accessToken()).toBe('new')
     expect(traktTokens.get()?.refreshToken).toBe('r2')
+  })
+
+  const fresh = { access_token: 'new', refresh_token: 'r2', created_at: Date.now() / 1000, expires_in: 7776000 }
+
+  it('shares one refresh between concurrent callers', async () => {
+    traktTokens.set({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() + 1000 })
+    let calls = 0
+    vi.stubGlobal('fetch', async () => { calls++; await Promise.resolve(); return { status: 200, json: async () => fresh } })
+    const tokens = await Promise.all([accessToken(), accessToken(), accessToken()])
+    expect(tokens).toEqual(['new', 'new', 'new'])
+    expect(calls).toBe(1)
+  })
+
+  it('keeps a still-valid token through a 5xx or network error on refresh', async () => {
+    traktTokens.set({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() + 1000 })
+    vi.stubGlobal('fetch', async () => ({ status: 502, json: async () => ({}) }))
+    expect(await accessToken()).toBe('old')
+    vi.stubGlobal('fetch', async () => { throw new TypeError('offline') })
+    expect(await accessToken()).toBe('old')
+    expect(traktTokens.get()?.refreshToken).toBe('r')
+  })
+
+  it('returns null for an expired token when refresh is unavailable, but keeps the tokens', async () => {
+    traktTokens.set({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() - 1000 })
+    vi.stubGlobal('fetch', async () => ({ status: 500, json: async () => ({}) }))
+    expect(await accessToken()).toBeNull()
+    expect(traktTokens.get()).not.toBeNull()
+  })
+
+  it('clears the tokens only when the refresh token is rejected', async () => {
+    traktTokens.set({ accessToken: 'old', refreshToken: 'r', expiresAt: Date.now() + 1000 })
+    vi.stubGlobal('fetch', async () => ({ status: 401, json: async () => ({}) }))
+    expect(await accessToken()).toBeNull()
+    expect(traktTokens.get()).toBeNull()
   })
 })

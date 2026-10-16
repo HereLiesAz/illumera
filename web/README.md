@@ -45,11 +45,13 @@ npm run package:tizen   # Samsung TV app → packages/*-unsigned.wgt (sign befor
 
 Pushes to `main` that touch `web/` deploy through the central workflows (`.github/workflows/web-deploy.yml`). Each deploy also sets the Worker's `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` secrets from the HereLiesAz/workflows secrets of the same names (the web profile's `worker_secrets`), the same Trakt app the Android build uses.
 
+The Worker's CORS is limited to the app's own origins (its own, the hosted Worker, the desktop app and TV packages); set an `ALLOWED_ORIGINS` variable (comma-separated) to allow a custom domain. `/api` is rate limited per client IP.
+
 TV and desktop packages run from `file://`, so they call the hosted Worker's `/api` (`src/core/api.ts`).
 
 ## What browsers can't do
 
-- **Torrents:** `infoHash` sources play only through Stremio's streaming server (Stremio Service or the Stremio desktop app) on this computer; see Settings → Torrents.
+- **Torrents:** `infoHash` sources play only through a local torrent streaming server: TorrServer (bundled with the desktop app, port 8090) or Stremio's streaming server (Stremio Service or the Stremio desktop app, port 11470). With no address set, both default ports are tried; see Settings → Torrents.
 - **Codecs:** MKV with HEVC, AC3, DTS or TrueHD may not play. A failing source falls back to the next one.
 - **Request headers:** `proxyHeaders` are sent only for HLS, and never the headers browsers forbid (such as User-Agent and Referer).
 - **Mixed content:** public `http://` URLs are upgraded to `https://`.

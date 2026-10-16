@@ -16,8 +16,8 @@ export interface Progress {
   updatedAt: number
 }
 
-/** Past this fraction, a video counts as watched and leaves Continue Watching. */
-export const WATCHED_FRACTION = 0.92
+/** Past this fraction, a video counts as watched and leaves Continue Watching (Android's default watched threshold). */
+export const WATCHED_FRACTION = 0.85
 
 export class Library {
   readonly progress = new Stored<Record<string, Progress>>('progress', {})
@@ -37,8 +37,7 @@ export class Library {
     this.progress.set(all)
   }
 
-  /** Unfinished titles, newest first. */
-  /** Movies and series only, one per title (progress is keyed by the title's meta id). */
+  /** Unfinished titles, newest first: movies and series only, one per title (progress is keyed by the title's meta id). */
   continueWatching(): Progress[] {
     return Object.keys(this.progress.get()).map((k) => this.progress.get()[k])
       .filter((p) => (p.type === 'movie' || p.type === 'series') && p.time > 30 && p.time / p.duration < WATCHED_FRACTION)

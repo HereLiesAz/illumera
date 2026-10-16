@@ -102,11 +102,20 @@ export async function loadSecrets(names: string[]): Promise<void> {
   }
 }
 
-async function persist(name: string, value: unknown): Promise<void> {
-  try {
-    if (value === null || value === undefined) { localStorage.removeItem(storageKey(name)); return }
-    if (cryptoKey) localStorage.setItem(storageKey(name), await encrypt(cryptoKey, value))
-  } catch { /* storage unavailable: memory only */ }
+/** Writes in flight, per credential: encryption is async, so unchained writes could land out of order. */
+const writes = new Map<string, Promise<void>>()
+
+/** Queues a write behind the credential's earlier ones, so the last set() is what ends up stored (a sign-out can't be undone by a slower earlier save). */
+function persist(name: string, value: unknown): Promise<void> {
+  const write = async () => {
+    try {
+      if (value === null || value === undefined) { localStorage.removeItem(storageKey(name)); return }
+      if (cryptoKey) localStorage.setItem(storageKey(name), await encrypt(cryptoKey, value))
+    } catch { /* storage unavailable: memory only */ }
+  }
+  const next = (writes.get(name) ?? Promise.resolve()).then(write)
+  writes.set(name, next)
+  return next
 }
 
 /** A credential: same shape as Stored, but encrypted at rest (or memory-only). */

@@ -108,6 +108,8 @@ export function installSpatialNavigation(): void {
     if (!dir) return
     // In a text field, left/right move the caret.
     if (typing && (dir === 'left' || dir === 'right')) return
+    // A <select> and a number input use up/down to change their value.
+    if ((dir === 'up' || dir === 'down') && (target.tagName === 'SELECT' || (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'number'))) return
     if (move(dir)) e.preventDefault()
   })
 }

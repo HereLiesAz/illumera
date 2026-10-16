@@ -10,19 +10,21 @@ export interface Soundtrack { title?: string; groups: SongGroup[] }
 
 const cache = new Map<string, Soundtrack | null>()
 
-/** IMDb ids only; for an episode pass the series id with season and episode. Null when none are listed. */
+/** IMDb ids only (only answers are cached, never failures); for an episode pass the series id with season and episode. Null when none are listed. */
 export async function loadSoundtrack(type: string, imdbId: string, season?: number, episode?: number): Promise<Soundtrack | null> {
   if (!/^tt\d+$/.test(imdbId)) return null
   const kind = type === 'movie' ? 'movie' : 'series'
   const id = season !== undefined && episode !== undefined ? `${imdbId}:${season}:${episode}` : imdbId
   const key = `${kind}/${id}`
   if (cache.has(key)) return cache.get(key)!
-  let result: Soundtrack | null = null
+  let result: Soundtrack | null
   try {
     const data = await fetchJson<Soundtrack>(`${SOUNDTRACK_ADDON}/soundtrack/${kind}/${id}.json`, 15_000)
     const groups = (data.groups ?? []).filter((g) => g.songs && g.songs.length)
     result = groups.length ? { title: data.title, groups } : null
-  } catch { /* not found or unreachable */ }
+  } catch {
+    return null // not found or unreachable: not cached, so a later visit retries
+  }
   cache.set(key, result)
   return result
 }
