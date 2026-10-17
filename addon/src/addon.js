@@ -56,6 +56,7 @@ export async function streamHandler({ type, id }, { fetchJson, fetchBytes }) {
     return { streams: await streamsForItem(fetchJson, fetchBytes, id.slice(3)) }
   }
   const [imdbId, s, e] = id.split(':')
+  if (!/^tt\d+$/.test(imdbId)) return { streams: [] } // never interpolate arbitrary ids into the Cinemeta path
   const season = s != null ? Number(s) : null
   const episode = e != null ? Number(e) : null
   const info = await describe(fetchJson, type, imdbId, season, episode)

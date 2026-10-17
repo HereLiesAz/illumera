@@ -86,12 +86,11 @@ anywhere in the codebase.
 - "Data is encrypted at rest" — the three credential stores
   (`trakt_auth`, `stremio_secure_prefs`, `debrid_auth`) all use
   `androidx.security.crypto.EncryptedSharedPreferences` (AES-256-GCM/SIV
-  backed by the Android Keystore). `stremio_secure_prefs` has a documented
-  fallback to plaintext `SharedPreferences` only if the device's Keystore is
-  unrecoverably corrupted (`StremioAuthManager.kt`) — a defensive
-  last-resort, not the normal path. **[confirm]** whether Play wants that
-  edge case disclosed; it's reasonable to answer "Yes" for the form's
-  purposes since it describes normal operation.
+  backed by the Android Keystore). There is no plaintext
+  fallback: if the device's Keystore is unrecoverably corrupted,
+  `StremioAuthManager.kt` resets the store and, if that still fails, does not
+  persist the Stremio credentials at all (the user must sign in again), and
+  deletes any legacy plaintext prefs file. Answer "Yes" for the form.
 - "Independent security review" — no, unless one has actually been
   commissioned; answer No/not applicable.
 

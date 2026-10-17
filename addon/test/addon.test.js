@@ -144,3 +144,13 @@ test('routes parse ids with colons and search extras', () => {
   assert.equal(parsePath('/nope'), null)
   assert.ok(MANIFEST.idPrefixes.includes('ia:'))
 })
+
+test('parsePath returns null for malformed percent-encoding instead of throwing', () => {
+  assert.equal(parsePath('/stream/movie/%E0%A4%A.json'), null)
+})
+
+test('streamHandler rejects ids that are not IMDb ids without fetching', async () => {
+  const fetchJson = async () => { throw new Error('must not fetch') }
+  const out = await streamHandler({ type: 'movie', id: '..%2F..%2Fx' }, { fetchJson, fetchBytes: fetchJson })
+  assert.deepEqual(out, { streams: [] })
+})
