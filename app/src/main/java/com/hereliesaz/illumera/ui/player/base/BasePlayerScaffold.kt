@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.player.base
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -126,6 +127,10 @@ import coil.compose.AsyncImage
 
 private const val CONTROLS_AUTO_HIDE_MS = 3_000L
 private const val SEEK_OVERLAY_AUTO_HIDE_MS = 1_500L
+
+// A back press this soon after the controls / seek overlay timed out on their own is the user
+// trying to dismiss them (they were on screen a moment ago), not asking to leave playback.
+private const val BACK_AFTER_AUTO_HIDE_GRACE_MS = 1_000L
 private const val PAUSE_OVERLAY_IDLE_MS = 10_000L
 private const val SUBTITLE_OFF_TRACK_ID = "#none"
 
@@ -215,6 +220,7 @@ fun BasePlayerScaffold(
     var activePanel by remember { mutableStateOf(PlayerPanel.NONE) }
     var showControls by remember { mutableStateOf(true) }
     var showSeekOverlay by remember { mutableStateOf(false) }
+    var chromeAutoHiddenAtMs by remember { mutableStateOf(0L) }
     // Soundtrack of what's playing: "tt…" for a movie, "tt…:season:episode" for an episode.
     val soundtrackTarget = remember(currentPlaybackId, mediaType, isTrailer) {
         val parts = currentPlaybackId?.split(':').orEmpty()
@@ -546,6 +552,18 @@ fun BasePlayerScaffold(
                 showControls = false
                 showSeekOverlay = false
             }
+            // The seek bar shown by left/right (or media keys) with the controls hidden:
+            // back dismisses it, same as it dismisses the full controls.
+            showSeekOverlay -> {
+                markInteraction()
+                showSeekOverlay = false
+                pendingPreviewSeekPosition = null
+            }
+            // Controls / seek bar just timed out under the user's thumb: swallow this back.
+            SystemClock.elapsedRealtime() - chromeAutoHiddenAtMs < BACK_AFTER_AUTO_HIDE_GRACE_MS -> {
+                chromeAutoHiddenAtMs = 0L
+                markInteraction()
+            }
             else -> exitPlaybackOrShowSourcesList()
         }
     }
@@ -583,6 +601,7 @@ fun BasePlayerScaffold(
         if (episodeSwitchOpen) return@LaunchedEffect
         delay(CONTROLS_AUTO_HIDE_MS)
         if (showControls && isPlaybackIntended && !panelOpen && !showSubtitleOffsetBar && !showSubtitleSizeBar && !showSubtitleDelayBar && !showSubtitleColorBar) {
+            chromeAutoHiddenAtMs = SystemClock.elapsedRealtime()
             showControls = false
         }
     }
@@ -591,6 +610,7 @@ fun BasePlayerScaffold(
         if (!showSeekOverlay || showControls) return@LaunchedEffect
         delay(SEEK_OVERLAY_AUTO_HIDE_MS)
         if (showSeekOverlay && !showControls) {
+            chromeAutoHiddenAtMs = SystemClock.elapsedRealtime()
             showSeekOverlay = false
         }
     }
