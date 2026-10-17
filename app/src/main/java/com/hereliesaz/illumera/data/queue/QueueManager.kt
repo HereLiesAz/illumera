@@ -194,15 +194,19 @@ class QueueManager @Inject constructor(
         }
     }
 
+    // A settings panel may be disposed before its coroutine refreshes.
+    // Persistently invalidate the prior suggestions so ensureSuggestions()
+    // rebuilds for the NEW preference on the next Watchlist visit.
+    private fun invalidateSuggestions(scope: QueueScope) {
+        commit(scope, _state.value.copy(suggestions = emptyList()))
+    }
+
     @Synchronized
     fun setEnabled(enabled: Boolean) {
         val scope = ensureScopeLocked() ?: return
         if (_state.value.preferences.enabled == enabled) return
         updatePreferences(scope) { copy(enabled = enabled) }
-        // A settings panel may be disposed before its coroutine refreshes.
-        // Persistently invalidate the prior suggestions so ensureSuggestions()
-        // rebuilds for the NEW preference on the next Watchlist visit.
-        commit(scope, _state.value.copy(suggestions = emptyList()))
+        invalidateSuggestions(scope)
     }
 
     @Synchronized
@@ -210,10 +214,7 @@ class QueueManager @Inject constructor(
         val scope = ensureScopeLocked() ?: return
         if (_state.value.preferences.includeMovies == enabled) return
         updatePreferences(scope) { copy(includeMovies = enabled) }
-        // A settings panel may be disposed before its coroutine refreshes.
-        // Persistently invalidate the prior suggestions so ensureSuggestions()
-        // rebuilds for the NEW preference on the next Watchlist visit.
-        commit(scope, _state.value.copy(suggestions = emptyList()))
+        invalidateSuggestions(scope)
     }
 
     @Synchronized
@@ -221,10 +222,7 @@ class QueueManager @Inject constructor(
         val scope = ensureScopeLocked() ?: return
         if (_state.value.preferences.includeEpisodes == enabled) return
         updatePreferences(scope) { copy(includeEpisodes = enabled) }
-        // A settings panel may be disposed before its coroutine refreshes.
-        // Persistently invalidate the prior suggestions so ensureSuggestions()
-        // rebuilds for the NEW preference on the next Watchlist visit.
-        commit(scope, _state.value.copy(suggestions = emptyList()))
+        invalidateSuggestions(scope)
     }
 
     @Synchronized
@@ -232,10 +230,7 @@ class QueueManager @Inject constructor(
         val scope = ensureScopeLocked() ?: return
         if (_state.value.preferences.includeWholeShows == enabled) return
         updatePreferences(scope) { copy(includeWholeShows = enabled) }
-        // A settings panel may be disposed before its coroutine refreshes.
-        // Persistently invalidate the prior suggestions so ensureSuggestions()
-        // rebuilds for the NEW preference on the next Watchlist visit.
-        commit(scope, _state.value.copy(suggestions = emptyList()))
+        invalidateSuggestions(scope)
     }
 
     @Synchronized
@@ -243,10 +238,7 @@ class QueueManager @Inject constructor(
         val scope = ensureScopeLocked() ?: return
         if (_state.value.preferences.onlyUnseenSuggestions == enabled) return
         updatePreferences(scope) { copy(onlyUnseenSuggestions = enabled) }
-        // A settings panel may be disposed before its coroutine refreshes.
-        // Persistently invalidate the prior suggestions so ensureSuggestions()
-        // rebuilds for the NEW preference on the next Watchlist visit.
-        commit(scope, _state.value.copy(suggestions = emptyList()))
+        invalidateSuggestions(scope)
     }
 
     @Synchronized
@@ -644,6 +636,9 @@ class QueueManager @Inject constructor(
                             (it.type == "series" && (current.preferences.includeEpisodes || current.preferences.includeWholeShows))
                     }
                     .sortedByDescending { it.lastWatched }
+                    // One suggestion per series: episode rows of the same show collapse to the
+                    // most recently watched one (the list is newest-first).
+                    .distinctBy { if (it.type == "series") "series:" + normalizeId(it.seriesId ?: it.id) else "id:" + it.id }
                     .forEach { historyItem ->
                         candidates += QueueItem(
                             id = historyItem.id,

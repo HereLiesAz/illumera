@@ -9,13 +9,15 @@ This is the source-of-truth checklist for the requested Home, Movies, Series, Ad
 | Default enabled addons: Cinemeta, Trailer, Streaming Catalogs, TMDB, SeedSphere, Stremio Stats | PR #234 seeds new profiles and one-time upgrades existing profiles | Check endpoint reachability and catalog/stream availability. Stremio Stats requires *personal account authorization*: generic preinstallation cannot create a valid per-user stats manifest |
 | Home: top Hero + row-local cinematic previews | Implemented; PR #234 changes unset Hero to automatic, with explicit Disable | TV: Hero visible on a fresh profile; moving focus changes the preview above the corresponding row |
 | Art shows until trailer first frame, trailer from requested addon | Trailer extraction and first-render-frame gating present; PR #234 keeps original backdrop during TMDB enrichment and adds conservative non-IMDb title mapping | Verify trailers on both IMDb and alternate provider IDs; unavailable trailer must never erase art or freeze focus |
-| Movies and Series: same dual cinematic layout | Shared cinematic layout with top Hero, automatic unified source in PR #234 | TV focus/back behavior and scroll restoration |
+| **Superseded** (row shapes: see "Active-row cinematic hierarchy"): Movies and Series: same dual cinematic layout | Shared cinematic layout with top Hero, automatic unified source in PR #234 | TV focus/back behavior and scroll restoration |
 | No Illumera Discover screen | No Discover tab; catalog sources feed Movies/Series | Verify no extra Discover item in navigation and no duplicate content heading |
 | Combine enabled movie/series catalogs lazily **within each genre row**, with dedup; no unfiltered All Movies/All Series row | PR #234 introduced aggregation; follow-up genre-first branch removes the combined row and gives each enabled genre an independently lazy source cursor | Test addons with pagination and non-genre required extras; when an addon needs a missing configurable credential/argument, its catalog cannot be queried without setup |
 | Every Stremio genre enabled by default, user can disable each genre from Settings → Screen Editor | 19 official movie genres, 22 series genres, plus addon-specific genuine genres; independent profile-screen disabled sets, scrolling checklist and enable/disable all | Verify selection persists across restarts and profile copies and appears only in chosen screen |
-| Watchlist: Queue first + Stremio Library content and sorting | Main Watchlist uses Queue then Library with type and sorting controls | TV focus/scroll behavior, disconnected/offline state, sorting for watched/unwatched/times watched |
+| **Superseded** (see "Watchlist reorganization"): Watchlist: Queue first + Stremio Library content and sorting | Main Watchlist uses Queue then Library with type and sorting controls | TV focus/scroll behavior, disconnected/offline state, sorting for watched/unwatched/times watched |
 | Watchlist setup under Settings → Watchlist | Cloud-storage controls and default sort moved | Verify cloud play/delete routing, D-pad access |
 | Two-way Stremio Library sync includes unplayed saved-only titles | PR #234 includes bookmarks in outbound reconciliation and baseline snapshots | Stremio sign-in and multi-profile integration tests, remote deletes, and local re-add protection |
+
+**Reading this file:** later sections correct earlier ones. Entries marked **Superseded** describe behavior that has since changed; they stay for history and must not be used as acceptance criteria. The current descriptions are in "Active-row cinematic hierarchy" (row shapes), "Watchlist reorganization" (Watchlist layout) and `docs/ARCHITECTURE.md`.
 
 **Current Watchlist order (October 15):** Suggested Next → Queue → compact Library sorting → poster grid; earlier Queue-first/Library-rail descriptions below are historical and superseded by the October 15 Watchlist follow-up.
 
@@ -51,6 +53,8 @@ TV acceptance: fresh install defaults to 19 Movie and 22 Series genre rows; no A
 
 ## Paired-category Home and mixed Watchlist Library
 
+> **Superseded in part:** the Home category pairing still holds; the Watchlist layout (Queue first, one Library row) was replaced by "Watchlist reorganization".
+
 Home must preserve one row per distinct category, merging paired movies and series within it rather than combining all categories into a single row: Latest Movies + Latest Series → Latest, Popular Movies + Popular Series → Popular, Netflix Movies + Netflix Series → Netflix, etc. Identically named categories from enabled providers are combined and deduplicated within the row. Each category has independent lazy paging. Continue Watching, Hero and custom Hubs remain in place. Movies and Series tabs retain their genre-first rows.
 
 In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Series Library row, keeping saved titles and synchronized Stremio history together with its existing sort modes.
@@ -58,6 +62,8 @@ In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Ser
 **Acceptance checks:** Distinct Latest/Popular/Trending/Netflix/HBO Max rows remain distinct; each contains both media types when available; same-title duplicates across addon sources appear once; a movie and series adaptation never collapse into one item; one-sided categories still appear; paginating one category does not modify another; Watchlist maintains one sortable combined rail and restores D-pad focus after removing a title. Build and on-device verification remain outstanding.
 
 ## Cinematic aspect ratio, gap and genre-filter regression
+
+> **Superseded in part:** all-16:9 rows, the 184dp preview and the Watchlist rows described here were replaced by "Active-row cinematic hierarchy" and "Watchlist reorganization". The genre-filter rule still holds.
 
 - Cinematic Home, Movies and Series content rows all render horizontal 16:9 cards, including Continue Watching and custom Hub rows. The Simple layout retains its own preferences.
 - October 14 shortened the row-local preview from 360dp to 282dp; October 15 further shortened it to **184dp** without inflating its artwork. Title/description remain bottom-aligned; the landscape poster rail reserves 122dp rather than an unused 210dp.
@@ -67,6 +73,8 @@ In Watchlist, Queue remains first, followed by **one** deduplicated Movies & Ser
 Check the focused panel-to-card distance with short and long descriptions and with a TV remote. Android build/device validation is still outstanding.
 
 ## Paired Home categories and mixed Watchlist acceptance
+
+> **Superseded in part:** the paired Home categories still hold; the single combined Library row under Queue was replaced by "Watchlist reorganization".
 
 - Home does **not** display one giant Movies & Series row. Latest Movies + Latest Series produce one **Latest** row; Popular Movies + Popular Series produce one **Popular** row; Netflix Movie + Netflix Series produce one **Netflix** row, etc. Unrelated categories and providers remain separate.
 - Every paired row preserves the two original catalog URLs and its own pagination progress per source, deduplicates provider aliases and retains each item's original movie/series type.
@@ -83,6 +91,8 @@ Check the focused panel-to-card distance with short and long descriptions and wi
 **Unverified:** Android Gradle compilation, APK/AAB CI, real addon catalog availability, first-frame trailer playback on Android TV, and D-pad focus/restoration while rows appear asynchronously. Keep this release gate open until those checks pass.
 
 ## Inline cinematic poster follow-up (October 15, 2026)
+
+> **Superseded in part:** the Hero behavior still holds; "all rows use portrait posters" was replaced by "Active-row cinematic hierarchy" (only the active row is portrait).
 
 The Hero Carousel remains the first ordinary LazyColumn item: it must scroll entirely away as the user navigates into the rows, and must **not** be pinned or persist above them. Home, Movies, and Series cinematic media rows (including Continue Watching) use portrait 140×210dp posters rather than 16:9 mini-backdrops. When a title receives focus its **existing** Surface widens up to 340dp (bounded by screen width) and displays the compact cinematic trailer/backdrop, title and metadata **in that poster slot**. There is no additional full-width preview above any row. When focus moves, the former item returns to its portrait poster and the newly active poster expands; focusing another row collapses the old row. Long-press menus, selection, D-pad focus restoration, lazy pagination, and finite/looping View More cards must behave exactly as before. The separate simple layout remains unchanged.
 
@@ -202,7 +212,7 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - The Android Play release build for 0.12.42.1 stopped at `NavDrawerFocusTest.menuCannotBeLeftByUpDownTraversal` (510 tests, one failure); signed-AAB upload was not reached. A previous run on the preceding patch failed the same assertion.
 - The `NavDrawerRail` focus group still restricts entry to an explicit drawer open or Left from focused content. Individual boundaries now additionally set `down = FocusRequester.Cancel` on Exit and `up = FocusRequester.Cancel` on Profile; this prevents Compose's focus-search from leaving the menu at its ends while retaining Up/Down movement *within* the rail.
 - Robolectric regression asserts that explicitly opening Exit succeeds, Down cannot leave it, Up reaches Settings, and Down returns to Exit. Right, Back, tap-to-dismiss and focus restoration remain unchanged.
-- Acceptance gate: `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist, the configured Play release unit tests, and actual Android TV D-pad focus transitions must pass before declaring delivery.
+- Acceptance gate: `testDebugUnitTest testReleaseUnitTest testPlayUnitTest --continue` (the project has debug, release and play build types, no flavors), and actual Android TV D-pad focus transitions must pass before declaring delivery.
 
 ## Follow-up review fixes for PRs #254 and #257 (October 15, 2026)
 
@@ -239,4 +249,4 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - The first two Home rows begin loading after the initial screen state is published. All Movies/Series genre rows are eventually probed with no more than three concurrent workers, distributing completed work across later rows even if an early provider times out.
 - D-pad held Left/Right/Up/Down must accept every Android `repeatCount > 0` event. Separate zero-repeat duplicate presses still respect the gate; exiting to the navigation rail remains subject to existing boundaries.
 - While any directional input is active, poster/hero art stays visible and trailer extraction is disabled/cancelled. Resume only after 750ms idle plus the trailer preview's startup delay. Scrolling never waits for the trailer resolver's long network timeout.
-- Run `testFossDebugUnitTest testFossReleaseUnitTest --continue` where flavors exist and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.
+- Run `testDebugUnitTest testReleaseUnitTest testPlayUnitTest --continue` and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.

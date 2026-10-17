@@ -2,6 +2,8 @@ package com.hereliesaz.illumera.data.local
 
 import androidx.room.Room
 import com.hereliesaz.illumera.data.model.AddonEntity
+import com.hereliesaz.illumera.data.model.CatalogConfigEntity
+import com.hereliesaz.illumera.data.model.HubRowItemEntity
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.RecentSearchEntity
 import com.hereliesaz.illumera.data.model.SeriesNextUpEntity
@@ -54,6 +56,38 @@ class AddonDaoIntegrationTest {
 
         assertEquals("A updated", dao.getAddon("https://a")?.name)
         assertEquals(listOf("B", "A updated"), dao.getAllAddons().first().map { it.name })
+    }
+
+    @Test
+    fun replaceCatalogConfigsForAddonDropsStaleConfigsAndTheirHubItems() = runTest {
+        dao.saveCatalogConfigs(
+            listOf(
+                catalog("https://a", "keep"),
+                catalog("https://a", "stale"),
+                catalog("https://b", "other")
+            )
+        )
+        dao.insertHubRowItems(
+            listOf(
+                HubRowItemEntity(hubRowId = "row", configUniqueId = "https://a/movie/keep", title = "keep"),
+                HubRowItemEntity(hubRowId = "row", configUniqueId = "https://a/movie/stale", title = "stale")
+            )
+        )
+
+        dao.replaceCatalogConfigsForAddon(
+            transportUrl = "https://a",
+            retained = listOf(catalog("https://a", "keep")),
+            staleConfigIds = setOf("https://a/movie/stale")
+        )
+
+        assertEquals(
+            setOf("https://a/movie/keep", "https://b/movie/other"),
+            dao.getAllCatalogConfigs().first().map { it.uniqueId }.toSet()
+        )
+        assertEquals(
+            listOf("https://a/movie/keep"),
+            dao.getAllHubRowItems().first().map { it.configUniqueId }
+        )
     }
 
     @Test
@@ -292,5 +326,13 @@ class AddonDaoIntegrationTest {
         duration = 100L,
         lastWatched = lastWatched,
         type = type
+    )
+
+    private fun catalog(transportUrl: String, id: String) = CatalogConfigEntity(
+        uniqueId = "$transportUrl/movie/$id",
+        transportUrl = transportUrl,
+        addonName = transportUrl,
+        catalogType = "movie",
+        catalogId = id
     )
 }

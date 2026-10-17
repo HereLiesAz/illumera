@@ -5,6 +5,7 @@ sub init()
     m.rows = m.top.FindNode("rows")
     m.rows.ObserveField("rowItemSelected", "OnItem")
     m.tasks = {}
+    m.nextTag = 0
 end sub
 
 sub onParams()
@@ -52,7 +53,7 @@ sub AddContinueWatching()
     for each id in all
         p = all[id]
         ' Movies and series only; progress is keyed by title, so each appears once.
-        if (p.type = "movie" or p.type = "series") and p.duration > 0 and p.time > 30 and p.time / p.duration < 0.92 then list.Push(p)
+        if (p.type = "movie" or p.type = "series") and p.duration > 0 and p.time > 30 and p.time / p.duration < WatchedFraction() then list.Push(p)
     end for
     if list.Count() = 0 then return
     list.SortBy("updatedAt", "r")
@@ -69,7 +70,9 @@ end sub
 
 sub Fetch(row as Object, url as String, addonBase as String)
     task = CreateObject("roSGNode", "HttpTask")
-    tag = Str(m.tasks.Count()).Trim()
+    ' A counter, not m.tasks.Count(): answered tasks are deleted, which would reuse a live tag.
+    tag = Str(m.nextTag).Trim()
+    m.nextTag = m.nextTag + 1
     m.tasks[tag] = { task: task, row: row, addonBase: addonBase }
     task.ObserveField("response", "OnCatalog")
     task.request = { kind: "json", url: url, tag: tag }

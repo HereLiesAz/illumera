@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +83,7 @@ fun IntegrationsScreen(
     onBack: () -> Unit,
     viewModel: IntegrationsViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val deviceFormFactor = remember(context) { detectDeviceFormFactor(context) }
     // Dialog state
@@ -90,6 +91,8 @@ fun IntegrationsScreen(
     var showManagementDialog by remember { mutableStateOf(false) }
     var showDisconnectConfirm by remember { mutableStateOf(false) }
     var showResetSyncConfirm by remember { mutableStateOf(false) }
+    var confirmPushCount by remember { mutableStateOf<Int?>(null) }
+    var confirmSyncRemoveCount by remember { mutableStateOf<Int?>(null) }
     var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
@@ -113,6 +116,8 @@ fun IntegrationsScreen(
                 is IntegrationsEvent.PushComplete -> {
                     Toast.makeText(context, "Pushed ${event.count} addon(s) to Stremio", Toast.LENGTH_SHORT).show()
                 }
+                is IntegrationsEvent.ConfirmPushAddons -> confirmPushCount = event.count
+                is IntegrationsEvent.ConfirmSyncAddons -> confirmSyncRemoveCount = event.removeCount
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
                 }
@@ -280,7 +285,7 @@ fun IntegrationsScreen(
             onDismiss = { showManagementDialog = false },
             onSyncAddons = {
                 showManagementDialog = false
-                viewModel.syncAddons()
+                viewModel.requestSyncAddons()
             },
             onSyncLibrary = {
                 showManagementDialog = false
@@ -288,7 +293,7 @@ fun IntegrationsScreen(
             },
             onPushAddons = {
                 showManagementDialog = false
-                viewModel.pushAddonsToStremio()
+                viewModel.requestPushAddons()
             },
             onExportData = {
                 showManagementDialog = false
@@ -339,6 +344,34 @@ fun IntegrationsScreen(
             onConfirm = {
                 showDisconnectConfirm = false
                 viewModel.disconnect()
+            }
+        )
+    }
+
+    confirmPushCount?.let { count ->
+        DisconnectConfirmDialog(
+            title = "Replace Stremio addons?",
+            message = "Your Stremio account's addon collection will be replaced with the $count addon(s) " +
+                "installed on this profile. Addons only in your account are removed there.",
+            confirmText = "Push",
+            onDismiss = { confirmPushCount = null },
+            onConfirm = {
+                confirmPushCount = null
+                viewModel.pushAddonsToStremio()
+            }
+        )
+    }
+
+    confirmSyncRemoveCount?.let { count ->
+        DisconnectConfirmDialog(
+            title = "Import Stremio addons?",
+            message = "$count addon(s) on this profile aren't in your Stremio account and will be removed. " +
+                "Addons from your account are installed.",
+            confirmText = "Import",
+            onDismiss = { confirmSyncRemoveCount = null },
+            onConfirm = {
+                confirmSyncRemoveCount = null
+                viewModel.syncAddons()
             }
         )
     }
@@ -1528,19 +1561,23 @@ private fun StremioExternalLinkDialog(
 // DISCONNECT CONFIRMATION DIALOG
 // =============================================================================
 
+/**
+ * Confirmation for a destructive action. Initial focus is on Cancel so a stray D-pad
+ * press can't confirm it.
+ */
 @Composable
-private fun DisconnectConfirmDialog(
+internal fun DisconnectConfirmDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     title: String = "Log out of Stremio?",
     message: String = "This profile will be signed out of Stremio. Installed addons remain, but account sync stops until you sign in again.",
     confirmText: String = "Log Out"
 ) {
-    val confirmFocusRequester = remember { FocusRequester() }
+    val cancelFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
         delay(100)
-        runCatching { confirmFocusRequester.requestFocus() }
+        runCatching { cancelFocusRequester.requestFocus() }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1576,15 +1613,15 @@ private fun DisconnectConfirmDialog(
                     IntegrationButton(
                         text = "Cancel",
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        focusRequester = cancelFocusRequester
                     )
 
                     IntegrationButton(
                         text = confirmText,
                         onClick = onConfirm,
                         isDestructive = true,
-                        modifier = Modifier.weight(1f),
-                        focusRequester = confirmFocusRequester
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -2197,6 +2234,7 @@ private fun WutchDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Paste your wutch.tv API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 onDone = connect
                             )
@@ -2268,6 +2306,7 @@ private fun DebridDialog(
 ) {
     var selectedProvider by remember { mutableStateOf(connectedProvider ?: DebridProvider.REAL_DEBRID) }
     var apiKey by remember { mutableStateOf("") }
+    var confirmDisconnect by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
@@ -2281,6 +2320,19 @@ private fun DebridDialog(
     LaunchedEffect(Unit) {
         delay(150)
         runCatching { focusRequester.requestFocus() }
+    }
+
+    if (confirmDisconnect && connectedProvider != null) {
+        DisconnectConfirmDialog(
+            title = "Disconnect ${connectedProvider.displayName}?",
+            message = "Your debrid cloud library and cached-stream lookups stop for this profile until you connect again.",
+            confirmText = "Disconnect",
+            onDismiss = { confirmDisconnect = false },
+            onConfirm = {
+                confirmDisconnect = false
+                onDisconnect()
+            }
+        )
     }
 
     LaunchedEffect(deviceFormFactor, selectedProvider, connectedProvider) {
@@ -2364,15 +2416,16 @@ private fun DebridDialog(
                         ) {
                             IntegrationButton(
                                 text = "Disconnect",
-                                onClick = onDisconnect,
+                                onClick = { confirmDisconnect = true },
                                 isDestructive = true,
-                                modifier = Modifier.width(130.dp),
-                                focusRequester = focusRequester
+                                modifier = Modifier.width(130.dp)
                             )
+                            // Initial focus lands on the non-destructive action.
                             IntegrationButton(
                                 text = "Close",
                                 onClick = onDismiss,
-                                modifier = Modifier.width(100.dp)
+                                modifier = Modifier.width(100.dp),
+                                focusRequester = focusRequester
                             )
                         }
                     } else {
@@ -2441,6 +2494,7 @@ private fun DebridDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Enter your ${selectedProvider.displayName} API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 modifier = Modifier.fillMaxWidth(),
                                 onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
@@ -2458,6 +2512,7 @@ private fun DebridDialog(
                                 onValueChange = { apiKey = it },
                                 placeholder = "Paste your ${selectedProvider.displayName} API key",
                                 isPassword = true,
+                                keyboardType = KeyboardType.Password,
                                 focusRequester = focusRequester,
                                 modifier = Modifier.fillMaxWidth(),
                                 onDone = { if (apiKey.isNotBlank() && !isConnecting) onConnect(selectedProvider, apiKey) }
@@ -2488,6 +2543,20 @@ private fun TraktAuthDialog(
     onDismiss: () -> Unit
 ) {
     val focusRequester = remember { FocusRequester() }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+
+    if (confirmDisconnect) {
+        DisconnectConfirmDialog(
+            title = "Disconnect Trakt?",
+            message = "Scrobbling and Trakt sync stop for this profile until you connect again.",
+            confirmText = "Disconnect",
+            onDismiss = { confirmDisconnect = false },
+            onConfirm = {
+                confirmDisconnect = false
+                onDisconnect()
+            }
+        )
+    }
 
     LaunchedEffect(authState) {
         delay(200)
@@ -2536,15 +2605,16 @@ private fun TraktAuthDialog(
                     ) {
                         IntegrationButton(
                             text = "Disconnect",
-                            onClick = onDisconnect,
+                            onClick = { confirmDisconnect = true },
                             isDestructive = true,
-                            modifier = Modifier.width(130.dp),
-                            focusRequester = focusRequester
+                            modifier = Modifier.width(130.dp)
                         )
+                        // Initial focus lands on the non-destructive action.
                         IntegrationButton(
                             text = "Close",
                             onClick = onDismiss,
-                            modifier = Modifier.width(100.dp)
+                            modifier = Modifier.width(100.dp),
+                            focusRequester = focusRequester
                         )
                     }
                 } else {

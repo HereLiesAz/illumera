@@ -49,10 +49,16 @@ import kotlin.reflect.KProperty
 internal val SERIES_PLAYBACK_TYPES = setOf("series", "tv", "anime", "episode")
 // A next-episode hand-off that hasn't started playback by then is reported and falls back to the source list.
 internal const val AUTOPLAY_STALL_MS = 45_000L
-/** Longest a next-episode hand-off waits on any one subtitle lookup. */
-
 // Once the next episode is opened: time allowed for its first frame (torrents start slowly).
 internal const val AUTOPLAY_FIRST_FRAME_MS = 60_000L
+
+/** True for a saved stream URL that can't outlive the process (local torrent server, YouTube CDN). */
+internal fun isUnresumableAfterRestore(url: String): Boolean {
+    if (url.isBlank()) return false
+    val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return false
+    return host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]" ||
+        host.endsWith(".googlevideo.com")
+}
 
 /**
  * What the session asks the screen host to do. MainActivity collects these and moves the
@@ -126,6 +132,17 @@ class PlaybackSessionViewModel @Inject constructor(
     var selectedPlaybackType by saved("selectedPlaybackType", "movie")
     var selectedPlaybackTitle by saved("selectedPlaybackTitle", "")
     var selectedPlaybackPoster by saved("selectedPlaybackPoster", "")
+
+    init {
+        // A ViewModel is only (re)created with a non-blank saved URL after process death.
+        // A loopback torrent stream died with the process and a googlevideo trailer URL is
+        // short-lived and IP-bound, so neither can be resumed: drop it and let the player
+        // entry return to the page that opened it to re-resolve.
+        if (isUnresumableAfterRestore(selectedVideoUrl)) {
+            selectedVideoUrl = ""
+            selectedTrailerAudioUrl = ""
+        }
+    }
     // The playback Details should offer to resume, set when a session ends part-way. It
     // belongs to the page that started the playback (resumeHintOwner); see resumeHintFor.
     var detailsResumePlaybackHint by saved<String?>("detailsResumePlaybackHint", null)
@@ -654,76 +671,100 @@ class PlaybackSessionViewModel @Inject constructor(
             null
         }
 
+        val switchGeneration = episodeSwitchGeneration
         episodeSwitchJob = viewModelScope.launch {
-            val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams(
-                    "series", epStreamId,
-                    preferredAddonBaseUrl = recoveredEpisodeAddonBaseUrl,
-                    preferredAddonRequestId = episode.id
-                ) } }
-            val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
+            var fetchedStreams: List<Stream>? = null
+            try {
+                val streamsDeferred = async { requestOrFallback(emptyList()) { addonRepository.getStreams(
+                        "series", epStreamId,
+                        preferredAddonBaseUrl = recoveredEpisodeAddonBaseUrl,
+                        preferredAddonRequestId = episode.id
+                    ) } }
+                val subtitlesDeferred = async { requestOrFallback(emptyList()) { subtitleRepository.getSubtitles("series", epStreamId) } }
 
-            val rawStreams = streamsDeferred.await()
-            val addonSubs = subtitlesDeferred.await()
+                val rawStreams = streamsDeferred.await()
+                val addonSubs = subtitlesDeferred.await()
 
-            val streams = rankStreams(rawStreams, profile, offMainThread = false)
+                val streams = rankStreams(rawStreams, profile, offMainThread = false)
+                fetchedStreams = streams
 
-            if (streams.isEmpty()) {
-                isEpisodeSwitchLoading = false
-                pendingEpisodeSwitch = PendingEpisodeSwitch(
-                    playbackId = epPlaybackId,
-                    playbackTitle = epTitle,
-                    streamRequestId = epStreamId,
-                    streams = emptyList(),
-                    addonSubs = emptyList(),
-                    playerCurrentSourceUrl = playerCurrentSourceUrl
+                if (streams.isEmpty()) {
+                    isEpisodeSwitchLoading = false
+                    pendingEpisodeSwitch = PendingEpisodeSwitch(
+                        playbackId = epPlaybackId,
+                        playbackTitle = epTitle,
+                        streamRequestId = epStreamId,
+                        streams = emptyList(),
+                        addonSubs = emptyList(),
+                        playerCurrentSourceUrl = playerCurrentSourceUrl
+                    )
+                    return@launch
+                }
+
+                val bingeMatch = bingeGroupMatch(
+                    streams, pendingSourceSelection?.candidateStreams, playerCurrentSourceUrl, enabled = autoplay || autoSelect
                 )
-                return@launch
-            }
+                // Priority 2: Auto-select first available (only when autoSelectSource is on)
+                val streamToPlay = bingeMatch
+                    ?: if (autoSelect) streams.firstOrNull(::isPlayable) else null
+                val epUrl = streamToPlay?.let(::resolvePlayableSourceUrl)
 
-            val bingeMatch = bingeGroupMatch(
-                streams, pendingSourceSelection?.candidateStreams, playerCurrentSourceUrl, enabled = autoplay || autoSelect
-            )
-            // Priority 2: Auto-select first available (only when autoSelectSource is on)
-            val streamToPlay = bingeMatch
-                ?: if (autoSelect) streams.firstOrNull(::isPlayable) else null
-            val epUrl = streamToPlay?.let(::resolvePlayableSourceUrl)
+                if (streamToPlay == null || epUrl == null) {
+                    isEpisodeSwitchLoading = false
+                    pendingEpisodeSwitch = PendingEpisodeSwitch(
+                        playbackId = epPlaybackId,
+                        playbackTitle = epTitle,
+                        streamRequestId = epStreamId,
+                        streams = streams,
+                        addonSubs = addonSubs,
+                        playerCurrentSourceUrl = playerCurrentSourceUrl
+                    )
+                    return@launch
+                }
 
-            if (streamToPlay == null || epUrl == null) {
-                isEpisodeSwitchLoading = false
-                pendingEpisodeSwitch = PendingEpisodeSwitch(
-                    playbackId = epPlaybackId,
-                    playbackTitle = epTitle,
-                    streamRequestId = epStreamId,
-                    streams = streams,
-                    addonSubs = addonSubs,
-                    playerCurrentSourceUrl = playerCurrentSourceUrl
+                // Auto-resolved: keep the guard active through subtitle refinement.
+                pendingEpisodeSwitch = null
+                settle(
+                    PlayerSessionResult(
+                        positionMs = leavingPositionMs,
+                        durationMs = leavingDurationMs,
+                        isCompleted = false,
+                        selectedSourceUrl = playerCurrentSourceUrl ?: selectedVideoUrl,
+                        selectedAudioTrackId = null,
+                        selectedSubtitleTrackId = null
+                    ),
+                    profile
                 )
-                return@launch
+
+                openEpisode(
+                    playbackId = epPlaybackId,
+                    title = epTitle,
+                    url = epUrl,
+                    stream = streamToPlay,
+                    candidates = streams,
+                    subtitles = addonSubs,
+                    subtitleRequestId = epStreamId
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                // Same fallback as the autoplay hand-off: offer whatever sources were found.
+                AppErrors.e("Episodes", "Episode switch to $epPlaybackId failed", e)
+                if (episodeSwitchGeneration == switchGeneration) {
+                    pendingEpisodeSwitch = PendingEpisodeSwitch(
+                        playbackId = epPlaybackId,
+                        playbackTitle = epTitle,
+                        streamRequestId = epStreamId,
+                        streams = fetchedStreams.orEmpty(),
+                        addonSubs = emptyList(),
+                        playerCurrentSourceUrl = playerCurrentSourceUrl
+                    )
+                }
+            } finally {
+                // Never leave the guard stuck (it blocks every later selectEpisode); a newer
+                // switch owns the flag once the generation has moved on.
+                if (episodeSwitchGeneration == switchGeneration) isEpisodeSwitchLoading = false
             }
-
-            // Auto-resolved: keep the guard active through subtitle refinement.
-            pendingEpisodeSwitch = null
-            settle(
-                PlayerSessionResult(
-                    positionMs = leavingPositionMs,
-                    durationMs = leavingDurationMs,
-                    isCompleted = false,
-                    selectedSourceUrl = playerCurrentSourceUrl ?: selectedVideoUrl,
-                    selectedAudioTrackId = null,
-                    selectedSubtitleTrackId = null
-                ),
-                profile
-            )
-
-            openEpisode(
-                playbackId = epPlaybackId,
-                title = epTitle,
-                url = epUrl,
-                stream = streamToPlay,
-                candidates = streams,
-                subtitles = addonSubs,
-                subtitleRequestId = epStreamId
-            )
         }
     }
 
@@ -972,6 +1013,9 @@ class PlaybackSessionViewModel @Inject constructor(
     // ---- Helpers ----
 
     private fun settle(result: PlayerSessionResult, profile: ProfileEntity?) {
+        // A trailer is not a resumable playback: don't record a resume hint, tracks or a
+        // remembered source under its synthetic trailer_ id.
+        if (selectedPlaybackId.startsWith("trailer_")) return
         handlePlayerSessionEnd(
             sessionResult = result,
             selectedPlaybackId = selectedPlaybackId,

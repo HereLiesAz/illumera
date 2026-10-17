@@ -467,6 +467,9 @@ class AvatarUploadServer(
     }
 
     private fun handleImageUpload(session: IHTTPSession): Response {
+        // Base64 plus form encoding inflates the image; 2x leaves headroom for that
+        // while still bounding what parseBody() will buffer.
+        rejectOversizedBody(session, MAX_IMAGE_SIZE * 2L)?.let { return it }
         try {
             val files = mutableMapOf<String, String>()
             session.parseBody(files)

@@ -1,5 +1,5 @@
 import { addonStore, transportUrl } from './addons'
-import { library, type Progress } from './library'
+import { library, WATCHED_FRACTION, type Progress } from './library'
 import { Secret } from './secrets'
 import { Stored } from './storage'
 import type { Manifest } from './types'
@@ -58,7 +58,7 @@ async function call<T>(method: string, body: Record<string, unknown>): Promise<T
 /** A progress entry as Stremio's library item. */
 export function toLibraryItem(p: Progress): LibraryItem {
   const at = new Date(p.updatedAt).toISOString()
-  const watched = p.duration > 0 && p.time / p.duration >= 0.92 ? 1 : 0
+  const watched = p.duration > 0 && p.time / p.duration >= WATCHED_FRACTION ? 1 : 0
   return {
     _id: p.id, name: p.name, type: p.type, poster: p.poster, removed: false, temp: false, _mtime: at,
     state: {

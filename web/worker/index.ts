@@ -12,29 +12,64 @@
  * a TRAKT_CLIENT_ID variable and `wrangler secret put TRAKT_CLIENT_SECRET`.
  *
  * Everything else is a static asset (index.html for app routes).
+ *
+ * CORS is limited to the app's own origins: the Worker's origin, the hosted Worker, the
+ * desktop app (tauri://localhost, http(s)://tauri.localhost), the TV packages (file://
+ * pages send `Origin: null`) and the Vite dev server. Add more, comma-separated, in an
+ * ALLOWED_ORIGINS variable. A request from any other origin gets a 403.
+ *
+ * /api is also rate limited per client IP (RATE_LIMIT requests a minute, in memory per
+ * Worker isolate: best effort, enough to stop a script hammering the upstreams through us).
  */
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
   TRAKT_CLIENT_ID?: string
   TRAKT_CLIENT_SECRET?: string
+  /** Extra allowed browser origins, comma-separated (e.g. a custom domain for the web app). */
+  ALLOWED_ORIGINS?: string
 }
 
 const TRAKT = 'https://api.trakt.tv'
 /** Trakt sits behind Cloudflare, which answers requests without a User-Agent with a 403 page. */
 const USER_AGENT = 'illumera-web/1.0 (+https://github.com/HereLiesAz/illumera)'
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' }
+const HOSTED_ORIGIN = 'https://illumera-web.hereliesaz.workers.dev'
+const BUILT_IN_ORIGINS = [HOSTED_ORIGIN, 'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost', 'null', 'http://localhost:5173', 'http://127.0.0.1:5173']
+const RATE_LIMIT = 120
+const RATE_WINDOW_MS = 60_000
+const MAX_TRACKED_CLIENTS = 5_000
 const NOT_CONFIGURED = 'Trakt isn’t configured on this server.'
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...CORS, ...extra } })
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...extra } })
 }
 
-/** Passes an upstream response through with CORS, never cached. */
+/** Passes an upstream response through with its own content type (JSON when it sent none or nothing), never cached. */
 async function relay(upstream: Response): Promise<Response> {
   const text = await upstream.text()
-  return new Response(text || '{}', { status: upstream.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...CORS } })
+  const type = text ? upstream.headers.get('content-type') ?? 'application/json' : 'application/json'
+  return new Response(text || '{}', { status: upstream.status, headers: { 'content-type': type, 'cache-control': 'no-store' } })
 }
+
+function allowedOrigins(request: Request, env: Env): string[] {
+  const extra = (env.ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean)
+  return [new URL(request.url).origin, ...BUILT_IN_ORIGINS, ...extra]
+}
+
+const hits = new Map<string, { count: number; resetAt: number }>()
+
+/** Whether this client may make another /api request in the current window. */
+function withinRateLimit(request: Request, now = Date.now()): boolean {
+  const ip = request.headers.get('cf-connecting-ip') ?? 'unknown'
+  if (hits.size > MAX_TRACKED_CLIENTS) for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k)
+  const entry = hits.get(ip)
+  if (!entry || entry.resetAt <= now) { hits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS }); return true }
+  entry.count++
+  return entry.count <= RATE_LIMIT
+}
+
+/** Test hook: forget every client's request count. */
+export function resetRateLimit(): void { hits.clear() }
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try { return (await request.json()) as Record<string, unknown> } catch { return {} }
@@ -82,22 +117,38 @@ async function trakt(url: URL, request: Request, env: Env): Promise<Response | n
   return null
 }
 
+async function api(url: URL, request: Request, env: Env): Promise<Response> {
+  try {
+    if (url.pathname === '/api/introdb/segments' && request.method === 'GET') return await introSegments(url)
+    if (url.pathname.startsWith('/api/trakt/')) {
+      const res = await trakt(url, request, env)
+      if (res) return res
+    }
+  } catch {
+    return json({ error: 'Upstream unreachable' }, 502)
+  }
+  return json({ error: 'Not found' }, 404)
+}
+
 export async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url)
-  if (url.pathname.startsWith('/api/')) {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS })
-    try {
-      if (url.pathname === '/api/introdb/segments' && request.method === 'GET') return await introSegments(url)
-      if (url.pathname.startsWith('/api/trakt/')) {
-        const res = await trakt(url, request, env)
-        if (res) return res
-      }
-    } catch {
-      return json({ error: 'Upstream unreachable' }, 502)
-    }
-    return json({ error: 'Not found' }, 404)
+  if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
+
+  // Same-origin GETs may carry no Origin; a browser always sends one cross-origin.
+  const origin = request.headers.get('origin')
+  const cors: Record<string, string> = { vary: 'Origin' }
+  if (origin !== null) {
+    if (allowedOrigins(request, env).indexOf(origin) < 0) return json({ error: 'Origin not allowed' }, 403, cors)
+    cors['access-control-allow-origin'] = origin
+    cors['access-control-allow-headers'] = 'content-type'
+    cors['access-control-allow-methods'] = 'GET, POST, OPTIONS'
   }
-  return env.ASSETS.fetch(request)
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors, 'access-control-max-age': '86400' } })
+  if (!withinRateLimit(request)) return json({ error: 'Too many requests' }, 429, { ...cors, 'retry-after': '60' })
+
+  const res = await api(url, request, env)
+  for (const k in cors) res.headers.set(k, cors[k])
+  return res
 }
 
 export default { fetch: handle }

@@ -23,6 +23,11 @@ describe('routes', () => {
     expect(parseRoute(href(route))).toEqual(route)
     expect(parseRoute('#/nowhere')).toEqual({ name: 'home' })
   })
+
+  it('falls back to home on a malformed percent-escape instead of throwing', () => {
+    expect(parseRoute('#/details/movie/%E0%A4%A')).toEqual({ name: 'home' })
+    expect(parseRoute('#/%')).toEqual({ name: 'home' })
+  })
 })
 
 describe('nextEpisode', () => {

@@ -224,12 +224,12 @@ Don't serve real content that short as a movie or episode stream.
 Don't rely on these in illumera:
 
 - Stream `ytId`. Such streams are listed but can't be played.
-- Meta `trailers`, `trailerStreams`, `links`, `posterShape`, `behaviorHints.defaultVideoId`, `videos[].streams` and `videos[].available`.
+- Meta `trailers` and `trailerStreams` from an addon (Home-screen previews read them only from Cinemeta; see below), `links`, `posterShape`, `behaviorHints.defaultVideoId`, `videos[].streams` and `videos[].available`.
 - Addon search catalogs. Search uses Cinemeta.
-- Catalog extras other than `skip` (no `genre`); catalogs with required extras are requested without them.
+- Catalog extras other than `skip` and `genre`. `genre` is supported: a catalog with an optional `genre` extra is filtered by it when the genre screens ask for one, and one whose `genre` is required is requested once per `options` value. On the Movies and Series screens, a catalog with any other required extra (such as `search`) is skipped; elsewhere catalogs are requested without extras.
 - Manifest `config`, `background` and `contactEmail`, and catalog `hasMore`.
 - `cacheMaxAge` and the other cache hints.
-- Intro and outro skipping comes from IntroDB, and trailers from TMDB. Addons can't supply either.
+- Intro and outro skipping comes from IntroDB; addons can't supply it. Home-screen trailer previews come from, in order, the `stremio-trailer-addon` (if it is installed and enabled; its stream `ytId`, `externalUrl` or YouTube `url`), TMDB's video index, and Cinemeta's meta `trailerStreams`/`trailers`. No other addon can supply trailers.
 - When a profile turns on TMDB enrichment, TMDB overwrites the addon's `name`, `description`, images, `genres`, `releaseInfo`, `imdbRating` and `runtime`.
 
 ## Checklist

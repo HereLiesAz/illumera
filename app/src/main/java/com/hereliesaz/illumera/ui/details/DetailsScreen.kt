@@ -55,7 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -152,7 +152,7 @@ fun DetailsScreen(
     LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
     val context = LocalContext.current
 
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val movie = state.meta
     val streamId = state.streamId(id) // Resolved IMDb ID for stream/subtitle requests
     // Include addon origin in identity so the same media ID from a different addon
@@ -192,7 +192,7 @@ fun DetailsScreen(
     val availableStreams = state.availableStreams
     val sourceListDisabled = state.sourceListDisabled
     val excludedSourceIds = state.excludedSourceIds
-    val streamOutcomes by viewModel.streamOutcomes.collectAsState()
+    val streamOutcomes by viewModel.streamOutcomes.collectAsStateWithLifecycle()
 
     LaunchedEffect(autoPlayStream) {
         val stream = autoPlayStream ?: return@LaunchedEffect
@@ -529,7 +529,7 @@ fun DetailsScreen(
                 val firstEpisodeSeason = firstEpisode?.season?.takeIf { it > 0 } ?: 1
                 val firstEpisodeNumber = firstEpisode?.episode?.takeIf { it > 0 } ?: 1
 
-                val consumedQueueAutoPlayId by viewModel.consumedQueueAutoPlayId.collectAsState()
+                val consumedQueueAutoPlayId by viewModel.consumedQueueAutoPlayId.collectAsStateWithLifecycle()
                 val pendingQueueAutoPlayId = queueAutoPlayId?.takeIf { it != consumedQueueAutoPlayId }
                 LaunchedEffect(pendingQueueAutoPlayId, currentMovie.id) {
                     val requested = pendingQueueAutoPlayId ?: return@LaunchedEffect
@@ -558,7 +558,7 @@ fun DetailsScreen(
                 // No onNavigateDown — Compose's default DOWN navigation
                 // handles hero→row transitions reliably after disposal/recomposition.
 
-                val isInWatchlist by viewModel.isInWatchlist.collectAsState()
+                val isInWatchlist by viewModel.isInWatchlist.collectAsStateWithLifecycle()
 
                 if (type == "series") {
                     val playLabel = if (!state.isResumeStateReady) {

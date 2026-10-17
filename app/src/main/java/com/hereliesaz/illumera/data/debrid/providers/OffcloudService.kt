@@ -4,6 +4,8 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -34,9 +36,9 @@ class OffcloudService @Inject constructor(private val http: DebridHttp) : Debrid
                 DebridResult.Success(
                     list.mapNotNull { el ->
                         val o = el.asObjectOrNull() ?: return@mapNotNull null
-                        val requestId = o.get("requestId")?.asString ?: return@mapNotNull null
-                        val fileName = o.get("fileName")?.asString ?: "Unknown"
-                        val server = o.get("server")?.asString
+                        val requestId = o.str("requestId") ?: return@mapNotNull null
+                        val fileName = o.str("fileName") ?: "Unknown"
+                        val server = o.str("server")
                         val directLink = if (server != null) {
                             val encodedFileName = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20")
                             "https://$server.offcloud.com/cloud/download/$requestId/$encodedFileName"
@@ -45,8 +47,8 @@ class OffcloudService @Inject constructor(private val http: DebridHttp) : Debrid
                             id = requestId,
                             name = fileName,
                             provider = DebridProvider.OFFCLOUD,
-                            sizeBytes = o.get("fileSize")?.asLong,
-                            status = o.get("status")?.asString,
+                            sizeBytes = o.long("fileSize"),
+                            status = o.str("status"),
                             directLinks = listOfNotNull(directLink)
                         )
                     }

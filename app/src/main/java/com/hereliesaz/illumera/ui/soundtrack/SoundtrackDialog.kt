@@ -20,7 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -72,7 +72,7 @@ fun SoundtrackDialog(
     viewModel: SoundtrackViewModel = hiltViewModel(key = "soundtrack:$type:$imdbId:$season:$episode"),
 ) {
     LaunchedEffect(type, imdbId, season, episode) { viewModel.load(type, imdbId, season, episode) }
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val firstRow = remember { FocusRequester() }
 
     Dialog(onDismissRequest = onDismiss) {

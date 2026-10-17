@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.room)
 }
 
 val localProperties = Properties().apply {
@@ -60,6 +61,14 @@ val hasReleaseKeystore = releaseStoreFile.isNotBlank() &&
     releaseKeyPassword.isNotBlank() &&
     rootProject.file(releaseStoreFile).isFile
 
+// Export Room schemas so each version is reviewable in git and migrations can be
+// verified against the exact previous schema. The Room Gradle plugin writes per-variant
+// and copies into this directory, avoiding the concurrent-write race a plain
+// ksp room.schemaLocation arg caused across debug/release/play.
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 android {
     namespace = "com.hereliesaz.illumera"
     compileSdk = 37
@@ -75,8 +84,9 @@ android {
         buildConfigField("String", "GITHUB_REPO", buildConfigString("illumera"))
         buildConfigField("boolean", "ENABLE_SELF_UPDATE", "true")
         buildConfigField("boolean", "USE_PLAY_UPDATES", "false")
-        // Automatic crash/ANR reporting. Off in the base config (debug); the `release` build
-        // type turns it on (user can opt out in Settings) and `play` turns it back off.
+        // Automatic crash/ANR reporting availability. Off by default (debug builds);
+        // the GitHub release build turns it on until illumera reaches stable production
+        // (the user can opt out in Settings), and the Play build keeps it off.
         buildConfigField("boolean", "CRASH_REPORTING_AVAILABLE", "false")
 
         buildConfigField("String", "ACRA_URL", buildConfigString(acraUrl))
@@ -219,6 +229,7 @@ dependencies {
     implementation(libs.androidx.tv.material)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.activity.compose)
 

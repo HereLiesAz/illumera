@@ -112,8 +112,8 @@ import your existing addon collection and sync Continue Watching progress.
 ### Prerequisites
 
 - Android Studio (latest stable)
-- JDK 17+
-- Android SDK 34+ (compileSdk 36)
+- JDK 21
+- Android SDK with platform 37 (compileSdk 37)
 
 ### Steps
 
@@ -131,21 +131,26 @@ import your existing addon collection and sync Continue Watching progress.
    ./gradlew assembleDebug
    ```
 
-   `./gradlew assembleRelease` (and `bundleRelease`, `assemblePlay`,
-   `bundlePlay`) requires the real release keystore and fails without it; there
-   is no fallback key (see [`ci/README.md`](ci/README.md)). Use
-   `assembleDebug` for local builds.
+   `assembleRelease`, `bundleRelease`, `assemblePlay` and `bundlePlay` need
+   the real release/upload keystore and fail without it; see
+   [`ci/README.md`](ci/README.md).
 
 ### Releases
 
-Release builds are produced by the centralized workflows in
-[`HereLiesAz/workflows`](https://github.com/HereLiesAz/workflows), invoked
-from the stubs in [`.github/workflows/`](.github/workflows/)
-(`android-github-release.yml`, `android-play-release.yml`,
-`desktop-release.yml`, `web-deploy.yml`). The GitHub release is what the
-in-app updater (`AppUpdateManager`) checks against. See
-[`docs/RELEASING.md`](docs/RELEASING.md) and [`ci/README.md`](ci/README.md)
-for versioning and how release signing is configured.
+Releases are built centrally in
+[`HereLiesAz/workflows`](https://github.com/HereLiesAz/workflows). The
+workflows in this repo
+([`android-github-release.yml`](.github/workflows/android-github-release.yml),
+[`android-play-release.yml`](.github/workflows/android-play-release.yml),
+[`desktop-release.yml`](.github/workflows/desktop-release.yml) and
+[`web-deploy.yml`](.github/workflows/web-deploy.yml)) are hand-off stubs:
+a push to `main` that touches the module's paths (or a manual run) starts the
+central build, and the result is reported on the commit as a status with the
+stub's workflow path as its name. The GitHub release is what the in-app
+updater (`AppUpdateManager`) checks against. Release versions come from the
+central run as `-PversionCode` / `-PversionName`; local builds use the last
+published pair in [`version.properties`](version.properties). See
+[`ci/README.md`](ci/README.md) for how release signing is configured.
 
 ## Project Structure
 

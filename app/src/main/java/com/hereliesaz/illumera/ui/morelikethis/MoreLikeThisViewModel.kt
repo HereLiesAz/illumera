@@ -2,6 +2,8 @@ package com.hereliesaz.illumera.ui.morelikethis
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.tmdb.TmdbMetaPreview
 import com.hereliesaz.illumera.data.tmdb.TmdbMetadataService
 import com.hereliesaz.illumera.data.tmdb.TmdbService
@@ -24,6 +26,8 @@ sealed interface MoreLikeThisState {
 class MoreLikeThisViewModel @AssistedInject constructor(
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
+    private val dao: AddonDao,
+    private val profileConfigurationManager: ProfileConfigurationManager,
     @Assisted("type") private val type: String,
     @Assisted("id") private val id: String
 ) : ViewModel() {
@@ -53,7 +57,12 @@ class MoreLikeThisViewModel @AssistedInject constructor(
                 _state.value = MoreLikeThisState.Empty("Couldn't find this title on TMDB.")
                 return@launch
             }
-            val items = tmdbMetadataService.fetchRecommendations(tmdbId, mediaType, maxItems = MAX_ITEMS)
+            // Same language as the Details "More like this" row: the profile's TMDB language,
+            // or the device language when it is blank.
+            val profile = profileConfigurationManager.getLastActiveProfileId()?.let { dao.getProfileById(it) }
+            val language = profile?.tmdbLanguage?.ifBlank { null }
+                ?: java.util.Locale.getDefault().toLanguageTag()
+            val items = tmdbMetadataService.fetchRecommendations(tmdbId, mediaType, language, MAX_ITEMS)
             _state.value = if (items.isEmpty()) {
                 MoreLikeThisState.Empty("No similar titles found.")
             } else {
@@ -63,6 +72,7 @@ class MoreLikeThisViewModel @AssistedInject constructor(
     }
 
     private companion object {
-        const val MAX_ITEMS = 40
+        // TMDB returns one page (20 results) of recommendations; asking for more is a no-op.
+        const val MAX_ITEMS = 20
     }
 }

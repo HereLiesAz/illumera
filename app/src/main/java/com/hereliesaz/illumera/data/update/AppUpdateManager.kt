@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -233,9 +235,18 @@ class AppUpdateManager @Inject constructor(
             }
         }
 
+        // A connection dropped mid-body can end the stream early without an exception;
+        // never hand a truncated APK to the installer.
+        if (totalBytes > 0 && downloadedBytes != totalBytes) {
+            apkFile.delete()
+            throw Exception("Update download incomplete ($downloadedBytes of $totalBytes bytes)")
+        }
+
         // Verify checksum if one was provided in the release notes
         val expectedHash = extractSha256FromBody(releaseBody)
-        if (expectedHash != null) {
+        if (expectedHash == null) {
+            Log.w("AppUpdateManager", "Release notes carry no SHA-256; APK integrity not verified")
+        } else {
             val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
             if (!actualHash.equals(expectedHash, ignoreCase = true)) {
                 apkFile.delete()
@@ -387,13 +398,11 @@ class AppUpdateManager @Inject constructor(
 
         /** Validate that the download URL is from a trusted GitHub domain over HTTPS. */
         private fun isAllowedDownloadUrl(url: String): Boolean {
-            val uri = try {
-                Uri.parse(url)
-            } catch (_: Exception) {
-                return false
-            }
-            if (!uri.scheme.equals("https", ignoreCase = true)) return false
-            val host = uri.host?.lowercase() ?: return false
+            // OkHttp's parser matches what the request will actually connect to; it
+            // rejects malformed authorities that a lenient parser might misread.
+            val httpUrl = url.toHttpUrlOrNull() ?: return false
+            if (!httpUrl.isHttps) return false
+            val host = httpUrl.host.lowercase()
             return ALLOWED_DOWNLOAD_HOSTS.any { host == it || host.endsWith(".$it") }
         }
 

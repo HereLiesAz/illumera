@@ -2,12 +2,18 @@
 
 ## Overview
 
-Releases are built by the centralized workflows in
-`HereLiesAz/workflows`, invoked from the stubs in
-[`.github/workflows/`](../.github/workflows/) (`android-github-release.yml`,
-`android-play-release.yml`). They build a signed release APK and publish it
-as a GitHub Release. No tag needs to be pushed by hand — the workflow derives
-its own version and tags the release itself.
+Releases are built in [`HereLiesAz/workflows`](https://github.com/HereLiesAz/workflows),
+not in this repo. The workflows here are hand-off stubs that hold no secrets:
+[`android-github-release.yml`](../.github/workflows/android-github-release.yml)
+and [`android-play-release.yml`](../.github/workflows/android-play-release.yml)
+for Android, [`desktop-release.yml`](../.github/workflows/desktop-release.yml)
+for the desktop and TV packages, and
+[`web-deploy.yml`](../.github/workflows/web-deploy.yml) for the web app. A push
+to `main` that touches the module's paths (or a manual `workflow_dispatch`)
+starts the central run; the stub's job only points to it, and the result is
+reported on the commit as a status named after the stub's workflow path.
+The Android GitHub run builds a signed release APK and publishes it as a
+GitHub Release; no tag needs to be pushed by hand.
 
 `AppUpdateManager` (in-app) polls this repo's *latest* non-prerelease
 release, so the release shape must keep matching what it expects: exactly
@@ -15,18 +21,20 @@ one `*.apk` asset, and a `SHA-256: <64 hex chars>` line in the release body.
 
 ## Versioning
 
-`versionName` is four-part, `MAJOR.MINOR.PATCH.BUILD` (e.g. `0.12.48.1`). The
-release workflow passes `-PversionName` / `-PversionCode` to Gradle
-(versionCode is one more than the highest Google Play has accepted, and
-versionName raises only its last field); local builds fall back to the pair
-recorded in `version.properties` (`app/build.gradle.kts`). Both must strictly
-increase for every release, which Android's package installer and
-`AppUpdateManager`'s version comparison require to recognize an upgrade.
+The central run passes the version to Gradle as `-PversionCode` and
+`-PversionName` (`app/build.gradle.kts`). `versionCode` is one more than the
+highest Google Play has accepted, and `versionName` raises only its last
+field; the name has four components, `major.minor.patch.build`. Without those
+properties (a local build) Gradle reads the last published pair,
+`versionCode` and `versionName`, from
+[`version.properties`](../version.properties). Versions strictly increase,
+which both Android's package installer and `AppUpdateManager`'s version
+comparison require to recognize an upgrade.
 
 ## Signing
 
 Published GitHub and Play artifacts require the real release/upload keystore;
-there is no public fallback key. The centralized release workflow supplies the
+there is no public fallback key. The central release workflow supplies the
 signing material, and `app/build.gradle.kts` fails distributable
 release/Play tasks when those credentials are absent rather than emitting an
 uninstallable unsigned artifact.
@@ -70,7 +78,7 @@ first.
 
 ### How the rebuild works
 
-In the centralized release workflow (`HereLiesAz/workflows`):
+In the central Android release workflow (`HereLiesAz/workflows`):
 
 1. `STREMIO_MEDIA_REF` (a pinned commit SHA) and `STREMIO_AAR_CACHE_VERSION`
    are set as env vars at the top of the job. Bump
@@ -123,8 +131,8 @@ To move to a newer Media3 base:
    `https://dl.google.com/android/maven2/androidx/media3/media3-exoplayer/<version>/media3-exoplayer-<version>-sources.jar`
    (not Maven Central — androidx.media3 core artifacts aren't published
    there).
-4. Push to a branch and watch the "Build and Release APK" workflow run
-   through to a successful, published release — a green build is the only
+4. Push to a branch and watch the central Android release run (its status
+   appears on the commit) through to a successful, published release — a green build is the only
    real confirmation the pairing is compatible; there's no offline check
    for the `playbackcore/` AAR side of this. If it fails, read the actual
    Gradle error in the failed job's logs rather than assuming it's the

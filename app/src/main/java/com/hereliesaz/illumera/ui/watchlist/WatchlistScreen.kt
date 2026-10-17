@@ -42,7 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,7 +101,7 @@ fun WatchlistScreen(
     viewModel: WatchlistViewModel = hiltViewModel()
 ) {
 
-    val library by viewModel.libraryEntries.collectAsState()
+    val library by viewModel.libraryEntries.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val watchlistPrefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
     val remoteCounts = remember { context.getSharedPreferences("stremio_library_sync", 0) }
@@ -392,6 +392,20 @@ internal fun DebridLibrarySection(
     onPlay: (DebridItem) -> Unit,
     onDelete: (DebridItem) -> Unit
 ) {
+    // Deleting from the debrid cloud can't be undone, so confirm first.
+    var pendingDelete by remember { mutableStateOf<DebridItem?>(null) }
+    pendingDelete?.let { item ->
+        com.hereliesaz.illumera.ui.settings.DisconnectConfirmDialog(
+            title = "Remove from cloud storage?",
+            message = "\"${item.name}\" will be deleted from your ${provider?.displayName ?: "debrid"} account. This can't be undone.",
+            confirmText = "Remove",
+            onDismiss = { pendingDelete = null },
+            onConfirm = {
+                pendingDelete = null
+                onDelete(item)
+            }
+        )
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(start = startPadding, end = 16.dp),
@@ -430,7 +444,7 @@ internal fun DebridLibrarySection(
                         item = item,
                         isResolving = state.resolvingItemId == item.id,
                         onPlay = { onPlay(item) },
-                        onDelete = { onDelete(item) }
+                        onDelete = { pendingDelete = item }
                     )
                 }
             }

@@ -190,7 +190,7 @@ class WutchManager @Inject constructor(
                         nextSeason = season,
                         nextEpisode = episode,
                         nextEpisodeTitle = item.name,
-                        nextReleased = item.releaseDate,
+                        nextReleased = com.hereliesaz.illumera.data.model.normalizeReleaseDate(item.releaseDate),
                         updatedAt = watchedAt,
                     )
                 )

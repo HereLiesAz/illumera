@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Cross-compile libass and its dependencies for Android.
-# Dependencies: FreeType, FriBidi, HarfBuzz
+# Dependencies: FreeType, FriBidi, HarfBuzz. libass is built without a system
+# font provider; AssHandler adds system fonts at runtime (see ass_direct.c).
 #
 # Prerequisites:
 #   - Android NDK (set ANDROID_NDK_HOME)
@@ -21,16 +22,37 @@ FRIBIDI_VERSION="1.0.16"
 HARFBUZZ_VERSION="10.1.0"
 LIBASS_VERSION="0.17.3"
 
+# SHA-256 of each release tarball. Downloads are rejected on mismatch. When you
+# bump a version, download the new tarball from the official release page, check
+# it against the project's published signature/checksum, then update the hash.
+FREETYPE_SHA256="5c3a8e78f7b24c20b25b54ee575d6daa40007a5f4eea2845861c3409b3021747"
+FRIBIDI_SHA256="1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c"
+HARFBUZZ_SHA256="6ce3520f2d089a33cef0fc48321334b8e0b72141f6a763719aaaecd2779ecb82"
+LIBASS_SHA256="da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537"
+
 # --- Validate NDK ---
+# Pick the newest installed NDK when ANDROID_NDK_HOME is not set. (A glob inside
+# `[ -d ... ]` breaks as soon as more than one NDK is installed.)
+latest_ndk() {
+    local root
+    for root in "$ANDROID_SDK_ROOT" "$ANDROID_HOME" "$HOME/Android/Sdk" "$LOCALAPPDATA/Android/Sdk"; do
+        if [ -n "$root" ] && [ -d "$root/ndk" ]; then
+            local found
+            found=$(ls -d "$root"/ndk/*/ 2>/dev/null | sed 's|/$||' | sort -V | tail -1)
+            if [ -n "$found" ]; then
+                echo "$found"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
 if [ -z "$ANDROID_NDK_HOME" ]; then
-    if [ -d "$HOME/Android/Sdk/ndk/"* ]; then
-        ANDROID_NDK_HOME=$(ls -d "$HOME/Android/Sdk/ndk/"* | sort -V | tail -1)
-    elif [ -d "$LOCALAPPDATA/Android/Sdk/ndk/"* ]; then
-        ANDROID_NDK_HOME=$(ls -d "$LOCALAPPDATA/Android/Sdk/ndk/"* | sort -V | tail -1)
-    else
+    ANDROID_NDK_HOME=$(latest_ndk) || {
         echo "ERROR: ANDROID_NDK_HOME not set and NDK not found"
         exit 1
-    fi
+    }
 fi
 echo "Using NDK: $ANDROID_NDK_HOME"
 TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
@@ -44,11 +66,19 @@ fi
 download_and_extract() {
     local url=$1
     local dest=$2
+    local sha256=$3
     if [ ! -d "$dest" ]; then
         echo "Downloading $url..."
         mkdir -p "$(dirname "$dest")"
         local archive="$dest.archive"
-        curl -L "$url" -o "$archive"
+        curl -fL "$url" -o "$archive"
+        if ! echo "$sha256  $archive" | sha256sum -c - >/dev/null 2>&1; then
+            echo "ERROR: SHA-256 mismatch for $url"
+            echo "  expected: $sha256"
+            echo "  actual:   $(sha256sum "$archive" | cut -d' ' -f1)"
+            rm -f "$archive"
+            exit 1
+        fi
         mkdir -p "$dest"
         if echo "$url" | grep -q '\.tar\.xz'; then
             tar xJf "$archive" -C "$dest" --strip-components=1
@@ -104,7 +134,7 @@ build_arch() {
     local FREETYPE_SRC="$BUILD_DIR/freetype-src"
     download_and_extract \
         "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz" \
-        "$FREETYPE_SRC"
+        "$FREETYPE_SRC" "$FREETYPE_SHA256"
 
     cd "$FREETYPE_SRC"
     make clean 2>/dev/null || true
@@ -127,7 +157,7 @@ build_arch() {
     local FRIBIDI_SRC="$BUILD_DIR/fribidi-src"
     download_and_extract \
         "https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.xz" \
-        "$FRIBIDI_SRC"
+        "$FRIBIDI_SRC" "$FRIBIDI_SHA256"
 
     cd "$FRIBIDI_SRC"
     make clean 2>/dev/null || true
@@ -146,7 +176,7 @@ build_arch() {
     local HARFBUZZ_SRC="$BUILD_DIR/harfbuzz-src"
     download_and_extract \
         "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz" \
-        "$HARFBUZZ_SRC"
+        "$HARFBUZZ_SRC" "$HARFBUZZ_SHA256"
 
     cd "$HARFBUZZ_SRC"
     rm -rf build-$ARCH
@@ -178,7 +208,7 @@ build_arch() {
     local LIBASS_SRC="$BUILD_DIR/libass-src"
     download_and_extract \
         "https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz" \
-        "$LIBASS_SRC"
+        "$LIBASS_SRC" "$LIBASS_SHA256"
 
     cd "$LIBASS_SRC"
     make clean 2>/dev/null || true
@@ -200,6 +230,9 @@ build_arch() {
         HARFBUZZ_LIBS="-L$PREFIX/lib -lharfbuzz"
     make -j$(nproc 2>/dev/null || echo 4)
     make install
+
+    # Drop debug symbols from the installed shared libraries (they ship in the AAR).
+    "$STRIP" --strip-unneeded "$PREFIX"/lib/lib{ass,freetype,fribidi,harfbuzz}.so
 
     echo "libass stack installed to $PREFIX"
 }

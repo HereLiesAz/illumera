@@ -50,8 +50,9 @@ function NumOr(value as Dynamic, fallback as Double) as Double
     return value
 end function
 
-' Filters and ranks streams from every addon: closeness to the target size, then seeders
-' below the minimum, then addon order, then the chosen sort keys. Stable.
+' Filters and ranks streams from every addon: seeders below the minimum first (the fewer
+' short, the better), then closeness to the target size, then addon order, then the chosen
+' sort keys. Stable.
 function SortStreams(streams as Object, mediaType as String, ranking as Object, prefs = invalid as Dynamic) as Object
     if prefs = invalid then prefs = DefaultSortPrefs()
     targetMb = prefs.episodeTargetSizeMb

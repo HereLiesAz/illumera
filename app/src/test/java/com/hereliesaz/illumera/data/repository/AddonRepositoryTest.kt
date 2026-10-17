@@ -55,6 +55,21 @@ class AddonRepositoryTest {
     }
 
     @Test
+    fun fetchNextCatalogPageResultSeparatesEmptyPageFromFailure() = runTest {
+        val api = mockk<StremioApiService>()
+        val dao = mockk<AddonDao>(relaxed = true)
+        val repository = AddonRepository(api, dao)
+
+        coEvery { api.getCatalog("https://addon.example/empty.json") } returns CatalogResponse(emptyList())
+        coEvery { api.getCatalog("https://addon.example/broken.json") } throws IllegalStateException("network")
+
+        val empty = repository.fetchNextCatalogPageResult("https://addon.example/empty.json", 0)
+        assertTrue(empty.isSuccess)
+        assertTrue(empty.getOrThrow().isEmpty())
+        assertTrue(repository.fetchNextCatalogPageResult("https://addon.example/broken.json", 0).isFailure)
+    }
+
+    @Test
     fun blankSearchDoesNotCallNetwork() = runTest {
         val api = mockk<StremioApiService>()
         val dao = mockk<AddonDao>(relaxed = true)

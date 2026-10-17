@@ -265,15 +265,33 @@ class AddonCatalogRepository @Inject constructor(
         prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
     }
 
+    /**
+     * Pages through stremio-addons.net. A failure on a later page keeps the pages already
+     * collected (only a failed first page is an error), and the whole walk is bounded by
+     * [STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS] on top of the per-page timeout. Unexpected JSON
+     * shapes end the walk instead of throwing.
+     */
     private suspend fun fetchStremioAddonsNet(): List<AddonCatalogItem> {
         val items = mutableListOf<AddonCatalogItem>()
         var page = 1
+        val deadline = System.currentTimeMillis() + STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS
         do {
-            val json = withTimeout(CATALOG_TIMEOUT_MS) {
-                api.getJson("https://stremio-addons.net/api/v0/addons?page=$page&limit=100")
-            }.asJsonObject
-            json.getAsJsonArray("addons")?.forEach { element ->
-                val entry = element.asJsonObject
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0L) break
+            val element = try {
+                withTimeout(minOf(CATALOG_TIMEOUT_MS, remaining)) {
+                    api.getJson("https://stremio-addons.net/api/v0/addons?page=$page&limit=100")
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                if (page == 1) throw timeout else break
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                if (page == 1) throw e else break
+            }
+            val json = element.takeIf { it.isJsonObject }?.asJsonObject ?: break
+            json.get("addons")?.takeIf { it.isJsonArray }?.asJsonArray?.forEach { entryElement ->
+                val entry = entryElement.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
                 val url = entry.get("manifestUrl")?.takeIf { it.isJsonPrimitive }?.asString
                 val manifestElement = entry.get("manifest")
                 if (!url.isNullOrBlank() && manifestElement?.isJsonObject == true) {
@@ -285,7 +303,9 @@ class AddonCatalogRepository @Inject constructor(
                     }.getOrNull()?.let(items::add)
                 }
             }
-            val more = json.getAsJsonObject("pagination")?.get("hasNextPage")?.asBoolean == true
+            val hasNext = json.get("pagination")?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.get("hasNextPage")?.takeIf { it.isJsonPrimitive }
+            val more = runCatching { hasNext?.asBoolean }.getOrNull() == true
             page++
         } while (more && page <= 20)
         return items
@@ -339,6 +359,7 @@ class AddonCatalogRepository @Inject constructor(
         private const val PREFS_FILE = "illumera_addon_catalogs"
         private const val KEY_COLLECTIONS = "saved_collections"
         private const val CATALOG_TIMEOUT_MS = 20_000L
+        private const val STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS = 60_000L
         private const val LEGACY_MANIFEST_TIMEOUT_MS = 5_000L
         private const val MAX_LEGACY_ENDPOINTS = 100
 

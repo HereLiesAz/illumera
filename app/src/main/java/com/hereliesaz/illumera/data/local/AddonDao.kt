@@ -120,16 +120,16 @@ interface AddonDao {
     @Query("DELETE FROM recent_searches WHERE profileId = :profileId")
     suspend fun deleteRecentSearchesForProfile(profileId: Int)
 
-    // A plain sequence of suspend calls has no atomicity of its own — a process death or a
-    // later call failing partway through would leave a profile gone but its watchlist/next-up
-    // rows orphaned, with no UI path left to retry cleanup. @Transaction runs all three deletes
-    // as one unit so that can't happen.
     @Query("DELETE FROM history_tombstones WHERE profileId = :profileId")
     suspend fun deleteHistoryTombstonesForProfile(profileId: Int)
 
     @Query("DELETE FROM runtime_owner WHERE profileId = :profileId")
     suspend fun clearRuntimeOwnerIfProfile(profileId: Int)
 
+    // A plain sequence of suspend calls has no atomicity of its own — a process death or a
+    // later call failing partway through would leave a profile gone but its watchlist/next-up
+    // rows orphaned, with no UI path left to retry cleanup. @Transaction runs all six deletes
+    // as one unit so that can't happen.
     @Transaction
     suspend fun deleteProfileCascading(id: Int) {
         deleteProfile(id)
@@ -375,6 +375,23 @@ interface AddonDao {
 
     @Query("DELETE FROM hub_row_items WHERE hubRowId = :hubRowId AND configUniqueId = :configUniqueId")
     suspend fun deleteHubRowItem(hubRowId: String, configUniqueId: String)
+
+    @Query("DELETE FROM hub_row_items WHERE configUniqueId IN (:configUniqueIds)")
+    suspend fun deleteHubRowItemsForConfigs(configUniqueIds: List<String>)
+
+    // Manifest refresh: drop hub items pointing at catalogs the addon no longer lists and
+    // replace the addon's config set with [retained], as one unit so a crash or failure
+    // partway through cannot leave the addon with no catalog configs.
+    @Transaction
+    suspend fun replaceCatalogConfigsForAddon(
+        transportUrl: String,
+        retained: List<CatalogConfigEntity>,
+        staleConfigIds: Collection<String>
+    ) {
+        if (staleConfigIds.isNotEmpty()) deleteHubRowItemsForConfigs(staleConfigIds.toList())
+        deleteCatalogConfigs(transportUrl)
+        if (retained.isNotEmpty()) saveCatalogConfigs(retained)
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertHubRowItem(item: HubRowItemEntity)

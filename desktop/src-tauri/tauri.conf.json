@@ -17,11 +17,22 @@
         "height": 900,
         "minWidth": 800,
         "minHeight": 500,
-        "backgroundColor": "#000000"
+        "backgroundColor": "#000000",
+        "create": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost https: http://127.0.0.1:* http://localhost:*",
+        "img-src": "'self' https: data: blob:",
+        "media-src": "'self' https: http://127.0.0.1:* blob:",
+        "style-src": "'self' 'unsafe-inline'",
+        "worker-src": "'self' blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'"
+      },
+      "devCsp": null
     }
   },
   "bundle": {

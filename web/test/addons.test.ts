@@ -12,6 +12,20 @@ describe('addon urls', () => {
     expect(upgradeUrl('http://addon.example:7000/x')).toBe('https://addon.example:7000/x')
     expect(upgradeUrl('http://192.168.1.5:11470/x')).toBe('http://192.168.1.5:11470/x')
     expect(upgradeUrl('http://localhost:11470')).toBe('http://localhost:11470')
+    expect(upgradeUrl('http://172.16.0.9:1/x')).toBe('http://172.16.0.9:1/x')
+    expect(upgradeUrl('http://[::1]:11470/x')).toBe('http://[::1]:11470/x')
+    expect(upgradeUrl('http://[fe80::1]/x')).toBe('http://[fe80::1]/x')
+    expect(upgradeUrl('http://nas.local:8080/x')).toBe('http://nas.local:8080/x')
+  })
+
+  it('only keeps http for real private IPv4 literals, not look-alike hostnames', () => {
+    expect(upgradeUrl('http://10.example.com/x')).toBe('https://10.example.com/x')
+    expect(upgradeUrl('http://127.evil.com/x')).toBe('https://127.evil.com/x')
+    expect(upgradeUrl('http://192.168.1.5.evil.com/x')).toBe('https://192.168.1.5.evil.com/x')
+    expect(upgradeUrl('http://127.0.0.1@evil.com/x')).toBe('https://127.0.0.1@evil.com/x')
+    expect(upgradeUrl('http://172.32.0.1/x')).toBe('https://172.32.0.1/x')
+    expect(upgradeUrl('http://300.1.1.1/x')).toBe('https://300.1.1.1/x')
+    expect(upgradeUrl('http://[2001:db8::1]/x')).toBe('https://[2001:db8::1]/x')
   })
 
   it('normalizes what users paste', () => {

@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.debrid.providers
 import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
@@ -25,7 +26,7 @@ class EasyDebridService @Inject constructor(private val http: DebridHttp) : Debr
         return when (val result = http.get("$base/user", auth(apiKey))) {
             is DebridResult.Success -> {
                 val obj = result.value.asObjectOrNull()
-                val email = obj?.get("email")?.asString
+                val email = obj?.str("email")
                 if (email == null) {
                     DebridResult.Failure("Invalid EasyDebrid API key")
                 } else {

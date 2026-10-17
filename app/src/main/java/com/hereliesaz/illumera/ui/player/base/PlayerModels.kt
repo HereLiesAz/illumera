@@ -3,6 +3,9 @@ package com.hereliesaz.illumera.ui.player.base
 import androidx.compose.runtime.Immutable
 import com.hereliesaz.illumera.data.model.stremio.Stream
 
+/** Track id for "subtitles off", shared by the backend and the player UI. */
+internal const val SUBTITLE_OFF_TRACK_ID = "#none"
+
 @Immutable
 data class PlayerSourceOption(
     val id: String,

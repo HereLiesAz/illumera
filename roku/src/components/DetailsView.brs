@@ -11,11 +11,21 @@ end sub
 sub onParams()
     p = m.top.params
     m.candidates = []
+    typed = false
     if p.addonBase <> invalid and p.addonBase <> "" then m.candidates.Push(p.addonBase)
     ' Then meta addons that accept the type, then Cinemeta; only the origin may answer a different id.
+    ' (Addons that list types must include this one; if none do, the first meta addon is tried.)
+    firstMeta = invalid
     for each addon in EnabledAddons()
-        if Supports(addon, "meta") and addon.transportUrl <> p.addonBase then m.candidates.Push(addon.transportUrl)
+        if Supports(addon, "meta") and addon.transportUrl <> p.addonBase then
+            if firstMeta = invalid then firstMeta = addon.transportUrl
+            if AcceptsType(addon, p.type) then
+                m.candidates.Push(addon.transportUrl)
+                typed = true
+            end if
+        end if
     end for
+    if typed <> true and firstMeta <> invalid then m.candidates.Push(firstMeta)
     m.candidates.Push("https://v3-cinemeta.strem.io")
     m.tried = 0
     TryNext()

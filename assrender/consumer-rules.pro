@@ -1,9 +1,14 @@
 # Keep JNI methods
--keepclasseswithmembernames class io.github.assrender.NativeBridge {
-    native <methods>;
-}
+-keep class io.github.assrender.AssDirectBridge { *; }
 
-# Keep public API
--keep class io.github.assrender.AssRenderer { *; }
--keep class io.github.assrender.AssRenderConfig { *; }
--keep class io.github.assrender.SubtitleTrack { *; }
+# Public API used by integrating apps
+-keep class io.github.assrender.AssHandler { *; }
+-keep class io.github.assrender.AssRenderersFactory { *; }
+-keep class io.github.assrender.AssExtractorsFactory { *; }
+-keep class io.github.assrender.SubtitleOverlayView { *; }
+
+# AssMatroskaExtractor reads MatroskaExtractor's private extractorOutput field
+# by reflection to wrap it; renaming or removing it would silently disable ASS.
+-keepclassmembers class androidx.media3.extractor.mkv.MatroskaExtractor {
+    androidx.media3.extractor.ExtractorOutput extractorOutput;
+}

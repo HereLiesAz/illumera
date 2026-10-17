@@ -41,7 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -136,7 +136,7 @@ fun QueueSection(
     restoreEntryFocusWhenFocusedKeyMissing: Boolean = false,
     onQueueFocused: (String?) -> Unit = {}
 ) {
-    val state by queueManager.state.collectAsState()
+    val state by queueManager.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -362,7 +362,7 @@ fun QueueSection(
 fun QueuePreferencesSettings(
     queueManager: QueueManager = hiltViewModel<QueueViewModel>().queueManager
 ) {
-    val state by queueManager.state.collectAsState()
+    val state by queueManager.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     Column(
         modifier = Modifier

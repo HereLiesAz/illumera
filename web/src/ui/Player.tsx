@@ -36,7 +36,12 @@ function toggleFullscreen(el: HTMLElement | null): void {
   else e?.webkitRequestFullscreen?.()
 }
 
-function isHls(url: string): boolean { return /\.m3u8(\?|$)|\/hls|\/playlist/i.test(url) }
+/** HLS by the URL's path (an `.m3u8` extension or an hls/playlist segment), never by its query string or host. */
+function isHls(url: string): boolean {
+  let path = url
+  try { path = new URL(url, location.href).pathname } catch { /* not parseable: test it as given */ }
+  return /\.m3u8$|\/(hls|playlist)(\/|$)/i.test(path)
+}
 
 /** Shorter than this, a "movie" or "episode" is a placeholder clip, not the real thing. */
 function tooShort(type: string, seconds: number): boolean {
@@ -137,7 +142,8 @@ export function Player() {
     const headers = stream.behaviorHints?.proxyHeaders?.request
     if (isHls(url) && !v.canPlayType('application/vnd.apple.mpegurl')) {
       import('hls.js').then(({ default: HlsJs }) => {
-        if (cancelled || !HlsJs.isSupported()) { v.src = url; return }
+        if (cancelled) return
+        if (!HlsJs.isSupported()) { v.src = url; return }
         const h = new HlsJs({
           // Browsers refuse some headers (User-Agent, Referer); the rest are sent.
           xhrSetup: headers ? (xhr) => { for (const k in headers) { try { xhr.setRequestHeader(k, headers[k]) } catch { /* forbidden */ } } } : undefined,
@@ -169,7 +175,11 @@ export function Player() {
     addonStore.subtitles(mediaType, session.videoId, hints && { videoHash: hints.videoHash, videoSize: hints.videoSize, filename: hints.filename })
       .then((fromAddons) => {
         if (!live) return
-        const own: Subtitle[] = (stream.subtitles ?? []).map((s) => ({ ...s, url: new URL(s.url, (s.transportUrl ?? stream.addonBase ?? location.href) + '/').toString(), name: s.name ?? stream.addonName }))
+        const own: Subtitle[] = []
+        for (const s of stream.subtitles ?? []) {
+          try { own.push({ ...s, url: new URL(s.url, (s.transportUrl ?? stream.addonBase ?? location.href) + '/').toString(), name: s.name ?? stream.addonName }) }
+          catch { /* one malformed subtitle URL must not drop the rest */ }
+        }
         const list = own.concat(fromAddons)
         setSubs(list)
         const want = settings.get().subtitleLanguage

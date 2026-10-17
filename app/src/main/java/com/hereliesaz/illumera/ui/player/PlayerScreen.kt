@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -118,7 +118,7 @@ fun PlayerScreen(
             (playbackController as? ExoPlayerBackend)?.warmup()
         }
     }
-    val uiState by playbackController.uiState.collectAsState()
+    val uiState by playbackController.uiState.collectAsStateWithLifecycle()
     var suspectHandledForUrl by remember(videoUrl) { mutableStateOf(false) }
     var handledTorrentFailureAttemptId by remember(movieId) { mutableStateOf<Long?>(null) }
 
@@ -215,7 +215,7 @@ fun PlayerScreen(
 
     val videoSize by remember(playbackController) {
         (playbackController as? ExoPlayerBackend)?.videoSize ?: MutableStateFlow(0 to 0)
-    }.collectAsState()
+    }.collectAsStateWithLifecycle()
     val isInPip by rememberPictureInPictureState(
         isPlaying = uiState.playWhenReady && !uiState.isEnded && uiState.errorMessage.isNullOrBlank(),
         videoWidth = videoSize.first,

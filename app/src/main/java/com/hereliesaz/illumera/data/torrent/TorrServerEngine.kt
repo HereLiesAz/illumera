@@ -21,7 +21,12 @@ class TorrServerEngine @Inject constructor(
         private const val BINARY_NAME = "libtorrserver.so"
     }
 
-    private var process: Process? = null
+    // start()/stop() are serialized on [lock]. Each start() bumps [generation] and returns
+    // it; stop(generation) is ignored once a newer start() has happened, so a slow
+    // teardown from a destroyed service cannot kill the engine a newer service started.
+    private val lock = Any()
+    @Volatile private var process: Process? = null
+    @Volatile private var generation = 0L
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(2, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -29,10 +34,12 @@ class TorrServerEngine @Inject constructor(
 
     fun getBaseUrl(): String = "http://127.0.0.1:$PORT"
 
-    fun start() {
+    /** Starts (or reuses) TorrServer and returns the generation token to pass to [stop]. */
+    fun start(): Long = synchronized(lock) {
+        val token = ++generation
         if (isRunning()) {
             if (BuildConfig.DEBUG) Log.d(TAG, "TorrServer already running")
-            return
+            return token
         }
 
         val binaryPath = getBinaryPath()
@@ -51,7 +58,11 @@ class TorrServerEngine @Inject constructor(
         val configDir = File(context.filesDir, "torrserver")
         configDir.mkdirs()
 
-        process = ProcessBuilder(binaryPath, "-p", PORT.toString(), "--ip", "127.0.0.1", "-d", configDir.absolutePath)
+        // -i binds the web/API server to loopback only (TorrServer listens on all
+        // interfaces by default, which would expose the API to the LAN).
+        process = ProcessBuilder(
+            binaryPath, "-i", "127.0.0.1", "-p", PORT.toString(), "-d", configDir.absolutePath
+        )
             .redirectErrorStream(true)
             .start()
 
@@ -71,7 +82,7 @@ class TorrServerEngine @Inject constructor(
         while (System.currentTimeMillis() < deadline) {
             if (echo()) {
                 if (BuildConfig.DEBUG) Log.d(TAG, "TorrServer started successfully on port $PORT")
-                return
+                return token
             }
             Thread.sleep(200)
         }
@@ -79,7 +90,15 @@ class TorrServerEngine @Inject constructor(
         throw IllegalStateException("TorrServer failed to start within 10 seconds")
     }
 
-    fun stop() {
+    /**
+     * Stops TorrServer. With [expectedGeneration], the stop is skipped when a newer
+     * [start] has happened since that token was issued.
+     */
+    fun stop(expectedGeneration: Long? = null): Unit = synchronized(lock) {
+        if (expectedGeneration != null && expectedGeneration != generation) {
+            if (BuildConfig.DEBUG) Log.d(TAG, "Skipping stale TorrServer stop")
+            return
+        }
         try {
             // Try graceful shutdown first
             val request = Request.Builder()

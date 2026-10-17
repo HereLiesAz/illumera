@@ -45,32 +45,60 @@ export async function startDeviceAuth(): Promise<DeviceCode> {
 /**
  * One poll of the device code. 'pending' until the user approves; Trakt's status codes:
  * 400 pending, 429 too fast, 404/409/410/418 invalid, used, expired, denied.
+ * 'retry' is a transient failure (network error or a 5xx from Trakt or the Worker): the
+ * code is still good, so the caller keeps polling rather than giving up.
  */
-export async function pollDeviceAuth(code: DeviceCode): Promise<'done' | 'pending' | 'slow_down' | 'failed'> {
+export async function pollDeviceAuth(code: DeviceCode): Promise<'done' | 'pending' | 'slow_down' | 'retry' | 'failed'> {
   if (Date.now() > code.expiresAt) return 'failed'
-  const { status, body } = await api<{ access_token: string; refresh_token: string; created_at: number; expires_in: number }>(
-    'device/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code.deviceCode }) })
+  let res: { status: number; body: { access_token: string; refresh_token: string; created_at: number; expires_in: number } }
+  try {
+    res = await api('device/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code.deviceCode }) })
+  } catch {
+    return 'retry'
+  }
+  const { status, body } = res
   if (status === 200) { saveTokens(body); return 'done' }
   if (status === 400) return 'pending'
   if (status === 429) return 'slow_down'
+  if (status >= 500) return 'retry'
   return 'failed'
 }
 
 export function signOutTrakt(): void { traktTokens.set(null) }
+
+type TokenResponse = { access_token: string; refresh_token: string; created_at: number; expires_in: number }
+
+/** The refresh in flight, shared so concurrent callers don't spend the (single-use) refresh token twice. */
+let refreshing: Promise<string | null> | undefined
+
+/**
+ * Exchanges the refresh token. Only a 400/401 from the refresh itself (invalid_grant) clears
+ * the tokens; a network error or 5xx keeps them, and the current access token is still
+ * returned while it is valid.
+ */
+async function refresh(t: Tokens): Promise<string | null> {
+  const stillValid = () => (t.expiresAt > Date.now() ? t.accessToken : null)
+  let res: { status: number; body: TokenResponse }
+  try {
+    res = await api<TokenResponse>('refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: t.refreshToken }) })
+  } catch {
+    return stillValid()
+  }
+  if (res.status === 200) {
+    saveTokens(res.body)
+    return traktTokens.get()?.accessToken ?? null
+  }
+  if (res.status === 400 || res.status === 401) { traktTokens.set(null); return null }
+  return stillValid()
+}
 
 /** A valid access token, refreshed a day before it expires; null when signed out or refresh fails. */
 export async function accessToken(): Promise<string | null> {
   const t = traktTokens.get()
   if (!t) return null
   if (t.expiresAt - Date.now() > REFRESH_MARGIN_MS) return t.accessToken
-  const { status, body } = await api<{ access_token: string; refresh_token: string; created_at: number; expires_in: number }>(
-    'refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: t.refreshToken }) })
-  if (status !== 200) {
-    if (status === 400 || status === 401) traktTokens.set(null)
-    return status === 503 ? t.accessToken : null
-  }
-  saveTokens(body)
-  return traktTokens.get()!.accessToken
+  refreshing ??= refresh(t).finally(() => { refreshing = undefined })
+  return refreshing
 }
 
 export type ScrobbleAction = 'start' | 'pause' | 'stop'
@@ -97,11 +125,13 @@ export async function scrobble(action: ScrobbleAction, type: string, videoId: st
   }
   const body = scrobbleBody(type, videoId, progress)
   if (!body) return
-  const [token, id] = await Promise.all([accessToken(), getClientId().catch(() => undefined)])
-  if (!token || !id) return
-  await fetch(`${TRAKT}/scrobble/${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'trakt-api-version': '2', 'trakt-api-key': id },
-    body: JSON.stringify(body),
-  }).catch(() => undefined)
+  try {
+    const [token, id] = await Promise.all([accessToken(), getClientId().catch(() => undefined)])
+    if (!token || !id) return
+    await fetch(`${TRAKT}/scrobble/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'trakt-api-version': '2', 'trakt-api-key': id },
+      body: JSON.stringify(body),
+    })
+  } catch { /* scrobbling is best effort; playback must never fail on it */ }
 }

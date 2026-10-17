@@ -230,8 +230,11 @@ class YouTubeExtractor @Inject constructor() {
             return null
         }
 
+        // The HLS manifest is only the last fallback below; don't spend network round
+        // trips fetching and parsing manifests when a direct stream will be chosen.
+        val needsManifest = progressive.isEmpty() && adaptiveVideo.isEmpty()
         var bestManifest: ManifestCandidate? = null
-        for ((clientKey, priority, manifestUrl) in manifestUrls) {
+        for ((clientKey, priority, manifestUrl) in if (needsManifest) manifestUrls else emptyList()) {
             try {
                 val variant = parseHlsManifest(manifestUrl) ?: continue
                 val candidate = ManifestCandidate(clientKey, priority, manifestUrl, variant.url, variant.height, variant.bandwidth)
@@ -454,10 +457,14 @@ class YouTubeExtractor @Inject constructor() {
         .build()
 
     private suspend fun isUrlReachable(url: String): Boolean {
-        val request = Request.Builder().url(url).get().header("Range", "bytes=0-0")
-            .headers(buildHeaders(DEFAULT_HEADERS)).build()
+        // headers() replaces every header, so set it before Range or the Range is lost
+        // and the probe downloads the whole stream.
+        val request = Request.Builder().url(url).get()
+            .headers(buildHeaders(DEFAULT_HEADERS))
+            .header("Range", "bytes=0-0")
+            .build()
         return try {
-            awaitResponse(probeClient.newCall(request)).status in listOf(200, 206)
+            awaitStatusCode(probeClient.newCall(request)) in listOf(200, 206)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -500,6 +507,22 @@ class YouTubeExtractor @Inject constructor() {
                                 .onFailure { continuation.resumeWithException(it) }
                         }
                     }
+                }
+            })
+        }
+
+    /** Like [awaitResponse] but returns only the status code, closing the body unread. */
+    private suspend fun awaitStatusCode(call: Call): Int =
+        suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    val code = response.use { it.code }
+                    if (continuation.isActive) continuation.resume(code)
                 }
             })
         }

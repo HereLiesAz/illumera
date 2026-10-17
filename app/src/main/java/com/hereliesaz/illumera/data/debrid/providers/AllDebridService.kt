@@ -5,6 +5,8 @@ import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -22,11 +24,11 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
     /** AllDebrid wraps every response as {status: "success"|"error", data|error: {...}}. */
     private fun com.google.gson.JsonElement.unwrap(): DebridResult<com.google.gson.JsonObject> {
         val obj = asObjectOrNull() ?: return DebridResult.Failure("Unexpected AllDebrid response")
-        val status = obj.get("status")?.asString
+        val status = obj.str("status")
         return if (status == "success") {
             DebridResult.Success(obj.get("data")?.asObjectOrNull() ?: com.google.gson.JsonObject())
         } else {
-            val message = obj.get("error")?.asObjectOrNull()?.get("message")?.asString ?: "AllDebrid error"
+            val message = obj.get("error")?.asObjectOrNull()?.str("message") ?: "AllDebrid error"
             DebridResult.Failure(message)
         }
     }
@@ -39,8 +41,8 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
                         ?: return DebridResult.Failure("Unexpected AllDebrid response")
                     DebridResult.Success(
                         DebridAccountInfo(
-                            username = user.get("username")?.asString ?: "AllDebrid user",
-                            premiumUntil = user.get("premiumUntil")?.asString
+                            username = user.str("username") ?: "AllDebrid user",
+                            premiumUntil = user.str("premiumUntil")
                         )
                     )
                 }
@@ -59,16 +61,16 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
                         magnets.mapNotNull { el ->
                             val o = el.asObjectOrNull() ?: return@mapNotNull null
                             val links = o.get("links")?.asArrayOrNull()?.mapNotNull {
-                                it.asObjectOrNull()?.get("link")?.asString
+                                it.asObjectOrNull()?.str("link")
                             } ?: emptyList()
                             DebridItem(
-                                id = o.get("id")?.asString ?: return@mapNotNull null,
-                                name = o.get("filename")?.asString ?: "Unknown",
+                                id = o.str("id") ?: return@mapNotNull null,
+                                name = o.str("filename") ?: "Unknown",
                                 provider = DebridProvider.ALL_DEBRID,
-                                infoHash = o.get("hash")?.takeUnless { it.isJsonNull }?.asString,
-                                sizeBytes = o.get("size")?.asLong,
-                                status = o.get("status")?.asString,
-                                addedAt = o.get("uploadDate")?.asString,
+                                infoHash = o.str("hash"),
+                                sizeBytes = o.long("size"),
+                                status = o.str("status"),
+                                addedAt = o.str("uploadDate"),
                                 directLinks = links
                             )
                         }
@@ -90,8 +92,8 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
             if (result is DebridResult.Success) {
                 when (val data = result.value.unwrap()) {
                     is DebridResult.Success -> {
-                        val url = data.value.get("link")?.asString ?: continue
-                        val filename = data.value.get("filename")?.asString ?: ""
+                        val url = data.value.str("link") ?: continue
+                        val filename = data.value.str("filename") ?: ""
                         if (firstUrl == null) firstUrl = url
                         if (isVideoFilename(filename)) return DebridResult.Success(url)
                     }

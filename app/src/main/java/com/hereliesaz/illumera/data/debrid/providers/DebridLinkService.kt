@@ -4,7 +4,11 @@ import com.hereliesaz.illumera.data.debrid.DebridHttp
 import com.hereliesaz.illumera.data.debrid.DebridService
 import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
+import com.hereliesaz.illumera.data.debrid.bool
+import com.hereliesaz.illumera.data.debrid.int
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -21,10 +25,10 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
 
     private fun com.google.gson.JsonElement.unwrap(): DebridResult<com.google.gson.JsonElement> {
         val obj = asObjectOrNull() ?: return DebridResult.Failure("Unexpected Debrid-Link response")
-        return if (obj.get("success")?.asBoolean == true) {
+        return if (obj.bool("success") == true) {
             DebridResult.Success(obj.get("value") ?: com.google.gson.JsonObject())
         } else {
-            DebridResult.Failure(obj.get("error")?.asString ?: "Debrid-Link error")
+            DebridResult.Failure(obj.str("error") ?: "Debrid-Link error")
         }
     }
 
@@ -35,10 +39,11 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
                     val obj = data.value.asObjectOrNull() ?: return DebridResult.Failure("Unexpected Debrid-Link response")
                     DebridResult.Success(
                         DebridAccountInfo(
-                            username = obj.get("pseudo")?.asString
-                                ?: obj.get("email")?.asString
+                            username = obj.str("pseudo")
+                                ?: obj.str("email")
                                 ?: "Debrid-Link user",
-                            premiumUntil = obj.get("accountType")?.asString
+                            // accountType is a plan tier, not an expiry date.
+                            premiumUntil = null
                         )
                     )
                 }
@@ -57,16 +62,16 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
                         list.mapNotNull { el ->
                             val o = el.asObjectOrNull() ?: return@mapNotNull null
                             val files = o.get("files")?.asArrayOrNull()
-                                ?.mapNotNull { it.asObjectOrNull()?.get("downloadUrl")?.asString }
+                                ?.mapNotNull { it.asObjectOrNull()?.str("downloadUrl") }
                                 ?: emptyList()
                             DebridItem(
-                                id = o.get("id")?.asString ?: return@mapNotNull null,
-                                name = o.get("name")?.asString ?: "Unknown",
+                                id = o.str("id") ?: return@mapNotNull null,
+                                name = o.str("name") ?: "Unknown",
                                 provider = DebridProvider.DEBRID_LINK,
-                                infoHash = o.get("hashString")?.takeUnless { it.isJsonNull }?.asString,
-                                sizeBytes = o.get("size")?.asLong,
-                                status = if (o.get("downloadPercent")?.asInt == 100) "downloaded" else "downloading",
-                                progress = o.get("downloadPercent")?.asInt,
+                                infoHash = o.str("hashString"),
+                                sizeBytes = o.long("size"),
+                                status = if (o.int("downloadPercent") == 100) "downloaded" else "downloading",
+                                progress = o.int("downloadPercent"),
                                 directLinks = files
                             )
                         }
