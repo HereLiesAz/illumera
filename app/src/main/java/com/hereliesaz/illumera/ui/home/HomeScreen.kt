@@ -237,6 +237,12 @@ fun HomeScreen(
                     .focusRequester(entryRequester)
                     .focusable()
             ) {
+                // Something to look at while the first rows load, not a blank screen.
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center).size(36.dp),
+                    color = Color.White.copy(alpha = 0.6f),
+                    strokeWidth = 2.dp
+                )
             }
         } else {
             // DATA IS READY: Show Content

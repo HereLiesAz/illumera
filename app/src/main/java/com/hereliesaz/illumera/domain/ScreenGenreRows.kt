@@ -48,6 +48,11 @@ object ScreenGenreRows {
         "all languages", "all countries", "any language", "any country"
     )
 
+    /** Builds the lazy language/country tables ahead of the first genre lookup. */
+    fun warmUp() {
+        languageAndCountryLabels.size
+    }
+
     private fun nativeLabelKey(value: String): String =
         Normalizer.normalize(value.trim(), Normalizer.Form.NFKD)
             .replace(Regex("\\p{M}+"), "")
