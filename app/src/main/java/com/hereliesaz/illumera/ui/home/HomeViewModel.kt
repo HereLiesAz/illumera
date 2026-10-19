@@ -441,14 +441,10 @@ class HomeViewModel @Inject constructor(
         private const val SNAPSHOT_TTL_MS = 10 * 60_000L
         // Demand-driven loading: titles shown per step, how far past the focused card to keep
         // loaded, rows looked ahead, and bounds on concurrent/repeated/per-call work.
-        private const val REVEAL_STEP = 5
-        private const val HERO_REVEAL = 10
-        private const val FOCUS_LOOKAHEAD = 3
         private const val GRID_REVEAL_STEP = 30
         private const val INITIAL_VISIBLE_ROWS = 3
         private const val LOOKAHEAD_ROWS = 3
         private const val MAX_CONCURRENT_ROW_LOADS = 3
-        private const val MAX_DEMAND_ATTEMPTS = 3
         private const val CLASSIFY_BUDGET = 36
         private const val TRIM_INTERVAL_MS = 5_000L
         private const val DISK_CACHE_MAX_AGE_MS = 24 * 60 * 60_000L
@@ -467,12 +463,15 @@ class HomeViewModel @Inject constructor(
     private val rowBacklogs = mutableMapOf<String, MutableList<MetaItem>>()
     private val candidateBacklogs = mutableMapOf<String, java.util.ArrayDeque<MetaItem>>()
     private val demandAttempts = mutableMapOf<String, Int>()
+    private val rowLoadJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private var visibleRowIds: List<String> = emptyList()
     private var lookaheadRowIds: List<String> = emptyList()
     private var focusedRowId: String? = null
     private var lastTrimMs = 0L
 
     private fun clearDemand() {
+        rowLoadJobs.values.forEach { it.cancel() }
+        rowLoadJobs.clear()
         revealTargets.clear()
         rowBacklogs.clear()
         candidateBacklogs.clear()
@@ -482,7 +481,8 @@ class HomeViewModel @Inject constructor(
         focusedRowId = null
     }
 
-    private fun revealTarget(configId: String) = revealTargets[configId] ?: REVEAL_STEP
+    private fun revealTarget(configId: String) =
+        revealTargets[configId] ?: RowDemandPlanner.REVEAL_STEP
 
     private fun shownCount(configId: String) =
         _state.value.rows.firstOrNull { it.configId == configId }?.items?.size ?: 0
@@ -509,29 +509,48 @@ class HomeViewModel @Inject constructor(
         _state.value.heroRow?.configId
             ?: _state.value.rows.firstOrNull { it.items.isNotEmpty() }?.configId
 
-    /** The next row that needs titles, most urgent first, or null when everything asked for is there. */
-    private fun nextDemand(): Pair<String, Int>? {
-        val demands = buildList {
-            focusedRowId?.let { add(it to revealTarget(it)) }
-            visibleRowIds.forEach { add(it to REVEAL_STEP) }
-            heroSourceRowId()?.let { add(it to HERO_REVEAL) }
-            lookaheadRowIds.forEach { add(it to REVEAL_STEP) }
-            visibleRowIds.forEach { add(it to REVEAL_STEP * 2) }
-        }
-        return demands.firstOrNull { (configId, target) ->
-            if (_state.value.rows.none { it.configId == configId }) return@firstOrNull false
-            if (shownCount(configId) >= target) return@firstOrNull false
-            if (rowBacklogs[configId].isNullOrEmpty().not()) return@firstOrNull true
-            configId !in exhaustedCatalogRows && configId !in loadingMoreRows &&
-                (demandAttempts[configId] ?: 0) < MAX_DEMAND_ATTEMPTS
-        }
+    private fun factsFor(configId: String): RowFacts? {
+        val row = _state.value.rows.firstOrNull { it.configId == configId } ?: return null
+        return RowFacts(
+            shown = row.items.size,
+            waiting = rowBacklogs[configId]?.size ?: 0,
+            exhausted = configId in exhaustedCatalogRows,
+            loading = configId in loadingMoreRows,
+            attempts = demandAttempts[configId] ?: 0
+        )
     }
 
-    /** Starts as much of the wanted loading as there are free slots for. */
+    private fun currentDemands(): List<Pair<String, Int>> = RowDemandPlanner.demands(
+        focusedRowId = focusedRowId,
+        focusedTarget = focusedRowId?.let { revealTarget(it) } ?: 0,
+        visible = visibleRowIds,
+        heroRowId = heroSourceRowId(),
+        lookahead = lookaheadRowIds
+    )
+
+    /** Gives up a running load; whatever it had not recorded is fetched again when it is next asked for. */
+    private fun cancelRowLoad(configId: String) {
+        rowLoadJobs.remove(configId)?.cancel()
+        loadingMoreRows.remove(configId)
+        demandAttempts[configId] = ((demandAttempts[configId] ?: 1) - 1).coerceAtLeast(0)
+    }
+
+    /**
+     * Starts as much of the wanted loading as there are free slots for. When every slot is busy,
+     * a load for something less urgent than what is waiting is given up so the urgent row (the
+     * one the viewer is on) is not stuck behind a slow one.
+     */
     private fun schedule() {
         var guard = 0
-        while (loadingMoreRows.size < MAX_CONCURRENT_ROW_LOADS && guard++ < 50) {
-            val (configId, target) = nextDemand() ?: break
+        while (guard++ < 50) {
+            val demands = currentDemands()
+            val index = RowDemandPlanner.nextIndex(demands, ::factsFor) ?: break
+            if (loadingMoreRows.size >= MAX_CONCURRENT_ROW_LOADS) {
+                val victim = RowDemandPlanner.victim(demands, index, loadingMoreRows.toList()) ?: break
+                cancelRowLoad(victim)
+                continue
+            }
+            val (configId, target) = demands[index]
             raiseTarget(configId, target)
             revealFromBacklog(configId)
             if (shownCount(configId) < target && configId !in exhaustedCatalogRows &&
@@ -555,8 +574,7 @@ class HomeViewModel @Inject constructor(
     /** The viewer is on card [itemIndex] of a row: keep a little ahead of them loaded. */
     fun onRowFocused(configId: String, itemIndex: Int) {
         focusedRowId = configId
-        val wanted = ((itemIndex + FOCUS_LOOKAHEAD + REVEAL_STEP - 1) / REVEAL_STEP) * REVEAL_STEP
-        raiseTarget(configId, maxOf(REVEAL_STEP, wanted))
+        raiseTarget(configId, RowDemandPlanner.focusTarget(itemIndex))
         revealFromBacklog(configId)
         schedule()
         trimCaches()
@@ -658,7 +676,8 @@ class HomeViewModel @Inject constructor(
             val initiatingProfileId = _state.value.loadedProfileId
             val initiatingScreen = _state.value.loadedScreen
             if (!loadingMoreRows.add(configId)) return
-            viewModelScope.launch {
+            // Started only once it is registered, so it can be given up by name.
+            val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 try {
                     val parts = configId.split(':', limit = 3)
                     if (!isHomePair && (parts.size != 3 ||
@@ -768,11 +787,17 @@ class HomeViewModel @Inject constructor(
                     Log.w("HomeGenreRows", "Catalog load failed for $configId", error)
                 } finally {
                     if (generation == screenDataGeneration) {
-                        loadingMoreRows.remove(configId)
+                        // A load that was given up is no longer the one registered.
+                        if (rowLoadJobs[configId] === coroutineContext[kotlinx.coroutines.Job]) {
+                            rowLoadJobs.remove(configId)
+                            loadingMoreRows.remove(configId)
+                        }
                         schedule()
                     }
                 }
             }
+            rowLoadJobs[configId] = job
+            job.start()
             return
         }
         if (configId in loadingMoreRows) return // Already loading
@@ -890,7 +915,8 @@ class HomeViewModel @Inject constructor(
         val landed = mutableListOf<MetaItem>()
         var budget = CLASSIFY_BUDGET
         while (queue.isNotEmpty() && budget > 0 && shownCount(configId) < revealTarget(configId)) {
-            val group = buildList { repeat(minOf(6, queue.size)) { add(queue.removeFirst()) } }
+            // Taken off the queue only once routed, so a load that is given up loses nothing.
+            val group = queue.take(6)
             budget -= group.size
             val classified = kotlinx.coroutines.coroutineScope {
                 group.map { candidate ->
@@ -916,6 +942,7 @@ class HomeViewModel @Inject constructor(
                 _state.value.loadedScreen != screen ||
                 profileConfigurationManager.activeProfileId.value != profileId
             ) return null
+            repeat(group.size) { queue.removeFirst() }
             val byDestination = classified.groupBy { (primary, _, _) ->
                 _state.value.rows.firstOrNull { row ->
                     row.title.equals(primary, ignoreCase = true)
