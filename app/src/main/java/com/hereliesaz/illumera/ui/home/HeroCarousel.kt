@@ -321,7 +321,8 @@ fun HeroCarousel(
                 modifier = Modifier.fillMaxSize(),
                 autoPlay = autoPlayPreviews,
                 soundEnabled = previewSound,
-                isVisible = previewVisible
+                isVisible = previewVisible,
+                onEnded = { goToNext() }
             )
         }
 
