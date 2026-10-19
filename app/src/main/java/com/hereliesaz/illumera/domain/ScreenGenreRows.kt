@@ -144,6 +144,9 @@ object ScreenGenreRows {
     fun availableGenres(type: String, catalogs: List<CatalogManifest>): List<String> {
         if (type !in setOf("movie", "series")) return emptyList()
         val defaults = if (type == "series") movieDefaults + seriesExtra else movieDefaults
+        // Series follows the standard Cinemeta dropdown only; addon-specific labels
+        // ("All Time", "Anti Hero", ...) never become Series rows.
+        if (type == "series") return defaults.sortedBy { it.lowercase() }
         val extra = catalogs.asSequence()
             .filter { it.type == type && it.id != "year" }
             .flatMap { catalog ->
