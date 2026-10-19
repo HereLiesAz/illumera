@@ -867,6 +867,7 @@ private fun InlineFocusedPosterPreview(
     previewSound: Boolean
 ) {
     val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
         AsyncImage(
             model = current.background?.takeIf { it.isNotBlank() }
@@ -880,7 +881,9 @@ private fun InlineFocusedPosterPreview(
             resolveTrailer = resolveTrailer,
             autoPlay = autoPlayPreviews,
             soundEnabled = previewSound,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            // Only the focused poster composes this preview, so this moves to the next in the row.
+            onEnded = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right) }
         )
         Box(
             modifier = Modifier.fillMaxSize().background(
@@ -1662,6 +1665,9 @@ internal fun cinematicVideoCoverSize(
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
 
+private const val TRAILER_VOLUME = 0.4f
+private const val TRAILER_ADVANCE_DELAY_MS = 5_000L
+
 /**
  * The image underneath stays visible until ExoPlayer reports that the extracted
  * trailer video is ready. Switching titles cancels resolution and disposes the player.
@@ -1674,10 +1680,12 @@ internal fun TrailerPreview(
     modifier: Modifier = Modifier,
     autoPlay: Boolean = true,
     soundEnabled: Boolean = false,
-    isVisible: Boolean = true
+    isVisible: Boolean = true,
+    onEnded: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val latestOnEnded by rememberUpdatedState(onEnded)
     val videoUrl by produceState<String?>(
         initialValue = null, item?.id, item?.type, autoPlay, isVisible
     ) {
@@ -1688,6 +1696,14 @@ internal fun TrailerPreview(
         }
     }
     var ready by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
+    // A trailer plays once. When it ends, wait before moving on to the next one in the row.
+    var ended by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
+    LaunchedEffect(ended) {
+        if (ended) {
+            delay(TRAILER_ADVANCE_DELAY_MS)
+            latestOnEnded()
+        }
+    }
     // Created in a DisposableEffect, not remember{}: a composition that is abandoned
     // before it commits would otherwise leak a prepared ExoPlayer that is never released.
     var player by remember(videoUrl, item?.id, item?.type) { mutableStateOf<ExoPlayer?>(null) }
@@ -1696,16 +1712,19 @@ internal fun TrailerPreview(
     val shouldPlay by rememberUpdatedState(autoPlay && isVisible)
     val latestSoundEnabled by rememberUpdatedState(soundEnabled)
     SideEffect {
-        player?.volume = if (soundEnabled) 0.6f else 0f
+        player?.volume = if (soundEnabled) TRAILER_VOLUME else 0f
         player?.playWhenReady = shouldPlay &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
     }
     DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
         val created = videoUrl?.let { url ->
             ExoPlayer.Builder(context).build().apply {
-                volume = if (latestSoundEnabled) 0.6f else 0f
-                repeatMode = Player.REPEAT_MODE_ONE
+                volume = if (latestSoundEnabled) TRAILER_VOLUME else 0f
+                repeatMode = Player.REPEAT_MODE_OFF
                 addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_ENDED) ended = true
+                    }
                     override fun onRenderedFirstFrame() {
                         ready = true
                     }
