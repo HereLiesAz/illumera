@@ -412,4 +412,20 @@ class StreamSortingServiceTest {
         assertTrue(result.indexOf("huge") < result.indexOf("dead-near-target"))
         assertTrue(result.indexOf("huge") < result.indexOf("one-seed-near-target"))
     }
+
+    @Test
+    fun preferredAudio_ranksUndeclaredSourcesAheadOfKnownOtherLanguage() {
+        val streams = listOf(
+            Stream(name = "Movie German Dubbed 1080p", url = "german"),
+            Stream(name = "Movie 1080p", url = "unknown"),
+            Stream(name = "Movie English Audio 1080p", url = "english")
+        )
+
+        val result = filter(
+            streams,
+            ProfileEntity(name = "Test", preferredAudioLanguage = "en")
+        )
+
+        assertEquals(listOf("english", "unknown", "german"), result.mapNotNull { it.url })
+    }
 }

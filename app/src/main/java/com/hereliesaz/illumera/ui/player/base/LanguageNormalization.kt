@@ -11,6 +11,24 @@ import java.util.Locale
  * all resolve to "en".
  */
 
+/**
+ * True when a track's own label names [language] ("English", "eng", "English - 5.1") although its
+ * language tag is missing or "und". Whole words only; bare two-letter codes are ordinary words.
+ */
+internal fun trackLabelMatchesLanguage(label: String?, language: String?): Boolean {
+    val key = normalizeLanguageToIso2(language).substringBefore('-')
+    if (key == "und" || label.isNullOrBlank()) return false
+    val locale = Locale.forLanguageTag(key)
+    val names = buildSet {
+        locale.getDisplayLanguage(Locale.ENGLISH).lowercase(Locale.ROOT).takeIf { it.isNotBlank() }?.let(::add)
+        runCatching { locale.isO3Language.lowercase(Locale.ROOT) }.getOrNull()
+            ?.takeIf { it.isNotBlank() }?.let(::add)
+    }
+    if (names.isEmpty()) return false
+    val words = label.lowercase(Locale.ROOT).split(Regex("[^\\p{L}]+")).filter { it.isNotEmpty() }
+    return words.any { it in names }
+}
+
 internal val iso3ToIso2LanguageMap: Map<String, String> by lazy {
     buildMap {
         Locale.getISOLanguages().forEach { iso2 ->
