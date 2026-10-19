@@ -60,6 +60,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.domain.ScreenGenreRows
+import com.hereliesaz.illumera.domain.StreamingOriginals
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.navigation.focus.FocusMemory
 import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
@@ -70,6 +71,7 @@ import com.hereliesaz.illumera.ui.util.touchClick
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 
 private const val COLUMNS = 6
+private const val ORIGINALS_OPTION = "ORIGINALS"
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
 
@@ -106,15 +108,22 @@ fun GridViewScreen(
     watchedIds: Set<String> = emptySet(),
     externalEntryRequester: androidx.compose.ui.focus.FocusRequester? = null,
     focusMemory: FocusMemory = rememberFocusMemory(),
-    sortable: Boolean = false
+    sortable: Boolean = false,
+    // The service's own productions (StreamingOriginals keys); null leaves "Originals" out.
+    originalKeys: Set<String>? = null
 ) {
     var orderName by androidx.compose.runtime.saveable.rememberSaveable {
         mutableStateOf(ScreenGenreRows.TitleOrder.CATALOG.name)
     }
     val order = ScreenGenreRows.TitleOrder.entries.firstOrNull { it.name == orderName }
         ?: ScreenGenreRows.TitleOrder.CATALOG
-    val shown = remember(items, order, sortable) {
-        if (sortable) ScreenGenreRows.sortTitles(items, order) else items
+    val originalsOnly = sortable && originalKeys != null && orderName == ORIGINALS_OPTION
+    val shown = remember(items, order, sortable, originalsOnly, originalKeys) {
+        when {
+            !sortable -> items
+            originalsOnly -> items.filter { StreamingOriginals.matches(it, originalKeys!!) }
+            else -> ScreenGenreRows.sortTitles(items, order)
+        }
     }
     GridViewContent(
         title = title,
@@ -126,25 +135,42 @@ fun GridViewScreen(
         externalEntryRequester = externalEntryRequester,
         focusMemory = focusMemory,
         headerExtra = if (sortable) {
-            { GridSortChips(selected = order, onSelect = { orderName = it.name }) }
+            {
+                GridSortChips(
+                    selected = if (originalsOnly) null else order,
+                    showOriginals = originalKeys != null,
+                    originalsSelected = originalsOnly,
+                    onSelect = { orderName = it.name },
+                    onSelectOriginals = { orderName = ORIGINALS_OPTION }
+                )
+            }
         } else null
     )
 }
 
 @Composable
 private fun GridSortChips(
-    selected: ScreenGenreRows.TitleOrder,
-    onSelect: (ScreenGenreRows.TitleOrder) -> Unit
+    selected: ScreenGenreRows.TitleOrder?,
+    showOriginals: Boolean,
+    originalsSelected: Boolean,
+    onSelect: (ScreenGenreRows.TitleOrder) -> Unit,
+    onSelectOriginals: () -> Unit
 ) {
+    val options = ScreenGenreRows.TitleOrder.entries.map { it.label to (it == selected) } +
+        (if (showOriginals) listOf("Originals" to originalsSelected) else emptyList())
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ScreenGenreRows.TitleOrder.entries.forEach { option ->
+        options.forEachIndexed { index, (label, active) ->
+            val choose = {
+                if (index < ScreenGenreRows.TitleOrder.entries.size)
+                    onSelect(ScreenGenreRows.TitleOrder.entries[index])
+                else onSelectOriginals()
+            }
             var focused by remember { mutableStateOf(false) }
-            val active = option == selected
             Text(
-                text = option.label,
+                text = label,
                 color = if (active || focused) Color.White else Color.White.copy(alpha = 0.6f),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
@@ -154,12 +180,12 @@ private fun GridSortChips(
                             (event.key == Key.Enter || event.key == Key.NumPadEnter ||
                                 event.key == Key.DirectionCenter)
                         ) {
-                            onSelect(option)
+                            choose()
                             true
                         } else false
                     }
                     .focusable()
-                    .touchClick(onClick = { onSelect(option) })
+                    .touchClick(onClick = { choose() })
                     .background(
                         when {
                             active -> Color.White.copy(alpha = 0.22f)
