@@ -1673,7 +1673,7 @@ internal fun cinematicVideoCoverSize(
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
 
-private const val TRAILER_VOLUME = 0.4f
+private const val TRAILER_VOLUME = 0.3f
 private const val TRAILER_ADVANCE_DELAY_MS = 5_000L
 
 /**
