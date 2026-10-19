@@ -278,6 +278,15 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * What a main screen showed when the viewer left it. Coming back within [SNAPSHOT_TTL_MS]
+     * shows it at once instead of refetching every row from empty; rows that were still empty
+     * are finished in the background.
+     */
+    private class ScreenSnapshot(val profileId: Int, val savedAtMs: Long, val state: HomeState)
+
+    private val screenSnapshots = mutableMapOf<String, ScreenSnapshot>()
+
     private val positionMemories = mutableMapOf<String, PositionMemory>()
     private fun positions(screen: String) = positionMemories.getOrPut(screen) { PositionMemory() }
     private var activeScreen: String? = null
@@ -308,6 +317,9 @@ class HomeViewModel @Inject constructor(
     val state: StateFlow<HomeState> = _state
 
     init {
+        // Building the language/country tables takes a moment on a TV box; do it off the
+        // first screen open instead of during it.
+        viewModelScope.launch(Dispatchers.Default) { ScreenGenreRows.warmUp() }
         viewModelScope.launch {
             profileConfigurationManager.activeProfileId.collectLatest { activeProfileId ->
                 if (activeProfileId == observedProfileId) return@collectLatest
@@ -327,6 +339,7 @@ class HomeViewModel @Inject constructor(
                 tmdbEnrichmentInFlight.clear()
                 tmdbProfileCache = null
                 positionMemories.values.forEach { it.clear() }
+                screenSnapshots.clear()
                 _state.value = HomeState(isLoading = false)
             }
         }
@@ -390,6 +403,7 @@ class HomeViewModel @Inject constructor(
     // UI batching: per-row pending buffers and dedup tracking
     companion object {
         private const val ROW_BATCH_SIZE = 50
+        private const val SNAPSHOT_TTL_MS = 10 * 60_000L
     }
     private val pendingRowItems = mutableMapOf<String, MutableList<MetaItem>>()
     private val allFetchedRowIds = mutableMapOf<String, MutableSet<String>>()
@@ -723,6 +737,7 @@ class HomeViewModel @Inject constructor(
      * Call this after making changes in the Dashboard Editor.
      */
     fun invalidate() {
+        screenSnapshots.clear()
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
@@ -1109,6 +1124,21 @@ class HomeViewModel @Inject constructor(
             return
         }
 
+        // Keep what the screen being left showed, and reuse what this one showed last time.
+        val leaving = _state.value
+        val leavingScreen = leaving.loadedScreen
+        if (leavingScreen != null && leavingScreen != screenName &&
+            leaving.loadedProfileId == currentProfileId &&
+            (leaving.rows.isNotEmpty() || leaving.hubRows.isNotEmpty())
+        ) {
+            screenSnapshots[leavingScreen] =
+                ScreenSnapshot(currentProfileId, System.currentTimeMillis(), leaving)
+        }
+        val restored = screenSnapshots[screenName]?.takeIf {
+            it.profileId == currentProfileId &&
+                System.currentTimeMillis() - it.savedAtMs < SNAPSHOT_TTL_MS
+        }?.state
+
         loadJob?.cancel()
         screenDataGeneration++
         loadingMoreRows.clear()
@@ -1176,11 +1206,12 @@ class HomeViewModel @Inject constructor(
             try {
                 // Stage 1: Load only a small first batch so the screen opens quickly.
                 val initialRowsDeferred = async {
-                    if (screenName == "home") repository.getHomePairedRows()
+                    if (restored == null && screenName == "home") repository.getHomePairedRows()
                     else emptyList<HomeRow>()
                 }
                 val hubRowsDeferred = async {
-                    if (screenName == "home") repository.getHubRows(screenName)
+                    if (restored != null) emptyList()
+                    else if (screenName == "home") repository.getHubRows(screenName)
                     else listOfNotNull(streamingHubRow(screenName))
                 }
 
@@ -1188,7 +1219,7 @@ class HomeViewModel @Inject constructor(
                 // Movies and Series are entirely genre-first browsing surfaces:
                 // every enabled Stremio genre gets its own independently paginated
                 // row; the old unfiltered All Movies / All Series row is removed.
-                val genreRows = if (screenName in setOf("movies", "series")) {
+                val genreRows = if (restored == null && screenName in setOf("movies", "series")) {
                     val type = if (screenName == "movies") "movie" else "series"
                     val available = repository.availableScreenGenres(type)
                     val enabled = ScreenGenreRows.enabledGenres(
@@ -1207,8 +1238,12 @@ class HomeViewModel @Inject constructor(
                 } else emptyList()
                 // A Home category is now one row per addon/category pair (movie + TV),
                 // not a single global feed. Repository groups BEFORE pagination.
-                val initialRows = if (screenName == "home") configuredRows else genreRows
-                val hubRows = hubRowsDeferred.await()
+                val initialRows = when {
+                    restored != null -> restored.rows
+                    screenName == "home" -> configuredRows
+                    else -> genreRows
+                }
+                val hubRows = restored?.hubRows ?: hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
                 // Fetch HERO row separately (even if hidden in dashboard).
@@ -1220,6 +1255,7 @@ class HomeViewModel @Inject constructor(
                     else -> null
                 }
                 val heroRow = when {
+                    restored != null -> restored.heroRow
                     heroConfig?.categoryId == HERO_DISABLED_MARKER -> null
                     // Older editor versions persisted the synthetic aggregate ID.
                     // Treat it as automatic rather than making a failed catalog lookup.
@@ -1244,8 +1280,8 @@ class HomeViewModel @Inject constructor(
                 // Prefetch first visible images BEFORE updating state.
                 prefetchFirstVisibleImages(initialRows)
 
-                val initialMixedList = (hubRows + initialRows.map { CategoryRow.fromHomeRow(it) })
-                    .sortedBy { it.order }
+                val initialMixedList = restored?.mixedRows
+                    ?: (hubRows + initialRows.map { CategoryRow.fromHomeRow(it) }).sortedBy { it.order }
 
                 // Cache profile for TMDB enrichment (called per-item as they become visible)
                 tmdbProfileCache = currentProfile
@@ -1259,6 +1295,8 @@ class HomeViewModel @Inject constructor(
                         isLoading = false,
                         loadedScreen = screenName,
                         loadedProfileId = currentProfileId,
+                        enrichedMeta = restored?.enrichedMeta ?: it.enrichedMeta,
+                        tmdbEnrichedIds = restored?.tmdbEnrichedIds ?: it.tmdbEnrichedIds,
                         tmdbEnabled = currentProfile?.tmdbEnabled == true
                     )
                 }
@@ -1318,7 +1356,7 @@ class HomeViewModel @Inject constructor(
                 // hostage while other workers have already finished.
                 if (screenName in setOf("movies", "series")) {
                     val generation = screenDataGeneration
-                    val queuedRows = java.util.ArrayDeque(initialRows)
+                    val queuedRows = java.util.ArrayDeque(initialRows.filter { it.items.isEmpty() })
                     repeat(minOf(3, initialRows.size)) {
                         launch {
                             while (queuedRows.isNotEmpty() && generation == screenDataGeneration) {
@@ -1333,7 +1371,7 @@ class HomeViewModel @Inject constructor(
                 } else {
                     // Render the page before beginning network discovery. Only
                     // its first two Home rails need a warm cache immediately.
-                    initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                    initialRows.filter { it.items.isEmpty() }.take(2).forEach { loadMoreItems(it.configId) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
