@@ -890,6 +890,8 @@ class MainActivity : ComponentActivity() {
                                 // it with Back (saved state restored) keeps the viewer's place.
                                 rememberSaveable { vm.forgetPosition(tab); true }
                                 LaunchedEffect(tab, currentProfile?.id) { vm.loadScreen(tab, currentProfile) }
+                                // The other main screens get ready while this one is in use.
+                                LaunchedEffect(currentProfile?.id) { vm.preloadScreens(currentProfile) }
                                 HomeScreen(
                                     tab = DashboardTab.fromString(tab),
                                     viewModel = vm,
