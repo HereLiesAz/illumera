@@ -520,6 +520,9 @@ fun CinematicLayout(
                             event.type == KeyEventType.KeyDown &&
                             event.key == Key.DirectionUp
                         ) {
+                            // The row we leave re-lays out as the Hero takes focus; don't let
+                            // focus restore read that as a removal and pull us back down.
+                            focusMemory.holdRestore()
                             heroReturnScope.launch {
                                 verticalListState.scrollToItem(0)
                                 repeat(10) {

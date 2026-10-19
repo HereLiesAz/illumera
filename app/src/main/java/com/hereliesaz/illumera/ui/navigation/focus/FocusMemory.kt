@@ -58,6 +58,20 @@ class FocusMemory(initialKey: String? = null) {
     internal var focusedRemovals by mutableIntStateOf(0)
         private set
 
+    private var holdRestoreUntilMs = 0L
+
+    /**
+     * A deliberate focus jump (e.g. Up to the Hero) re-lays out the row it leaves in the same
+     * frame, which reads as "the focused element was removed". Holding restore for a moment keeps
+     * the viewer where the jump took them instead of pulling them back.
+     */
+    fun holdRestore(durationMs: Long = 700L) {
+        holdRestoreUntilMs = android.os.SystemClock.uptimeMillis() + durationMs
+    }
+
+    internal val restoreHeld: Boolean
+        get() = android.os.SystemClock.uptimeMillis() < holdRestoreUntilMs
+
     /** The removed focused element's key, to go back to. */
     internal var removedKey: String? = null
         private set
@@ -284,6 +298,7 @@ fun RestoreFocusOnResume(
             withFrameNanos { }
             if (shell?.isMenuOpen == true) return@collect
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@collect
+            if (memory.restoreHeld) return@collect
             if (!restored[0] || !currentEnabled) return@collect
             memory.rememberRemovedKey()
             restore()
