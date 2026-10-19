@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -222,7 +224,8 @@ private fun GridViewContent(
     val startPadding = 50.dp
     
     // Header height for pivot calculation
-    val headerHeight = 48.dp
+    // Title row, plus a second row for the sort/filter chips when there are any.
+    val headerHeight = if (headerExtra != null) 96.dp else 48.dp
     val headerHeightPx = with(density) { headerHeight.toPx() }
     
     val dpadRepeatGate = remember {
@@ -473,6 +476,7 @@ private fun GridViewContent(
             )
             
             // Header content - tight padding
+            Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -539,11 +543,19 @@ private fun GridViewContent(
                         color = Color.White
                     )
                 )
+            }
 
-                if (headerExtra != null) {
-                    Spacer(modifier = Modifier.width(24.dp))
+            // Sort and filter chips on their own row; they scroll sideways when they don't fit.
+            if (headerExtra != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = startPadding, top = 8.dp, end = 50.dp)
+                        .horizontalScroll(rememberScrollState())
+                ) {
                     headerExtra()
                 }
+            }
             }
         }
     }
