@@ -374,6 +374,7 @@ class HomeViewModel @Inject constructor(
                 tmdbProfileCache = null
                 positionMemories.values.forEach { it.clear() }
                 screenSnapshots.clear()
+                clearDemand()
                 _state.value = HomeState(isLoading = false)
             }
         }
@@ -438,6 +439,14 @@ class HomeViewModel @Inject constructor(
     companion object {
         private const val ROW_BATCH_SIZE = 50
         private const val SNAPSHOT_TTL_MS = 10 * 60_000L
+        // Demand-driven loading: titles shown per step, how far past the focused card to keep
+        // loaded, rows looked ahead, and bounds on concurrent/repeated/per-call work.
+        private const val GRID_REVEAL_STEP = 30
+        private const val INITIAL_VISIBLE_ROWS = 3
+        private const val LOOKAHEAD_ROWS = 3
+        private const val MAX_CONCURRENT_ROW_LOADS = 3
+        private const val CLASSIFY_BUDGET = 36
+        private const val TRIM_INTERVAL_MS = 5_000L
         private const val DISK_CACHE_MAX_AGE_MS = 24 * 60 * 60_000L
         private const val REVALIDATE_MIN_AGE_MS = 60_000L
         private const val REVALIDATE_ROWS = 10
@@ -445,6 +454,181 @@ class HomeViewModel @Inject constructor(
     }
     private val pendingRowItems = mutableMapOf<String, MutableList<MetaItem>>()
     private val allFetchedRowIds = mutableMapOf<String, MutableSet<String>>()
+    // ── Demand-driven loading ──────────────────────────────────────────────────────────────
+    // What gets loaded follows what the viewer can see and where they are going: five titles for
+    // each row on screen first, then five for the rows just below, then the next five on screen;
+    // a row the viewer moves along keeps being extended. Everything fetched beyond what is shown
+    // waits in a backlog, and what is far from the viewer is dropped.
+    private val revealTargets = mutableMapOf<String, Int>()
+    private val rowBacklogs = mutableMapOf<String, MutableList<MetaItem>>()
+    private val candidateBacklogs = mutableMapOf<String, java.util.ArrayDeque<MetaItem>>()
+    private val demandAttempts = mutableMapOf<String, Int>()
+    private val rowLoadJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private var visibleRowIds: List<String> = emptyList()
+    private var lookaheadRowIds: List<String> = emptyList()
+    private var focusedRowId: String? = null
+    private var lastTrimMs = 0L
+
+    private fun clearDemand() {
+        rowLoadJobs.values.forEach { it.cancel() }
+        rowLoadJobs.clear()
+        revealTargets.clear()
+        rowBacklogs.clear()
+        candidateBacklogs.clear()
+        demandAttempts.clear()
+        visibleRowIds = emptyList()
+        lookaheadRowIds = emptyList()
+        focusedRowId = null
+    }
+
+    private fun revealTarget(configId: String) =
+        revealTargets[configId] ?: RowDemandPlanner.REVEAL_STEP
+
+    private fun shownCount(configId: String) =
+        _state.value.rows.firstOrNull { it.configId == configId }?.items?.size ?: 0
+
+    private fun raiseTarget(configId: String, target: Int) {
+        if (target > (revealTargets[configId] ?: 0)) {
+            revealTargets[configId] = target
+            demandAttempts.remove(configId)
+        }
+    }
+
+    /** Shows waiting titles of the row up to its target. */
+    private fun revealFromBacklog(configId: String) {
+        val backlog = rowBacklogs[configId] ?: return
+        if (backlog.isEmpty()) return
+        val room = revealTarget(configId) - shownCount(configId)
+        if (room <= 0) return
+        val batch = backlog.take(room)
+        repeat(batch.size) { backlog.removeAt(0) }
+        appendItemsToRow(configId, batch, bypassWindow = true)
+    }
+
+    private fun heroSourceRowId(): String? =
+        _state.value.heroRow?.configId
+            ?: _state.value.rows.firstOrNull { it.items.isNotEmpty() }?.configId
+
+    private fun factsFor(configId: String): RowFacts? {
+        val row = _state.value.rows.firstOrNull { it.configId == configId } ?: return null
+        return RowFacts(
+            shown = row.items.size,
+            waiting = rowBacklogs[configId]?.size ?: 0,
+            exhausted = configId in exhaustedCatalogRows,
+            loading = configId in loadingMoreRows,
+            attempts = demandAttempts[configId] ?: 0
+        )
+    }
+
+    private fun currentDemands(): List<Pair<String, Int>> = RowDemandPlanner.demands(
+        focusedRowId = focusedRowId,
+        focusedTarget = focusedRowId?.let { revealTarget(it) } ?: 0,
+        visible = visibleRowIds,
+        heroRowId = heroSourceRowId(),
+        lookahead = lookaheadRowIds
+    )
+
+    /** Gives up a running load; whatever it had not recorded is fetched again when it is next asked for. */
+    private fun cancelRowLoad(configId: String) {
+        rowLoadJobs.remove(configId)?.cancel()
+        loadingMoreRows.remove(configId)
+        demandAttempts[configId] = ((demandAttempts[configId] ?: 1) - 1).coerceAtLeast(0)
+    }
+
+    /**
+     * Starts as much of the wanted loading as there are free slots for. When every slot is busy,
+     * a load for something less urgent than what is waiting is given up so the urgent row (the
+     * one the viewer is on) is not stuck behind a slow one.
+     */
+    private fun schedule() {
+        var guard = 0
+        while (guard++ < 50) {
+            val demands = currentDemands()
+            val index = RowDemandPlanner.nextIndex(demands, ::factsFor) ?: break
+            if (loadingMoreRows.size >= MAX_CONCURRENT_ROW_LOADS) {
+                val victim = RowDemandPlanner.victim(demands, index, loadingMoreRows.toList()) ?: break
+                cancelRowLoad(victim)
+                continue
+            }
+            val (configId, target) = demands[index]
+            raiseTarget(configId, target)
+            revealFromBacklog(configId)
+            if (shownCount(configId) < target && configId !in exhaustedCatalogRows &&
+                configId !in loadingMoreRows
+            ) {
+                demandAttempts[configId] = (demandAttempts[configId] ?: 0) + 1
+                loadRow(configId)
+            }
+        }
+    }
+
+    /** Which rows are on screen, and which are the next few below. Reported by the screen. */
+    fun onRowsVisible(visible: List<String>, lookahead: List<String>) {
+        if (visible == visibleRowIds && lookahead == lookaheadRowIds) return
+        visibleRowIds = visible
+        lookaheadRowIds = lookahead
+        schedule()
+        trimCaches()
+    }
+
+    /** The viewer is on card [itemIndex] of a row: keep a little ahead of them loaded. */
+    fun onRowFocused(configId: String, itemIndex: Int) {
+        focusedRowId = configId
+        raiseTarget(configId, RowDemandPlanner.focusTarget(itemIndex))
+        revealFromBacklog(configId)
+        schedule()
+        trimCaches()
+    }
+
+    /** A row came into view and may need its first titles. */
+    fun requestRowItems(@Suppress("UNUSED_PARAMETER") configId: String) = schedule()
+
+    private fun seedDemand(rows: List<HomeRow>) {
+        visibleRowIds = rows.take(INITIAL_VISIBLE_ROWS).map { it.configId }
+        lookaheadRowIds = rows.drop(INITIAL_VISIBLE_ROWS).take(LOOKAHEAD_ROWS).map { it.configId }
+        schedule()
+    }
+
+    /**
+     * Drops what was fetched ahead for rows the viewer is not near, and enrichment for titles
+     * they are not near. It is fetched again when their movements ask for it.
+     */
+    private fun trimCaches() {
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastTrimMs < TRIM_INTERVAL_MS) return
+        lastTrimMs = now
+        val state = _state.value
+        val near = (visibleRowIds + lookaheadRowIds + listOfNotNull(focusedRowId)).toSet()
+        state.rows.forEach { row ->
+            if (row.configId in near) return@forEach
+            val dropped = (rowBacklogs.remove(row.configId) != null) or
+                (candidateBacklogs.remove(row.configId) != null)
+            if (dropped) {
+                // The next demand starts the row's catalog over; what it shows stays.
+                rowFetchOffsets.remove(row.configId)
+                seenAggregateCandidates.remove(row.configId)
+                exhaustedCatalogRows.remove(row.configId)
+                emptyCatalogPageStreak.remove(row.configId)
+                demandAttempts.remove(row.configId)
+            }
+        }
+        val keep = buildSet {
+            state.rows.filter { it.configId in near }.forEach { row ->
+                row.items.forEach { add("${it.type}:${it.id}") }
+            }
+            state.heroRow?.items?.forEach { add("${it.type}:${it.id}") }
+        }
+        val stale = (state.enrichedMeta.keys + state.tmdbEnrichedIds).filterNot { it in keep }.toSet()
+        if (stale.size > 40) {
+            _state.update {
+                it.copy(
+                    enrichedMeta = it.enrichedMeta - stale,
+                    tmdbEnrichedIds = it.tmdbEnrichedIds - stale
+                )
+            }
+        }
+    }
+
     // Raw number of items fetched per row (including duplicates) — used as the catalog skip
     // so repeated items across pages don't cause the same page to be refetched forever.
     private val rowFetchOffsets = mutableMapOf<String, Int>()
@@ -477,7 +661,14 @@ class HomeViewModel @Inject constructor(
      */
     private var screenDataGeneration = 0L
 
+    /** The "view more" grid wants a longer list: show a bigger window and fetch on. */
     fun loadMoreItems(configId: String) {
+        raiseTarget(configId, shownCount(configId) + GRID_REVEAL_STEP)
+        revealFromBacklog(configId)
+        loadRow(configId)
+    }
+
+    private fun loadRow(configId: String) {
         if (configId.startsWith("catalog-aggregate:") || configId.startsWith("catalog-home:")) {
             if (configId in exhaustedCatalogRows) return
             val isHomePair = configId.startsWith("catalog-home:")
@@ -485,7 +676,8 @@ class HomeViewModel @Inject constructor(
             val initiatingProfileId = _state.value.loadedProfileId
             val initiatingScreen = _state.value.loadedScreen
             if (!loadingMoreRows.add(configId)) return
-            viewModelScope.launch {
+            // Started only once it is registered, so it can be given up by name.
+            val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                 try {
                     val parts = configId.split(':', limit = 3)
                     if (!isHomePair && (parts.size != 3 ||
@@ -505,6 +697,14 @@ class HomeViewModel @Inject constructor(
                         return@launch
                     }
                     var emptyStreak = emptyCatalogPageStreak[configId] ?: 0
+                    // Titles fetched earlier but not yet classified come before another fetch.
+                    if (genre != null && ScreenGenreRows.isStandardGenre(genre) &&
+                        candidateBacklogs[configId]?.isNotEmpty() == true
+                    ) {
+                        unique = unique + (routeGenreCandidates(
+                            configId, generation, initiatingProfileId, initiatingScreen
+                        ) ?: return@launch)
+                    }
                     // Previously a later empty page halted pagination permanently.
                     // Probe a bounded number until there is actual NEW primary-row content.
                     val probes = if (!isHomePair && existing.isEmpty()) {
@@ -541,55 +741,14 @@ class HomeViewModel @Inject constructor(
                                 appendItemsToRow(configId, unseen, shareable = true)
                                 unique = unseen
                             } else {
-                                // Incremental genre classification: show the FIRST completed
-                                // batch instead of hiding a whole row while 100 slow Cinemeta
-                                // requests finish. Still classify/route the complete page.
-                                for (group in unseen.chunked(6)) {
-                                    val classified = kotlinx.coroutines.coroutineScope {
-                                        group.map { candidate ->
-                                            async {
-                                                val canonical = repository.primaryGenreFor(candidate)
-                                                val lead = canonical
-                                                    ?: candidate.genres.orEmpty()
-                                                        .map(ScreenGenreRows::canonicalGenre)
-                                                        .sorted()
-                                                        .firstOrNull()
-                                                val assigned = when (lead) {
-                                                    "Action & Adventure" -> "Action"
-                                                    "Sci-Fi & Fantasy" -> "Sci-Fi"
-                                                    else -> lead
-                                                }
-                                                Triple(assigned, candidate, canonical != null)
-                                            }
-                                        }.awaitAll()
-                                    }
-                                    // Check the owner BEFORE every incremental UI append.
-                                    if (generation != screenDataGeneration ||
-                                        _state.value.loadedProfileId != initiatingProfileId ||
-                                        _state.value.loadedScreen != initiatingScreen ||
-                                        profileConfigurationManager.activeProfileId.value != initiatingProfileId
-                                    ) return@launch
-                                    val byDestination = classified.groupBy { (primary, _, _) ->
-                                        _state.value.rows.firstOrNull { row ->
-                                            row.title.equals(primary, ignoreCase = true)
-                                        }?.configId
-                                    }
-                                    byDestination.forEach { (destination, entries) ->
-                                        if (destination != null) {
-                                            val authoritative = entries.filter { it.third }.map { it.second }
-                                            val fallback = entries.filterNot { it.third }.map { it.second }
-                                            // A new canonical match removes stale fallback
-                                            // copies previously assigned to other genres.
-                                            if (authoritative.isNotEmpty()) {
-                                                appendItemsToRow(destination, authoritative, authoritative = true)
-                                            }
-                                            if (fallback.isNotEmpty()) appendItemsToRow(destination, fallback)
-                                            if (destination == configId) {
-                                                unique = unique + entries.map { it.second }
-                                            }
-                                        }
-                                    }
-                                }
+                                // Titles wait for classification and are routed a few at a time
+                                // (see routeGenreCandidates), only as far as this row needs.
+                                candidateBacklogs.getOrPut(configId) { java.util.ArrayDeque() }
+                                    .addAll(unseen)
+                                val landed = routeGenreCandidates(
+                                    configId, generation, initiatingProfileId, initiatingScreen
+                                ) ?: return@launch
+                                unique = unique + landed
                                 // Titles route to their PRIMARY genre only. A row whose titles all
                                 // have another (or a disabled) primary genre would stay empty, so
                                 // while it is empty it also takes titles that list its genre.
@@ -627,9 +786,18 @@ class HomeViewModel @Inject constructor(
                     // screen or turn a D-pad focus change into an app shutdown.
                     Log.w("HomeGenreRows", "Catalog load failed for $configId", error)
                 } finally {
-                    if (generation == screenDataGeneration) loadingMoreRows.remove(configId)
+                    if (generation == screenDataGeneration) {
+                        // A load that was given up is no longer the one registered.
+                        if (rowLoadJobs[configId] === coroutineContext[kotlinx.coroutines.Job]) {
+                            rowLoadJobs.remove(configId)
+                            loadingMoreRows.remove(configId)
+                        }
+                        schedule()
+                    }
                 }
             }
+            rowLoadJobs[configId] = job
+            job.start()
             return
         }
         if (configId in loadingMoreRows) return // Already loading
@@ -645,7 +813,7 @@ class HomeViewModel @Inject constructor(
         if (pending != null && pending.isNotEmpty()) {
             val batch = pending.take(ROW_BATCH_SIZE)
             pendingRowItems[configId] = pending.drop(ROW_BATCH_SIZE).toMutableList()
-            appendItemsToRow(configId, batch)
+            appendItemsToRow(configId, batch, bypassWindow = true)
             return
         }
 
@@ -719,7 +887,7 @@ class HomeViewModel @Inject constructor(
                         pendingRowItems.getOrPut(configId) { mutableListOf() }
                             .addAll(newUniqueItems.drop(ROW_BATCH_SIZE))
                     }
-                    appendItemsToRow(configId, batch)
+                    appendItemsToRow(configId, batch, bypassWindow = true)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -731,15 +899,92 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Classifies the titles waiting for [configId] into their primary-genre rows, six at a time,
+     * and stops once the row has the titles it was asked for (or after a bounded number), leaving
+     * the rest waiting. Returns the titles that landed in [configId]'s own row, or null when the
+     * screen changed while it worked.
+     */
+    private suspend fun routeGenreCandidates(
+        configId: String,
+        generation: Long,
+        profileId: Int?,
+        screen: String?
+    ): List<MetaItem>? {
+        val queue = candidateBacklogs[configId] ?: return emptyList()
+        val landed = mutableListOf<MetaItem>()
+        var budget = CLASSIFY_BUDGET
+        while (queue.isNotEmpty() && budget > 0 && shownCount(configId) < revealTarget(configId)) {
+            // Taken off the queue only once routed, so a load that is given up loses nothing.
+            val group = queue.take(6)
+            budget -= group.size
+            val classified = kotlinx.coroutines.coroutineScope {
+                group.map { candidate ->
+                    async {
+                        val canonical = repository.primaryGenreFor(candidate)
+                        val lead = canonical
+                            ?: candidate.genres.orEmpty()
+                                .map(ScreenGenreRows::canonicalGenre)
+                                .sorted()
+                                .firstOrNull()
+                        val assigned = when (lead) {
+                            "Action & Adventure" -> "Action"
+                            "Sci-Fi & Fantasy" -> "Sci-Fi"
+                            else -> lead
+                        }
+                        Triple(assigned, candidate, canonical != null)
+                    }
+                }.awaitAll()
+            }
+            // Check the owner BEFORE every incremental UI append.
+            if (generation != screenDataGeneration ||
+                _state.value.loadedProfileId != profileId ||
+                _state.value.loadedScreen != screen ||
+                profileConfigurationManager.activeProfileId.value != profileId
+            ) return null
+            repeat(group.size) { queue.removeFirst() }
+            val byDestination = classified.groupBy { (primary, _, _) ->
+                _state.value.rows.firstOrNull { row ->
+                    row.title.equals(primary, ignoreCase = true)
+                }?.configId
+            }
+            byDestination.forEach { (destination, entries) ->
+                if (destination != null) {
+                    val authoritative = entries.filter { it.third }.map { it.second }
+                    val fallback = entries.filterNot { it.third }.map { it.second }
+                    // A new canonical match removes stale fallback copies assigned elsewhere.
+                    if (authoritative.isNotEmpty()) {
+                        appendItemsToRow(destination, authoritative, authoritative = true)
+                    }
+                    if (fallback.isNotEmpty()) appendItemsToRow(destination, fallback)
+                    if (destination == configId) landed += entries.map { it.second }
+                }
+            }
+        }
+        return landed
+    }
+
     private fun appendItemsToRow(
         configId: String,
         newItems: List<MetaItem>,
         authoritative: Boolean = false,
-        shareable: Boolean = false
+        shareable: Boolean = false,
+        bypassWindow: Boolean = false
     ) {
+        // A row shows only as many titles as it has been asked for; the rest wait in a backlog
+        // until the viewer's movements call for them.
+        var shown = newItems
+        if (!bypassWindow) {
+            val room = (revealTarget(configId) - shownCount(configId)).coerceAtLeast(0)
+            if (shown.size > room) {
+                rowBacklogs.getOrPut(configId) { mutableListOf() }.addAll(shown.drop(room))
+                shown = shown.take(room)
+            }
+        }
+        if (shown.isEmpty()) return
         _state.update { current ->
             val updatedRows = reconcileGenreRows(
-                current.rows, configId, newItems, authoritative, shareable
+                current.rows, configId, shown, authoritative, shareable
             )
             val updatedMixed = reconcileGenreMixedRows(current.mixedRows, updatedRows)
 
@@ -776,6 +1021,7 @@ class HomeViewModel @Inject constructor(
      */
     fun invalidate() {
         screenSnapshots.clear()
+        clearDemand()
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
@@ -1189,6 +1435,7 @@ class HomeViewModel @Inject constructor(
             exhaustedCatalogRows.clear()
             emptyCatalogPageStreak.clear()
             seenAggregateCandidates.clear()
+            clearDemand()
             _state.value = _state.value.copy(
                 isLoading = true,
                 mixedRows = emptyList(),
@@ -1414,29 +1661,10 @@ class HomeViewModel @Inject constructor(
                 // Start a tiny metadata warmup pass for items likely to render first.
                 prefetchLikelyVisibleMetadata(rows = initialRows, heroRow = heroRow)
 
-                // Present the scrollable screen first. Then fill the earliest
-                // focusable genre rows before probing later rows. A shared queue
-                // avoids a slow provider holding its entire fixed-index lane
-                // hostage while other workers have already finished.
-                if (screenName in setOf("movies", "series")) {
-                    val generation = screenDataGeneration
-                    val queuedRows = java.util.ArrayDeque(initialRows.filter { it.items.isEmpty() })
-                    repeat(minOf(3, initialRows.size)) {
-                        launch {
-                            while (queuedRows.isNotEmpty() && generation == screenDataGeneration) {
-                                val row = queuedRows.removeFirst()
-                                loadMoreItems(row.configId)
-                                while (row.configId in loadingMoreRows &&
-                                    generation == screenDataGeneration
-                                ) kotlinx.coroutines.delay(80)
-                            }
-                        }
-                    }
-                } else {
-                    // Render the page before beginning network discovery. Only
-                    // its first two Home rails need a warm cache immediately.
-                    initialRows.filter { it.items.isEmpty() }.take(2).forEach { loadMoreItems(it.configId) }
-                }
+                // Present the scrollable screen first. What loads next follows what is on screen
+                // (reported by the screen) and where the viewer goes; until it reports, the first
+                // rows are assumed visible.
+                seedDemand(initialRows)
 
                 if (restored != null &&
                     (validSnapshot == null ||
