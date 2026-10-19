@@ -93,6 +93,18 @@ object ScreenGenreRows {
                 target in setOf("Sci-Fi", "Fantasy"))
     }
 
+    /**
+     * Cinemeta-style genres. Titles are routed to the row of their primary genre; any other
+     * (addon-specific) genre row is filled straight from the addon's own catalog for it.
+     */
+    fun isStandardGenre(genre: String): Boolean =
+        canonicalGenre(genre).lowercase(Locale.ROOT) in standardGenreKeys
+
+    private val standardGenreKeys: Set<String> by lazy {
+        (movieDefaults + seriesExtra + listOf("Action & Adventure", "Sci-Fi & Fantasy"))
+            .map { it.lowercase(Locale.ROOT) }.toSet()
+    }
+
     private fun isActualGenre(genre: String): Boolean {
         val name = genre.trim().lowercase(Locale.ROOT)
         if (name.isEmpty()) return false
