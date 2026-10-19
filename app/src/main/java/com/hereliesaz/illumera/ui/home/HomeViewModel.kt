@@ -520,7 +520,8 @@ class HomeViewModel @Inject constructor(
                                             }
                                         }
                                     }
-                                }                                // Titles route to their PRIMARY genre only. A row whose titles all
+                                }
+                                // Titles route to their PRIMARY genre only. A row whose titles all
                                 // have another (or a disabled) primary genre would stay empty, so
                                 // while it is empty it also takes titles that list its genre.
                                 val rowEmpty = _state.value.rows
