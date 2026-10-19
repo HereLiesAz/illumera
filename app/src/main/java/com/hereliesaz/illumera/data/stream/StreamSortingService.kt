@@ -79,7 +79,16 @@ class StreamSortingService @Inject constructor() {
         val ranks = java.util.IdentityHashMap<Stream, Int>()
         return compareBy { stream ->
             ranks.getOrPut(stream) {
-                val audioRank = audio.indexOfFirst { declaresAudioLanguage(stream, it) }.let { if (it < 0) audio.size else it }
+                // Declared preferred language first, then sources that don't say (unknown), and
+                // last the ones that declare a different language: a known mismatch must not be
+                // tried before a source that might match.
+                val audioRank = audio.indexOfFirst { declaresAudioLanguage(stream, it) }.let {
+                    when {
+                        it >= 0 -> it
+                        audio.isNotEmpty() && declaresOtherAudioLanguage(stream, audio) -> audio.size + 1
+                        else -> audio.size
+                    }
+                }
                 val subtitleRank = subtitles.indexOfFirst { declaresSubtitleLanguage(stream, it) }.let { if (it < 0) subtitles.size else it }
                 audioRank * (subtitles.size + 1) + subtitleRank
             }
@@ -103,6 +112,12 @@ class StreamSortingService @Inject constructor() {
         if (containsLanguageAlias(text, language)) return true
         val flags = LANGUAGE_FLAGS[normalizeLanguageTag(language).substringBefore('-')] ?: return false
         return flags.any { text.contains(it) }
+    }
+
+    private fun declaresOtherAudioLanguage(stream: Stream, preferred: List<String>): Boolean {
+        val preferredBases = preferred.map { it.substringBefore('-') }.toSet()
+        val others = LANGUAGE_ALIASES.keys.filter { it !in preferredBases }
+        return matchesAudioLanguage(stream, others)
     }
 
     private fun declaresSubtitleLanguage(stream: Stream, language: String): Boolean =

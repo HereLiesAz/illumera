@@ -838,7 +838,7 @@ class ExoPlayerBackend(
                 _uiState.value.subtitleChoiceToRemember ?: request.preferredSubtitleTrackId
             )
             val options = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_TRACK_ID }
-            val target = resolveForcedTrack(options, forcedSubtitleLanguages(), remembered) { tracks, language ->
+            val target = resolveForcedTrack(options, subtitleLanguagePolicy(remembered), remembered) { tracks, language ->
                 findSubtitleTrackByLanguage(tracks, language)
             } ?: remembered?.takeIf { id -> options.any { it.id == id } }
             if (target != null) selectSubtitleTrack(target)
@@ -2222,7 +2222,19 @@ class ExoPlayerBackend(
         val userTurnedSubtitlesOn = !subtitleId.isNullOrBlank() && subtitleId != SUBTITLE_OFF_TRACK_ID
         if (!hasAppliedSubtitleLanguagePref) {
             if (!userTurnedSubtitlesOn) {
+                // A forced language, or the profile's default when nothing was remembered, turns
+                // subtitles on as soon as a track in it is known. Otherwise they stay off.
+                val languages = subtitleLanguagePolicy(subtitleId)
+                val options = _subtitleTracks.value.filter { it.id != SUBTITLE_OFF_TRACK_ID }
+                val match = languages.firstNotNullOfOrNull { findSubtitleTrackByLanguage(options, it) }
+                if (match != null) {
+                    selectSubtitleTrack(match.id)
+                    hasAppliedSubtitleLanguagePref = true
+                    return
+                }
                 selectSubtitleTrack(SUBTITLE_OFF_TRACK_ID)
+                // Off for now: a track in that language arriving late is applied by addExternalSubtitles.
+                if (languages.isNotEmpty()) wantsSubtitles = true
                 hasAppliedSubtitleLanguagePref = true
                 return
             }
@@ -2251,6 +2263,16 @@ class ExoPlayerBackend(
             }
         }
         if (userTurnedSubtitlesOn) selectSubtitleTrack(subtitleId)
+    }
+
+    /** Subtitle languages to start in: the forced ones, else the profile's default when no pick is remembered. */
+    private fun subtitleLanguagePolicy(rememberedId: String?): List<String> {
+        forcedSubtitleLanguages().takeIf { it.isNotEmpty() }?.let { return it }
+        if (!rememberedId.isNullOrBlank()) return emptyList()
+        return listOf(
+            playbackSettings.preferredSubtitleLanguage,
+            playbackSettings.preferredSubtitleLanguageSecondary
+        ).map { it.trim() }.filter { it.isNotEmpty() && it != "#off" }.distinct()
     }
 
     private fun forcedAudioLanguages(): List<String> = forcedLanguages(
@@ -2309,12 +2331,10 @@ class ExoPlayerBackend(
             val match = findTrackByLanguage(options, secondary)
             if (match != null) return match.id
         }
-        // No language configured ("Default") — still force English over whatever
-        // ExoPlayer's own heuristic would otherwise land on, when a track is
-        // actually tagged as English. Leaves untagged sources untouched.
-        if (primary.isEmpty() && secondary.isEmpty()) {
-            findTrackByLanguage(options, "en")?.let { return it.id }
-        }
+        // No language configured, or none of the configured ones is on offer: still choose
+        // English over whatever ExoPlayer's own heuristic would land on, when a track is
+        // tagged as English or its label says so. Leaves other sources untouched.
+        findTrackByLanguage(options, "en")?.let { return it.id }
         return null
     }
 
@@ -2328,6 +2348,10 @@ class ExoPlayerBackend(
             normalizeLanguageToIso2(track.language) == prefKey
         } ?: tracks.firstOrNull { track ->
             languagePrimarySubtagsMatch(track.language, prefKey)
+        } ?: tracks.firstOrNull { track ->
+            // Language tag missing or "und" but the label names it ("English").
+            normalizeLanguageToIso2(track.language) == "und" &&
+                trackLabelMatchesLanguage(track.label, prefKey)
         }
     }
 
@@ -2354,6 +2378,11 @@ class ExoPlayerBackend(
                 (track.selectionFlags and C.SELECTION_FLAG_FORCED) == 0
         } ?: tracks.firstOrNull { track ->
             languagePrimarySubtagsMatch(track.language, prefKey)
+        } ?: tracks.firstOrNull { track ->
+            // Language tag missing or "und" but the label names it ("English").
+            normalizeLanguageToIso2(track.language) == "und" &&
+                (track.selectionFlags and C.SELECTION_FLAG_FORCED) == 0 &&
+                trackLabelMatchesLanguage(track.label, prefKey)
         }
     }
 

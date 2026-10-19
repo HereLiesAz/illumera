@@ -1,7 +1,9 @@
 package com.hereliesaz.illumera.ui.player.base
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LanguageNormalizationTest {
@@ -76,5 +78,19 @@ class LanguageNormalizationTest {
         assertEquals("chinese traditional", normalizedLanguageNameKey("Chinese---Traditional"))
         assertNull(normalizedLanguageNameKey(" !!! "))
         assertNull(normalizedLanguageNameKey(null))
+    }
+
+    @Test fun trackLabelNamingTheLanguageMatches() {
+        assertTrue(trackLabelMatchesLanguage("English", "en"))
+        assertTrue(trackLabelMatchesLanguage("English - 5.1 Surround", "eng"))
+        assertTrue(trackLabelMatchesLanguage("ENG", "en"))
+        assertTrue(trackLabelMatchesLanguage("Audio 2 (English)", "en"))
+    }
+
+    @Test fun trackLabelNotNamingTheLanguageDoesNotMatch() {
+        assertFalse(trackLabelMatchesLanguage("Español", "en"))
+        assertFalse(trackLabelMatchesLanguage("Track 1", "en"))
+        assertFalse(trackLabelMatchesLanguage(null, "en"))
+        assertFalse(trackLabelMatchesLanguage("English", "und"))
     }
 }
