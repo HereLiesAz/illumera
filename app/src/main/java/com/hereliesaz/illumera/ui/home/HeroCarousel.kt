@@ -322,6 +322,7 @@ fun HeroCarousel(
                 autoPlay = autoPlayPreviews,
                 soundEnabled = previewSound,
                 isVisible = previewVisible,
+                nextItem = if (items.size > 1) items[(safeCurrentIndex + 1) % items.size] else null,
                 onEnded = { goToNext() }
             )
         }
