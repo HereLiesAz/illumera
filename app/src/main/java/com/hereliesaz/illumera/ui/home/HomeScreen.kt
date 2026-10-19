@@ -119,6 +119,9 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val genreContext = LocalContext.current
+    // One buffered trailer, for the title after the one now playing.
+    val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
+    DisposableEffect(trailerPreloader) { onDispose { trailerPreloader.release() } }
     val displayState = remember(tab, state, currentProfile?.id) {
         if (tab != DashboardTab.HOME) {
             val profileId = currentProfile?.id
@@ -226,7 +229,8 @@ fun HomeScreen(
             com.hereliesaz.illumera.ui.components.LocalWatchedIds provides state.watchedIds,
             // The rows tag their cards with their focus keys, so a refresh that re-keys or drops
             // the focused card can put focus back on it (or its neighbour).
-            LocalFocusMemory provides focusMemory
+            LocalFocusMemory provides focusMemory,
+            LocalTrailerPreloader provides trailerPreloader
         ) {
         // LOGIC: If we are just starting OR the ViewModel is loading, show the Loading Box.
         // This box accepts focus immediately, which forces the NavDrawer to collapse.
@@ -678,7 +682,9 @@ fun CinematicLayout(
                                     rowHeight = cinematicRailHeight(historyRowActive),
                                     inlineCinematicPreview = { poster ->
                                         InlineFocusedPosterPreview(
-                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound,
+                                            nextItem = historyItems.indexOfFirst { it.id == poster.id }
+                                                .takeIf { it >= 0 }?.let { historyItems.getOrNull(it + 1) }
                                         )
                                     },
                                     isInlineRowActive = historyRowActive,
@@ -849,7 +855,9 @@ fun CinematicLayout(
                                         rowHeight = cinematicRailHeight(categoryRowActive),
                                         inlineCinematicPreview = { poster ->
                                             InlineFocusedPosterPreview(
-                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound
+                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound,
+                                            nextItem = item.items.indexOfFirst { it.id == poster.id }
+                                                .takeIf { it >= 0 }?.let { item.items.getOrNull(it + 1) }
                                         )
                                         },
                                         isInlineRowActive = categoryRowActive,
@@ -882,7 +890,8 @@ private fun InlineFocusedPosterPreview(
     state: HomeViewModel.HomeState,
     resolveTrailer: suspend (MetaItem) -> String?,
     autoPlayPreviews: Boolean,
-    previewSound: Boolean
+    previewSound: Boolean,
+    nextItem: MetaItem? = null
 ) {
     val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -900,6 +909,7 @@ private fun InlineFocusedPosterPreview(
             autoPlay = autoPlayPreviews,
             soundEnabled = previewSound,
             modifier = Modifier.fillMaxSize(),
+            nextItem = nextItem,
             // Only the focused poster composes this preview, so this moves to the next in the row.
             onEnded = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right) }
         )
@@ -1684,7 +1694,11 @@ internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean):
     autoPlay && visible
 
 private const val TRAILER_VOLUME = 0.3f
-private const val TRAILER_ADVANCE_DELAY_MS = 5_000L
+private const val TRAILER_ADVANCE_DELAY_MS = 3_000L
+// A trailer starts loading only once the viewer has stayed on a title this long.
+private const val TRAILER_DWELL_MS = 3_000L
+// With this much of a trailer left (and focus unmoved) the next title's trailer is made ready.
+private const val TRAILER_PRELOAD_LEAD_MS = 10_000L
 
 /**
  * The image underneath stays visible until ExoPlayer reports that the extracted
@@ -1699,18 +1713,29 @@ internal fun TrailerPreview(
     autoPlay: Boolean = true,
     soundEnabled: Boolean = false,
     isVisible: Boolean = true,
+    nextItem: MetaItem? = null,
     onEnded: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnEnded by rememberUpdatedState(onEnded)
+    val preloader = LocalTrailerPreloader.current
     val videoUrl by produceState<String?>(
         initialValue = null, item?.id, item?.type, autoPlay, isVisible
     ) {
         value = null
         if (item != null && shouldResolveCinematicPreview(autoPlay, isVisible)) {
-            delay(500)
-            value = resolveTrailer(item)
+            val itemKey = trailerKey(item)
+            preloader?.discardUnless(itemKey)
+            val buffered = preloader?.urlFor(itemKey)
+            if (buffered != null) {
+                // The previous trailer made this one ready: no wait, no lookup.
+                value = buffered
+            } else {
+                // Only a title the viewer has stayed on gets its trailer looked up.
+                delay(TRAILER_DWELL_MS)
+                value = resolveTrailer(item)
+            }
         }
     }
     var ready by remember(item?.id, item?.type, videoUrl) { mutableStateOf(false) }
@@ -1736,7 +1761,11 @@ internal fun TrailerPreview(
     }
     DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
         val created = videoUrl?.let { url ->
-            ExoPlayer.Builder(context).build().apply {
+            val readied = item?.let { preloader?.take(trailerKey(it)) }
+            (readied ?: ExoPlayer.Builder(context).build().apply {
+                setMediaItem(PlayerMediaItem.fromUri(url))
+                prepare()
+            }).apply {
                 volume = if (latestSoundEnabled) TRAILER_VOLUME else 0f
                 repeatMode = Player.REPEAT_MODE_OFF
                 addListener(object : Player.Listener {
@@ -1750,8 +1779,6 @@ internal fun TrailerPreview(
                         ready = false
                     }
                 })
-                setMediaItem(PlayerMediaItem.fromUri(url))
-                prepare()
                 playWhenReady = shouldPlay &&
                     lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             }
@@ -1776,6 +1803,27 @@ internal fun TrailerPreview(
             lifecycleOwner.lifecycle.removeObserver(observer)
             player = null
             created?.release()
+        }
+    }
+    // With 10 seconds of the trailer left and the viewer still here, the next title's trailer is
+    // looked up and buffered, so it can start as soon as the gap after this one has passed.
+    LaunchedEffect(player, nextItem?.let(::trailerKey)) {
+        val active = player ?: return@LaunchedEffect
+        val upcoming = nextItem ?: return@LaunchedEffect
+        val holder = preloader ?: return@LaunchedEffect
+        while (true) {
+            delay(1_000L)
+            val remaining = try {
+                val duration = active.duration
+                if (!active.isPlaying || duration == androidx.media3.common.C.TIME_UNSET) null
+                else duration - active.currentPosition
+            } catch (_: IllegalStateException) {
+                return@LaunchedEffect
+            }
+            if (remaining != null && remaining <= TRAILER_PRELOAD_LEAD_MS) {
+                holder.preload(upcoming, resolveTrailer)
+                return@LaunchedEffect
+            }
         }
     }
     if (player != null) {

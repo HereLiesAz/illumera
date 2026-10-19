@@ -322,7 +322,10 @@ fun HeroCarousel(
                 autoPlay = autoPlayPreviews,
                 soundEnabled = previewSound,
                 isVisible = previewVisible,
-                onEnded = { goToNext() }
+                // Each trailer plays once: after the last slide's, the carousel stays where it is
+                // rather than wrapping round to the first and playing it again.
+                nextItem = items.getOrNull(safeCurrentIndex + 1),
+                onEnded = { if (safeCurrentIndex < items.lastIndex) goToNext() }
             )
         }
 
