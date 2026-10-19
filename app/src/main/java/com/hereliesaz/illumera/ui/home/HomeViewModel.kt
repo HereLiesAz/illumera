@@ -257,11 +257,30 @@ class HomeViewModel @Inject constructor(
 
     private var loadJob: kotlinx.coroutines.Job? = null
     private var observedProfileId: Int? = profileConfigurationManager.activeProfileId.value
-    private var lastFocusedKeyMemory: String? = null
-    private val rowScrollPositionsMemory = mutableMapOf<String, Pair<Int, Int>>()
-    private var verticalScrollPositionMemory: Pair<Int, Int> = Pair(0, 0)
-    private var hadHistoryWhenPositionSaved: Boolean = false
-    private var isRestoringPosition: Boolean = false
+    /**
+     * Where the viewer was on one main screen. Home, Movies and Series each keep their own: a
+     * screen being left writes its final position as it is disposed, which happens after the
+     * screen replacing it has started, so a shared memory would hand Home's place to Movies.
+     */
+    private class PositionMemory {
+        var lastFocusedKey: String? = null
+        val rowScrollPositions = mutableMapOf<String, Pair<Int, Int>>()
+        var verticalScrollPosition: Pair<Int, Int> = Pair(0, 0)
+        var hadHistoryWhenSaved: Boolean = false
+        var isRestoring: Boolean = false
+
+        fun clear() {
+            lastFocusedKey = null
+            rowScrollPositions.clear()
+            verticalScrollPosition = Pair(0, 0)
+            hadHistoryWhenSaved = false
+            isRestoring = false
+        }
+    }
+
+    private val positionMemories = mutableMapOf<String, PositionMemory>()
+    private fun positions(screen: String) = positionMemories.getOrPut(screen) { PositionMemory() }
+    private var activeScreen: String? = null
 
     data class HomeState(
         val mixedRows: List<HomeRowItem> = emptyList(),
@@ -307,54 +326,52 @@ class HomeViewModel @Inject constructor(
                 metadataRequestsInFlight.clear()
                 tmdbEnrichmentInFlight.clear()
                 tmdbProfileCache = null
-                lastFocusedKeyMemory = null
-                rowScrollPositionsMemory.clear()
-                verticalScrollPositionMemory = Pair(0, 0)
-                hadHistoryWhenPositionSaved = false
-                isRestoringPosition = false
+                positionMemories.values.forEach { it.clear() }
                 _state.value = HomeState(isLoading = false)
             }
         }
     }
 
-    fun getRowScrollPositions(): Map<String, Pair<Int, Int>> = rowScrollPositionsMemory
+    fun getRowScrollPositions(screen: String): Map<String, Pair<Int, Int>> =
+        positions(screen).rowScrollPositions
 
     /**
      * A main screen chosen fresh in the menu starts at the top: forget the saved focus and
      * scroll. The rows stay loaded. Back to a screen (from a page above it) keeps them.
      */
-    fun forgetPosition() {
-        lastFocusedKeyMemory = null
-        rowScrollPositionsMemory.clear()
-        verticalScrollPositionMemory = Pair(0, 0)
-        hadHistoryWhenPositionSaved = false
-        isRestoringPosition = false
+    fun forgetPosition(screen: String) {
+        positions(screen).clear()
         _state.update {
             it.copy(lastFocusedKey = null, rowScrollPositions = emptyMap(), verticalScrollPosition = Pair(0, 0))
         }
     }
 
-    fun getVerticalScrollPosition(): Pair<Int, Int> = verticalScrollPositionMemory
+    fun getVerticalScrollPosition(screen: String): Pair<Int, Int> = positions(screen).verticalScrollPosition
 
-    fun setLastFocusedKey(key: String?) {
-        if (lastFocusedKeyMemory == key) return
-        lastFocusedKeyMemory = key
-        _state.value = _state.value.copy(lastFocusedKey = key)
-    }
-    
-    fun setRowScrollPosition(rowKey: String, position: Pair<Int, Int>) {
-        if (rowScrollPositionsMemory[rowKey] == position) return
-        rowScrollPositionsMemory[rowKey] = position
-    }
-    
-    fun setVerticalScrollPosition(position: Pair<Int, Int>, hasHistory: Boolean = hadHistoryWhenPositionSaved) {
-        if (verticalScrollPositionMemory == position && hadHistoryWhenPositionSaved == hasHistory) return
-        verticalScrollPositionMemory = position
-        hadHistoryWhenPositionSaved = hasHistory
+    fun setLastFocusedKey(key: String?, screen: String) {
+        val memory = positions(screen)
+        if (memory.lastFocusedKey == key) return
+        memory.lastFocusedKey = key
+        // Only the screen in front shows this key; one being left must not overwrite it.
+        if (screen == activeScreen) _state.value = _state.value.copy(lastFocusedKey = key)
     }
 
-    fun needsHistoryScrollAdjustment(hasHistory: Boolean): Boolean {
-        return hasHistory && !hadHistoryWhenPositionSaved && isRestoringPosition
+    fun setRowScrollPosition(rowKey: String, position: Pair<Int, Int>, screen: String) {
+        val saved = positions(screen).rowScrollPositions
+        if (saved[rowKey] == position) return
+        saved[rowKey] = position
+    }
+
+    fun setVerticalScrollPosition(position: Pair<Int, Int>, hasHistory: Boolean, screen: String) {
+        val memory = positions(screen)
+        if (memory.verticalScrollPosition == position && memory.hadHistoryWhenSaved == hasHistory) return
+        memory.verticalScrollPosition = position
+        memory.hadHistoryWhenSaved = hasHistory
+    }
+
+    fun needsHistoryScrollAdjustment(hasHistory: Boolean, screen: String): Boolean {
+        val memory = positions(screen)
+        return hasHistory && !memory.hadHistoryWhenSaved && memory.isRestoring
     }
 
     // Track which rows are currently loading more items to prevent duplicate fetches
@@ -1070,6 +1087,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadScreen(screenName: String, currentProfile: com.hereliesaz.illumera.data.model.ProfileEntity?) {
+        activeScreen = screenName
         val currentProfileId = currentProfile?.id
         if (
             currentProfileId == null ||
@@ -1087,7 +1105,7 @@ class HomeViewModel @Inject constructor(
             _state.value.loadedProfileId == currentProfileId &&
             (_state.value.rows.isNotEmpty() || _state.value.hubRows.isNotEmpty())
         ) {
-            isRestoringPosition = true
+            positions(screenName).isRestoring = true
             return
         }
 
@@ -1117,11 +1135,7 @@ class HomeViewModel @Inject constructor(
                 tmdbEnabled = currentProfile?.tmdbEnabled == true
             )
             tmdbEnrichmentInFlight.clear()
-            lastFocusedKeyMemory = null
-            rowScrollPositionsMemory.clear()
-            verticalScrollPositionMemory = Pair(0, 0)
-            hadHistoryWhenPositionSaved = false
-            isRestoringPosition = false
+            positions(screenName).clear()
 
             // Load History + Series Next Up only for Home
             if (screenName == "home") {
