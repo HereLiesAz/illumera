@@ -181,8 +181,8 @@ fun HomeScreen(
     // This avoids one-frame carry-over from the previous tab.
     val isCurrentTabLoaded = state.loadedScreen == screenName && state.loadedProfileId == currentProfile?.id
     val lastFocusedKey = if (isCurrentTabLoaded) state.lastFocusedKey else null
-    val rowScrollPositions = if (isCurrentTabLoaded) viewModel.getRowScrollPositions() else emptyMap()
-    val verticalScrollPosition = if (isCurrentTabLoaded) viewModel.getVerticalScrollPosition() else Pair(0, 0)
+    val rowScrollPositions = if (isCurrentTabLoaded) viewModel.getRowScrollPositions(screenName) else emptyMap()
+    val verticalScrollPosition = if (isCurrentTabLoaded) viewModel.getVerticalScrollPosition(screenName) else Pair(0, 0)
 
     // Back is the main-root Back (MainRootBackHandler): Home has no in-screen Back steps.
     // The viewer's place (focused row item, row and vertical scroll) lives in the shared
@@ -273,10 +273,10 @@ fun HomeScreen(
                     lastFocusedKey = lastFocusedKey,
                     rowScrollPositions = rowScrollPositions,
                     verticalScrollPosition = verticalScrollPosition,
-                    historyScrollAdjustment = if (viewModel.needsHistoryScrollAdjustment(hasInProgressHistory)) 1 else 0,
-                    onFocusChange = { viewModel.setLastFocusedKey(it) },
-                    onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos) },
-                    onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory) },
+                    historyScrollAdjustment = if (viewModel.needsHistoryScrollAdjustment(hasInProgressHistory, screenName)) 1 else 0,
+                    onFocusChange = { viewModel.setLastFocusedKey(it, screenName) },
+                    onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos, screenName) },
+                    onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory, screenName) },
                     onPreviewItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) }
                 )
             } else {
@@ -306,12 +306,12 @@ fun HomeScreen(
                     rowScrollPositions = rowScrollPositions,
                     verticalScrollPosition = verticalScrollPosition,
                     historyScrollAdjustment = if (
-                        viewModel.needsHistoryScrollAdjustment(hasInProgressHistory) &&
+                        viewModel.needsHistoryScrollAdjustment(hasInProgressHistory, screenName) &&
                         (heroItems.isEmpty() || verticalScrollPosition.first > 0)
                     ) 1 else 0,
-                    onFocusChange = { viewModel.setLastFocusedKey(it) },
-                    onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos) },
-                    onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory) },
+                    onFocusChange = { viewModel.setLastFocusedKey(it, screenName) },
+                    onScrollPositionChange = { key, pos -> viewModel.setRowScrollPosition(key, pos, screenName) },
+                    onVerticalScrollChange = { viewModel.setVerticalScrollPosition(it, hasInProgressHistory, screenName) },
                     onHeroItemVisible = { viewModel.ensureMetadataFallback(it); viewModel.ensureTmdbEnrichment(it) },
                     isLandscapeContinueWatching = isLandscapeContinueWatching
                 )
