@@ -85,7 +85,8 @@ class ScreenGenreRowsTest {
             genres = listOf("English", "4K", "Last Month", "Korea", "Talk Show", "Anime")
         )
         val result = ScreenGenreRows.availableGenres("series", listOf(manifest))
-        assertTrue(result.containsAll(listOf("Talk-Show", "Anime")))
+        assertTrue(result.contains("Talk-Show"))
+        assertFalse(result.contains("Anime"))
         assertFalse(result.contains("English"))
         assertFalse(result.contains("4K"))
         assertFalse(result.contains("Korea"))
@@ -94,15 +95,27 @@ class ScreenGenreRowsTest {
 
     @Test fun recognizedProviderGenresRemainAvailable() {
         val list = ScreenGenreRows.availableGenres(
-            "series",
+            "movie",
             listOf(CatalogManifest(
-                type = "series", id = "top",
+                type = "movie", id = "top",
                 genres = listOf("Soap", "TV Movie", "Action & Adventure", "Sci-Fi & Fantasy")
             ))
         )
         assertTrue(list.containsAll(
             listOf("Soap", "TV Movie", "Action & Adventure", "Sci-Fi & Fantasy")
         ))
+    }
+
+    @Test fun seriesGenresAreTheStandardListOnly() {
+        val manifest = CatalogManifest(
+            type = "series", id = "top",
+            genres = listOf("All Time", "Anime", "Anti Hero", "Soap")
+        )
+        val result = ScreenGenreRows.availableGenres("series", listOf(manifest))
+        assertTrue(result.containsAll(listOf("Drama", "Reality-TV", "Talk-Show", "Game-Show")))
+        for (addonLabel in listOf("All Time", "Anime", "Anti Hero", "Soap")) {
+            assertFalse(addonLabel, result.contains(addonLabel))
+        }
     }
 
     @Test fun legacyDisabledGenreAliasesCanonicalize() {
@@ -114,7 +127,7 @@ class ScreenGenreRowsTest {
 
     @Test fun localizedLanguageNamesNeverCreateGenreRows() {
         val manifest = CatalogManifest(
-            type = "series", id = "top",
+            type = "movie", id = "top",
             genres = listOf(
                 "Español", "Português", "Deutsch", "Français",
                 "日本語", "Espana", "España", "Horror", "Anime"
@@ -123,7 +136,7 @@ class ScreenGenreRowsTest {
                 name = "genre", options = listOf("Italiano", "Русский", "Drama")
             ))
         )
-        val rows = ScreenGenreRows.availableGenres("series", listOf(manifest))
+        val rows = ScreenGenreRows.availableGenres("movie", listOf(manifest))
         assertTrue(rows.containsAll(listOf("Horror", "Anime", "Drama")))
         for (language in listOf(
             "Español", "Português", "Deutsch", "Français", "日本語", "Italiano", "Русский"

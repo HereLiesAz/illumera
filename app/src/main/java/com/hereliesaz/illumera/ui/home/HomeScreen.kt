@@ -404,7 +404,8 @@ fun CinematicLayout(
                     val row = indexed.value
                     if (row is CategoryRow) ScreenGenreRows.affinityScore(
                         row.items, state.watchedIds, state.likedIds
-                    ) else Int.MIN_VALUE
+                    ) else if (row is HubGroupRow && row.id.startsWith("streaming_")) Int.MAX_VALUE
+                    else Int.MIN_VALUE
                 }.thenBy { it.index }
             )
         } else original

@@ -59,6 +59,8 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
+import com.hereliesaz.illumera.domain.ScreenGenreRows
+import com.hereliesaz.illumera.domain.StreamingOriginals
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.navigation.focus.FocusMemory
 import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
@@ -69,6 +71,7 @@ import com.hereliesaz.illumera.ui.util.touchClick
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 
 private const val COLUMNS = 6
+private const val ORIGINALS_OPTION = "ORIGINALS"
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
 
@@ -93,6 +96,7 @@ private class GridFocusPivotSpec(
     }
 }
 
+/** A grid of titles; with [sortable] the header offers the sort orders (streaming service pages). */
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun GridViewScreen(
@@ -103,9 +107,113 @@ fun GridViewScreen(
     onLoadMore: () -> Unit = {},
     watchedIds: Set<String> = emptySet(),
     externalEntryRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    focusMemory: FocusMemory = rememberFocusMemory(),
+    sortable: Boolean = false,
+    // The service's own productions (StreamingOriginals keys); null leaves "Originals" out.
+    originalKeys: Set<String>? = null
+) {
+    var orderName by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(ScreenGenreRows.TitleOrder.CATALOG.name)
+    }
+    val order = ScreenGenreRows.TitleOrder.entries.firstOrNull { it.name == orderName }
+        ?: ScreenGenreRows.TitleOrder.CATALOG
+    val originalsOnly = sortable && originalKeys != null && orderName == ORIGINALS_OPTION
+    val shown = remember(items, order, sortable, originalsOnly, originalKeys) {
+        when {
+            !sortable -> items
+            originalsOnly -> items.filter { StreamingOriginals.matches(it, originalKeys!!) }
+            else -> ScreenGenreRows.sortTitles(items, order)
+        }
+    }
+    GridViewContent(
+        title = title,
+        items = shown,
+        onMovieClick = onMovieClick,
+        onBack = onBack,
+        onLoadMore = onLoadMore,
+        watchedIds = watchedIds,
+        externalEntryRequester = externalEntryRequester,
+        focusMemory = focusMemory,
+        headerExtra = if (sortable) {
+            {
+                GridSortChips(
+                    selected = if (originalsOnly) null else order,
+                    showOriginals = originalKeys != null,
+                    originalsSelected = originalsOnly,
+                    onSelect = { orderName = it.name },
+                    onSelectOriginals = { orderName = ORIGINALS_OPTION }
+                )
+            }
+        } else null
+    )
+}
+
+@Composable
+private fun GridSortChips(
+    selected: ScreenGenreRows.TitleOrder?,
+    showOriginals: Boolean,
+    originalsSelected: Boolean,
+    onSelect: (ScreenGenreRows.TitleOrder) -> Unit,
+    onSelectOriginals: () -> Unit
+) {
+    val options = ScreenGenreRows.TitleOrder.entries.map { it.label to (it == selected) } +
+        (if (showOriginals) listOf("Originals" to originalsSelected) else emptyList())
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        options.forEachIndexed { index, (label, active) ->
+            val choose = {
+                if (index < ScreenGenreRows.TitleOrder.entries.size)
+                    onSelect(ScreenGenreRows.TitleOrder.entries[index])
+                else onSelectOriginals()
+            }
+            var focused by remember { mutableStateOf(false) }
+            Text(
+                text = label,
+                color = if (active || focused) Color.White else Color.White.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier
+                    .onFocusChanged { focused = it.isFocused }
+                    .onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown &&
+                            (event.key == Key.Enter || event.key == Key.NumPadEnter ||
+                                event.key == Key.DirectionCenter)
+                        ) {
+                            choose()
+                            true
+                        } else false
+                    }
+                    .focusable()
+                    .touchClick(onClick = { choose() })
+                    .background(
+                        when {
+                            active -> Color.White.copy(alpha = 0.22f)
+                            focused -> Color.White.copy(alpha = 0.12f)
+                            else -> Color.Transparent
+                        },
+                        androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun GridViewContent(
+    title: String,
+    items: List<MetaItem>,
+    onMovieClick: (MetaItem) -> Unit,
+    onBack: () -> Unit,
+    onLoadMore: () -> Unit = {},
+    watchedIds: Set<String> = emptySet(),
+    externalEntryRequester: androidx.compose.ui.focus.FocusRequester? = null,
     // The grid's place in its back-stack entry: the focused card ("item:<index>"). The scroll
     // comes back with the saveable grid state.
-    focusMemory: FocusMemory = rememberFocusMemory()
+    focusMemory: FocusMemory = rememberFocusMemory(),
+    headerExtra: (@Composable () -> Unit)? = null
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -431,6 +539,11 @@ fun GridViewScreen(
                         color = Color.White
                     )
                 )
+
+                if (headerExtra != null) {
+                    Spacer(modifier = Modifier.width(24.dp))
+                    headerExtra()
+                }
             }
         }
     }

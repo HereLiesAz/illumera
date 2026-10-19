@@ -1167,7 +1167,7 @@ class HomeViewModel @Inject constructor(
                 }
                 val hubRowsDeferred = async {
                     if (screenName == "home") repository.getHubRows(screenName)
-                    else emptyList()
+                    else listOfNotNull(streamingHubRow(screenName))
                 }
 
                 val configuredRows = initialRowsDeferred.await()
@@ -1332,10 +1332,85 @@ class HomeViewModel @Inject constructor(
     /**
      * Opens a hub item, fetching the category content if it's not already loaded.
      */
+    /**
+     * Keys (see [com.hereliesaz.illumera.domain.StreamingOriginals.key]) of the titles a streaming
+     * service produced itself, from TMDB. Null when TMDB is off for the profile, the service has
+     * no TMDB network/company mapped, or nothing came back; the grid then omits "Originals".
+     */
+    suspend fun streamingOriginalKeys(configId: String): Set<String>? {
+        if (tmdbProfileCache?.tmdbEnabled != true) return null
+        val parts = configId.split(':', limit = 3)
+        if (parts.size != 3 || parts[0] != "streaming") return null
+        val isSeries = parts[1] == "series"
+        val (kind, entityId) = if (isSeries) {
+            com.hereliesaz.illumera.domain.StreamingOriginals.tvNetworks[parts[2]]?.let { "network" to it }
+        } else {
+            com.hereliesaz.illumera.domain.StreamingOriginals.movieCompanies[parts[2]]?.let { "company" to it }
+        } ?: return null
+        return try {
+            kotlinx.coroutines.coroutineScope {
+                (1..10).map { page ->
+                    async {
+                        tmdbMetadataService.fetchDiscover(
+                            entityId = entityId, kind = kind,
+                            mediaType = if (isSeries) "tv" else "movie",
+                            sortBy = "popularity.desc", page = page
+                        ).first
+                    }
+                }.awaitAll()
+            }.flatten().map {
+                com.hereliesaz.illumera.domain.StreamingOriginals.key(it.name, it.releaseInfo)
+            }.toSet().takeIf { it.isNotEmpty() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** The "Streaming" row on top of Movies and Series: one card per streaming service. */
+    private suspend fun streamingHubRow(screenName: String): HubGroupRow? {
+        val type = when (screenName) {
+            "movies" -> "movie"
+            "series" -> "series"
+            else -> return null
+        }
+        val services = repository.streamingServices(type)
+        if (services.isEmpty()) return null
+        return HubGroupRow(
+            id = "streaming_$type",
+            title = "Streaming",
+            order = -2000,
+            items = services.map {
+                com.hereliesaz.illumera.domain.HubItem(
+                    id = "streaming_$type:${it.catalogId}",
+                    title = it.name,
+                    categoryId = "streaming:$type:${it.catalogId}"
+                )
+            }
+        )
+    }
+
     fun openHub(
         hubItem: com.hereliesaz.illumera.domain.HubItem,
         onResult: (String, List<MetaItem>) -> Unit
     ) {
+        if (hubItem.categoryId.startsWith("streaming:")) {
+            val parts = hubItem.categoryId.split(':', limit = 3)
+            if (parts.size == 3) {
+                viewModelScope.launch {
+                    val titles = try {
+                        repository.getStreamingCatalog(parts[1], parts[2])
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    onResult(hubItem.title, titles)
+                }
+            }
+            return
+        }
         // 1. Try to find in currently loaded rows (Legacy)
         val legacyRow = _state.value.rows.find { it.configId == hubItem.categoryId }
         if (legacyRow != null) {

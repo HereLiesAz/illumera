@@ -1024,6 +1024,11 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             val gridVm = hiltViewModel<HomeViewModel>()
+                            // TMDB's list of the service's own productions; null hides "Originals".
+                            val originalKeys by produceState<Set<String>?>(null, gridViewConfigId) {
+                                value = if (gridViewConfigId.startsWith("streaming:"))
+                                    gridVm.streamingOriginalKeys(gridViewConfigId) else null
+                            }
                             // The grid keeps its place (a saveable grid state and its FocusMemory)
                             // in this entry while Details pages open over it; it goes with the entry.
                             GridViewScreen(
@@ -1037,7 +1042,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 watchedIds = gridVm.state.collectAsState().value.watchedIds,
-                                externalEntryRequester = gridEntryRequester
+                                externalEntryRequester = gridEntryRequester,
+                                sortable = gridViewConfigId.startsWith("streaming:"),
+                                originalKeys = originalKeys
                             )
                             // Sync gridViewItems when ViewModel state updates (after loadMoreItems)
                             val vmState by gridVm.state.collectAsState()
