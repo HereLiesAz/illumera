@@ -59,7 +59,8 @@ internal fun reconcileGenreRows(
     rows: List<HomeRow>,
     destination: String,
     newItems: List<MetaItem>,
-    authoritative: Boolean
+    authoritative: Boolean,
+    shareable: Boolean = false
 ): List<HomeRow> {
     if (newItems.isEmpty()) return rows
     return rows.map { row ->
@@ -69,7 +70,7 @@ internal fun reconcileGenreRows(
                 // when the same title still lives in an old fallback row.
                 // Fallback batches, conversely, must not duplicate an item
                 // already assigned to another row.
-                val existing = if (authoritative) row.items else
+                val existing = if (authoritative || shareable) row.items else
                     row.items + rows.filter { it.configId != destination }.flatMap { it.items }
                 val additions = distinctAggregatedMetas(existing, newItems)
                 if (additions.isEmpty()) row.items else row.items + additions
@@ -460,6 +461,16 @@ class HomeViewModel @Inject constructor(
                             val unseen = distinctAggregatedMetas(currentItems, freshCandidates)
                             if (genre == null) {
                                 unique = unseen
+                            } else if (!ScreenGenreRows.isStandardGenre(genre)) {
+                                // Addon-specific genre (e.g. "Anime", "All Time"): its titles have
+                                // no matching Cinemeta primary genre, so show what the addon
+                                // returned for it rather than routing them away.
+                                if (generation != screenDataGeneration ||
+                                    _state.value.loadedProfileId != initiatingProfileId ||
+                                    _state.value.loadedScreen != initiatingScreen
+                                ) return@launch
+                                appendItemsToRow(configId, unseen, shareable = true)
+                                unique = unseen
                             } else {
                                 // Incremental genre classification: show the FIRST completed
                                 // batch instead of hiding a whole row while 100 slow Cinemeta
@@ -638,11 +649,12 @@ class HomeViewModel @Inject constructor(
     private fun appendItemsToRow(
         configId: String,
         newItems: List<MetaItem>,
-        authoritative: Boolean = false
+        authoritative: Boolean = false,
+        shareable: Boolean = false
     ) {
         _state.update { current ->
             val updatedRows = reconcileGenreRows(
-                current.rows, configId, newItems, authoritative
+                current.rows, configId, newItems, authoritative, shareable
             )
             val updatedMixed = reconcileGenreMixedRows(current.mixedRows, updatedRows)
 

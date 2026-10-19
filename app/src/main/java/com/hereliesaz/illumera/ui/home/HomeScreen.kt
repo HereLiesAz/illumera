@@ -412,6 +412,14 @@ fun CinematicLayout(
     val firstFocusableRowIndex = remember(visibleMixedRows) {
         firstFocusableCinematicRowIndex(visibleMixedRows)
     }
+    // With no focusable row (all genre rows still empty) nothing could take focus and the
+    // screen trapped D-pad and Back. Hand focus to the navigation drawer instead.
+    LaunchedEffect(firstFocusableRowIndex, state.isLoading, state.loadedScreen) {
+        if (firstFocusableRowIndex == null && !state.isLoading && state.loadedScreen != null) {
+            delay(1_500)
+            runCatching { drawerRequester.requestFocus() }
+        }
+    }
     // All visible rows (including Hub spacers) participate in vertical order.
     // Only media rails register cards, so navigation into a Hub/Hero keeps its
     // original focus behavior instead of jumping over that row.
