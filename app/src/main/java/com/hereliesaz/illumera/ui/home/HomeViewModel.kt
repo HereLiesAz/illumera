@@ -509,6 +509,21 @@ class HomeViewModel @Inject constructor(
                                             }
                                         }
                                     }
+                                }                                // Titles route to their PRIMARY genre only. A row whose titles all
+                                // have another (or a disabled) primary genre would stay empty, so
+                                // while it is empty it also takes titles that list its genre.
+                                val rowEmpty = _state.value.rows
+                                    .firstOrNull { it.configId == configId }?.items.isNullOrEmpty()
+                                if (rowEmpty) {
+                                    val secondary = unseen.filter { candidate ->
+                                        candidate.genres.orEmpty().any {
+                                            ScreenGenreRows.matchesRequestedGenre(it, genre)
+                                        }
+                                    }.take(12)
+                                    if (secondary.isNotEmpty()) {
+                                        appendItemsToRow(configId, secondary)
+                                        unique = unique + secondary
+                                    }
                                 }
                             }
                         }
