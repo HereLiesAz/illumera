@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -48,6 +51,27 @@ internal fun prioritizedYouTubePreviewCandidates(values: Iterable<String>): List
             listOf("watch?v=", "youtu.be/", "/embed/", "/shorts/", "/live/")
                 .any { marker -> marker in value }
     }.sortedByDescending(videoId::matches).take(2)
+}
+
+internal fun headKeys(items: List<MetaItem>, count: Int = 20): List<String> =
+    items.take(count).map { "${it.type}:${it.id}" }
+
+/**
+ * Brings a row up to date from just the first page of its catalog: the titles in [head] that the
+ * row does not have (nor [elsewhere]) go in front of the [current] ones, and nothing is removed.
+ * Null when the head matches what the row starts with, so nothing further needs loading.
+ */
+internal fun mergeCatalogHead(
+    current: List<MetaItem>,
+    elsewhere: List<MetaItem>,
+    head: List<MetaItem>,
+    maxItems: Int = 200,
+    maxNew: Int = 20
+): List<MetaItem>? {
+    if (headKeys(head) == headKeys(current)) return null
+    val fresh = distinctAggregatedMetas(current + elsewhere, head).take(maxNew)
+    if (fresh.isEmpty()) return null
+    return (fresh + current).take(maxItems)
 }
 
 /**
@@ -257,11 +281,49 @@ class HomeViewModel @Inject constructor(
 
     private var loadJob: kotlinx.coroutines.Job? = null
     private var observedProfileId: Int? = profileConfigurationManager.activeProfileId.value
-    private var lastFocusedKeyMemory: String? = null
-    private val rowScrollPositionsMemory = mutableMapOf<String, Pair<Int, Int>>()
-    private var verticalScrollPositionMemory: Pair<Int, Int> = Pair(0, 0)
-    private var hadHistoryWhenPositionSaved: Boolean = false
-    private var isRestoringPosition: Boolean = false
+    /**
+     * Where the viewer was on one main screen. Home, Movies and Series each keep their own: a
+     * screen being left writes its final position as it is disposed, which happens after the
+     * screen replacing it has started, so a shared memory would hand Home's place to Movies.
+     */
+    private class PositionMemory {
+        var lastFocusedKey: String? = null
+        val rowScrollPositions = mutableMapOf<String, Pair<Int, Int>>()
+        var verticalScrollPosition: Pair<Int, Int> = Pair(0, 0)
+        var hadHistoryWhenSaved: Boolean = false
+        var isRestoring: Boolean = false
+
+        fun clear() {
+            lastFocusedKey = null
+            rowScrollPositions.clear()
+            verticalScrollPosition = Pair(0, 0)
+            hadHistoryWhenSaved = false
+            isRestoring = false
+        }
+    }
+
+    /**
+     * What a main screen showed when the viewer left it. Coming back within [SNAPSHOT_TTL_MS]
+     * shows it at once instead of refetching every row from empty; rows that were still empty
+     * are finished in the background.
+     */
+    private class ScreenSnapshot(
+        val profileId: Int,
+        val savedAtMs: Long,
+        val signature: String,
+        val state: HomeState
+    )
+
+    /** The enabled-addon signature the screen in front was loaded under. */
+    private var activeSignature: String = ""
+
+    private val screenSnapshots = mutableMapOf<String, ScreenSnapshot>()
+    private val screenCache = com.hereliesaz.illumera.data.cache.ScreenCacheStore(context)
+    private var preloadJob: kotlinx.coroutines.Job? = null
+
+    private val positionMemories = mutableMapOf<String, PositionMemory>()
+    private fun positions(screen: String) = positionMemories.getOrPut(screen) { PositionMemory() }
+    private var activeScreen: String? = null
 
     data class HomeState(
         val mixedRows: List<HomeRowItem> = emptyList(),
@@ -289,6 +351,9 @@ class HomeViewModel @Inject constructor(
     val state: StateFlow<HomeState> = _state
 
     init {
+        // Building the language/country tables takes a moment on a TV box; do it off the
+        // first screen open instead of during it.
+        viewModelScope.launch(Dispatchers.Default) { ScreenGenreRows.warmUp() }
         viewModelScope.launch {
             profileConfigurationManager.activeProfileId.collectLatest { activeProfileId ->
                 if (activeProfileId == observedProfileId) return@collectLatest
@@ -307,54 +372,53 @@ class HomeViewModel @Inject constructor(
                 metadataRequestsInFlight.clear()
                 tmdbEnrichmentInFlight.clear()
                 tmdbProfileCache = null
-                lastFocusedKeyMemory = null
-                rowScrollPositionsMemory.clear()
-                verticalScrollPositionMemory = Pair(0, 0)
-                hadHistoryWhenPositionSaved = false
-                isRestoringPosition = false
+                positionMemories.values.forEach { it.clear() }
+                screenSnapshots.clear()
                 _state.value = HomeState(isLoading = false)
             }
         }
     }
 
-    fun getRowScrollPositions(): Map<String, Pair<Int, Int>> = rowScrollPositionsMemory
+    fun getRowScrollPositions(screen: String): Map<String, Pair<Int, Int>> =
+        positions(screen).rowScrollPositions
 
     /**
      * A main screen chosen fresh in the menu starts at the top: forget the saved focus and
      * scroll. The rows stay loaded. Back to a screen (from a page above it) keeps them.
      */
-    fun forgetPosition() {
-        lastFocusedKeyMemory = null
-        rowScrollPositionsMemory.clear()
-        verticalScrollPositionMemory = Pair(0, 0)
-        hadHistoryWhenPositionSaved = false
-        isRestoringPosition = false
+    fun forgetPosition(screen: String) {
+        positions(screen).clear()
         _state.update {
             it.copy(lastFocusedKey = null, rowScrollPositions = emptyMap(), verticalScrollPosition = Pair(0, 0))
         }
     }
 
-    fun getVerticalScrollPosition(): Pair<Int, Int> = verticalScrollPositionMemory
+    fun getVerticalScrollPosition(screen: String): Pair<Int, Int> = positions(screen).verticalScrollPosition
 
-    fun setLastFocusedKey(key: String?) {
-        if (lastFocusedKeyMemory == key) return
-        lastFocusedKeyMemory = key
-        _state.value = _state.value.copy(lastFocusedKey = key)
-    }
-    
-    fun setRowScrollPosition(rowKey: String, position: Pair<Int, Int>) {
-        if (rowScrollPositionsMemory[rowKey] == position) return
-        rowScrollPositionsMemory[rowKey] = position
-    }
-    
-    fun setVerticalScrollPosition(position: Pair<Int, Int>, hasHistory: Boolean = hadHistoryWhenPositionSaved) {
-        if (verticalScrollPositionMemory == position && hadHistoryWhenPositionSaved == hasHistory) return
-        verticalScrollPositionMemory = position
-        hadHistoryWhenPositionSaved = hasHistory
+    fun setLastFocusedKey(key: String?, screen: String) {
+        val memory = positions(screen)
+        if (memory.lastFocusedKey == key) return
+        memory.lastFocusedKey = key
+        // Only the screen in front shows this key; one being left must not overwrite it.
+        if (screen == activeScreen) _state.value = _state.value.copy(lastFocusedKey = key)
     }
 
-    fun needsHistoryScrollAdjustment(hasHistory: Boolean): Boolean {
-        return hasHistory && !hadHistoryWhenPositionSaved && isRestoringPosition
+    fun setRowScrollPosition(rowKey: String, position: Pair<Int, Int>, screen: String) {
+        val saved = positions(screen).rowScrollPositions
+        if (saved[rowKey] == position) return
+        saved[rowKey] = position
+    }
+
+    fun setVerticalScrollPosition(position: Pair<Int, Int>, hasHistory: Boolean, screen: String) {
+        val memory = positions(screen)
+        if (memory.verticalScrollPosition == position && memory.hadHistoryWhenSaved == hasHistory) return
+        memory.verticalScrollPosition = position
+        memory.hadHistoryWhenSaved = hasHistory
+    }
+
+    fun needsHistoryScrollAdjustment(hasHistory: Boolean, screen: String): Boolean {
+        val memory = positions(screen)
+        return hasHistory && !memory.hadHistoryWhenSaved && memory.isRestoring
     }
 
     // Track which rows are currently loading more items to prevent duplicate fetches
@@ -373,6 +437,11 @@ class HomeViewModel @Inject constructor(
     // UI batching: per-row pending buffers and dedup tracking
     companion object {
         private const val ROW_BATCH_SIZE = 50
+        private const val SNAPSHOT_TTL_MS = 10 * 60_000L
+        private const val DISK_CACHE_MAX_AGE_MS = 24 * 60 * 60_000L
+        private const val REVALIDATE_MIN_AGE_MS = 60_000L
+        private const val REVALIDATE_ROWS = 10
+        private const val PRELOAD_ROWS = 6
     }
     private val pendingRowItems = mutableMapOf<String, MutableList<MetaItem>>()
     private val allFetchedRowIds = mutableMapOf<String, MutableSet<String>>()
@@ -706,6 +775,7 @@ class HomeViewModel @Inject constructor(
      * Call this after making changes in the Dashboard Editor.
      */
     fun invalidate() {
+        screenSnapshots.clear()
         pendingRowItems.clear()
         allFetchedRowIds.clear()
         rowFetchOffsets.clear()
@@ -1070,6 +1140,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadScreen(screenName: String, currentProfile: com.hereliesaz.illumera.data.model.ProfileEntity?) {
+        activeScreen = screenName
         val currentProfileId = currentProfile?.id
         if (
             currentProfileId == null ||
@@ -1087,8 +1158,24 @@ class HomeViewModel @Inject constructor(
             _state.value.loadedProfileId == currentProfileId &&
             (_state.value.rows.isNotEmpty() || _state.value.hubRows.isNotEmpty())
         ) {
-            isRestoringPosition = true
+            positions(screenName).isRestoring = true
             return
+        }
+
+        // Keep what the screen being left showed, and reuse what this one showed last time.
+        val leaving = _state.value
+        val leavingScreen = leaving.loadedScreen
+        if (leavingScreen != null && leavingScreen != screenName &&
+            leaving.loadedProfileId == currentProfileId &&
+            (leaving.rows.isNotEmpty() || leaving.hubRows.isNotEmpty())
+        ) {
+            screenSnapshots[leavingScreen] =
+                ScreenSnapshot(currentProfileId, System.currentTimeMillis(), activeSignature, leaving)
+            persistRows(currentProfileId, leavingScreen, activeSignature, leaving.rows)
+        }
+        val memorySnapshot = screenSnapshots[screenName]?.takeIf {
+            it.profileId == currentProfileId &&
+                System.currentTimeMillis() - it.savedAtMs < SNAPSHOT_TTL_MS
         }
 
         loadJob?.cancel()
@@ -1117,11 +1204,32 @@ class HomeViewModel @Inject constructor(
                 tmdbEnabled = currentProfile?.tmdbEnabled == true
             )
             tmdbEnrichmentInFlight.clear()
-            lastFocusedKeyMemory = null
-            rowScrollPositionsMemory.clear()
-            verticalScrollPositionMemory = Pair(0, 0)
-            hadHistoryWhenPositionSaved = false
-            isRestoringPosition = false
+            positions(screenName).clear()
+
+            // This screen as it was: in memory, else from the cache on disk (titles only; the
+            // rows themselves are rebuilt from the current settings so disabled genres stay gone).
+            // Neither is used if the enabled addons have changed since.
+            val signature = try {
+                repository.enabledAddonSignature()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ""
+            }
+            activeSignature = signature
+            val validSnapshot = memorySnapshot?.takeIf { it.signature == signature }
+            val restored: HomeState? = validSnapshot?.state ?: try {
+                val cached = withContext(Dispatchers.IO) {
+                    screenCache.load(currentProfileId, screenName, DISK_CACHE_MAX_AGE_MS, signature)
+                }
+                cached?.let {
+                    stateFrom(screenName, currentProfile, buildShell(screenName, currentProfileId), it)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
 
             // Load History + Series Next Up only for Home
             if (screenName == "home") {
@@ -1162,11 +1270,12 @@ class HomeViewModel @Inject constructor(
             try {
                 // Stage 1: Load only a small first batch so the screen opens quickly.
                 val initialRowsDeferred = async {
-                    if (screenName == "home") repository.getHomePairedRows()
+                    if (restored == null && screenName == "home") repository.getHomePairedRows()
                     else emptyList<HomeRow>()
                 }
                 val hubRowsDeferred = async {
-                    if (screenName == "home") repository.getHubRows(screenName)
+                    if (restored != null) emptyList()
+                    else if (screenName == "home") repository.getHubRows(screenName)
                     else listOfNotNull(streamingHubRow(screenName))
                 }
 
@@ -1174,7 +1283,7 @@ class HomeViewModel @Inject constructor(
                 // Movies and Series are entirely genre-first browsing surfaces:
                 // every enabled Stremio genre gets its own independently paginated
                 // row; the old unfiltered All Movies / All Series row is removed.
-                val genreRows = if (screenName in setOf("movies", "series")) {
+                val genreRows = if (restored == null && screenName in setOf("movies", "series")) {
                     val type = if (screenName == "movies") "movie" else "series"
                     val available = repository.availableScreenGenres(type)
                     val enabled = ScreenGenreRows.enabledGenres(
@@ -1193,8 +1302,12 @@ class HomeViewModel @Inject constructor(
                 } else emptyList()
                 // A Home category is now one row per addon/category pair (movie + TV),
                 // not a single global feed. Repository groups BEFORE pagination.
-                val initialRows = if (screenName == "home") configuredRows else genreRows
-                val hubRows = hubRowsDeferred.await()
+                val initialRows = when {
+                    restored != null -> restored.rows
+                    screenName == "home" -> configuredRows
+                    else -> genreRows
+                }
+                val hubRows = restored?.hubRows ?: hubRowsDeferred.await()
                 if (profileConfigurationManager.activeProfileId.value != currentProfileId) return@launch
 
                 // Fetch HERO row separately (even if hidden in dashboard).
@@ -1206,6 +1319,7 @@ class HomeViewModel @Inject constructor(
                     else -> null
                 }
                 val heroRow = when {
+                    restored != null -> restored.heroRow
                     heroConfig?.categoryId == HERO_DISABLED_MARKER -> null
                     // Older editor versions persisted the synthetic aggregate ID.
                     // Treat it as automatic rather than making a failed catalog lookup.
@@ -1230,8 +1344,8 @@ class HomeViewModel @Inject constructor(
                 // Prefetch first visible images BEFORE updating state.
                 prefetchFirstVisibleImages(initialRows)
 
-                val initialMixedList = (hubRows + initialRows.map { CategoryRow.fromHomeRow(it) })
-                    .sortedBy { it.order }
+                val initialMixedList = restored?.mixedRows
+                    ?: (hubRows + initialRows.map { CategoryRow.fromHomeRow(it) }).sortedBy { it.order }
 
                 // Cache profile for TMDB enrichment (called per-item as they become visible)
                 tmdbProfileCache = currentProfile
@@ -1245,6 +1359,8 @@ class HomeViewModel @Inject constructor(
                         isLoading = false,
                         loadedScreen = screenName,
                         loadedProfileId = currentProfileId,
+                        enrichedMeta = restored?.enrichedMeta ?: it.enrichedMeta,
+                        tmdbEnrichedIds = restored?.tmdbEnrichedIds ?: it.tmdbEnrichedIds,
                         tmdbEnabled = currentProfile?.tmdbEnabled == true
                     )
                 }
@@ -1304,7 +1420,7 @@ class HomeViewModel @Inject constructor(
                 // hostage while other workers have already finished.
                 if (screenName in setOf("movies", "series")) {
                     val generation = screenDataGeneration
-                    val queuedRows = java.util.ArrayDeque(initialRows)
+                    val queuedRows = java.util.ArrayDeque(initialRows.filter { it.items.isEmpty() })
                     repeat(minOf(3, initialRows.size)) {
                         launch {
                             while (queuedRows.isNotEmpty() && generation == screenDataGeneration) {
@@ -1319,7 +1435,24 @@ class HomeViewModel @Inject constructor(
                 } else {
                     // Render the page before beginning network discovery. Only
                     // its first two Home rails need a warm cache immediately.
-                    initialRows.take(2).forEach { loadMoreItems(it.configId) }
+                    initialRows.filter { it.items.isEmpty() }.take(2).forEach { loadMoreItems(it.configId) }
+                }
+
+                if (restored != null &&
+                    (validSnapshot == null ||
+                        System.currentTimeMillis() - validSnapshot.savedAtMs > REVALIDATE_MIN_AGE_MS)
+                ) {
+                    val generation = screenDataGeneration
+                    launch { revalidateHeads(screenName, generation) }
+                }
+                // Keep what was loaded for the next visit.
+                val persistGeneration = screenDataGeneration
+                launch {
+                    kotlinx.coroutines.delay(10_000L)
+                    if (persistGeneration == screenDataGeneration) {
+                        _state.value.takeIf { it.loadedScreen == screenName }
+                            ?.let { persistRows(currentProfileId, screenName, signature, it.rows) }
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1366,6 +1499,178 @@ class HomeViewModel @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private class ScreenShell(val rows: List<HomeRow>, val hubRows: List<HubGroupRow>)
+
+    /** A screen's rows without titles: from settings and the database only, no network. */
+    private suspend fun buildShell(screenName: String, profileId: Int): ScreenShell {
+        if (screenName == "home") {
+            return ScreenShell(repository.getHomePairedRows(), repository.getHubRows("home"))
+        }
+        val type = if (screenName == "movies") "movie" else "series"
+        val enabled = ScreenGenreRows.enabledGenres(
+            context, profileId, screenName, repository.availableScreenGenres(type)
+        )
+        val rows = enabled.mapIndexed { index, genre ->
+            HomeRow(
+                configId = "catalog-aggregate:$type:$genre",
+                title = genre,
+                items = emptyList(),
+                isInfiniteScrollingEnabled = true,
+                supportsSkip = true,
+                order = -1000 + index
+            )
+        }
+        return ScreenShell(rows, listOfNotNull(streamingHubRow(screenName)))
+    }
+
+    private fun stateFrom(
+        screenName: String,
+        profile: com.hereliesaz.illumera.data.model.ProfileEntity?,
+        shell: ScreenShell,
+        titles: Map<String, List<MetaItem>>
+    ): HomeState {
+        val rows = shell.rows.map { row ->
+            titles[row.configId]?.takeIf { it.isNotEmpty() }?.let { row.copy(items = it) } ?: row
+        }
+        val mixed = (shell.hubRows + rows.map { CategoryRow.fromHomeRow(it) }).sortedBy { it.order }
+        return HomeState(
+            mixedRows = mixed,
+            rows = rows,
+            hubRows = shell.hubRows,
+            isLoading = false,
+            loadedScreen = screenName,
+            loadedProfileId = profile?.id,
+            tmdbEnabled = profile?.tmdbEnabled == true
+        )
+    }
+
+    private fun persistRows(profileId: Int, screenName: String, signature: String, rows: List<HomeRow>) {
+        val titles = rows.filter { it.items.isNotEmpty() }.associate { it.configId to it.items }
+        if (titles.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) { screenCache.save(profileId, screenName, signature, titles) }
+    }
+
+    /** Just the first page of a row's catalog, enough to tell whether the row has changed. */
+    private suspend fun fetchRowHead(row: HomeRow): List<MetaItem> = try {
+        when {
+            row.configId.startsWith("catalog-home:") ->
+                repository.getHomePairCatalogPage(row.configId, 0)
+            row.configId.startsWith("catalog-aggregate:") -> {
+                val parts = row.configId.split(':', limit = 3)
+                if (parts.size != 3) emptyList() else {
+                    val genre = parts[2].takeUnless { it == "all" }
+                    repository.getAggregatedCatalogPage(parts[1], genre, 0).filter { meta ->
+                        genre == null || meta.genres.orEmpty().any {
+                            ScreenGenreRows.matchesRequestedGenre(it, genre)
+                        }
+                    }
+                }
+            }
+            else -> emptyList()
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /** Brings the rows of the screen in front up to date from each row's first page only. */
+    private suspend fun revalidateHeads(screenName: String, generation: Long) {
+        val rows = _state.value.rows.take(REVALIDATE_ROWS)
+        val gate = kotlinx.coroutines.sync.Semaphore(3)
+        kotlinx.coroutines.coroutineScope {
+            rows.map { row ->
+                async {
+                    gate.withPermit {
+                        if (generation != screenDataGeneration) return@withPermit
+                        val head = fetchRowHead(row)
+                        if (head.isNotEmpty()) mergeRowHead(screenName, generation, row.configId, head)
+                    }
+                }
+            }.awaitAll()
+        }
+    }
+
+    private fun mergeRowHead(screenName: String, generation: Long, configId: String, head: List<MetaItem>) {
+        _state.update { current ->
+            if (current.loadedScreen != screenName || generation != screenDataGeneration) return@update current
+            val row = current.rows.firstOrNull { it.configId == configId } ?: return@update current
+            // The row the viewer is on keeps its cards where they are.
+            val focusedRowId = current.lastFocusedKey?.substringBefore('_')?.toIntOrNull()
+                ?.let { current.mixedRows.getOrNull(it)?.id }
+            if (focusedRowId == configId) return@update current
+            val elsewhere = if (configId.startsWith("catalog-aggregate:"))
+                current.rows.filter { it.configId != configId }.flatMap { it.items }
+            else emptyList()
+            val merged = mergeCatalogHead(row.items, elsewhere, head) ?: return@update current
+            val rows = current.rows.map { if (it.configId == configId) it.copy(items = merged) else it }
+            current.copy(
+                rows = rows,
+                mixedRows = reconcileGenreMixedRows(current.mixedRows, rows),
+                heroRow = current.heroRow?.let { hero -> rows.firstOrNull { it.configId == hero.configId } ?: hero }
+            )
+        }
+    }
+
+    /**
+     * Prepares the other main screens while the one in front is in use, so choosing them opens at
+     * once: from the cache on disk, else the first page of their first rows.
+     */
+    fun preloadScreens(profile: com.hereliesaz.illumera.data.model.ProfileEntity?) {
+        val profileId = profile?.id ?: return
+        preloadJob?.cancel()
+        preloadJob = viewModelScope.launch {
+            // Let the screen in front finish its own first stage first.
+            kotlinx.coroutines.withTimeoutOrNull(30_000L) {
+                _state.first { !it.isLoading && it.loadedScreen != null }
+            } ?: return@launch
+            kotlinx.coroutines.delay(1_500L)
+            for (screen in listOf("home", "movies", "series")) {
+                if (screen == activeScreen) continue
+                if (profileConfigurationManager.activeProfileId.value != profileId) return@launch
+                val existing = screenSnapshots[screen]
+                if (existing != null && existing.profileId == profileId &&
+                    System.currentTimeMillis() - existing.savedAtMs < SNAPSHOT_TTL_MS
+                ) continue
+                try {
+                    preloadScreen(screen, profile, profileId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // A screen that cannot be prepared just loads normally when chosen.
+                }
+            }
+        }
+    }
+
+    private suspend fun preloadScreen(
+        screenName: String,
+        profile: com.hereliesaz.illumera.data.model.ProfileEntity,
+        profileId: Int
+    ) {
+        val shell = buildShell(screenName, profileId)
+        if (shell.rows.isEmpty() && shell.hubRows.isEmpty()) return
+        val signature = repository.enabledAddonSignature()
+        val titles = (withContext(Dispatchers.IO) {
+            screenCache.load(profileId, screenName, DISK_CACHE_MAX_AGE_MS, signature)
+        } ?: emptyMap()).toMutableMap()
+        val missing = shell.rows.filter { titles[it.configId].isNullOrEmpty() }.take(PRELOAD_ROWS)
+        if (missing.isNotEmpty()) {
+            val gate = kotlinx.coroutines.sync.Semaphore(3)
+            val heads = kotlinx.coroutines.coroutineScope {
+                missing.map { row ->
+                    async { gate.withPermit { row.configId to fetchRowHead(row).take(60) } }
+                }.awaitAll()
+            }
+            heads.forEach { (configId, head) -> if (head.isNotEmpty()) titles[configId] = head }
+        }
+        if (profileConfigurationManager.activeProfileId.value != profileId) return
+        screenSnapshots[screenName] = ScreenSnapshot(
+            profileId, System.currentTimeMillis(), signature, stateFrom(screenName, profile, shell, titles)
+        )
+        withContext(Dispatchers.IO) { screenCache.save(profileId, screenName, signature, titles) }
     }
 
     /** The "Streaming" row on top of Movies and Series: one card per streaming service. */
