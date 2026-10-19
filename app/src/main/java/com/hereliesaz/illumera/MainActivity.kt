@@ -1037,7 +1037,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 watchedIds = gridVm.state.collectAsState().value.watchedIds,
-                                externalEntryRequester = gridEntryRequester
+                                externalEntryRequester = gridEntryRequester,
+                                sortable = gridViewConfigId.startsWith("streaming:")
                             )
                             // Sync gridViewItems when ViewModel state updates (after loadMoreItems)
                             val vmState by gridVm.state.collectAsState()

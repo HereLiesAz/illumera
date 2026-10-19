@@ -380,6 +380,71 @@ class AddonRepository @Inject constructor(
         }
     }
 
+    /** A streaming service offered by an enabled "Streaming Catalogs"-style addon. */
+    data class StreamingService(val catalogId: String, val name: String)
+
+    private val streamingServiceNames = linkedMapOf(
+        "nfx" to "Netflix", "hbm" to "HBO Max", "dnp" to "Disney+", "amp" to "Prime Video",
+        "atp" to "Apple TV+", "pmp" to "Paramount+", "hlu" to "Hulu", "pcp" to "Peacock"
+    )
+
+    private suspend fun streamingSources(type: String, catalogId: String? = null):
+        List<Pair<AddonEntity, CatalogManifest>> {
+        val addons = dao.getAllAddons().firstOrNull().orEmpty().filter { it.isEnabled }
+        return addons.flatMap { addon ->
+            val manifests = runCatching {
+                gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
+                    ?.toList().orEmpty()
+            }.getOrDefault(emptyList())
+            manifests.filter { catalog ->
+                catalog.type == type && catalog.id in streamingServiceNames &&
+                    (catalogId == null || catalog.id == catalogId) &&
+                    catalog.extra.orEmpty().none { it.isRequired }
+            }.map { addon to it }
+        }
+    }
+
+    /** Streaming services available for [type] ("movie" or "series"), in a stable order. */
+    suspend fun streamingServices(type: String): List<StreamingService> =
+        withContext(Dispatchers.IO) {
+            val present = streamingSources(type).map { it.second.id }.toSet()
+            streamingServiceNames.filterKeys { it in present }
+                .map { (id, name) -> StreamingService(id, name) }
+        }
+
+    /** Every title one streaming service lists for [type]; pages through skip when supported. */
+    suspend fun getStreamingCatalog(type: String, catalogId: String): List<MetaItem> =
+        withContext(Dispatchers.IO) {
+            kotlinx.coroutines.coroutineScope {
+                streamingSources(type, catalogId).map { (addon, catalog) ->
+                    async {
+                        val supportsSkip = catalog.extra.orEmpty().any { it.name == "skip" }
+                        val collected = mutableListOf<MetaItem>()
+                        var page = 0
+                        while (page < 10) {
+                            val suffix = if (page == 0) "" else "/skip=${page * 100}"
+                            val url = "${addon.transportUrl.trimEnd('/')}/catalog/$type/${catalog.id}$suffix.json"
+                            val metas = try {
+                                withTimeout(CATALOG_TIMEOUT_MS) {
+                                    api.getCatalog(url).metas.orEmpty().sanitize()
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                            val fresh = distinctAggregatedMetas(collected, metas.filter { it.type == type })
+                            if (fresh.isEmpty()) break
+                            collected += fresh.map { it.copy(addonBaseUrl = addon.transportUrl) }
+                            if (!supportsSkip) break
+                            page++
+                        }
+                        collected.toList()
+                    }
+                }.awaitAll().flatten().let { distinctAggregatedMetas(emptyList(), it) }
+            }
+        }
+
     /**
      * Merge each enabled addon's movie/series catalog PAIR within the same
      * semantic category; never collapse Latest, Trending, Netflix etc. together.
