@@ -251,6 +251,20 @@ class AddonRepository @Inject constructor(
      * catalog sources before fetching subsequent skip-enabled pages, keeping requests bounded.
      * Deduplication within a page happens here; the caller deduplicates across pages.
      */
+    /**
+     * Identifies which addons (and which of their catalogs) are enabled. Anything saved from
+     * their catalogs is only good while this stays the same.
+     */
+    suspend fun enabledAddonSignature(): String = withContext(Dispatchers.IO) {
+        dao.getAllAddons().firstOrNull().orEmpty()
+            .filter { it.isEnabled }
+            .map { "${it.transportUrl}|${it.catalogsJson.hashCode()}" }
+            .sorted()
+            .joinToString(",")
+            .hashCode()
+            .toString()
+    }
+
     /** Official Stremio genre dropdown plus real genres advertised by enabled addons. */
     suspend fun availableScreenGenres(type: String): List<String> = withContext(Dispatchers.IO) {
         val catalogs = dao.getAllAddons().firstOrNull().orEmpty()

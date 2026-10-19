@@ -307,7 +307,15 @@ class HomeViewModel @Inject constructor(
      * shows it at once instead of refetching every row from empty; rows that were still empty
      * are finished in the background.
      */
-    private class ScreenSnapshot(val profileId: Int, val savedAtMs: Long, val state: HomeState)
+    private class ScreenSnapshot(
+        val profileId: Int,
+        val savedAtMs: Long,
+        val signature: String,
+        val state: HomeState
+    )
+
+    /** The enabled-addon signature the screen in front was loaded under. */
+    private var activeSignature: String = ""
 
     private val screenSnapshots = mutableMapOf<String, ScreenSnapshot>()
     private val screenCache = com.hereliesaz.illumera.data.cache.ScreenCacheStore(context)
@@ -1162,8 +1170,8 @@ class HomeViewModel @Inject constructor(
             (leaving.rows.isNotEmpty() || leaving.hubRows.isNotEmpty())
         ) {
             screenSnapshots[leavingScreen] =
-                ScreenSnapshot(currentProfileId, System.currentTimeMillis(), leaving)
-            persistRows(currentProfileId, leavingScreen, leaving.rows)
+                ScreenSnapshot(currentProfileId, System.currentTimeMillis(), activeSignature, leaving)
+            persistRows(currentProfileId, leavingScreen, activeSignature, leaving.rows)
         }
         val memorySnapshot = screenSnapshots[screenName]?.takeIf {
             it.profileId == currentProfileId &&
@@ -1200,9 +1208,19 @@ class HomeViewModel @Inject constructor(
 
             // This screen as it was: in memory, else from the cache on disk (titles only; the
             // rows themselves are rebuilt from the current settings so disabled genres stay gone).
-            val restored: HomeState? = memorySnapshot?.state ?: try {
+            // Neither is used if the enabled addons have changed since.
+            val signature = try {
+                repository.enabledAddonSignature()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                ""
+            }
+            activeSignature = signature
+            val validSnapshot = memorySnapshot?.takeIf { it.signature == signature }
+            val restored: HomeState? = validSnapshot?.state ?: try {
                 val cached = withContext(Dispatchers.IO) {
-                    screenCache.load(currentProfileId, screenName, DISK_CACHE_MAX_AGE_MS)
+                    screenCache.load(currentProfileId, screenName, DISK_CACHE_MAX_AGE_MS, signature)
                 }
                 cached?.let {
                     stateFrom(screenName, currentProfile, buildShell(screenName, currentProfileId), it)
@@ -1421,8 +1439,8 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (restored != null &&
-                    (memorySnapshot == null ||
-                        System.currentTimeMillis() - memorySnapshot.savedAtMs > REVALIDATE_MIN_AGE_MS)
+                    (validSnapshot == null ||
+                        System.currentTimeMillis() - validSnapshot.savedAtMs > REVALIDATE_MIN_AGE_MS)
                 ) {
                     val generation = screenDataGeneration
                     launch { revalidateHeads(screenName, generation) }
@@ -1433,7 +1451,7 @@ class HomeViewModel @Inject constructor(
                     kotlinx.coroutines.delay(10_000L)
                     if (persistGeneration == screenDataGeneration) {
                         _state.value.takeIf { it.loadedScreen == screenName }
-                            ?.let { persistRows(currentProfileId, screenName, it.rows) }
+                            ?.let { persistRows(currentProfileId, screenName, signature, it.rows) }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -1528,10 +1546,10 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    private fun persistRows(profileId: Int, screenName: String, rows: List<HomeRow>) {
+    private fun persistRows(profileId: Int, screenName: String, signature: String, rows: List<HomeRow>) {
         val titles = rows.filter { it.items.isNotEmpty() }.associate { it.configId to it.items }
         if (titles.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) { screenCache.save(profileId, screenName, titles) }
+        viewModelScope.launch(Dispatchers.IO) { screenCache.save(profileId, screenName, signature, titles) }
     }
 
     /** Just the first page of a row's catalog, enough to tell whether the row has changed. */
@@ -1634,8 +1652,9 @@ class HomeViewModel @Inject constructor(
     ) {
         val shell = buildShell(screenName, profileId)
         if (shell.rows.isEmpty() && shell.hubRows.isEmpty()) return
+        val signature = repository.enabledAddonSignature()
         val titles = (withContext(Dispatchers.IO) {
-            screenCache.load(profileId, screenName, DISK_CACHE_MAX_AGE_MS)
+            screenCache.load(profileId, screenName, DISK_CACHE_MAX_AGE_MS, signature)
         } ?: emptyMap()).toMutableMap()
         val missing = shell.rows.filter { titles[it.configId].isNullOrEmpty() }.take(PRELOAD_ROWS)
         if (missing.isNotEmpty()) {
@@ -1649,9 +1668,9 @@ class HomeViewModel @Inject constructor(
         }
         if (profileConfigurationManager.activeProfileId.value != profileId) return
         screenSnapshots[screenName] = ScreenSnapshot(
-            profileId, System.currentTimeMillis(), stateFrom(screenName, profile, shell, titles)
+            profileId, System.currentTimeMillis(), signature, stateFrom(screenName, profile, shell, titles)
         )
-        withContext(Dispatchers.IO) { screenCache.save(profileId, screenName, titles) }
+        withContext(Dispatchers.IO) { screenCache.save(profileId, screenName, signature, titles) }
     }
 
     /** The "Streaming" row on top of Movies and Series: one card per streaming service. */
