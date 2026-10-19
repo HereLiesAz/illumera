@@ -272,7 +272,9 @@ fun HomeScreen(
                             onViewMore(title, items, hubItem.categoryId)
                         }
                     },
-                    onLoadMore = { configId -> viewModel.loadMoreItems(configId) },
+                    onLoadMore = { configId -> viewModel.requestRowItems(configId) },
+                    onRowsVisible = viewModel::onRowsVisible,
+                    onRowFocused = viewModel::onRowFocused,
                     entryRequester = entryRequester,
                     drawerRequester = drawerRequester,
                     focusMemory = focusMemory,
@@ -304,7 +306,7 @@ fun HomeScreen(
                             onViewMore(title, items, hubItem.categoryId)
                         }
                     },
-                    onLoadMore = { configId -> viewModel.loadMoreItems(configId) },
+                    onLoadMore = { configId -> viewModel.requestRowItems(configId) },
                     entryRequester = entryRequester,
                     drawerRequester = drawerRequester,
                     focusMemory = focusMemory,
@@ -368,7 +370,11 @@ fun CinematicLayout(
     onFocusChange: (String) -> Unit,
     onScrollPositionChange: (String, Pair<Int, Int>) -> Unit,
     onVerticalScrollChange: (Pair<Int, Int>) -> Unit,
-    onPreviewItemVisible: (MetaItem) -> Unit
+    onPreviewItemVisible: (MetaItem) -> Unit,
+    // Which rows are on screen (and which are next below), and which card the viewer is on:
+    // what the loader follows.
+    onRowsVisible: (List<String>, List<String>) -> Unit = { _, _ -> },
+    onRowFocused: (String, Int) -> Unit = { _, _ -> }
 ) {
     // The row only controls whether its active poster expands inline.
     // The Hero is an ordinary LazyColumn item, never a sticky header.
@@ -555,6 +561,25 @@ fun CinematicLayout(
                         minOffsetDeltaPx = 36,
                         onPositionChanged = onVerticalScrollChange
                     )
+
+                    // Tell the loader which rows are on screen and which come next, so it loads
+                    // those first. The hero (and Continue Watching) occupy the first list slots.
+                    val rowSlotOffset = (if (heroItems.isNotEmpty()) 1 else 0) +
+                        (if (historyItems.isNotEmpty()) 1 else 0)
+                    LaunchedEffect(verticalListState, visibleMixedRows, rowSlotOffset) {
+                        snapshotFlow {
+                            verticalListState.layoutInfo.visibleItemsInfo.map { it.index }
+                        }.collect { slots ->
+                            val rowSlots = slots.map { it - rowSlotOffset }.filter { it >= 0 }
+                            val visibleIds = rowSlots
+                                .mapNotNull { visibleMixedRows.getOrNull(it)?.value }
+                                .filterIsInstance<CategoryRow>().map { it.id }
+                            val last = rowSlots.maxOrNull() ?: -1
+                            val nextIds = visibleMixedRows.drop(last + 1).map { it.value }
+                                .filterIsInstance<CategoryRow>().take(3).map { it.id }
+                            onRowsVisible(visibleIds, nextIds)
+                        }
+                    }
 
                     // Pre-scroll warmup: compose off-screen row to populate recycler + compile GPU shaders
                     LaunchedEffect(Unit) {
@@ -824,6 +849,9 @@ fun CinematicLayout(
                                             focusItem?.let(onPreviewItemVisible)
                                             wrappedOnFocusChange(key)
                                             val focusedIndex = key.substringAfterLast('_').toIntOrNull()
+                                            if (focusItem != null && focusedIndex != null) {
+                                                onRowFocused(itemId, focusedIndex)
+                                            }
                                             // A tiny genre batch is not a pagination trigger:
                                             // otherwise *every* focus/re-focus starts more
                                             // catalog requests while the row is recomposing.
