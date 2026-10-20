@@ -171,16 +171,23 @@ class CinematicVerticalFocusCoordinator {
     }
 
     fun move(rowIndex: Int, itemKey: String, down: Boolean): Boolean {
-        val destinationIndex = adjacentCinematicRowIndex(
-            orderedRowIndices, rowIndex, down
-        ) ?: return false
         val sourceLeft = targets[rowIndex]?.get(itemKey)?.left ?: return false
-        val destination = targets[destinationIndex].orEmpty()
-        val closest = closestCinematicCardLeft(
-            sourceLeft, destination.map { (key, target) -> key to target.left }
-        ) ?: return false
-        val requester = destination[closest]?.requester ?: return false
-        return runCatching { requester.requestFocus() }.getOrDefault(false)
+        // Step past rows that have no cards (empty or not yet loaded) instead of stopping at them.
+        var from = rowIndex
+        while (true) {
+            val destinationIndex = adjacentCinematicRowIndex(orderedRowIndices, from, down)
+                ?: return false
+            val destination = targets[destinationIndex].orEmpty()
+            if (destination.isEmpty()) {
+                from = destinationIndex
+                continue
+            }
+            val closest = closestCinematicCardLeft(
+                sourceLeft, destination.map { (key, target) -> key to target.left }
+            ) ?: return false
+            val requester = destination[closest]?.requester ?: return false
+            return runCatching { requester.requestFocus() }.getOrDefault(false)
+        }
     }
 }
 
