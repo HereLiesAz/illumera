@@ -98,8 +98,27 @@ fun WatchlistScreen(
     drawerRequester: FocusRequester,
     onMovieClick: (MetaItem) -> Unit,
     watchedIds: Set<String> = emptySet(),
-    viewModel: WatchlistViewModel = hiltViewModel()
+    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit = { _, _, _ -> },
+    viewModel: WatchlistViewModel = hiltViewModel(),
+    debridViewModel: DebridLibraryViewModel = hiltViewModel()
 ) {
+    val debridProvider by debridViewModel.connectedProvider.collectAsStateWithLifecycle()
+    val debridState by debridViewModel.uiState.collectAsStateWithLifecycle()
+    val latestOnPlay by androidx.compose.runtime.rememberUpdatedState(onPlayResolvedStream)
+    val toastContext = LocalContext.current
+    DisposableEffect(debridViewModel) {
+        onDispose { debridViewModel.onScreenDisposed() }
+    }
+    LaunchedEffect(debridViewModel) {
+        debridViewModel.events.collect { event ->
+            when (event) {
+                is DebridLibraryEvent.StreamResolved ->
+                    latestOnPlay(event.id, event.url, event.name)
+                is DebridLibraryEvent.Error ->
+                    Toast.makeText(toastContext, event.message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val library by viewModel.libraryEntries.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -265,6 +284,17 @@ fun WatchlistScreen(
                         onMovieClick(queueItem.toMetaItem())
                     }
                 )
+            }
+            if (debridProvider != null) {
+                item(key = "watchlist_cloud_storage", span = { GridItemSpan(maxLineSpan) }) {
+                    DebridLibrarySection(
+                        provider = debridProvider,
+                        state = debridState,
+                        startPadding = 0.dp,
+                        onPlay = { debridViewModel.play(it) },
+                        onDelete = { debridViewModel.delete(it) }
+                    )
+                }
             }
             item(key = "library_sort", span = { GridItemSpan(maxLineSpan) }) {
                 Column(modifier = Modifier.padding(top = 12.dp, end = 12.dp)) {
