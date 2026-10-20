@@ -840,63 +840,67 @@ fun CinematicLayout(
                                     val itemId = item.id
                                     val itemSize = item.items.size
 
-                                    InfiniteLoopRow(
-                                        startPadding = startPadding,
-                                        isTopNav = isTopNav,
-                                        rowIndex = index,
-                                        title = item.title,
-                                        items = item.items,
-                                        onMovieClick = onMovieClick,
-                                        onViewMore = remember(item.title, item.items, item.id, onViewMore) {
-                                            { onViewMore(item.title, item.items, item.id) }
-                                        },
-                                        onFocused = { focusItem: MetaItem?, key: String ->
-                                            activeCinematicRow = rowKey
-                                            focusItem?.let(onPreviewItemVisible)
-                                            wrappedOnFocusChange(key)
-                                            val focusedIndex = key.substringAfterLast('_').toIntOrNull()
-                                            if (focusItem != null && focusedIndex != null) {
-                                                onRowFocused(itemId, focusedIndex)
+                                    // A row with nothing to show takes no space and holds no focus target: it
+                                    // stays composed (so its load still runs) but cannot block the D-pad.
+                                    if (item.items.isNotEmpty()) {
+                                        InfiniteLoopRow(
+                                            startPadding = startPadding,
+                                            isTopNav = isTopNav,
+                                            rowIndex = index,
+                                            title = item.title,
+                                            items = item.items,
+                                            onMovieClick = onMovieClick,
+                                            onViewMore = remember(item.title, item.items, item.id, onViewMore) {
+                                                { onViewMore(item.title, item.items, item.id) }
+                                            },
+                                            onFocused = { focusItem: MetaItem?, key: String ->
+                                                activeCinematicRow = rowKey
+                                                focusItem?.let(onPreviewItemVisible)
+                                                wrappedOnFocusChange(key)
+                                                val focusedIndex = key.substringAfterLast('_').toIntOrNull()
+                                                if (focusItem != null && focusedIndex != null) {
+                                                    onRowFocused(itemId, focusedIndex)
+                                                }
+                                                // A tiny genre batch is not a pagination trigger:
+                                                // otherwise *every* focus/re-focus starts more
+                                                // catalog requests while the row is recomposing.
+                                                if (focusItem != null && itemSize >= 8 &&
+                                                    focusedIndex != null &&
+                                                    focusedIndex >= itemSize - 3
+                                                ) onLoadMore(itemId)
+                                            },
+                                            entryRequester = entryRequester,
+                                            drawerRequester = drawerRequester,
+                                            locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
+                                            isGlobalFocusPresent = effectiveLastFocusedKey != null,
+                                            isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex,
+                                            pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex) firstRowPivotRequester else null,
+                                            isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
+                                            visibleItemCount = item.visibleItemCount,
+                                            isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
+                                            externalListState = rowListState,
+                                            upKeyDebouncer = upKeyDebouncer,
+                                            repeatGate = dpadRepeatGate,
+                                            isLandscapeCards = !categoryRowActive,
+                                            enrichedItems = state.enrichedMeta,
+                                            rowHeight = cinematicRailHeight(categoryRowActive),
+                                            inlineCinematicPreview = { poster ->
+                                                InlineFocusedPosterPreview(
+                                                poster, state, resolveTrailer, autoPlayPreviews, previewSound,
+                                                nextItem = item.items.indexOfFirst { it.id == poster.id }
+                                                    .takeIf { it >= 0 }?.let { item.items.getOrNull(it + 1) }
+                                            )
+                                            },
+                                            isInlineRowActive = categoryRowActive,
+                                            verticalFocusCoordinator = verticalFocusCoordinator,
+                                            onRowFocusExited = {
+                                                if (activeCinematicRow == rowKey) {
+                                                    activeCinematicRow = "__navigation__"
+                                                }
                                             }
-                                            // A tiny genre batch is not a pagination trigger:
-                                            // otherwise *every* focus/re-focus starts more
-                                            // catalog requests while the row is recomposing.
-                                            if (focusItem != null && itemSize >= 8 &&
-                                                focusedIndex != null &&
-                                                focusedIndex >= itemSize - 3
-                                            ) onLoadMore(itemId)
-                                        },
-                                        entryRequester = entryRequester,
-                                        drawerRequester = drawerRequester,
-                                        locallyFocusedItemId = if (effectiveLastFocusedKey?.startsWith("${index}_") == true) effectiveLastFocusedKey else null,
-                                        isGlobalFocusPresent = effectiveLastFocusedKey != null,
-                                        isFirstRow = heroItems.isEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex,
-                                        pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && index == firstFocusableRowIndex) firstRowPivotRequester else null,
-                                        isInfiniteLoopEnabled = item.isInfiniteLoopEnabled,
-                                        visibleItemCount = item.visibleItemCount,
-                                        isInfiniteScrollingEnabled = item.isInfiniteScrollingEnabled,
-                                        externalListState = rowListState,
-                                        upKeyDebouncer = upKeyDebouncer,
-                                        repeatGate = dpadRepeatGate,
-                                        isLandscapeCards = !categoryRowActive,
-                                        enrichedItems = state.enrichedMeta,
-                                        rowHeight = cinematicRailHeight(categoryRowActive),
-                                        inlineCinematicPreview = { poster ->
-                                            InlineFocusedPosterPreview(
-                                            poster, state, resolveTrailer, autoPlayPreviews, previewSound,
-                                            nextItem = item.items.indexOfFirst { it.id == poster.id }
-                                                .takeIf { it >= 0 }?.let { item.items.getOrNull(it + 1) }
                                         )
-                                        },
-                                        isInlineRowActive = categoryRowActive,
-                                        verticalFocusCoordinator = verticalFocusCoordinator,
-                                        onRowFocusExited = {
-                                            if (activeCinematicRow == rowKey) {
-                                                activeCinematicRow = "__navigation__"
-                                            }
-                                        }
-                                    )
-                                    Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
+                                        Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
+                                    }
                                     }
                                 }
                             }
