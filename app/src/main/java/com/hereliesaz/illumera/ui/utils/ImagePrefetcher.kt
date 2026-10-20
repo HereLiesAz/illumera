@@ -90,6 +90,24 @@ object ImagePrefetcher {
     }
     
     /**
+     * Prefetch a title's cinematic backdrop at the size the preview surfaces request, so the
+     * focused card's expanded preview and the Hero paint it from cache the moment focus lands.
+     */
+    fun prefetchBackdrop(context: Context, url: String?) {
+        if (url.isNullOrBlank()) return
+        if (!shouldEnqueue("backdrop:$url")) return
+
+        val request = ImageRequest.Builder(context)
+            .data(url)
+            .size(backdropDecodeSize(context))
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build()
+
+        context.imageLoader.enqueue(request)
+    }
+
+    /**
      * Prefetch multiple images around a focus index
      * Symmetric prefetching: equal in both directions for smooth bi-directional scrolling
      */
