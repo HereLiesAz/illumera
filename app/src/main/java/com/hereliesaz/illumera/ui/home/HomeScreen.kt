@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.home
 
+import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 import com.hereliesaz.illumera.ui.utils.backdropDecodeSize
 import com.hereliesaz.illumera.ui.navigation.focus.FocusMemory
 import com.hereliesaz.illumera.ui.navigation.focus.LocalFocusMemory
@@ -279,6 +280,7 @@ fun HomeScreen(
                     onLoadMore = { configId -> viewModel.requestRowItems(configId) },
                     onRowsVisible = viewModel::onRowsVisible,
                     onRowFocused = viewModel::onRowFocused,
+                    onArtNeeded = viewModel::ensureMetadataFallback,
                     entryRequester = entryRequester,
                     drawerRequester = drawerRequester,
                     focusMemory = focusMemory,
@@ -350,6 +352,9 @@ internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 
 internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
+/** Cards per row whose cinematic art is resolved and decoded ahead of focus. */
+private const val ART_PRELOAD_ITEMS = 5
+
 @Composable
 fun CinematicLayout(
     heroItems: List<MetaItem>,
@@ -378,7 +383,9 @@ fun CinematicLayout(
     // Which rows are on screen (and which are next below), and which card the viewer is on:
     // what the loader follows.
     onRowsVisible: (List<String>, List<String>) -> Unit = { _, _ -> },
-    onRowFocused: (String, Int) -> Unit = { _, _ -> }
+    onRowFocused: (String, Int) -> Unit = { _, _ -> },
+    // Resolves a title's backdrop/metadata when the catalog entry lacks it.
+    onArtNeeded: (MetaItem) -> Unit = {}
 ) {
     // The row only controls whether its active poster expands inline.
     // The Hero is an ordinary LazyColumn item, never a sticky header.
@@ -582,6 +589,26 @@ fun CinematicLayout(
                             val nextIds = visibleMixedRows.drop(last + 1).map { it.value }
                                 .filterIsInstance<CategoryRow>().take(3).map { it.id }
                             onRowsVisible(visibleIds, nextIds)
+                        }
+                    }
+
+                    // Cinematic art is part of loading a row: for the first cards of every visible
+                    // and next row, resolve the metadata that carries the backdrop and decode the
+                    // backdrop itself ahead of focus.
+                    val artContext = LocalContext.current
+                    LaunchedEffect(verticalListState, visibleMixedRows, rowSlotOffset) {
+                        snapshotFlow {
+                            val slots = verticalListState.layoutInfo.visibleItemsInfo.map { it.index - rowSlotOffset }
+                                .filter { it >= 0 }
+                            (slots.minOrNull() ?: 0) to (slots.maxOrNull() ?: -1)
+                        }.collect { (first, last) ->
+                            visibleMixedRows.drop(first).take(last - first + 1 + 3)
+                                .map { it.value }.filterIsInstance<CategoryRow>()
+                                .flatMap { it.items.take(ART_PRELOAD_ITEMS) }
+                                .forEach { item ->
+                                    onArtNeeded(item)
+                                    ImagePrefetcher.prefetchBackdrop(artContext, item.background)
+                                }
                         }
                     }
 
@@ -924,13 +951,31 @@ private fun InlineFocusedPosterPreview(
     val current = state.enrichedMeta["${item.type}:${item.id}"] ?: item
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     Box(Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))) {
+        // The poster the viewer was just looking at stays underneath until the backdrop has
+        // decoded, so focusing a card never shows an empty frame.
         AsyncImage(
-            model = current.background?.takeIf { it.isNotBlank() }
-                ?: current.poster?.takeIf { it.isNotBlank() },
+            model = current.poster?.takeIf { it.isNotBlank() },
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+        val previewContext = LocalContext.current
+        val backdropRequest = remember(current.background) {
+            current.background?.takeIf { it.isNotBlank() }?.let {
+                ImageRequest.Builder(previewContext)
+                    .data(it)
+                    .size(backdropDecodeSize(previewContext))
+                    .build()
+            }
+        }
+        if (backdropRequest != null) {
+            AsyncImage(
+                model = backdropRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
         TrailerPreview(
             item = current,
             resolveTrailer = resolveTrailer,
