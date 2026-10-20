@@ -571,19 +571,38 @@ class AddonRepository @Inject constructor(
                         addon, config.catalogType, config.catalogId
                     )
                     if (layer > 0 && !supportsSkip) return@async emptyList<MetaItem>()
-                    val requiresSkip = runCatching {
+                    val extras = runCatching {
                         gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)
                             ?.firstOrNull {
                                 it.type == config.catalogType && it.id == config.catalogId
-                            }?.extra.orEmpty().any { it.name == "skip" && it.isRequired }
-                    }.getOrDefault(false)
+                            }?.extra.orEmpty()
+                    }.getOrDefault(emptyList())
+                    val requiresSkip = extras.any { it.name == "skip" && it.isRequired }
+                    // A catalog that demands something other than a genre (search text) has
+                    // no meaningful request without it; one that demands a genre is asked
+                    // for its first option rather than failing every time.
+                    if (extras.any { it.isRequired && it.name !in setOf("genre", "skip") }) {
+                        return@async emptyList<MetaItem>()
+                    }
+                    val requiredGenre = extras.firstOrNull { it.name == "genre" && it.isRequired }
+                        ?.let { genreExtra ->
+                            genreExtra.options.orEmpty().firstOrNull { it.isNotBlank() }
+                                ?: return@async emptyList<MetaItem>()
+                        }
+                    val extraParts = buildList {
+                        if (requiredGenre != null) {
+                            add("genre=" + java.net.URLEncoder.encode(requiredGenre, "UTF-8")
+                                .replace("+", "%20"))
+                        }
+                        if (layer > 0 || requiresSkip) add("skip=${layer * 100}")
+                    }
                     val url = buildString {
                         append(config.transportUrl.trimEnd('/'))
                         append("/catalog/")
                         append(config.catalogType)
                         append("/")
                         append(config.catalogId)
-                        if (layer > 0 || requiresSkip) append("/skip=${layer * 100}")
+                        if (extraParts.isNotEmpty()) append("/").append(extraParts.joinToString("&"))
                         append(".json")
                     }
                     try {
