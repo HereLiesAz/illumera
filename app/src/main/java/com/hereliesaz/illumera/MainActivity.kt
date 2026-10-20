@@ -982,7 +982,8 @@ class MainActivity : ComponentActivity() {
                                     entryRequester = watchlistEntryRequester,
                                     drawerRequester = drawerRequesters.getValue(NavDestination.Watchlist),
                                     watchedIds = watchlistHomeVm.state.collectAsState().value.watchedIds,
-                                    onMovieClick = openDetailsFor
+                                    onMovieClick = openDetailsFor,
+                                    onPlayResolvedStream = onPlayResolvedStream
                                 )
                             } }
                             entry<AddonsKey> { MainRoot(it.destination) {

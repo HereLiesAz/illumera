@@ -42,9 +42,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity
-import com.hereliesaz.illumera.ui.watchlist.DebridLibraryViewModel
-import com.hereliesaz.illumera.ui.watchlist.DebridLibraryEvent
-import com.hereliesaz.illumera.ui.watchlist.DebridLibrarySection
 import com.hereliesaz.illumera.ui.queue.QueuePreferencesSettings
 import android.widget.Toast
 import com.hereliesaz.illumera.ui.theme.ThemeManager
@@ -258,7 +255,7 @@ fun SettingsScreen(
                     )
                 }
                 SettingsSection.Watchlist -> {
-                    WatchlistSettings(currentProfile = currentProfile, onPlayResolvedStream = onPlayResolvedStream)
+                    WatchlistSettings(currentProfile = currentProfile)
                 }
                 SettingsSection.Playback -> {
                     PlaybackSettings(
@@ -451,28 +448,8 @@ fun SettingsSidebarItem(
 }
 @Composable
 private fun WatchlistSettings(
-    currentProfile: ProfileEntity?,
-    onPlayResolvedStream: (id: String, url: String, title: String) -> Unit,
-    debridViewModel: DebridLibraryViewModel = hiltViewModel()
+    currentProfile: ProfileEntity?
 ) {
-    val debridProvider by debridViewModel.connectedProvider.collectAsStateWithLifecycle()
-    val debridState by debridViewModel.uiState.collectAsStateWithLifecycle()
-    val latestOnPlay by rememberUpdatedState(onPlayResolvedStream)
-    val toastContext = androidx.compose.ui.platform.LocalContext.current
-    DisposableEffect(debridViewModel) {
-        onDispose { debridViewModel.onScreenDisposed() }
-    }
-    LaunchedEffect(debridViewModel) {
-        debridViewModel.events.collect { event ->
-            when (event) {
-                is DebridLibraryEvent.StreamResolved ->
-                    latestOnPlay(event.id, event.url, event.name)
-                is DebridLibraryEvent.Error ->
-                    Toast.makeText(toastContext, event.message, Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("illumera_watchlist_ui", 0) }
     var defaultSort by remember(currentProfile?.id) {
@@ -524,18 +501,6 @@ private fun WatchlistSettings(
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 )
-            }
-            if (debridProvider != null) {
-                item(key = "watchlist_cloud_storage") {
-                    Spacer(Modifier.height(20.dp))
-                    DebridLibrarySection(
-                        provider = debridProvider,
-                        state = debridState,
-                        startPadding = 0.dp,
-                        onPlay = { debridViewModel.play(it) },
-                        onDelete = { debridViewModel.delete(it) }
-                    )
-                }
             }
         }
     }
