@@ -264,13 +264,13 @@ class IntegrationServer(
             session.parseBody(files)
 
             // Validate CSRF token
-            val token = session.parms["csrf_token"]
+            val token = session.parameters["csrf_token"]?.firstOrNull()
             if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return jsonResponse(false, "Invalid request")
             }
 
-            val email = session.parms["email"]
-            val password = session.parms["password"]
+            val email = session.parameters["email"]?.firstOrNull()
+            val password = session.parameters["password"]?.firstOrNull()
 
             if (email.isNullOrBlank() || password.isNullOrBlank()) {
                 return jsonResponse(false, "Email and password are required")

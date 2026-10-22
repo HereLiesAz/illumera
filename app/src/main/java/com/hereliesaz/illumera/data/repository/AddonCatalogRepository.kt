@@ -236,7 +236,7 @@ class AddonCatalogRepository @Inject constructor(
         }
 
         val enriched = if (manifest.logo.isNullOrBlank() && !meta?.logo.isNullOrBlank()) {
-            manifest.copy(logo = meta?.logo)
+            manifest.copy(logo = meta.logo)
         } else {
             manifest
         }

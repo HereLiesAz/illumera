@@ -35,7 +35,8 @@ private data class MainKey(val tab: String = "home") : NavKey
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class BackStackRestoreTest {
-
+    // v2 rules queue coroutines (StandardTestDispatcher); these tests rely on immediate dispatch.
+    @Suppress("DEPRECATION")
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 

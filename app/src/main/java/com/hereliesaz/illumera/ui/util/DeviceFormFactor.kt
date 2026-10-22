@@ -18,8 +18,7 @@ fun detectDeviceFormFactor(context: Context): DeviceFormFactor {
     val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
 
     val isTv =
-        packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION) ||
-            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
     if (isTv) return DeviceFormFactor.TV
 

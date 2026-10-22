@@ -68,7 +68,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.BuildConfig
 import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity

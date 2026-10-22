@@ -48,6 +48,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.MusicNote
@@ -62,7 +63,6 @@ import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
@@ -1596,7 +1596,7 @@ private fun PlayerControlsOverlay(
 
                     if (showNextSourceControl) {
                         ControlButton(
-                            icon = Icons.Default.ArrowForward,
+                            icon = Icons.AutoMirrored.Filled.ArrowForward,
                             contentDescription = "Next source",
                             onClick = onNextSource,
                             onFocused = onResetHideTimer,
@@ -3698,15 +3698,15 @@ private fun subtitleLanguageDisplayName(groupKey: String, rawLanguage: String?):
     if (groupKey == "und") return "Unknown"
     if (groupKey.contains('-')) {
         val canonicalDisplay = Locale.forLanguageTag(groupKey).displayName
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && !it.equals(groupKey, ignoreCase = true) }
+            .trim()
+            .takeIf { it.isNotEmpty() && !it.equals(groupKey, ignoreCase = true) }
         if (canonicalDisplay != null) return canonicalDisplay
     }
 
     if (groupKey.length in 2..3) {
         val canonicalDisplay = Locale.forLanguageTag(groupKey).displayLanguage
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() && !it.equals(groupKey, ignoreCase = true) }
+            .trim()
+            .takeIf { it.isNotEmpty() && !it.equals(groupKey, ignoreCase = true) }
         if (canonicalDisplay != null) return canonicalDisplay
     }
 
@@ -3721,8 +3721,8 @@ private fun subtitleLanguageDisplayName(groupKey: String, rawLanguage: String?):
 
     val tag = normalizedTag ?: groupKey
     val localeLanguage = Locale.forLanguageTag(tag).displayLanguage
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
+        .trim()
+        .takeIf { it.isNotEmpty() }
 
     return localeLanguage ?: tag
 }

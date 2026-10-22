@@ -93,7 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.ui.util.openExternalLink
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -173,7 +173,7 @@ fun DetailsScreen(
 
     LaunchedEffect(showMovieContent) {
         if (showMovieContent) {
-            movie?.poster?.let { onPosterResolved(it) }
+            movie.poster?.let { onPosterResolved(it) }
         }
     }
     val sidebarState = if (isCurrentMovie) state.sidebarState else SidebarState.Closed
@@ -902,11 +902,11 @@ fun DetailsScreen(
 
             // ── TMDB Enrichment Sections ──
             if (hasEnrichment) {
-                val castMembers = enrichment?.castMembers.orEmpty()
-                val directorMembers = enrichment?.directorMembers.orEmpty()
-                val writerMembers = enrichment?.writerMembers.orEmpty()
-                val companies = enrichment?.productionCompanies.orEmpty()
-                val networks = enrichment?.networks.orEmpty()
+                val castMembers = enrichment.castMembers.orEmpty()
+                val directorMembers = enrichment.directorMembers.orEmpty()
+                val writerMembers = enrichment.writerMembers.orEmpty()
+                val companies = enrichment.productionCompanies.orEmpty()
+                val networks = enrichment.networks.orEmpty()
                 val tmdbRecommendations = state.tmdbRecommendations
                     .filterNot { dislikeTastes.dislikes("tmdb:${it.tmdbId}") }
                 val tmdbCollection = state.tmdbCollection

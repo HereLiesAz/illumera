@@ -89,7 +89,7 @@ class ProfileConfigurationManagerTest {
     fun withActiveProfileRuntimeCancelsWorkForStaleProfile() = runTest {
         setLastActiveProfile(8)
 
-        manager.withActiveProfileRuntime(7) { "must not run" }
+        manager.withActiveProfileRuntime(7) { error("must not run") }
     }
 
     @Test

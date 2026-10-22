@@ -499,7 +499,7 @@ class YouTubeExtractor @Inject constructor() {
                         val result = runCatching {
                             RequestResponse(
                                 r.isSuccessful, r.code, r.message,
-                                r.request.url.toString(), r.body?.string().orEmpty()
+                                r.request.url.toString(), r.body.string()
                             )
                         }
                         if (continuation.isActive) {

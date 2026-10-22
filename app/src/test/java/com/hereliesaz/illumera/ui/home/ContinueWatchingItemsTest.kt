@@ -15,7 +15,7 @@ class ContinueWatchingItemsTest {
         ))
         assertEquals(listOf("tt1"), items.map { it.id })
         assertEquals("series", items.single().type)
-        assertEquals(0.3f, items.single().progress!!, 0.0001f)
+        assertEquals(0.3f, items.single().progress, 0.0001f)
     }
 
     @Test

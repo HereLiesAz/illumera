@@ -882,7 +882,7 @@ class ExoPlayerBackend(
                     runCatching {
                         call.execute().use { response ->
                             if (!response.isSuccessful) return@use null
-                            response.body?.bytes()?.let { OutOfBandSubtitle.parse(it, inferSubtitleMimeType(source.url)) }
+                            response.body.bytes().let { OutOfBandSubtitle.parse(it, inferSubtitleMimeType(source.url)) }
                         }
                     }.getOrNull()
                 } finally {
@@ -1164,7 +1164,7 @@ class ExoPlayerBackend(
         pv.resizeMode = if (encodedZoom || stereo != StereoLayout.OFF) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode
 
         val contentFrame = pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_content_frame)
-        val targetView = contentFrame ?: (pv.videoSurfaceView as? android.view.View)
+        val targetView = contentFrame ?: pv.videoSurfaceView
         if (targetView != null && stereoLayoutListenerView !== targetView) {
             // The eye transform depends on the laid-out frame; redo it whenever that changes.
             stereoLayoutListenerView = targetView
@@ -1697,6 +1697,9 @@ class ExoPlayerBackend(
         val subtitleSources = subtitleConfigs.map { config ->
             // A slow or broken subtitle host must never stall or fail the video: one retry,
             // then the track just ends.
+            // Deprecated in favour of loading sideloaded subtitles through the main source, which
+            // can't treat a broken subtitle host as end-of-track; kept for that reason.
+            @Suppress("DEPRECATION")
             SingleSampleMediaSource.Factory(subtitleFactory)
                 .setTreatLoadErrorsAsEndOfStream(true)
                 .setLoadErrorHandlingPolicy(

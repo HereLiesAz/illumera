@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Surface
@@ -408,6 +408,7 @@ fun SearchScreen(
                         // a system keyboard, which can crash the app. The custom
                         // on-screen keyboard handles input; the system keyboard is
                         // only shown explicitly via the keyboard button.
+                        @Suppress("DEPRECATION") // its replacement can't simply withhold the IME
                         CompositionLocalProvider(LocalTextInputService provides null) {
                             BasicTextField(
                                 value = state.query,

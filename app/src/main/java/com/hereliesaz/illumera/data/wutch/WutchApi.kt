@@ -177,7 +177,7 @@ class WutchApi @Inject constructor(private val http: OkHttpClient) {
             .apply { if (bearer != null) header("Authorization", "Bearer $bearer") }
             .build()
         http.newCall(request).execute().use { response ->
-            val text = response.body?.string().orEmpty()
+            val text = response.body.string()
             if (response.code == 202 && !accept202) return JsonNull.INSTANCE
             if (!response.isSuccessful) {
                 val message = runCatching { JsonParser.parseString(text).obj()?.let { it.str("message") ?: it.str("error") } }.getOrNull()

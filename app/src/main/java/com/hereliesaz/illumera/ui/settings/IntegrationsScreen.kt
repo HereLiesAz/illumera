@@ -26,7 +26,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Key
@@ -62,7 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.ui.util.DeviceFormFactor
 import com.hereliesaz.illumera.ui.util.detectDeviceFormFactor
 import com.hereliesaz.illumera.ui.util.generateQrCodeBitmap
@@ -1407,7 +1407,7 @@ private fun StremioManagementDialog(
 
                 // Disconnect
                 ManagementMenuItem(
-                    icon = Icons.Default.Logout,
+                    icon = Icons.AutoMirrored.Filled.Logout,
                     title = "Log Out of Stremio",
                     subtitle = "Sign this profile out of its Stremio account",
                     onClick = onDisconnect,

@@ -289,7 +289,7 @@ class DetailsViewModel @Inject constructor(
                             val hasAired = nextUp != null && !nextUp.isComplete &&
                                 com.hereliesaz.illumera.data.model.isReleasedBy(nextUp.nextReleased)
                             if (hasAired) {
-                                "${streamFetchId}:${nextUp!!.nextSeason}:${nextUp.nextEpisode}"
+                                "${streamFetchId}:${nextUp.nextSeason}:${nextUp.nextEpisode}"
                             } else null
                         }
                     } else {
@@ -562,7 +562,7 @@ class DetailsViewModel @Inject constructor(
             val revived = existing?.isComplete == true
             val badgeState = when {
                 revived -> true
-                unchanged -> existing?.isNewEpisode ?: false
+                unchanged -> existing.isNewEpisode
                 else -> false
             }
             dao.upsertSeriesNextUp(
@@ -670,7 +670,7 @@ class DetailsViewModel @Inject constructor(
                 } else currentMeta
 
                 // Fetch per-episode enrichment for series (synopsis, runtime, thumbnails)
-                val episodeEnrichmentMap = if (mediaType == "tv" && tmdbId != null) {
+                val episodeEnrichmentMap = if (mediaType == "tv") {
                     val seasons = enrichedMeta?.videos
                         ?.filter { it.season > 0 }
                         ?.map { it.season }

@@ -321,7 +321,7 @@ object DatabaseModule {
             // can't open the database at all. Scoped to those specific starting
             // versions only — an actually-missing migration between two *current*
             // versions still fails loudly instead of silently wiping data.
-            .fallbackToDestructiveMigrationFrom(*(1..25).toList().toIntArray())
+            .fallbackToDestructiveMigrationFrom(dropAllTables = false, *(1..25).toList().toIntArray())
             .build()
     }
 

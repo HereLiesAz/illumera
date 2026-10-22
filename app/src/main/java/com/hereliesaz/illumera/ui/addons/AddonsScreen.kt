@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.hereliesaz.illumera.ui.navigation.focus.RestoreFocusOnResume
 import com.hereliesaz.illumera.ui.navigation.focus.focusMemoryRoot
 import com.hereliesaz.illumera.ui.navigation.focus.rememberFocusMemory
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
 
 internal const val STREMIO_ADDONS_URL = "https://web.stremio.com/#/addons"

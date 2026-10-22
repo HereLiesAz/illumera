@@ -396,7 +396,7 @@ fun HeroCarousel(
                     if (item.description != null) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = item.description!!,
+                            text = item.description,
                             maxLines = 5,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodyMedium.copy(

@@ -83,13 +83,13 @@ class DebridHttp @Inject constructor(private val client: OkHttpClient) {
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        cont.resume(response) { _ -> response.close() }
+                        cont.resume(response) { _, _, _ -> response.close() }
                     }
                 })
             }
             withContext<DebridResult<JsonElement>>(Dispatchers.IO) {
                 response.use {
-                    val bodyString = it.body?.string().orEmpty()
+                    val bodyString = it.body.string()
                     if (!it.isSuccessful) {
                         DebridResult.Failure(
                             "HTTP ${it.code}${if (bodyString.isNotBlank()) ": ${bodyString.take(200)}" else ""}"

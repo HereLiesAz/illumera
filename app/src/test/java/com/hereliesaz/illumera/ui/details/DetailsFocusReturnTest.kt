@@ -52,7 +52,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class DetailsFocusReturnTest {
-
+    // v2 rules queue coroutines (StandardTestDispatcher); these tests rely on immediate dispatch.
+    @Suppress("DEPRECATION")
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
 
