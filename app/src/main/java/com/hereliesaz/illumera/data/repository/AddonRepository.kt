@@ -1020,6 +1020,11 @@ class AddonRepository @Inject constructor(
         if (target != null) dao.insertAddon(target.copy(nickname = newName))
     }
 
+    /** A disabled addon stays installed but contributes no catalogs, metadata or streams. */
+    suspend fun setAddonEnabled(transportUrl: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+        dao.setAddonEnabled(transportUrl, enabled)
+    }
+
     suspend fun deleteAddon(transportUrl: String) = withContext(Dispatchers.IO) {
         dao.deleteAddonCascading(transportUrl)
     }

@@ -2354,7 +2354,7 @@ private fun AudioLanguageListItem(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val targetBackground = when {
-        isFocused -> Color.White.copy(alpha = 0.95f)
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
         selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
         else -> Color.Transparent
     }
@@ -2365,7 +2365,7 @@ private fun AudioLanguageListItem(
         label = "audioLanguageBackground"
     )
     val textColor by animateColorAsState(
-        targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.98f),
+        targetValue = if (isFocused) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.98f),
         animationSpec = tween(durationMillis = 120),
         label = "audioLanguageText"
     )
@@ -2439,7 +2439,7 @@ private fun AudioVariantListItem(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val targetBackground = when {
-        isFocused -> Color.White.copy(alpha = 0.93f)
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
         selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
         else -> Color.Transparent
     }
@@ -2451,7 +2451,7 @@ private fun AudioVariantListItem(
     )
     val textColor by animateColorAsState(
         targetValue = when {
-            isFocused -> Color.Black
+            isFocused -> MaterialTheme.colorScheme.onPrimary
             else -> Color.White.copy(alpha = if (selected) 1f else 0.92f)
         },
         animationSpec = tween(durationMillis = 120),
@@ -2907,7 +2907,7 @@ private fun SubtitleLanguageListItem(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val targetBackground = when {
-        isFocused -> Color.White.copy(alpha = 0.95f)
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
         selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
         else -> Color.Transparent
     }
@@ -2918,7 +2918,7 @@ private fun SubtitleLanguageListItem(
         label = "subtitleLanguageBackground"
     )
     val textColor by animateColorAsState(
-        targetValue = if (isFocused) Color.Black else Color.White.copy(alpha = 0.98f),
+        targetValue = if (isFocused) MaterialTheme.colorScheme.onPrimary else Color.White.copy(alpha = 0.98f),
         animationSpec = tween(durationMillis = 120),
         label = "subtitleLanguageText"
     )
@@ -2994,7 +2994,7 @@ private fun SubtitleVariantListItem(
 
     val targetBackground = when {
         !enabled -> Color.White.copy(alpha = 0.06f)
-        isFocused -> Color.White.copy(alpha = 0.93f)
+        isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
         selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
         else -> Color.Transparent
     }
@@ -3007,7 +3007,7 @@ private fun SubtitleVariantListItem(
     val textColor by animateColorAsState(
         targetValue = when {
             !enabled -> Color.White.copy(alpha = 0.48f)
-            isFocused -> Color.Black
+            isFocused -> MaterialTheme.colorScheme.onPrimary
             else -> Color.White.copy(alpha = if (selected) 1f else 0.92f)
         },
         animationSpec = tween(durationMillis = 120),

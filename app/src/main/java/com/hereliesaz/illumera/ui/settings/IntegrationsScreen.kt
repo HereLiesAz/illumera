@@ -176,12 +176,12 @@ fun IntegrationsScreen(
         Text(
             "Integrations",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
             "Connect external services to enhance your experience.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
@@ -458,7 +458,7 @@ private fun IntegrationItem(
     val borderColor by animateColorAsState(
         if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent
     )
-    val bgColor = Color.White.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -487,7 +487,7 @@ private fun IntegrationItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 text = subtitle,
@@ -612,7 +612,7 @@ private fun ConnectStremioDialog(
                     .width(if (isCompact) rememberDialogWidth(900) else 900.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
-                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                     .imePadding()
                     .padding(horizontal = 32.dp, vertical = 24.dp)
                     .then(if (isCompact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
@@ -631,7 +631,7 @@ private fun ConnectStremioDialog(
                         Text(
                             "Connect your Stremio account",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
                             overflow = TextOverflow.Visible,
                             softWrap = false
@@ -734,9 +734,9 @@ private fun ConnectStremioDialog(
                     if (deviceFormFactor == DeviceFormFactor.TV) {
                         Box(
                             modifier = if (isCompact) {
-                                Modifier.fillMaxWidth().padding(vertical = 16.dp).height(1.dp).background(Color.White.copy(0.1f))
+                                Modifier.fillMaxWidth().padding(vertical = 16.dp).height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
                             } else {
-                                Modifier.width(1.dp).height(160.dp).background(Color.White.copy(0.1f))
+                                Modifier.width(1.dp).height(160.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
                             }
                         )
                         Column(
@@ -747,7 +747,7 @@ private fun ConnectStremioDialog(
                         Text(
                             "Or Scan with Phone",
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             maxLines = 1,
                             overflow = TextOverflow.Visible,
                             softWrap = false,
@@ -858,14 +858,14 @@ private fun StremioSignupDialog(
                 .heightIn(max = 680.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .verticalScroll(rememberScrollState())
                 .padding(28.dp)
         ) {
             Text(
                 "Create Stremio account",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Create the same account you can use in Stremio, then connect it to Illumera automatically.",
@@ -974,7 +974,7 @@ private fun StremioConsentRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = checked, onCheckedChange = onCheckedChange)
             Spacer(Modifier.width(8.dp))
-            Text(label, color = Color.White.copy(0.82f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Text(label, color = MaterialTheme.colorScheme.onBackground.copy(0.82f), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         }
         if (linkLabel != null && onOpenLink != null) {
             Text(
@@ -1007,14 +1007,14 @@ private fun StremioPasswordResetDialog(
                 .width(rememberDialogWidth(460))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 "Reset Stremio password",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.height(8.dp))
 
@@ -1110,14 +1110,14 @@ private fun AppleLoginDialog(
                 .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(32.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     "Sign in with Apple",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -1205,14 +1205,14 @@ private fun FacebookLoginDialog(
                 .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(32.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     "Login with Facebook",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(8.dp))
 
@@ -1304,7 +1304,7 @@ private fun StremioManagementDialog(
                 .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
             Column(
@@ -1315,7 +1315,7 @@ private fun StremioManagementDialog(
                 Text(
                     "Stremio Account",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Text(
@@ -1444,7 +1444,7 @@ private fun ManagementMenuItem(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
-    val bgColor by animateColorAsState(if (isFocused) Color.White.copy(0.1f) else Color.White.copy(0.05f))
+    val bgColor by animateColorAsState(if (isFocused) MaterialTheme.colorScheme.onBackground.copy(0.1f) else MaterialTheme.colorScheme.onBackground.copy(0.05f))
     val iconColor = if (isDestructive) Color.Red else if (isFocused) MaterialTheme.colorScheme.primary else Color.Gray
 
     Row(
@@ -1472,7 +1472,7 @@ private fun ManagementMenuItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                color = if (isDestructive) Color.Red else Color.White
+                color = if (isDestructive) Color.Red else MaterialTheme.colorScheme.onBackground
             )
             Text(
                 text = subtitle,
@@ -1509,11 +1509,11 @@ private fun StremioExternalLinkDialog(
                 .width(rememberDialogWidth(440))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(10.dp))
 
             if (deviceFormFactor == DeviceFormFactor.TV) {
@@ -1586,14 +1586,14 @@ internal fun DisconnectConfirmDialog(
                 .width(rememberDialogWidth(350))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
             Column {
                 Text(
                     title,
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Spacer(Modifier.height(12.dp))
@@ -1738,14 +1738,14 @@ private fun TmdbSettingsDialog(
                     .width(rememberDialogWidth(460))
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
-                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                     .padding(24.dp)
             ) {
                 Column {
                     Text(
                         "TMDB Settings",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
 
                     Text(
@@ -1772,7 +1772,7 @@ private fun TmdbSettingsDialog(
                     Text(
                         "Metadata Language",
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                        color = if (enabled) Color.White else Color.White.copy(0.4f)
+                        color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.4f)
                     )
                     Text(
                         "Titles, descriptions, and logos will use this language when available.",
@@ -1800,7 +1800,7 @@ private fun TmdbSettingsDialog(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(
                                         when {
-                                            isFocused -> Color.White.copy(0.1f)
+                                            isFocused -> MaterialTheme.colorScheme.onBackground.copy(0.1f)
                                             isSelected -> accentColor.copy(0.1f)
                                             else -> Color.Transparent
                                         }
@@ -1836,10 +1836,10 @@ private fun TmdbSettingsDialog(
                                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                                     ),
                                     color = when {
-                                        !enabled -> Color.White.copy(0.3f)
+                                        !enabled -> MaterialTheme.colorScheme.onBackground.copy(0.3f)
                                         isSelected -> accentColor
-                                        isFocused -> Color.White
-                                        else -> Color.White.copy(0.7f)
+                                        isFocused -> MaterialTheme.colorScheme.onBackground
+                                        else -> MaterialTheme.colorScheme.onBackground.copy(0.7f)
                                     }
                                 )
                             }
@@ -1876,7 +1876,7 @@ private fun TmdbToggleItem(
     val isFocused by interactionSource.collectIsFocusedAsState()
 
     val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
-    val bgColor by animateColorAsState(if (isFocused) Color.White.copy(0.1f) else Color.White.copy(0.05f))
+    val bgColor by animateColorAsState(if (isFocused) MaterialTheme.colorScheme.onBackground.copy(0.1f) else MaterialTheme.colorScheme.onBackground.copy(0.05f))
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1894,7 +1894,7 @@ private fun TmdbToggleItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 text = subtitle,
@@ -1912,7 +1912,7 @@ private fun TmdbToggleItem(
                 .clip(RoundedCornerShape(11.dp))
                 .background(
                     if (isEnabled) MaterialTheme.colorScheme.primary.copy(0.8f)
-                    else Color.White.copy(0.15f)
+                    else MaterialTheme.colorScheme.onBackground.copy(0.15f)
                 ),
             contentAlignment = if (isEnabled) Alignment.CenterEnd else Alignment.CenterStart
         ) {
@@ -1921,7 +1921,7 @@ private fun TmdbToggleItem(
                     .padding(2.dp)
                     .size(18.dp)
                     .clip(RoundedCornerShape(9.dp))
-                    .background(Color.White)
+                    .background(if (isEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground)
             )
         }
     }
@@ -1962,7 +1962,7 @@ private fun IntegrationTextField(
     val borderBrush = if (isFocused) {
         Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary))
     } else {
-        SolidColor(Color.White.copy(0.1f))
+        SolidColor(MaterialTheme.colorScheme.onBackground.copy(0.1f))
     }
 
     Box(
@@ -1995,7 +1995,7 @@ private fun IntegrationTextField(
             value = value,
             onValueChange = onValueChange,
             enabled = !isTv || editing,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             singleLine = true,
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
@@ -2147,7 +2147,7 @@ private fun WutchDialog(
                     .heightIn(max = maxDialogHeight)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
-                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                     .imePadding()
                     .padding(24.dp)
             ) {
@@ -2155,7 +2155,7 @@ private fun WutchDialog(
                     Text(
                         "wutch.tv",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         "A free watch tracker. Your watchlist, what you're part-way through and your next episodes come in; progress, finished titles and watchlist changes go back.",
@@ -2169,7 +2169,7 @@ private fun WutchDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Signed in as $username", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                            Text("Signed in as $username", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyLarge)
                         }
                         Spacer(Modifier.height(24.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
@@ -2186,7 +2186,7 @@ private fun WutchDialog(
                         }
                     } else {
                         if (useKey) {
-                            Text("API key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text("API key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onBackground.copy(0.8f))
                             if (deviceFormFactor == DeviceFormFactor.TV) {
                                 Text(
                                     "Scan with your phone. The page can open wutch.tv, then sends the pasted key straight back to this TV.",
@@ -2378,7 +2378,7 @@ private fun DebridDialog(
                     .heightIn(max = maxDialogHeight)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
-                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                     .imePadding()
                     .padding(24.dp)
             ) {
@@ -2386,7 +2386,7 @@ private fun DebridDialog(
                     Text(
                         "Debrid Service",
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         "Connect a debrid service to browse and stream your cloud storage from the Library.",
@@ -2403,7 +2403,7 @@ private fun DebridDialog(
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "Connected to ${connectedProvider.displayName}${connectedUsername?.let { " ($it)" } ?: ""}",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onBackground,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -2432,7 +2432,7 @@ private fun DebridDialog(
                         Text(
                             "Service",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                            color = Color.White.copy(0.8f)
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.8f)
                         )
                         Spacer(Modifier.height(8.dp))
 
@@ -2454,7 +2454,7 @@ private fun DebridDialog(
                         Spacer(Modifier.height(16.dp))
 
                         if (deviceFormFactor == DeviceFormFactor.TV) {
-                            Text("Send the API key from your phone", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text("Send the API key from your phone", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onBackground.copy(0.8f))
                             Text(
                                 "Scan this QR code. The phone page can open ${selectedProvider.displayName}'s API-key page, then sends the pasted key directly back to this TV and connects automatically.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2482,7 +2482,7 @@ private fun DebridDialog(
                                 }
                             }
                             Spacer(Modifier.height(16.dp))
-                            Text("TV keyboard fallback", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text("TV keyboard fallback", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onBackground.copy(0.8f))
                             Text(
                                 "The keyboard stays closed until you select this field and press OK.",
                                 style = MaterialTheme.typography.bodySmall,
@@ -2505,7 +2505,7 @@ private fun DebridDialog(
                                 IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
                             }
                         } else {
-                            Text("API Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = Color.White.copy(0.8f))
+                            Text("API Key", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onBackground.copy(0.8f))
                             Spacer(Modifier.height(8.dp))
                             IntegrationTextField(
                                 value = apiKey,
@@ -2573,13 +2573,13 @@ private fun TraktAuthDialog(
                     .width(rememberDialogWidth(460))
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.background)
-                    .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                     .padding(24.dp)
             ) {
                 Text(
                     "Trakt",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
                     "Track what you watch automatically across all your apps.",
@@ -2594,7 +2594,7 @@ private fun TraktAuthDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Connected to Trakt", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                        Text("Connected to Trakt", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyLarge)
                     }
 
                     Spacer(Modifier.height(24.dp))
@@ -2623,7 +2623,7 @@ private fun TraktAuthDialog(
                             Text(
                                 "Connect your Trakt account to sync your watchlist, watch history, and scrobble playback.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(0.7f)
+                                color = MaterialTheme.colorScheme.onBackground.copy(0.7f)
                             )
 
                             Spacer(Modifier.height(24.dp))
@@ -2651,7 +2651,7 @@ private fun TraktAuthDialog(
                             Text(
                                 "Go to the URL below and enter the code:",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(0.7f)
+                                color = MaterialTheme.colorScheme.onBackground.copy(0.7f)
                             )
 
                             Spacer(Modifier.height(16.dp))
@@ -2667,7 +2667,7 @@ private fun TraktAuthDialog(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color.White.copy(0.08f), RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.onBackground.copy(0.08f), RoundedCornerShape(12.dp))
                                     .border(1.dp, MaterialTheme.colorScheme.primary.copy(0.3f), RoundedCornerShape(12.dp))
                                     .padding(vertical = 16.dp),
                                 contentAlignment = Alignment.Center
@@ -2678,7 +2678,7 @@ private fun TraktAuthDialog(
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 8.sp
                                     ),
-                                    color = Color.White
+                                    color = MaterialTheme.colorScheme.onBackground
                                 )
                             }
 
@@ -2704,7 +2704,7 @@ private fun TraktAuthDialog(
                             Text(
                                 "Waiting for authorization...",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(0.5f)
+                                color = MaterialTheme.colorScheme.onBackground.copy(0.5f)
                             )
 
                             Spacer(Modifier.height(16.dp))
@@ -2726,7 +2726,7 @@ private fun TraktAuthDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Successfully connected!", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                                Text("Successfully connected!", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyLarge)
                             }
 
                             Spacer(Modifier.height(24.dp))
@@ -2775,7 +2775,7 @@ private fun TraktAuthDialog(
                                     "then connect your Stremio account here and sync addons — your Trakt " +
                                     "watchlist, history, and recommendations will come in as catalogs.",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(0.7f)
+                                color = MaterialTheme.colorScheme.onBackground.copy(0.7f)
                             )
 
                             Spacer(Modifier.height(24.dp))
@@ -2789,7 +2789,7 @@ private fun TraktAuthDialog(
                         }
 
                         is DeviceAuthState.Expired -> {
-                            Text("The authorization code has expired. Please try again.", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(0.7f))
+                            Text("The authorization code has expired. Please try again.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(0.7f))
 
                             Spacer(Modifier.height(24.dp))
 

@@ -164,12 +164,12 @@ fun PersonalizationSettings(
         Text(
             "Personalization",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
             "Customize your viewing experience.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
@@ -186,7 +186,7 @@ fun PersonalizationSettings(
             )
         }
         Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
         // HUB SHAPE
@@ -200,7 +200,7 @@ fun PersonalizationSettings(
             )
         }
         Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
         // MENU POSITION
@@ -214,7 +214,7 @@ fun PersonalizationSettings(
             )
         }
         Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
         // SPLASH SCREEN
@@ -229,13 +229,13 @@ fun PersonalizationSettings(
         }
 
         Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
         Text(
             "Cinematic previews",
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             modifier = Modifier.padding(bottom = 8.dp)
         )
         SettingToggleRow(
@@ -266,13 +266,13 @@ fun PersonalizationSettings(
             onBack = onGoBack
         )
         Spacer(Modifier.height(15.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
         Text(
             "Navigation",
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
@@ -303,13 +303,13 @@ fun PersonalizationSettings(
             var crashReportsEnabled by remember { mutableStateOf(CrashReporting.isEnabled(context)) }
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             Text(
                 "Diagnostics",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White.copy(0.7f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
@@ -380,12 +380,12 @@ fun PlaybackSettings(
             Text(
                 "Playback",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Configure video decoding and display settings.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 4.dp)
             )
 
@@ -489,7 +489,7 @@ fun PlaybackSettings(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "Trigger at ${currentProfile.autoplayThresholdPercent}%",
-                        color = Color.White.copy(0.6f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                     )
@@ -505,7 +505,7 @@ fun PlaybackSettings(
                     val display = if (secs >= 60) "${secs / 60}m ${secs % 60}s remaining" else "${secs}s remaining"
                     Text(
                         text = "Trigger with $display",
-                        color = Color.White.copy(0.6f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                         modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                     )
@@ -519,18 +519,18 @@ fun PlaybackSettings(
             }
 
             Spacer(Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(12.dp))
 
             Text(
                 "Watched Completion",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White.copy(0.7f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             Text(
                 text = "Mark an item watched at ${currentProfile.watchedThreshold}% played.",
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
             )
@@ -547,13 +547,13 @@ fun PlaybackSettings(
 
             // LANGUAGE PREFERENCES SECTION
             Spacer(Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(12.dp))
 
             Text(
                 "Language Preferences",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White.copy(0.7f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
@@ -595,13 +595,13 @@ fun PlaybackSettings(
 
             // SUBTITLE STYLE SECTION
             Spacer(Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(12.dp))
 
             Text(
                 "Subtitle Style",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White.copy(0.7f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
@@ -736,7 +736,7 @@ fun SettingToggleRow(
     val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
+            isFocused -> MaterialTheme.colorScheme.onBackground
             isChecked -> accentColor.copy(0.5f)
             else -> Color.Transparent
         }
@@ -764,7 +764,7 @@ fun SettingToggleRow(
             .then(upBlockModifier)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .border(if (isFocused || isChecked) 1.dp else 0.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(interactionSource = interactionSource, indication = null) {
                 onCheckedChange(!isChecked)
@@ -779,8 +779,8 @@ fun SettingToggleRow(
                 text = label,
                 color = when {
                     isChecked -> accentColor
-                    isFocused -> Color.White
-                    else -> Color.White.copy(0.8f)
+                    isFocused -> MaterialTheme.colorScheme.onBackground
+                    else -> MaterialTheme.colorScheme.onBackground.copy(0.8f)
                 },
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
@@ -790,7 +790,7 @@ fun SettingToggleRow(
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    color = Color.White.copy(0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.4f),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                 )
             }
@@ -800,8 +800,8 @@ fun SettingToggleRow(
             onCheckedChange = null,
             colors = CheckboxDefaults.colors(
                 checkedColor = accentColor,
-                uncheckedColor = if (isFocused) Color.White.copy(0.7f) else Color.White.copy(0.3f),
-                checkmarkColor = Color.White
+                uncheckedColor = if (isFocused) MaterialTheme.colorScheme.onBackground.copy(0.7f) else MaterialTheme.colorScheme.onBackground.copy(0.3f),
+                checkmarkColor = MaterialTheme.colorScheme.onBackground
             )
         )
     }
@@ -822,9 +822,9 @@ fun SettingToggleChip(
     val scale by animateFloatAsState(if (isFocused) 1.05f else 1f)
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
+            isFocused -> MaterialTheme.colorScheme.onBackground
             isChecked -> accentColor.copy(0.5f)
-            else -> Color.White.copy(0.15f)
+            else -> MaterialTheme.colorScheme.onBackground.copy(0.15f)
         }
     )
 
@@ -841,7 +841,7 @@ fun SettingToggleChip(
             .then(backModifier)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isChecked) accentColor.copy(0.15f) else Color.White.copy(0.05f))
+            .background(if (isChecked) accentColor.copy(0.15f) else MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(interactionSource = interactionSource, indication = null) {
                 onCheckedChange(!isChecked)
@@ -856,8 +856,8 @@ fun SettingToggleChip(
             contentDescription = null,
             tint = when {
                 isChecked -> accentColor
-                isFocused -> Color.White.copy(0.7f)
-                else -> Color.White.copy(0.3f)
+                isFocused -> MaterialTheme.colorScheme.onBackground.copy(0.7f)
+                else -> MaterialTheme.colorScheme.onBackground.copy(0.3f)
             },
             modifier = Modifier.size(16.dp)
         )
@@ -865,8 +865,8 @@ fun SettingToggleChip(
             text = label,
             color = when {
                 isChecked -> accentColor
-                isFocused -> Color.White
-                else -> Color.White.copy(0.8f)
+                isFocused -> MaterialTheme.colorScheme.onBackground
+                else -> MaterialTheme.colorScheme.onBackground.copy(0.8f)
             },
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Medium,
@@ -908,13 +908,13 @@ fun <T> SettingOptionRow(
             .fillMaxWidth()
             .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            color = Color.White.copy(0.8f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = FontWeight.Medium,
                 fontSize = 15.sp
@@ -935,15 +935,15 @@ fun <T> SettingOptionRow(
                 val scale by animateFloatAsState(if (isFocused) 1.06f else 1f)
                 val chipBorder by animateColorAsState(
                     when {
-                        isFocused -> Color.White
+                        isFocused -> MaterialTheme.colorScheme.onBackground
                         isSelected -> accentColor
-                        else -> Color.White.copy(0.15f)
+                        else -> MaterialTheme.colorScheme.onBackground.copy(0.15f)
                     }
                 )
                 val chipTextColor = when {
                     isSelected -> accentColor
-                    isFocused -> Color.White
-                    else -> Color.White.copy(0.6f)
+                    isFocused -> MaterialTheme.colorScheme.onBackground
+                    else -> MaterialTheme.colorScheme.onBackground.copy(0.6f)
                 }
 
                 Box(
@@ -990,7 +990,7 @@ fun SettingRow(label: String, content: @Composable () -> Unit) {
                 fontWeight = FontWeight.SemiBold, 
                 fontSize = 18.sp
             ),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 12.dp)
         )
         content()
@@ -1071,16 +1071,16 @@ fun RowScope.SegmentItem(
     
     val scale by animateFloatAsState(if (isFocused) 1.04f else 1f)
 
-    val bgColor = Color.White.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
     val textColor = when {
         isSelected -> MaterialTheme.colorScheme.primary
-        isFocused -> Color.White
-        else -> Color.White.copy(0.7f)
+        isFocused -> MaterialTheme.colorScheme.onBackground
+        else -> MaterialTheme.colorScheme.onBackground.copy(0.7f)
     }
     
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
+            isFocused -> MaterialTheme.colorScheme.onBackground
             isSelected -> MaterialTheme.colorScheme.primary
             else -> Color.Transparent
         }
@@ -1129,7 +1129,7 @@ fun ColorItemFixed(
     val borderWidth by animateDpAsState(if (isFocused || isSelected) 2.dp else 0.dp)
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
+            isFocused -> MaterialTheme.colorScheme.onBackground
             isSelected -> MaterialTheme.colorScheme.primary
             else -> Color.Transparent
         }
@@ -1214,7 +1214,7 @@ private fun SubtitleStyleSidebarContent(
     ) {
         Text(
             text = "Subtitle Style",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
 
@@ -1288,7 +1288,7 @@ private fun SubtitleStyleSidebarContent(
         // Size
         Text(
             text = "Size: ${profile.subtitleSize}%",
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
         )
         CompactVoidSlider(
@@ -1302,7 +1302,7 @@ private fun SubtitleStyleSidebarContent(
         // Offset
         Text(
             text = "Offset: ${profile.subtitleOffset}%",
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
         )
         CompactVoidSlider(
@@ -1315,7 +1315,7 @@ private fun SubtitleStyleSidebarContent(
         // Text Color
         Text(
             text = "Text Color",
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
         )
         SubtitleColorChipRow(
@@ -1327,7 +1327,7 @@ private fun SubtitleStyleSidebarContent(
         // Background Color
         Text(
             text = "Background",
-            color = Color.White.copy(0.7f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
         )
         SubtitleColorChipRow(
@@ -1406,15 +1406,15 @@ private fun SubtitleColorChip(
                 .then(
                     if (isTransparent) {
                         Modifier
-                            .background(Color.White.copy(0.05f))
-                            .border(1.dp, Color.White.copy(0.3f), CircleShape)
+                            .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
+                            .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.3f), CircleShape)
                     } else {
                         Modifier.background(color)
                     }
                 )
                 .then(
                     if (isSelected) Modifier.border(2.dp, accentColor, CircleShape)
-                    else if (isFocused) Modifier.border(2.dp, Color.White, CircleShape)
+                    else if (isFocused) Modifier.border(2.dp, MaterialTheme.colorScheme.onBackground, CircleShape)
                     else Modifier
                 )
         )
@@ -1422,7 +1422,7 @@ private fun SubtitleColorChip(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-            color = if (isFocused || isSelected) Color.White else Color.Gray,
+            color = if (isFocused || isSelected) MaterialTheme.colorScheme.onBackground else Color.Gray,
             maxLines = 1
         )
     }
@@ -1457,7 +1457,7 @@ private fun CompactVoidSlider(
                 .weight(1f)
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color.White.copy(0.2f))
+                .background(MaterialTheme.colorScheme.onBackground.copy(0.2f))
         ) {
             Box(
                 modifier = Modifier
@@ -1493,13 +1493,13 @@ private fun CompactSliderButton(
             .size(32.dp)
             .scale(scale)
             .clip(RoundedCornerShape(6.dp))
-            .background(Color.White.copy(0.1f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
             .border(
                 if (isFocused) 2.dp else 1.dp,
                 when {
                     isFocused && enabled -> accentColor
-                    isFocused -> Color.White.copy(0.3f)
-                    else -> Color.White.copy(0.2f)
+                    isFocused -> MaterialTheme.colorScheme.onBackground.copy(0.3f)
+                    else -> MaterialTheme.colorScheme.onBackground.copy(0.2f)
                 },
                 RoundedCornerShape(6.dp)
             )
@@ -1510,7 +1510,7 @@ private fun CompactSliderButton(
     ) {
         Text(
             text = text,
-            color = if (enabled) Color.White else Color.White.copy(0.3f),
+            color = if (enabled) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.3f),
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold
         )
@@ -1564,10 +1564,10 @@ private fun SettingLanguageRow(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .border(
                 if (isFocused) 1.dp else 0.dp,
-                if (isFocused) Color.White else Color.Transparent,
+                if (isFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
                 RoundedCornerShape(8.dp)
             )
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
@@ -1578,7 +1578,7 @@ private fun SettingLanguageRow(
     ) {
         Text(
             text = label,
-            color = if (isFocused) Color.White else Color.White.copy(0.8f),
+            color = if (isFocused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.8f),
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontWeight = FontWeight.Medium,
                 fontSize = 15.sp
@@ -1588,7 +1588,7 @@ private fun SettingLanguageRow(
         Text(
             text = currentDisplayName,
             color = if (isSet) accentColor
-                    else if (isFocused) Color.White else Color.White.copy(0.6f),
+                    else if (isFocused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.6f),
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = if (isSet) FontWeight.SemiBold else FontWeight.Normal,
                 fontSize = 14.sp
@@ -1622,7 +1622,7 @@ private fun LanguagePickerContent(
         Text(
             title,
             style = MaterialTheme.typography.headlineSmall,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -1648,7 +1648,7 @@ private fun LanguagePickerContent(
                         .clip(RoundedCornerShape(8.dp))
                         .background(
                             when {
-                                isFocused -> Color.White.copy(0.1f)
+                                isFocused -> MaterialTheme.colorScheme.onBackground.copy(0.1f)
                                 isSelected -> accentColor.copy(0.1f)
                                 else -> Color.Transparent
                             }
@@ -1680,7 +1680,7 @@ private fun LanguagePickerContent(
                         text = displayName,
                         color = when {
                             isSelected -> accentColor
-                            isFocused -> Color.White
+                            isFocused -> MaterialTheme.colorScheme.onBackground
                             else -> Color.LightGray
                         },
                         style = MaterialTheme.typography.bodyLarge.copy(
@@ -1722,12 +1722,12 @@ fun SourcePreferencesSettings(
         Text(
             "Sort & Filter",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
             "Configure how sources are sorted and filtered.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
@@ -1745,19 +1745,19 @@ fun SourcePreferencesSettings(
 
         if (currentProfile.sourceSortingEnabled) {
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             // SORT BY
             Text(
                 "Sort By",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Choose what matters most when ranking sources.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
@@ -1795,25 +1795,25 @@ fun SourcePreferencesSettings(
             )
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             Text(
                 "Auto-selection preferences",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "These rank sources from best to worst. Missing the target never hides a source. Addon priority follows your order in Addons.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
             val episodeSizes = listOf(250, 500, 750, 1000, 1500, 2000, 3000)
             val episodeLabel = "${currentProfile.sourceEpisodeTargetSizeMb} MB"
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("30-minute episode", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                Text("30-minute episode", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                 FilterDropdown(
                     currentValue = episodeLabel,
                     options = episodeSizes.map { "$it MB" },
@@ -1830,7 +1830,7 @@ fun SourcePreferencesSettings(
                 "${currentProfile.sourceMovieTargetSizeMb / 1000} GB"
             } else "${currentProfile.sourceMovieTargetSizeMb} MB"
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Full-length movie", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                Text("Full-length movie", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                 FilterDropdown(
                     currentValue = movieLabel,
                     options = movieSizes.map { if (it % 1000 == 0) "${it / 1000} GB" else "$it MB" },
@@ -1847,7 +1847,7 @@ fun SourcePreferencesSettings(
             val seedOptions = listOf(0, 1, 3, 5, 10, 20, 50, 100)
             val seedLabel = if (currentProfile.sourceMinimumSeeds == 0) "Don't care" else "${currentProfile.sourceMinimumSeeds}+"
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Preferred minimum seeds", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                Text("Preferred minimum seeds", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                 FilterDropdown(
                     currentValue = seedLabel,
                     options = seedOptions.map { if (it == 0) "Don't care" else "$it+" },
@@ -1872,12 +1872,12 @@ fun SourcePreferencesSettings(
             Text(
                 "Language requirements",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Uses the primary and secondary languages selected under Playback. Audio: sources advertising the forced language are tried first and play in it; others are tried last. CC: the forced language is used whenever a source has it; otherwise CC starts off.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
@@ -1894,7 +1894,7 @@ fun SourcePreferencesSettings(
             }
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Audio language", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                Text("Audio language", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                 FilterDropdown(
                     currentValue = forceModeLabel(currentProfile.sourceAudioLanguageRequirement),
                     options = languageForceOptions,
@@ -1906,7 +1906,7 @@ fun SourcePreferencesSettings(
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("CC language", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                Text("CC language", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                 FilterDropdown(
                     currentValue = forceModeLabel(currentProfile.sourceSubtitleLanguageRequirement),
                     options = languageForceOptions,
@@ -1930,7 +1930,7 @@ fun SourcePreferencesSettings(
                 val waitOptions = listOf(15, 30, 60, 90, 120, 180, 300)
                 val waitLabel = "${currentProfile.sourceDebridMaxWaitSeconds}s"
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Max debrid wait", color = Color.White.copy(0.8f), modifier = Modifier.weight(1f))
+                    Text("Max debrid wait", color = MaterialTheme.colorScheme.onBackground.copy(0.8f), modifier = Modifier.weight(1f))
                     FilterDropdown(
                         currentValue = waitLabel,
                         options = waitOptions.map { "${it}s" },
@@ -1943,19 +1943,19 @@ fun SourcePreferencesSettings(
             }
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             // QUALITY FILTER
             Text(
                 "Allowed Qualities",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Sources with disabled qualities are tried last.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
@@ -1980,7 +1980,7 @@ fun SourcePreferencesSettings(
             }
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             // MAX FILE SIZE
@@ -1994,7 +1994,7 @@ fun SourcePreferencesSettings(
                 Text(
                     "Max File Size",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.weight(1f)
                 )
                 FilterDropdown(
@@ -2009,19 +2009,19 @@ fun SourcePreferencesSettings(
             }
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             // EXCLUDE FORMATS
             Text(
                 "Exclude Formats",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Try sources with these codecs and formats last.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
@@ -2047,7 +2047,7 @@ fun SourcePreferencesSettings(
             }
 
             Spacer(Modifier.height(15.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(15.dp))
 
             // EXCLUDE PHRASES
@@ -2064,7 +2064,7 @@ fun SourcePreferencesSettings(
                     .fillMaxWidth()
                     .height(48.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(0.05f))
+                    .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
                     .border(
                         if (isFocused) 2.dp else 0.dp,
                         if (isFocused) accentColor else Color.Transparent,
@@ -2077,13 +2077,13 @@ fun SourcePreferencesSettings(
             ) {
                 Text(
                     "Exclude Phrases",
-                    color = Color.White.copy(0.8f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp),
                     modifier = Modifier.weight(1f)
                 )
                 Text(
                     displayPhrases,
-                    color = if (currentPhrases.isBlank()) Color.White.copy(0.3f) else accentColor,
+                    color = if (currentPhrases.isBlank()) MaterialTheme.colorScheme.onBackground.copy(0.3f) else accentColor,
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2105,7 +2105,7 @@ fun SourcePreferencesSettings(
                     Text(
                         "Sources containing these words are tried last. Comma-separated.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(0.6f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
 
@@ -2172,12 +2172,12 @@ fun AboutSettings(
         Text(
             "About",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
             "App information and updates.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
@@ -2189,14 +2189,14 @@ fun AboutSettings(
                 .fillMaxWidth()
                 .height(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(0.05f))
+                .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 "Version",
-                color = Color.White.copy(0.8f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp)
             )
             Text(
@@ -2317,7 +2317,7 @@ fun AboutSettings(
             val info = (updateState as UpdateState.UpdateAvailable).info
 
             Spacer(Modifier.height(16.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(0.1f)))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(16.dp))
 
             Text(
@@ -2330,7 +2330,7 @@ fun AboutSettings(
                 Text(
                     info.changelog,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                    color = Color.White.copy(0.6f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
@@ -2382,7 +2382,7 @@ fun AboutSettings(
                     .fillMaxWidth()
                     .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(0.1f))
+                    .background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
             ) {
                 Box(
                     modifier = Modifier

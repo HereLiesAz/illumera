@@ -78,3 +78,7 @@ class TasteStore @Inject constructor(
 
     private fun key(profileId: Int) = "p$profileId"
 }
+
+/** Whether any of [ids] carries a "Don't like" verdict in this snapshot. */
+fun Map<String, TasteEntry>.dislikes(vararg ids: String?): Boolean =
+    ids.any { id -> id != null && this[id]?.taste == Taste.DISLIKE }

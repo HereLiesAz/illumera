@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.details
 
+import com.hereliesaz.illumera.data.taste.dislikes
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -371,6 +372,9 @@ fun DetailsScreen(
 
             @OptIn(ExperimentalFoundationApi::class)
             CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
+            // "Don't like" keeps a title out of this page's TMDB rows.
+            val dislikeTastes by hiltViewModel<com.hereliesaz.illumera.ui.components.MediaActionsViewModel>()
+                .tastes.collectAsStateWithLifecycle()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -901,6 +905,7 @@ fun DetailsScreen(
                 val companies = enrichment?.productionCompanies.orEmpty()
                 val networks = enrichment?.networks.orEmpty()
                 val tmdbRecommendations = state.tmdbRecommendations
+                    .filterNot { dislikeTastes.dislikes("tmdb:${it.tmdbId}") }
                 val tmdbCollection = state.tmdbCollection
 
                 val leadingCrew = directorMembers + writerMembers
@@ -1422,7 +1427,7 @@ private fun CastCard(member: TmdbCastInfo, accentColor: Color, textColor: Color,
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(0.08f))
+                    .background(textColor.copy(0.08f))
                     .border(
                         width = if (isFocused) 2.dp else 0.dp,
                         color = if (isFocused) accentColor else Color.Transparent,
@@ -1442,7 +1447,7 @@ private fun CastCard(member: TmdbCastInfo, accentColor: Color, textColor: Color,
             Text(
                 text = member.name,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                color = if (isFocused) Color.White else textColor.copy(alpha = 0.85f),
+                color = if (isFocused) textColor else textColor.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

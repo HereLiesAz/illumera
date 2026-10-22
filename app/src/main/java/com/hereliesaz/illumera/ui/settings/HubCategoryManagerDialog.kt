@@ -55,7 +55,7 @@ fun HubCategoryManagerDialog(
     if (managingItem == null && confirmRemoveItem == null && confirmRemoveImageItem == null && renameItem == null) {
         VoidDialog(onDismissRequest = onDismiss, title = if (reorderingItem != null) "Reordering..." else "Manage Categories") {
             if (currentItems.isEmpty()) {
-                Text("No categories to manage.", color = Color.White.copy(0.5f))
+                Text("No categories to manage.", color = MaterialTheme.colorScheme.onBackground.copy(0.5f))
             } else {
                 LazyColumn(
                     state = categoryListState,

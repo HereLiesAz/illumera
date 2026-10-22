@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.queue
 
+import com.hereliesaz.illumera.data.taste.dislikes
 import androidx.compose.ui.window.PopupProperties
 
 import androidx.activity.compose.BackHandler
@@ -136,7 +137,15 @@ fun QueueSection(
     restoreEntryFocusWhenFocusedKeyMissing: Boolean = false,
     onQueueFocused: (String?) -> Unit = {}
 ) {
-    val state by queueManager.state.collectAsStateWithLifecycle()
+    val queueState by queueManager.state.collectAsStateWithLifecycle()
+    val tastes by hiltViewModel<com.hereliesaz.illumera.ui.components.MediaActionsViewModel>()
+        .tastes.collectAsStateWithLifecycle()
+    // "Don't like" takes a suggestion off screen at once; QueueManager keeps it out of refills.
+    val state = remember(queueState, tastes) {
+        queueState.copy(suggestions = queueState.suggestions.filterNot {
+            tastes.dislikes(it.seriesId, it.id.substringBefore(':'), it.id)
+        })
+    }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 

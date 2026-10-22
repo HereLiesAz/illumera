@@ -128,7 +128,8 @@ class MediaActionsViewModel @Inject constructor(
     private val traktSyncManager: TraktSyncManager,
     private val wutchManager: WutchManager,
     private val profileConfigurationManager: ProfileConfigurationManager,
-    private val tasteStore: TasteStore
+    private val tasteStore: TasteStore,
+    private val tmdbService: com.hereliesaz.illumera.data.tmdb.TmdbService
 ) : ViewModel() {
 
     suspend fun loadState(target: MediaActionTarget): MediaActionState = withContext(Dispatchers.IO) {
@@ -230,10 +231,19 @@ class MediaActionsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
                 val resolved = resolveTarget(target)
+                // TMDB-sourced screens (More like this) know titles only by TMDB id.
+                val tmdbId = try {
+                    tmdbService.ensureTmdbId(resolved.canonicalId, tmdbService.normalizeMediaType(resolved.type))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
                 val ids = listOfNotNull(
                     resolved.canonicalId,
                     target.parentSeriesId,
-                    target.id.takeIf { target.type != "episode" }
+                    target.id.takeIf { target.type != "episode" },
+                    tmdbId?.removePrefix("tmdb:")?.let { "tmdb:$it" }
                 )
                 tasteStore.set(ids, resolved.type, resolved.title, taste)
                 if (taste == Taste.LOVE && resolved.traktAvailable &&

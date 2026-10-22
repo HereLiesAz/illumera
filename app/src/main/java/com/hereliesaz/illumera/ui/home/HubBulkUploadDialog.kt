@@ -86,7 +86,7 @@ fun HubBulkUploadDialog(
                 .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(32.dp)
                 .focusRequester(focusRequester)
         ) {
@@ -97,7 +97,7 @@ fun HubBulkUploadDialog(
                 Text(
                     text = "Bulk Manage Images",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 
                 Text(
@@ -139,7 +139,7 @@ fun HubBulkUploadDialog(
                                 fontWeight = FontWeight.SemiBold,
                                 letterSpacing = 0.5.sp
                             ),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
@@ -163,7 +163,7 @@ fun HubBulkUploadDialog(
                 Text(
                     "Press Back to Finish",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.3f)
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
                 )
             }
         }

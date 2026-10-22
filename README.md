@@ -32,7 +32,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Connect a Stremio account with email/password or Facebook login (QR handoff — no typing a password on the remote)
 - Two-way sync with your Stremio account: pull your addon collection, push it back, and sync Continue Watching progress
 - Automatic catalog loading from all enabled addons
-- Cinemeta and Streaming Catalogs are baked into the app (bundled manifests): their catalogs appear even when the providers are unreachable, and Stremio account sync never removes them.
+- Cinemeta and Streaming Catalogs are baked into the app (bundled manifests): their catalogs appear even when the providers are unreachable, and Stremio account sync never removes them. Any addon can be switched off in Add-ons → Installed without uninstalling it.
 - Fresh and existing profiles receive Cinemeta, YouTube Trailers, Streaming Catalogs, TMDB, SeedSphere, and Stremio Stats as stock addon entries. Configured Stremio Stats data requires personal account authorization; unavailable manifest endpoints are retained without invented capabilities.
 - **Add-ons is a top-level side-menu (and top-navigation) destination**, not a Settings section. Its full-screen native browser offers Official, Community, **3rd Party**, and collections, plus a searchable, vertically scrolling catalog. Configure/install/uninstall are compact focusable icons; installed addons and manual URL/phone-paste installation remain available.
 - Addon developers: see [`docs/ADDONS.md`](docs/ADDONS.md) for what illumera reads beyond the Stremio protocol
@@ -54,7 +54,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Hero carousel trailers and the focused inline preview crop video to fill their entire frames (no letterboxing), with a responsive 16:9 inline card that can widen to approximately 373dp on TV while remaining screen-bounded. The Hero scrolls off-screen and never continues playing behind a focused row.
 - **Settings → Personalization:** per-profile Autoplay previews, Preview sound, and Navigation sounds toggles. Autoplay defaults on, preview sound off, and D-pad navigation sounds on; Android's built-in focus-navigation sounds require no bundled audio assets. Playback sound is independent of navigation feedback.
 - **Personal rows on Home:** up to two rows — *More like ‹last watched›* and *Because you watched ‹another title›* — built from TMDB recommendations, TMDB similar titles and Trakt related titles, matched on genre and rating and steered by what you Love and Like. Rows too thin to be worth showing are left out.
-- **Love / Like / Don't like** in every card's long-press menu. Love weighs heaviest on suggestions and adds the title to your Trakt library; Don't like removes it from every row.
+- **Love / Like / Don't like** in every card's long-press menu. Love weighs heaviest on suggestions and adds the title to your Trakt library; Don't like removes it from every row, More like this and Queue suggestions (not Search). The same choices are buttons on every Details page.
 - Rows with nothing to show are hidden and never block scrolling past them.
 - Hero carousel with auto-scrolling featured content
 - Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history

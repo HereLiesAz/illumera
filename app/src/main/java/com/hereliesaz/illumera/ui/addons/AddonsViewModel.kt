@@ -322,6 +322,19 @@ class AddonsViewModel @Inject constructor(
         }
     }
 
+    fun setAddonEnabled(transportUrl: String, enabled: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setAddonEnabled(transportUrl, enabled)
+                persistProfileState()
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to update addon")
+            }
+        }
+    }
+
     fun renameAddon(transportUrl: String, newName: String) {
         // Apply optimistically so a moveAddon() firing before the Room Flow round-trips
         // this rename can't overwrite it with the stale nickname it read from _uiState.

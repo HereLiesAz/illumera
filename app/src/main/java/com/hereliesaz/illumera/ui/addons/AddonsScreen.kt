@@ -140,6 +140,7 @@ fun AddonsScreen(
             showingInstalled = showingInstalled,
             onInstalledSelected = { showingInstalled = true; removalGuidance = null },
             onRemoveInstalled = { pendingRemoval = it },
+            onToggleInstalled = { url, enabled -> viewModel.setAddonEnabled(url, enabled) },
             onInstallUrl = { showInstallUrl = true },
             entryRequester = entryRequester,
             focusMemory = focusMemory
@@ -209,7 +210,7 @@ fun AddonsScreen(
             title = "Install ${pending.addonName}?",
             onDismissRequest = viewModel::cancelInstall
         ) {
-            Text("${pending.catalogCount} catalogs available. Add them to Illumera?", color = Color.White)
+            Text("${pending.catalogCount} catalogs available. Add them to Illumera?", color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(16.dp))
             VoidButton(
                 text = "Install and show catalogs",
@@ -231,7 +232,7 @@ fun AddonsScreen(
     }
     pendingRemoval?.let { url ->
         VoidDialog(title = "Uninstall addon?", onDismissRequest = { pendingRemoval = null }) {
-            Text("Remove this addon from the current profile?", color = Color.White)
+            Text("Remove this addon from the current profile?", color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(16.dp))
             VoidButton(
                 text = "Uninstall",
