@@ -943,6 +943,10 @@ fun BasePlayerScaffold(
             )
         }
 
+        if (showControls && !panelOpen) {
+            Mvc3dReadout(Modifier.align(Alignment.TopStart).padding(24.dp))
+        }
+
         AnimatedVisibility(
             visible = showControls && !panelOpen && !showSubtitleOffsetBar && !showSubtitleSizeBar && !showSubtitleDelayBar && !showSubtitleColorBar && uiState.errorMessage.isNullOrBlank(),
             enter = slideInVertically(animationSpec = tween(200)) { it } + fadeIn(animationSpec = tween(200)),
@@ -4479,5 +4483,35 @@ private fun BoxScope.SubtitleColorTopBar(
                 )
             }
         }
+    }
+}
+
+/**
+ * Diagnostic line for Blu-ray 3D (MVC) streams, shown with the controls: how many video
+ * samples carried a second eye that was removed, how many passed unchanged, the decoder
+ * and the frame rate. Hidden for streams without MVC data.
+ */
+@Composable
+private fun Mvc3dReadout(modifier: Modifier = Modifier) {
+    var text by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val stripped = MvcStats.stripped.get()
+            text = if (stripped == 0L) null else buildString {
+                append("3D → 2D · stripped ").append(stripped).append('/').append(MvcStats.samples.get())
+                append(" · unchanged ").append(MvcStats.passedThrough.get())
+                MvcStats.frameRate.takeIf { it > 0f }?.let { append(" · ").append(String.format(java.util.Locale.US, "%.3f fps", it)) }
+                MvcStats.decoderName?.let { append(" · ").append(it) }
+            }
+            delay(1000)
+        }
+    }
+    text?.let {
+        androidx.compose.material3.Text(
+            it,
+            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+            color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f),
+            modifier = modifier
+        )
     }
 }

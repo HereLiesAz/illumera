@@ -53,24 +53,28 @@ private class MvcStripExtractorOutput(private val inner: ExtractorOutput) : Extr
 
 /**
  * Buffers each H.264 sample, drops MVC NAL units, then forwards the shortened sample.
- * Anything else (other codecs, encrypted or multi-part samples) passes straight through.
+ * A sample it can't rewrite (encrypted, carrying supplemental data, or not fully buffered)
+ * is forwarded unchanged, and filtering resumes with the next sample; other codecs pass
+ * straight through.
  */
 private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput {
     private var filtering = false
+    /** The current sample is being forwarded unchanged. */
+    private var passthrough = false
     private var pending = ByteArray(256 * 1024)
     private var pendingSize = 0
     private val scratch = ParsableByteArray()
 
     override fun format(format: Format) {
+        flushPending()
         filtering = format.sampleMimeType == MimeTypes.VIDEO_H264
+        passthrough = false
+        if (filtering) MvcStats.onFormat(format.frameRate)
         inner.format(format)
     }
 
     override fun sampleData(input: DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int {
-        if (!filtering || sampleDataPart != TrackOutput.SAMPLE_DATA_PART_MAIN) {
-            stopFiltering()
-            return inner.sampleData(input, length, allowEndOfInput, sampleDataPart)
-        }
+        if (!buffering(sampleDataPart)) return inner.sampleData(input, length, allowEndOfInput, sampleDataPart)
         ensureCapacity(pendingSize + length)
         val read = input.read(pending, pendingSize, length)
         if (read == C.RESULT_END_OF_INPUT) {
@@ -82,14 +86,24 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
     }
 
     override fun sampleData(data: ParsableByteArray, length: Int, sampleDataPart: Int) {
-        if (!filtering || sampleDataPart != TrackOutput.SAMPLE_DATA_PART_MAIN) {
-            stopFiltering()
+        if (!buffering(sampleDataPart)) {
             inner.sampleData(data, length, sampleDataPart)
             return
         }
         ensureCapacity(pendingSize + length)
         data.readBytes(pending, pendingSize, length)
         pendingSize += length
+    }
+
+    /** Whether data for [part] goes to the buffer; otherwise it is forwarded as-is. */
+    private fun buffering(part: Int): Boolean {
+        if (!filtering) return false
+        if (part != TrackOutput.SAMPLE_DATA_PART_MAIN && !passthrough) {
+            // Keep byte order: what is buffered goes first, then this sample passes through.
+            flushPending()
+            passthrough = true
+        }
+        return !passthrough
     }
 
     override fun sampleMetadata(timeUs: Long, flags: Int, size: Int, offset: Int, cryptoData: TrackOutput.CryptoData?) {
@@ -99,14 +113,17 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
         }
         val end = pendingSize - offset
         val start = end - size
-        if (cryptoData != null || start < 0) {
-            // Not ours to rewrite: forward the buffered bytes unchanged and stop filtering.
+        if (passthrough || cryptoData != null || start < 0) {
+            // Not ours to rewrite: everything already went (or now goes) to inner unchanged.
             flushPending()
-            filtering = false
+            passthrough = false
+            MvcStats.passedThrough.incrementAndGet()
             inner.sampleMetadata(timeUs, flags, size, offset, cryptoData)
             return
         }
         val newSize = stripMvcNalUnits(pending, start, end)
+        MvcStats.samples.incrementAndGet()
+        if (newSize < size) MvcStats.stripped.incrementAndGet()
         scratch.reset(pending, start + newSize)
         scratch.setPosition(start)
         inner.sampleData(scratch, newSize, TrackOutput.SAMPLE_DATA_PART_MAIN)
@@ -114,12 +131,6 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
         System.arraycopy(pending, end, pending, 0, pendingSize - end)
         pendingSize -= end
         inner.sampleMetadata(timeUs, flags, newSize, 0, null)
-    }
-
-    private fun stopFiltering() {
-        if (!filtering) return
-        flushPending()
-        filtering = false
     }
 
     private fun flushPending() {
@@ -131,6 +142,27 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
 
     private fun ensureCapacity(capacity: Int) {
         if (capacity > pending.size) pending = pending.copyOf(maxOf(capacity, pending.size * 2))
+    }
+}
+
+/**
+ * Counters for the player's 3D readout: H.264 samples seen, samples that carried MVC units,
+ * and samples forwarded unchanged. Reset per playback; the last stream wins.
+ */
+object MvcStats {
+    val samples = java.util.concurrent.atomic.AtomicLong()
+    val stripped = java.util.concurrent.atomic.AtomicLong()
+    val passedThrough = java.util.concurrent.atomic.AtomicLong()
+    @Volatile var frameRate: Float = Format.NO_VALUE.toFloat()
+    @Volatile var decoderName: String? = null
+
+    fun onFormat(rate: Float) {
+        frameRate = rate
+    }
+
+    fun reset() {
+        samples.set(0); stripped.set(0); passedThrough.set(0)
+        frameRate = Format.NO_VALUE.toFloat(); decoderName = null
     }
 }
 
