@@ -6,6 +6,7 @@ import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.TraktSyncApiService
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.taste.TasteStore
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -429,7 +430,8 @@ class QueueManagerTest {
         addonDao = addonDao,
         traktApi = traktApi,
         repository = repository,
-        profileConfigurationManager = profileManager
+        profileConfigurationManager = profileManager,
+        tasteStore = mockk<TasteStore> { every { tasteOf(*anyVararg()) } returns null }
     )
 
     companion object {
