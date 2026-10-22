@@ -11,7 +11,8 @@ enum class StereoLayout { OFF, SIDE_BY_SIDE, TOP_BOTTOM }
  * Android exposes no API that reports whether the attached TV can show 3D (HDMI 3D
  * capability never reaches apps), so the display is assumed 2D unless the viewer says
  * otherwise in Settings → Playback. On a 2D display a 3D source shows both eyes squeezed
- * together; "Play in 2D" shows one eye at the correct aspect instead.
+ * together; "Play in 2D" shows one eye at the correct aspect instead. Blu-ray 3D (MVC)
+ * is reduced to its base view automatically on such a display (MvcStripExtractors).
  */
 object Stereo3d {
     private const val PREFS = "illumera_display"
@@ -23,14 +24,17 @@ object Stereo3d {
     private val sideBySide = Regex("""(?i)\b(h-?sbs|half.?sbs|f?sbs|side.?by.?side)\b""")
     private val generic3d = Regex("""(?i)\b3d\b""")
 
-    /** The packing named by a stream's title/filename; plain "3D" is taken as side-by-side, the common case. */
+    /**
+     * The frame packing named by a stream's title/filename. A bare "3D" names no packing
+     * and is usually Blu-ray 3D (MVC), whose single frames need no cropping; MVC is handled
+     * at extraction instead (MvcStripExtractors), so it is not reported here.
+     */
     fun detect(vararg texts: String?): StereoLayout {
         val text = texts.filterNotNull().joinToString(" ")
         return when {
             topBottom.containsMatchIn(text) -> StereoLayout.TOP_BOTTOM
             sideBySide.containsMatchIn(text) -> StereoLayout.SIDE_BY_SIDE
             generic3d.containsMatchIn(text) && shortTopBottom.containsMatchIn(text) -> StereoLayout.TOP_BOTTOM
-            generic3d.containsMatchIn(text) -> StereoLayout.SIDE_BY_SIDE
             else -> StereoLayout.OFF
         }
     }

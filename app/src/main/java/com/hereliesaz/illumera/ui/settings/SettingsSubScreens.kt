@@ -408,7 +408,7 @@ fun PlaybackSettings(
             }
             SettingToggleRow(
                 label = "TV Plays 3D",
-                subtitle = "Off: 3D sources offer to play in 2D. Android can't detect 3D TVs, so set this if yours is one",
+                subtitle = "Off: 3D plays as 2D (Blu-ray 3D automatically, side-by-side/top-bottom on request). Android can't detect 3D TVs, so set this if yours is one",
                 isChecked = tvPlays3d,
                 onCheckedChange = {
                     tvPlays3d = it

@@ -1533,9 +1533,9 @@ class ExoPlayerBackend(
 
         val mediaSourceFactory = if (playbackSettings.assRendererEnabled) {
             val handler = getOrCreateAssHandler()
-            DefaultMediaSourceFactory(appContext, AssExtractorsFactory(handler))
+            DefaultMediaSourceFactory(appContext, forDisplay(AssExtractorsFactory(handler)))
         } else {
-            DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)
+            DefaultMediaSourceFactory(appContext, forDisplay(sharedExtractorsFactory))
         }
 
         val player = ExoPlayer.Builder(appContext, renderersFactory)
@@ -1592,6 +1592,10 @@ class ExoPlayerBackend(
         return intent.resolveActivity(pm) != null
     }
 
+    /** On a 2D display, Blu-ray 3D (MVC) is played as its base view only; see MvcStripExtractors. */
+    private fun forDisplay(factory: androidx.media3.extractor.ExtractorsFactory): androidx.media3.extractor.ExtractorsFactory =
+        if (Stereo3d.displaySupports3d(appContext)) factory else MvcStripExtractorsFactory(factory)
+
     private fun createExtractorsFactory(): DefaultExtractorsFactory {
         return DefaultExtractorsFactory()
             .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
@@ -1610,7 +1614,7 @@ class ExoPlayerBackend(
             // A local file / content URI is never the torrent loopback stream; don't
             // inherit the previous source's torrent seek/buffer behaviour.
             isTorrentStream = false
-            return DefaultMediaSourceFactory(appContext, sharedExtractorsFactory)
+            return DefaultMediaSourceFactory(appContext, forDisplay(sharedExtractorsFactory))
                 .createMediaSource(mediaItem)
         }
 
@@ -1654,9 +1658,9 @@ class ExoPlayerBackend(
             else -> {
                 val handler = assHandler
                 val factory = if (playbackSettings.assRendererEnabled && handler != null) {
-                    DefaultMediaSourceFactory(okHttpFactory, AssExtractorsFactory(handler))
+                    DefaultMediaSourceFactory(okHttpFactory, forDisplay(AssExtractorsFactory(handler)))
                 } else {
-                    DefaultMediaSourceFactory(okHttpFactory)
+                    DefaultMediaSourceFactory(okHttpFactory, forDisplay(DefaultExtractorsFactory()))
                 }
                 factory.createMediaSource(mainMediaItem)
             }

@@ -8,7 +8,6 @@ class Stereo3dTest {
     fun detectsSideBySidePackings() {
         assertEquals(StereoLayout.SIDE_BY_SIDE, Stereo3d.detect("Avatar.2009.1080p.3D.HSBS.BluRay"))
         assertEquals(StereoLayout.SIDE_BY_SIDE, Stereo3d.detect("Movie 3D Half-SBS x264"))
-        assertEquals(StereoLayout.SIDE_BY_SIDE, Stereo3d.detect("Gravity 2013 3D 1080p"))
     }
 
     @Test
@@ -23,6 +22,8 @@ class Stereo3dTest {
         assertEquals(StereoLayout.OFF, Stereo3d.detect("Le Bon ou le Mauvais 1080p WEB-DL"))
         assertEquals(StereoLayout.OFF, Stereo3d.detect("Show S01E02 2160p HDR"))
         assertEquals(StereoLayout.OFF, Stereo3d.detect(null, ""))
+        // Bare "3D" is MVC (one picture per frame), handled at extraction, not by cropping.
+        assertEquals(StereoLayout.OFF, Stereo3d.detect("Gravity 2013 3D BluRay 1080p AAC2.0"))
     }
 
     @Test
