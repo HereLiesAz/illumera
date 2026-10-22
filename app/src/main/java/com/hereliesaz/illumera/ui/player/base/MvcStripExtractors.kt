@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
+
 package com.hereliesaz.illumera.ui.player.base
 
 import android.net.Uri
