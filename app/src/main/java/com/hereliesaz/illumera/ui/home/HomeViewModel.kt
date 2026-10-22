@@ -25,6 +25,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withPermit
@@ -138,7 +139,9 @@ class HomeViewModel @Inject constructor(
     private val tmdbMetadataService: TmdbMetadataService,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val trailerApi: StremioApiService,
-    private val youtubeExtractor: YouTubeExtractor
+    private val youtubeExtractor: YouTubeExtractor,
+    private val similarTitlesEngine: com.hereliesaz.illumera.data.recommend.SimilarTitlesEngine,
+    private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore
 ) : ViewModel() {
 
     /**
@@ -344,10 +347,26 @@ class HomeViewModel @Inject constructor(
         val likedIds: Set<String> = emptySet(), // Bookmarked titles for the active profile
         val enrichedMeta: Map<String, MetaItem> = emptyMap(),
         val tmdbEnabled: Boolean = false,
-        val tmdbEnrichedIds: Set<String> = emptySet()
+        val tmdbEnrichedIds: Set<String> = emptySet(),
+        val dislikedIds: Set<String> = emptySet(), // "Don't like" verdicts; hidden everywhere
+        // Home only: "More like …" / "Because you watched …" (0–2 rows), shown above catalogs
+        val personalRows: List<CategoryRow> = emptyList()
     )
 
     private val _state = MutableStateFlow(HomeState())
+
+    init {
+        // Don't like hides a title on every discovery screen at once.
+        viewModelScope.launch {
+            tasteStore.entries.collect { entries ->
+                val disliked = entries.values
+                    .filter { it.taste == com.hereliesaz.illumera.data.taste.Taste.DISLIKE }
+                    .mapTo(mutableSetOf()) { it.id }
+                _state.update { it.copy(dislikedIds = disliked) }
+            }
+        }
+    }
+
     val state: StateFlow<HomeState> = _state
 
     init {
@@ -1448,6 +1467,7 @@ class HomeViewModel @Inject constructor(
                 enrichedMeta = emptyMap(),
                 tmdbEnrichedIds = emptySet(),
                 likedIds = emptySet(),
+                personalRows = if (screenName == "home") _state.value.personalRows else emptyList(),
                 tmdbEnabled = currentProfile?.tmdbEnabled == true
             )
             tmdbEnrichmentInFlight.clear()
@@ -1484,6 +1504,28 @@ class HomeViewModel @Inject constructor(
                     dao.getWatchHistory().collect { history ->
                         _state.update { it.copy(history = history) }
                     }
+                }
+                // Rebuilt only when the most recently watched title changes, not on every
+                // progress tick.
+                launch {
+                    val language = currentProfile?.tmdbLanguage?.ifBlank { null }
+                        ?: java.util.Locale.getDefault().toLanguageTag()
+                    dao.getWatchHistory()
+                        .distinctUntilChangedBy { history ->
+                            history.take(12).map { it.seriesId ?: it.id.substringBefore(':') }
+                        }
+                        .collectLatest { history ->
+                            val rows = try {
+                                similarTitlesEngine.personalRows(
+                                    history, _state.value.watchedIds, language
+                                )
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                            _state.update { it.copy(personalRows = rows) }
+                        }
                 }
                 launch {
                     dao.getActiveSeriesNextUp(currentProfileId).collect { nextUp ->

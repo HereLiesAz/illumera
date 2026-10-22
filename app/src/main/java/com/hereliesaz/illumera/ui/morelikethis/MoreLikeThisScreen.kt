@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.morelikethis
 
+import com.hereliesaz.illumera.data.taste.dislikes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,13 +91,18 @@ fun MoreLikeThisScreen(
                 }
                 is MoreLikeThisState.Ready -> {
                     val firstCard = remember { FocusRequester() }
+                    val tastes by hiltViewModel<com.hereliesaz.illumera.ui.components.MediaActionsViewModel>()
+                        .tastes.collectAsStateWithLifecycle()
+                    val shown = remember(current.items, tastes) {
+                        current.items.filterNot { tastes.dislikes("tmdb:${it.tmdbId}") }
+                    }
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 128.dp),
                         contentPadding = PaddingValues(bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        itemsIndexed(current.items, key = { _, item -> "${item.type}:${item.tmdbId}" }) { index, item ->
+                        itemsIndexed(shown, key = { _, item -> "${item.type}:${item.tmdbId}" }) { index, item ->
                             PosterCard(
                                 item = item,
                                 accentColor = accent,

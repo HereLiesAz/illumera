@@ -173,7 +173,7 @@ private fun GridSortChips(
             var focused by remember { mutableStateOf(false) }
             Text(
                 text = label,
-                color = if (active || focused) Color.White else Color.White.copy(alpha = 0.6f),
+                color = if (active || focused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
                     .onFocusChanged { focused = it.isFocused }
@@ -190,8 +190,8 @@ private fun GridSortChips(
                     .touchClick(onClick = { choose() })
                     .background(
                         when {
-                            active -> Color.White.copy(alpha = 0.22f)
-                            focused -> Color.White.copy(alpha = 0.12f)
+                            active -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f)
+                            focused -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f)
                             else -> Color.Transparent
                         },
                         androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
@@ -528,7 +528,7 @@ private fun GridViewContent(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_view_more_arrow),
                         contentDescription = "Back",
-                        tint = if (isBackIconFocused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
+                        tint = if (isBackIconFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -540,7 +540,7 @@ private fun GridViewContent(
                     text = title,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                 )
             }

@@ -79,7 +79,7 @@ fun VoidInput(
     val borderBrush = if (isFocused) {
         Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary))
     } else {
-        SolidColor(Color.White.copy(alpha = 0.1f))
+        SolidColor(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f))
     }
 
     Box(
@@ -110,7 +110,7 @@ fun VoidInput(
             value = value,
             onValueChange = onValueChange,
             enabled = !isTv || editing,
-            textStyle = (if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium).copy(color = Color.White),
+            textStyle = (if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium).copy(color = MaterialTheme.colorScheme.onBackground),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             singleLine = true,
             keyboardOptions = KeyboardOptions(
@@ -197,7 +197,7 @@ fun VoidToggleRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val bgColor = if (isFocused) Color.White.copy(alpha = 0.1f) else Color.Transparent
+    val bgColor = if (isFocused) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f) else Color.Transparent
     val iconColor = if (isChecked) MaterialTheme.colorScheme.primary else Color.Gray
 
     Row(
@@ -213,7 +213,7 @@ fun VoidToggleRow(
             .focusable(interactionSource = interactionSource)
             .padding(horizontal = 16.dp)
     ) {
-        Text(label, color = Color.White)
+        Text(label, color = MaterialTheme.colorScheme.onBackground)
         Box(
             modifier = Modifier
                 .size(20.dp)
@@ -236,14 +236,14 @@ fun VoidDialog(
                 .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
             Column {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(24.dp))
                 content()

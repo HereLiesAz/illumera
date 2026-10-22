@@ -76,7 +76,7 @@ fun ViewMoreCard(
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
                 focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                contentColor = Color.White
+                contentColor = MaterialTheme.colorScheme.onSurface
             ),
             border = ClickableSurfaceDefaults.border(
                 focusedBorder = Border(
@@ -94,7 +94,7 @@ fun ViewMoreCard(
                     painter = painterResource(id = R.drawable.ic_view_more_arrow),
                     contentDescription = "View More",
                     modifier = Modifier.size(48.dp),
-                    tint = if (isFocused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.8f)
+                    tint = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                 )
                 Text(
                     text = "View More",
@@ -102,7 +102,7 @@ fun ViewMoreCard(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     ),
-                    color = if (isFocused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.9f)
+                    color = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
                 )
             }
         }

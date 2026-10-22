@@ -73,7 +73,7 @@ fun HubEditorContent(
         title = title
     ) {
         // Name
-        Text("Name", color = Color.White.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
+        Text("Name", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
         VoidInput(
             value = name,
             onValueChange = onNameChange,
@@ -98,7 +98,7 @@ fun HubEditorContent(
         Spacer(Modifier.height(20.dp))
 
         // Shape
-        Text("Shape", color = Color.White.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
+        Text("Shape", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -118,7 +118,7 @@ fun HubEditorContent(
         Spacer(Modifier.height(20.dp))
 
         // Actions
-        Text("Categories ($categoryCount)", color = Color.White.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
+        Text("Categories ($categoryCount)", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
         
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             VoidButton(
@@ -186,16 +186,16 @@ private fun RowScope.HubShapeItem(
     
     val scale by animateFloatAsState(if (isFocused) 1.04f else 1f)
 
-    val bgColor = Color.White.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
     val textColor = when {
         isSelected -> MaterialTheme.colorScheme.primary
-        isFocused -> Color.White
-        else -> Color.White.copy(0.7f)
+        isFocused -> MaterialTheme.colorScheme.onBackground
+        else -> MaterialTheme.colorScheme.onBackground.copy(0.7f)
     }
     
     val borderColor by animateColorAsState(
         when {
-            isFocused -> Color.White
+            isFocused -> MaterialTheme.colorScheme.onBackground
             isSelected -> MaterialTheme.colorScheme.primary
             else -> Color.Transparent
         }

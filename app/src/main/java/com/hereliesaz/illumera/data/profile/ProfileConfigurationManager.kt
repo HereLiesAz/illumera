@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.hereliesaz.illumera.crash.AppErrors
 import com.hereliesaz.illumera.data.auth.StremioAuthManager
+import com.hereliesaz.illumera.data.debrid.TorrentioConfig
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
@@ -59,6 +60,7 @@ class ProfileConfigurationManager @Inject constructor(
         private const val KEY_PENDING_SETUP_PROFILES = "pending_setup_profiles"
         private const val KEY_LAST_ACTIVE_PROFILE_ID = "last_active_profile_id"
         private const val KEY_DEFAULT_SET_SEEDED = "default_addons_v2_"
+        private const val KEY_TORRENTIO_SEEDED = "baked_torrentio_v1_"
         private const val SNAPSHOT_DIR = "profile_snapshots"
         private const val DEFAULT_CINEMETA_MANIFEST_URL = "https://v3-cinemeta.strem.io/manifest.json"
         private const val DEFAULT_CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
@@ -194,7 +196,10 @@ class ProfileConfigurationManager @Inject constructor(
             val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
             snapshot.copy(
                 addons = snapshot.addons + defaults.addons.filter {
-                    it.transportUrl.trimEnd('/') !in installed
+                    it.transportUrl.trimEnd('/') !in installed &&
+                        // A configured Torrentio already counts as installed.
+                        !(TorrentioConfig.isTorrentio(it.transportUrl) &&
+                            installed.any(TorrentioConfig::isTorrentio))
                 },
                 catalogConfigs = snapshot.catalogConfigs + defaults.catalogConfigs.filter {
                     it.uniqueId !in configured
@@ -205,6 +210,9 @@ class ProfileConfigurationManager @Inject constructor(
             }
             }
         } else snapshot
+        val repairedSnapshot = withBakedTorrentio(profileId, withBakedCatalogs(finalSnapshot)).also {
+            if (it !== finalSnapshot) writeSnapshot(profileId, it)
+        }
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
         // crash before the last onStop snapshot was written). On a genuine switch
@@ -212,15 +220,15 @@ class ProfileConfigurationManager @Inject constructor(
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
         dao.replaceRuntimeState(
-            addons = finalSnapshot.addons.map { addon ->
+            addons = repairedSnapshot.addons.map { addon ->
                 if (addon.transportUrl.trimEnd('/') == "https://stremio-trailer-addon.vercel.app")
                     addon.copy(supportsStream = false)
                 else addon
             },
-            catalogConfigs = finalSnapshot.catalogConfigs,
-            hubRows = finalSnapshot.hubRows,
-            hubRowItems = finalSnapshot.hubRowItems,
-            watchHistory = finalSnapshot.watchHistory,
+            catalogConfigs = repairedSnapshot.catalogConfigs,
+            hubRows = repairedSnapshot.hubRows,
+            hubRowItems = repairedSnapshot.hubRowItems,
+            watchHistory = repairedSnapshot.watchHistory,
             mergeWatchHistory = sameProfile,
             ownerProfileId = profileId
         )
@@ -313,7 +321,11 @@ class ProfileConfigurationManager @Inject constructor(
                 writeSnapshot(
                     profileId,
                     defaultSnapshot.copy(
-                        addons = defaultSnapshot.addons + fetched.addons,
+                        // An account's own (configured) Torrentio replaces the stock one.
+                        addons = defaultSnapshot.addons.filterNot { stock ->
+                            TorrentioConfig.isTorrentio(stock.transportUrl) &&
+                                fetched.addons.any { TorrentioConfig.isTorrentio(it.transportUrl) }
+                        } + fetched.addons,
                         catalogConfigs = defaultSnapshot.catalogConfigs + fetched.catalogConfigs
                     )
                 )
@@ -479,6 +491,89 @@ class ProfileConfigurationManager @Inject constructor(
         )
     }
 
+    /**
+     * Torrentio joined the baked set after profiles existed; give each existing profile
+     * the stock install once (from the bundled manifest, no network). Never re-added after
+     * the user removes it.
+     */
+    /** Bundled manifest for a baked addon, for installs that must not depend on the network. */
+    fun bakedManifest(transportUrl: String) = BakedAddons.manifest(context, transportUrl)
+
+    private fun withBakedTorrentio(profileId: Int, snapshot: ProfileRuntimeSnapshot): ProfileRuntimeSnapshot {
+        val key = "$KEY_TORRENTIO_SEEDED$profileId"
+        if (needsInitialSetup(profileId) || prefs.getBoolean(key, false)) return snapshot
+        prefs.edit().putBoolean(key, true).apply()
+        if (snapshot.addons.any { TorrentioConfig.isTorrentio(it.transportUrl) }) return snapshot
+        val manifest = BakedAddons.manifest(context, BakedAddons.TORRENTIO_URL) ?: return snapshot
+        return snapshot.copy(
+            addons = snapshot.addons + AddonEntity(
+                transportUrl = BakedAddons.TORRENTIO_URL,
+                id = manifest.id,
+                name = manifest.name,
+                version = manifest.version,
+                description = manifest.description,
+                iconUrl = manifest.logo,
+                isEnabled = true,
+                catalogsJson = "[]",
+                supportsMeta = false,
+                supportsStream = true,
+                typesJson = gson.toJson(manifest.types.orEmpty()),
+                sortOrder = snapshot.addons.size
+            )
+        )
+    }
+
+    /**
+     * A baked addon installed while its provider was unreachable was stored with no
+     * catalogs, so its rows never appeared. Fill those from the bundled manifest.
+     * Returns [snapshot] itself when nothing needed repair.
+     */
+    private fun withBakedCatalogs(snapshot: ProfileRuntimeSnapshot): ProfileRuntimeSnapshot {
+        var changed = false
+        val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
+        val extraConfigs = mutableListOf<CatalogConfigEntity>()
+        val addons = snapshot.addons.map { addon ->
+            val url = addon.transportUrl.trimEnd('/')
+            if (!BakedAddons.isBaked(url)) return@map addon
+            val current = runCatching {
+                gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)?.toList()
+            }.getOrNull().orEmpty()
+            if (current.isNotEmpty()) return@map addon
+            val manifest = BakedAddons.manifest(context, url) ?: return@map addon
+            val catalogs = manifest.catalogs.orEmpty()
+            if (catalogs.isEmpty()) return@map addon
+            changed = true
+            catalogs.forEachIndexed { index, catalog ->
+                val uniqueId = "$url/${catalog.type}/${catalog.id}"
+                if (uniqueId in configured) return@forEachIndexed
+                val isMovie = catalog.type == "movie"
+                val isSeries = catalog.type == "series"
+                extraConfigs += CatalogConfigEntity(
+                    uniqueId = uniqueId,
+                    transportUrl = url,
+                    addonName = addon.name,
+                    catalogType = catalog.type,
+                    catalogId = catalog.id,
+                    catalogName = catalog.name,
+                    customTitle = null,
+                    showInHome = isMovie || isSeries,
+                    showInMovies = isMovie,
+                    showInSeries = isSeries,
+                    homeOrder = 20 + index,
+                    moviesOrder = if (isMovie) 20 + index else 999,
+                    seriesOrder = if (isSeries) 20 + index else 999
+                )
+            }
+            addon.copy(
+                catalogsJson = gson.toJson(catalogs),
+                supportsMeta = addon.supportsMeta || manifest.supportsResource("meta"),
+                typesJson = gson.toJson(manifest.types.orEmpty())
+            )
+        }
+        if (!changed) return snapshot
+        return snapshot.copy(addons = addons, catalogConfigs = snapshot.catalogConfigs + extraConfigs)
+    }
+
     private suspend fun createDefaultRuntimeSnapshot(): ProfileRuntimeSnapshot {
         val fallbackCatalogs = listOf(
             CatalogManifest(type = "movie", id = "top", name = "Top"),
@@ -491,7 +586,7 @@ class ProfileConfigurationManager @Inject constructor(
             throw cancelled
         } catch (_: Exception) {
             null
-        }
+        } ?: BakedAddons.manifest(context, DEFAULT_CINEMETA_TRANSPORT_URL)
         val catalogs = manifest?.catalogs
             ?.filter { it.type == "movie" || it.type == "series" }
             ?.ifEmpty { fallbackCatalogs }
@@ -562,11 +657,11 @@ class ProfileConfigurationManager @Inject constructor(
         // imaginary metadata or streaming capabilities until they respond.
         data class DefaultAddon(val url: String, val name: String, val stream: Boolean)
         val defaults = listOf(
-            DefaultAddon("https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
-                "Streaming Catalogs", false),
+            DefaultAddon(BakedAddons.STREAMING_CATALOGS_URL, "Streaming Catalogs", false),
             DefaultAddon("https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
                 "The Movie Database Addon", false),
             DefaultAddon("https://seedsphere.fly.dev", "SeedSphere", true),
+            DefaultAddon(BakedAddons.TORRENTIO_URL, "Torrentio", true),
             // Stremio Stats requires a personally configured manifest for
             // account-backed statistics; an unconfigured install has no user data.
             DefaultAddon("https://stremiostats.stream", "Stremio Stats", false)
@@ -580,7 +675,7 @@ class ProfileConfigurationManager @Inject constructor(
                         throw e
                     } catch (_: Exception) {
                         null
-                    }
+                    } ?: BakedAddons.manifest(context, entry.url)
                     val addonCatalogs = manifest?.catalogs.orEmpty()
                     val entity = AddonEntity(
                         transportUrl = entry.url,

@@ -92,7 +92,8 @@ class QueueManager @Inject constructor(
     private val addonDao: AddonDao,
     private val traktApi: TraktSyncApiService,
     private val repository: AddonRepository,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore
 ) {
     private data class QueueScope(
         val profileId: Int,
@@ -303,6 +304,11 @@ class QueueManager @Inject constructor(
     }
 
     @Synchronized
+    /** "Don't like" (long-press menu / Details) keeps a title out of suggestions. */
+    private fun isDisliked(item: QueueItem): Boolean =
+        tasteStore.tasteOf(item.seriesId, item.id.substringBefore(':'), item.id) ==
+            com.hereliesaz.illumera.data.taste.Taste.DISLIKE
+
     fun removeSuggestion(key: String) {
         val scope = ensureScopeLocked() ?: return
         val current = _state.value
@@ -658,6 +664,7 @@ class QueueManager @Inject constructor(
                 .distinctBy { it.stableKey }
                 .filter { it.stableKey !in latestDismissedKeys }
                 .filter { prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0) >= 0 }
+                .filterNot(::isDisliked)
                 .toList()
             val byRatingTier = pool
                 .groupBy { prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0) }
@@ -692,6 +699,7 @@ class QueueManager @Inject constructor(
                     .filter(::isEligible)
                     .filter { it.stableKey !in latestDismissedKeys }
                     .filter { prefs.getInt(ratingKey(scope.profileId, it.stableKey), 0) >= 0 }
+                    .filterNot(::isDisliked)
             } else {
                 emptyList()
             }

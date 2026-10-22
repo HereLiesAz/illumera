@@ -38,7 +38,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
     var connections by remember { mutableIntStateOf(initial.connectionsLimit) }
 
     Spacer(Modifier.height(12.dp))
-    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f)))
     Spacer(Modifier.height(12.dp))
 
     Text(
@@ -47,7 +47,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             fontSize = 16.sp
         ),
-        color = Color.White.copy(alpha = 0.7f),
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
         modifier = Modifier.padding(bottom = 4.dp)
     )
     Text(
@@ -57,7 +57,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
             "Illumera automatically sizes the torrent cache and peer limits for this device."
         },
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-        color = Color.White.copy(alpha = 0.55f),
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
         modifier = Modifier.padding(bottom = 8.dp)
     )
 
@@ -82,7 +82,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         Text(
             text = "RAM Cache: $cacheMb MB",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp
@@ -91,7 +91,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
         )
         Text(
             text = "Safe device maximum: $maxSafeCacheMb MB (1/8 of reported RAM, capped at 512 MB)",
-            color = Color.White.copy(alpha = 0.5f),
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
         )
@@ -113,7 +113,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
         Spacer(Modifier.height(12.dp))
         Text(
             text = "Peer / DHT Connection Limit: $connections",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp
@@ -122,7 +122,7 @@ fun TorrentTuningSettings(onGoBack: () -> Unit) {
         )
         Text(
             text = "More connections find more peers on slow swarms at the cost of CPU and battery. Range: ${TorrentDeviceTuner.MIN_CONNECTION_LIMIT}–${TorrentDeviceTuner.MAX_CONNECTION_LIMIT}.",
-            color = Color.White.copy(alpha = 0.5f),
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
         )

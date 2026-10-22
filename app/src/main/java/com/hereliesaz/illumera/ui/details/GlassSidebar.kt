@@ -350,7 +350,7 @@ fun EpisodesContent(
         Text(
             "More Episodes",
             style = MaterialTheme.typography.headlineSmall,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -527,7 +527,7 @@ fun SourcesContent(
     }
 
     Column {
-        Text("Select Source", style = MaterialTheme.typography.titleLarge, color = Color.White)
+        Text("Select Source", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
         Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         // Per addon: how many sources it gave, or why none. Makes a short list explainable.
         if (streams != null && streamOutcomes.isNotEmpty()) {
@@ -536,7 +536,7 @@ fun SourcesContent(
                     o.addonName + " " + (o.problem?.let { p -> if (o.count > 0) "${o.count} ($p)" else p } ?: o.count.toString())
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -644,7 +644,7 @@ fun SourceColumnItem(name: String, isSelected: Boolean, modifier: Modifier = Mod
             softWrap = false,
             color = when {
                 isSelected -> primary
-                isFocused -> Color.White
+                isFocused -> MaterialTheme.colorScheme.onBackground
                 else -> Color.LightGray
             },
             modifier = Modifier.verticalText()
@@ -735,7 +735,7 @@ fun FilterDropdown(currentValue: String, options: List<String>, modifier: Modifi
                         text = {
                             Text(
                                 text = opt,
-                                color = if (isItemFocused) primary else Color.White
+                                color = if (isItemFocused) primary else MaterialTheme.colorScheme.onBackground
                             )
                         },
                         onClick = { onSelect(opt); expanded = false },
@@ -755,11 +755,11 @@ fun SeasonTab(number: Int, isSelected: Boolean, modifier: Modifier, onClick: () 
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier.clip(RoundedCornerShape(4.dp))
-            .background(if (isFocused) Color.White else if (isSelected) primary else Color.DarkGray)
+            .background(if (isFocused) primary else if (isSelected) primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
             .onFocusChanged { isFocused = it.isFocused }
             .clickable(onClick = onClick).focusable().padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text("Season $number", color = if (isSelected || isFocused) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge)
+        Text("Season $number", color = if (isFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -892,7 +892,7 @@ fun EpisodeItem(
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Box(Modifier.fillMaxSize().background(Color.White.copy(0.08f)))
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.onBackground.copy(0.08f)))
             }
 
             // Darken thumbnail for watched episodes
@@ -955,9 +955,9 @@ fun EpisodeItem(
                 Text(
                     title,
                     color = when {
-                        isWatched -> Color.White.copy(0.4f)
-                        isFocused -> Color.White
-                        else -> Color.White.copy(0.85f)
+                        isWatched -> MaterialTheme.colorScheme.onBackground.copy(0.4f)
+                        isFocused -> MaterialTheme.colorScheme.onBackground
+                        else -> MaterialTheme.colorScheme.onBackground.copy(0.85f)
                     },
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
@@ -968,7 +968,7 @@ fun EpisodeItem(
                 if (!overview.isNullOrBlank()) {
                     Text(
                         overview,
-                        color = Color.White.copy(0.5f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 4,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -985,14 +985,14 @@ fun EpisodeItem(
                     if (runtime != null) {
                         Text(
                             "(${runtime} min)",
-                            color = Color.White.copy(0.4f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.4f),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                     if (releaseDate != null) {
                         Text(
                             releaseDate,
-                            color = Color.White.copy(0.35f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.35f),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -1158,9 +1158,9 @@ fun RawSourceItem(
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    isExcluded -> Color.White.copy(0.025f)
-                    isFocused -> Color.White.copy(0.1f)
-                    else -> Color.White.copy(0.05f)
+                    isExcluded -> MaterialTheme.colorScheme.onBackground.copy(0.025f)
+                    isFocused -> MaterialTheme.colorScheme.onBackground.copy(0.1f)
+                    else -> MaterialTheme.colorScheme.onBackground.copy(0.05f)
                 }
             ),
             modifier = Modifier
@@ -1171,7 +1171,7 @@ fun RawSourceItem(
                 }
                 .border(
                     if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
-                    if (isFocused) primary else if (isExcluded) Color.White.copy(0.25f) else Color.Transparent,
+                    if (isFocused) primary else if (isExcluded) MaterialTheme.colorScheme.onBackground.copy(0.25f) else Color.Transparent,
                     RoundedCornerShape(8.dp)
                 )
                 .touchClick(
@@ -1212,8 +1212,8 @@ fun RawSourceItem(
                         mainText,
                         style = MaterialTheme.typography.bodyLarge,
                         color = when {
-                            isExcluded -> Color.White.copy(0.35f)
-                            isFocused -> Color.White
+                            isExcluded -> MaterialTheme.colorScheme.onBackground.copy(0.35f)
+                            isFocused -> MaterialTheme.colorScheme.onBackground
                             else -> Color.LightGray
                         },
                         modifier = Modifier.weight(1f)
@@ -1228,7 +1228,7 @@ fun RawSourceItem(
                         isExcluded -> Text(
                             "Excluded",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(0.45f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.45f),
                             modifier = Modifier.padding(start = 8.dp)
                         )
                     }

@@ -172,12 +172,12 @@ fun DashboardEditorScreen(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 20.sp
                 ),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Text(
                 "Reorder categories or hide unwanted lists.",
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                color = Color.White.copy(0.6f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                 modifier = Modifier.padding(top = 4.dp)
             )
 
@@ -325,7 +325,7 @@ fun DashboardEditorScreen(
                 }
                 Text(
                     "Genre rows",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
@@ -369,7 +369,7 @@ fun DashboardEditorScreen(
             Text(
                 "$tabLabel rows",
                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White.copy(0.5f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
@@ -380,14 +380,14 @@ fun DashboardEditorScreen(
                         .fillMaxWidth()
                         .weight(1f)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color.White.copy(0.03f))
+                        .background(MaterialTheme.colorScheme.onBackground.copy(0.03f))
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "No rows on $tabLabel",
-                            color = Color.White.copy(0.5f),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Spacer(Modifier.height(12.dp))
@@ -523,8 +523,8 @@ fun DashboardEditorScreen(
                 .padding(bottom = 16.dp),
             snackbar = { data ->
                 Snackbar(
-                    containerColor = Color.White.copy(0.12f),
-                    contentColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.onBackground.copy(0.12f),
+                    contentColor = MaterialTheme.colorScheme.onBackground,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(data.visuals.message, style = MaterialTheme.typography.bodyMedium)
@@ -726,7 +726,7 @@ fun DashboardEditorScreen(
                     Spacer(Modifier.height(20.dp))
                     Text(
                         "Items before View More: ${itemCount.toInt()}",
-                        color = Color.White.copy(0.8f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(8.dp))
@@ -820,7 +820,7 @@ fun DashboardEditorScreen(
                 )
                 Text(
                     "${hubItem.items.size} categories · ${hubItem.hub.shape}",
-                    color = Color.White.copy(0.5f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 24.dp)
                 )
@@ -1094,7 +1094,7 @@ fun DashboardEditorScreen(
 
                     Text(
                         "Category",
-                        color = Color.White.copy(0.6f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -1109,7 +1109,7 @@ fun DashboardEditorScreen(
 
                     Text(
                         "Posters: ${posterCount.toInt()}",
-                        color = Color.White.copy(0.8f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1125,7 +1125,7 @@ fun DashboardEditorScreen(
                     val autoScrollLabel = if (autoScrollSeconds.toInt() == 0) "Off" else "${autoScrollSeconds.toInt()}s"
                     Text(
                         "Auto-scroll: $autoScrollLabel",
-                        color = Color.White.copy(0.8f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(Modifier.height(8.dp))
@@ -1263,7 +1263,7 @@ fun VoidEditorItem(
         }
     )
     val borderWidth = if (isReordering || isFocused) 2.dp else 0.dp
-    val bgColor = Color.White.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
     val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
 
     Row(
@@ -1294,7 +1294,7 @@ fun VoidEditorItem(
             if (!isReordering) {
                 Text(
                     "≡",
-                    color = Color.White.copy(if (isFocused) 0.5f else 0.2f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(if (isFocused) 0.5f else 0.2f),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(end = 10.dp)
                 )
@@ -1317,7 +1317,7 @@ fun VoidEditorItem(
 
             Text(
                 text = title,
-                color = if (isFocused || isReordering) Color.White else Color.White.copy(0.7f),
+                color = if (isFocused || isReordering) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.7f),
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1346,8 +1346,8 @@ fun VoidEditorItem(
             }
         } else if (isFocused) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Manage", color = Color.White.copy(0.6f), style = MaterialTheme.typography.labelSmall)
-                Text(" ›", color = Color.White.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
+                Text("Manage", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
+                Text(" ›", color = MaterialTheme.colorScheme.onBackground.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -1378,7 +1378,7 @@ fun VoidHubEditorItem(
         }
     )
     val borderWidth = if (isReordering || isFocused) 2.dp else 0.dp
-    val bgColor = Color.White.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
     val scale by animateFloatAsState(if (isFocused) 1.02f else 1f)
 
     Row(
@@ -1412,7 +1412,7 @@ fun VoidHubEditorItem(
             if (!isReordering) {
                 Text(
                     "≡",
-                    color = Color.White.copy(if (isFocused) 0.5f else 0.2f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(if (isFocused) 0.5f else 0.2f),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(end = 10.dp)
                 )
@@ -1436,14 +1436,14 @@ fun VoidHubEditorItem(
             Column {
                 Text(
                     text = hub.title,
-                    color = if (isFocused || isReordering) Color.White else Color.White.copy(0.7f),
+                    color = if (isFocused || isReordering) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.7f),
                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = "$itemCount categories · ${hub.shape}",
-                    color = Color.White.copy(0.4f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.4f),
                     style = MaterialTheme.typography.labelSmall
                 )
             }
@@ -1470,8 +1470,8 @@ fun VoidHubEditorItem(
             }
         } else if (isFocused) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Manage", color = Color.White.copy(0.6f), style = MaterialTheme.typography.labelSmall)
-                Text(" ›", color = Color.White.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
+                Text("Manage", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
+                Text(" ›", color = MaterialTheme.colorScheme.onBackground.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -1506,7 +1506,7 @@ fun HubItemEditorRow(
             .fillMaxWidth()
             .height(48.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(if (isFocused || isReordering) Color.White.copy(0.1f) else Color.White.copy(0.03f))
+            .background(if (isFocused || isReordering) MaterialTheme.colorScheme.onBackground.copy(0.1f) else MaterialTheme.colorScheme.onBackground.copy(0.03f))
             .border(borderWidth, borderColor, RoundedCornerShape(6.dp))
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .focusRequester(focusRequester)
@@ -1525,7 +1525,7 @@ fun HubItemEditorRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.title,
-                color = Color.White.copy(0.8f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1614,7 +1614,7 @@ fun VoidTabBtn(
 
     val showHighlight = isFocused || (isSelected && !isTabRowFocused)
 
-    val textColor = if (showHighlight) Color.White else Color.White.copy(0.6f)
+    val textColor = if (showHighlight) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.6f)
     val indicatorHeight = if (showHighlight) 2.dp else 0.dp
     val indicatorColor = accentColor
 
@@ -1652,7 +1652,7 @@ fun VoidSimpleItem(text: String, onClick: () -> Unit, focusRequester: FocusReque
             .fillMaxWidth()
             .height(50.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isFocused) Color.White.copy(0.1f) else Color.White.copy(0.05f))
+            .background(if (isFocused) MaterialTheme.colorScheme.onBackground.copy(0.1f) else MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .focusable(interactionSource = interactionSource)
@@ -1660,7 +1660,7 @@ fun VoidSimpleItem(text: String, onClick: () -> Unit, focusRequester: FocusReque
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text, color = Color.White)
+        Text(text, color = MaterialTheme.colorScheme.onBackground)
         if (isFocused) Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
     }
 }
@@ -1682,11 +1682,11 @@ fun VoidCheckboxRow(
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.05f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .border(
                 if (isFocused || isChecked) 2.dp else 0.dp,
                 when {
-                    isFocused -> Color.White
+                    isFocused -> MaterialTheme.colorScheme.onBackground
                     isChecked -> accentColor
                     else -> Color.Transparent
                 },
@@ -1705,8 +1705,8 @@ fun VoidCheckboxRow(
             text = label,
             color = when {
                 isChecked -> accentColor
-                isFocused -> Color.White
-                else -> Color.White.copy(0.8f)
+                isFocused -> MaterialTheme.colorScheme.onBackground
+                else -> MaterialTheme.colorScheme.onBackground.copy(0.8f)
             },
             style = MaterialTheme.typography.bodyLarge
         )
@@ -1715,8 +1715,8 @@ fun VoidCheckboxRow(
             onCheckedChange = null,
             colors = CheckboxDefaults.colors(
                 checkedColor = accentColor,
-                uncheckedColor = Color.White.copy(0.5f),
-                checkmarkColor = Color.White
+                uncheckedColor = MaterialTheme.colorScheme.onBackground.copy(0.5f),
+                checkmarkColor = MaterialTheme.colorScheme.onBackground
             )
         )
     }
@@ -1752,7 +1752,7 @@ fun VoidSlider(
                 .weight(1f)
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(Color.White.copy(0.2f))
+                .background(MaterialTheme.colorScheme.onBackground.copy(0.2f))
         ) {
             Box(
                 modifier = Modifier
@@ -1790,13 +1790,13 @@ private fun VoidSliderButton(
             .size(48.dp)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(0.1f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
             .border(
                 if (isFocused) 2.dp else 1.dp,
                 when {
                     isFocused && enabled -> accentColor
-                    isFocused && !enabled -> Color.White.copy(0.3f)
-                    else -> Color.White.copy(0.2f)
+                    isFocused && !enabled -> MaterialTheme.colorScheme.onBackground.copy(0.3f)
+                    else -> MaterialTheme.colorScheme.onBackground.copy(0.2f)
                 },
                 RoundedCornerShape(8.dp)
             )
@@ -1810,9 +1810,9 @@ private fun VoidSliderButton(
         Text(
             text = text,
             color = when {
-                !enabled -> Color.White.copy(0.3f)
+                !enabled -> MaterialTheme.colorScheme.onBackground.copy(0.3f)
                 isFocused -> accentColor
-                else -> Color.White.copy(0.8f)
+                else -> MaterialTheme.colorScheme.onBackground.copy(0.8f)
             },
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
         )
@@ -1839,7 +1839,7 @@ fun VoidEditorRow(
             .height(56.dp)
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isFocused) Color.White.copy(0.1f) else Color.White.copy(0.05f))
+            .background(if (isFocused) MaterialTheme.colorScheme.onBackground.copy(0.1f) else MaterialTheme.colorScheme.onBackground.copy(0.05f))
             .border(
                 if (isFocused) 2.dp else 0.dp,
                 if (isFocused) accentColor else Color.Transparent,
@@ -1861,14 +1861,14 @@ fun VoidEditorRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 subtitle,
-                color = Color.White.copy(0.5f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1878,7 +1878,7 @@ fun VoidEditorRow(
             modifier = Modifier
                 .size(10.dp)
                 .clip(RoundedCornerShape(5.dp))
-                .background(if (isEnabled) accentColor else Color.White.copy(0.3f))
+                .background(if (isEnabled) accentColor else MaterialTheme.colorScheme.onBackground.copy(0.3f))
         )
     }
 }

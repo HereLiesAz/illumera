@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.hereliesaz.illumera.data.profile.BakedAddons
 import javax.inject.Inject
 
 internal const val CINEMETA_TRANSPORT_URL = "https://v3-cinemeta.strem.io"
@@ -42,7 +43,7 @@ class StremioAddonsViewModel @Inject constructor(
      * Stremio is authoritative for the addon set and ordering. Existing Illumera-
      * specific configuration for an unchanged transport URL is preserved because
      * those rows are left in place; only missing/removed addons are installed or
-     * deleted. Cinemeta is retained as Illumera's metadata baseline even if the
+     * deleted. Baked addons (Cinemeta, Streaming Catalogs) are always retained, even if the
      * account endpoint omits Stremio's built-in addon from its mutable collection.
      */
     fun syncFromStremio() {
@@ -103,7 +104,7 @@ class StremioAddonsViewModel @Inject constructor(
                     val remoteSet = remoteUrls.toSet()
                     if (!skipDeletions) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
-                        if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
+                        if (!BakedAddons.isBaked(localUrl) && localUrl !in remoteSet) {
                             try {
                                 addonRepository.deleteAddon(addon.transportUrl)
                                 removedCount++
