@@ -1315,8 +1315,20 @@ class ExoPlayerBackend(
         sv.post { sv.setCues(transformed) }
     }
 
+    /** The player, for the floating window (FloatingPlayer) to borrow its video output. */
+    fun floatingSource(): ExoPlayer? = exoPlayer
+
+    /** Puts the video back on the full-screen view after the floating window gave it up. */
+    fun reattachVideo() {
+        val pv = playerView ?: return
+        val player = exoPlayer ?: return
+        pv.player = null
+        pv.player = player
+    }
+
     override fun release() {
         released = true
+        com.hereliesaz.illumera.ui.player.FloatingPlayer.hide(appContext)
         frameRateManager?.restoreOriginalMode()
         assHandler?.release()
         assHandler = null

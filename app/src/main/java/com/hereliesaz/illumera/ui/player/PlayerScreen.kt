@@ -230,10 +230,30 @@ fun PlayerScreen(
 
     DisposableEffect(lifecycleOwner, playbackController) {
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) {
+                // Back in front: the floating window gives the video back to the full screen.
+                FloatingPlayer.hide(context)
+            }
             if (event == Lifecycle.Event.ON_STOP) {
                 // Keep playing in the PiP window; dismissing it pauses via onPipDismissed.
                 val inPip = context.findActivity()?.isInPictureInPictureMode == true
-                if (!inPip) playbackController.pause()
+                val backend = playbackController as? ExoPlayerBackend
+                val floatingSource = backend?.floatingSource()
+                val floats = !inPip && floatingSource != null && floatingSource.playWhenReady &&
+                    !playbackController.uiState.value.isEnded && FloatingPlayer.shouldFloat(context)
+                if (floats) {
+                    // No system PiP on this box: keep playing in our own window over other apps.
+                    FloatingPlayer.show(context, floatingSource!!) {
+                        backend?.reattachVideo()
+                        // Closed while the app is still in the background (another app took
+                        // the audio, or playback stopped): don't resume unseen later.
+                        if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                            playbackController.pause()
+                        }
+                    }
+                } else if (!inPip) {
+                    playbackController.pause()
+                }
                 val state = playbackController.uiState.value
                 val pos = state.positionMs.coerceAtLeast(0L)
                 val dur = state.durationMs.takeIf { it > 0L }
