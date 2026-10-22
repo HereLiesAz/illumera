@@ -51,7 +51,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.ThreeDRotation
+import androidx.compose.material.icons.filled._3dRotation
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -1647,7 +1647,7 @@ private fun PlayerControlsOverlay(
 
                     if (showStereoControl) {
                         ControlButton(
-                            icon = Icons.Default.ThreeDRotation,
+                            icon = Icons.Default._3dRotation,
                             contentDescription = when (stereoLayout) {
                                 StereoLayout.OFF -> "Play in 2D"
                                 StereoLayout.SIDE_BY_SIDE -> "2D (side-by-side) — switch to top-bottom"
