@@ -218,6 +218,9 @@ class MediaActionsViewModel @Inject constructor(
         }
     }
 
+    /** Active profile's verdicts, for screens that show them live (Details). */
+    val tastes = tasteStore.entries
+
     /**
      * Records Like / Love / Don't like (null clears). An episode's verdict is its show's.
      * Love also adds the title to the Trakt library; Don't like hides it from every row.

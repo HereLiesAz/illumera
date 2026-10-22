@@ -40,6 +40,13 @@ import androidx.compose.material.icons.filled.Recommend
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import com.hereliesaz.illumera.data.taste.Taste
+import androidx.compose.material.icons.filled.ThumbUpOffAlt
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDownOffAlt
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -729,6 +736,16 @@ fun DetailsScreen(
                             onClick = { viewModel.toggleWatchlist() }
                         )
 
+                        DetailsTasteButtons(
+                            target = com.hereliesaz.illumera.ui.components.MediaActionTarget(
+                                id = state.resolvedId ?: state.meta?.id ?: streamId,
+                                type = type,
+                                title = state.meta?.name.orEmpty(),
+                                poster = state.meta?.poster
+                            ),
+                            focusMemory = focusMemory
+                        )
+
                         if (resumePlaybackId != null) {
                             ExpandableIconButton(
                                 label = "Clear Progress",
@@ -839,6 +856,16 @@ fun DetailsScreen(
                             modifier = Modifier.restorableFocus("hero:watchlist", focusMemory),
                             isActive = isInWatchlist,
                             onClick = { viewModel.toggleWatchlist() }
+                        )
+
+                        DetailsTasteButtons(
+                            target = com.hereliesaz.illumera.ui.components.MediaActionTarget(
+                                id = state.resolvedId ?: state.meta?.id ?: streamId,
+                                type = type,
+                                title = state.meta?.name.orEmpty(),
+                                poster = state.meta?.poster
+                            ),
+                            focusMemory = focusMemory
                         )
 
                         if (resumePlaybackId != null) {
@@ -1665,4 +1692,37 @@ private fun playbackIdBelongsToSeries(seriesId: String, playbackId: String): Boo
     val episode = parts.last().toIntOrNull()
     if (season == null || episode == null) return playbackId == seriesId
     return parts.dropLast(2).joinToString(":") == seriesId
+}
+
+/** Love / Like / Don't like for this title; choosing the active verdict again clears it. */
+@Composable
+private fun DetailsTasteButtons(
+    target: com.hereliesaz.illumera.ui.components.MediaActionTarget,
+    focusMemory: FocusMemory,
+    actions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel()
+) {
+    val tastes by actions.tastes.collectAsStateWithLifecycle()
+    val taste = (tastes[target.id] ?: tastes[target.id.substringBefore(':')])?.taste
+    fun choose(choice: Taste) = actions.setTaste(target, choice.takeIf { it != taste })
+    ExpandableIconButton(
+        label = if (taste == Taste.LOVE) "Loved" else "Love",
+        icon = if (taste == Taste.LOVE) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+        modifier = Modifier.restorableFocus("hero:love", focusMemory),
+        isActive = taste == Taste.LOVE,
+        onClick = { choose(Taste.LOVE) }
+    )
+    ExpandableIconButton(
+        label = if (taste == Taste.LIKE) "Liked" else "Like",
+        icon = if (taste == Taste.LIKE) Icons.Default.ThumbUp else Icons.Default.ThumbUpOffAlt,
+        modifier = Modifier.restorableFocus("hero:like", focusMemory),
+        isActive = taste == Taste.LIKE,
+        onClick = { choose(Taste.LIKE) }
+    )
+    ExpandableIconButton(
+        label = "Don't like",
+        icon = if (taste == Taste.DISLIKE) Icons.Default.ThumbDown else Icons.Default.ThumbDownOffAlt,
+        modifier = Modifier.restorableFocus("hero:dislike", focusMemory),
+        isActive = taste == Taste.DISLIKE,
+        onClick = { choose(Taste.DISLIKE) }
+    )
 }

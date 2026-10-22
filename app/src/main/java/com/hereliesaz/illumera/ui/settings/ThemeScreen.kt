@@ -98,12 +98,12 @@ fun ThemeScreen(
         Text(
             "Theme",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Text(
             "Choose a color scheme for your experience.",
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = Color.White.copy(0.6f),
+            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
             modifier = Modifier.padding(top = 4.dp)
         )
 
@@ -368,7 +368,7 @@ private fun ThemeCard(
     
     val borderColor by animateColorAsState(
         when {
-            isCardFocused || isPenFocused -> Color.White
+            isCardFocused || isPenFocused -> MaterialTheme.colorScheme.onBackground
             isSelected -> Color(theme.primaryColor.toInt())
             else -> Color.Transparent
         }
@@ -385,7 +385,7 @@ private fun ThemeCard(
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color.White.copy(0.08f))
+                .background(MaterialTheme.colorScheme.onBackground.copy(0.08f))
                 .border(2.dp, borderColor, RoundedCornerShape(12.dp))
                 .then(modifier)
                 .then(focusModifier)
@@ -397,7 +397,7 @@ private fun ThemeCard(
             Text(
                 text = theme.name,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -424,7 +424,7 @@ private fun ThemeCard(
                     .scale(penScale)
                     .alpha(penAlpha)
                     .clip(CircleShape)
-                    .background(if (isPenFocused) Color.White else Color.Transparent)
+                    .background(if (isPenFocused) MaterialTheme.colorScheme.primary else Color.Transparent)
                     .clickable(
                         interactionSource = penInteractionSource,
                         indication = null,
@@ -436,7 +436,7 @@ private fun ThemeCard(
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = "Edit Theme",
-                    tint = if (isPenFocused) Color.Black else Color.White,
+                    tint = if (isPenFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -454,6 +454,6 @@ private fun ColorPreviewCircle(color: Color) {
             .size(24.dp)
             .clip(CircleShape)
             .background(color)
-            .border(1.dp, Color.White.copy(0.3f), CircleShape)
+            .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.3f), CircleShape)
     )
 }

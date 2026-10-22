@@ -789,7 +789,7 @@ private fun StremioConnectDialog(
                             modifier = Modifier
                                 .size(150.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.onBackground)
+                                .background(Color.White)
                                 .padding(4.dp)
                         ) {
                             Image(
@@ -903,7 +903,7 @@ private fun SetupSocialLoginDialog(
                         modifier = Modifier
                             .size(180.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.onBackground)
+                            .background(Color.White)
                             .padding(6.dp)
                     ) {
                         Image(
@@ -1503,7 +1503,7 @@ fun ThemePickItem(
                     .background(Color(theme.backgroundColor.toInt()))
                     .border(
                         3.dp,
-                        if (isFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
+                        if (isFocused) Color.White else Color.Transparent,
                         CircleShape
                     )
                     .padding(12.dp)
