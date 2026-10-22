@@ -496,6 +496,15 @@ class ExoPlayerBackend(
     private var appliedVideoFrameRate: Float = 0f
 
     private val analyticsListener = object : AnalyticsListener {
+        override fun onVideoDecoderInitialized(
+            eventTime: AnalyticsListener.EventTime,
+            decoderName: String,
+            initializedTimestampMs: Long,
+            initializationDurationMs: Long
+        ) {
+            MvcStats.decoderName = decoderName
+        }
+
         override fun onDownstreamFormatChanged(
             eventTime: AnalyticsListener.EventTime,
             mediaLoadData: MediaLoadData
@@ -1480,6 +1489,7 @@ class ExoPlayerBackend(
             // wrong source onto the shared player.
             if (loadToken != token || released) return@launch
 
+            MvcStats.reset()
             player.setMediaSource(finalMediaSource)
 
             // Defer the seek to STATE_READY instead of seeking before prepare().
