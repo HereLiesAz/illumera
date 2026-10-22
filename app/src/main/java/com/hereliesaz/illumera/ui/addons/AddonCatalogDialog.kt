@@ -73,6 +73,7 @@ fun AddonCatalogContent(
     onInstalledSelected: () -> Unit = {},
     onRemoveInstalled: (String) -> Unit = {},
     onToggleInstalled: (String, Boolean) -> Unit = { _, _ -> },
+    onConfigureInstalled: (String) -> Unit = {},
     onInstallUrl: () -> Unit = {},
     modifier: Modifier = Modifier,
     entryRequester: FocusRequester? = null,
@@ -293,6 +294,14 @@ fun AddonCatalogContent(
                                 )
                             }
                             val addonLabel = addon.nickname ?: addon.name
+                            if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(addon.transportUrl)) {
+                                AddonIconAction(
+                                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    label = "Configure $addonLabel",
+                                    onClick = { onConfigureInstalled(addon.transportUrl) },
+                                    modifier = Modifier.restorableFocus("addons:configure:${addon.transportUrl}", focusMemory)
+                                )
+                            }
                             AddonIconAction(
                                 icon = {
                                     Icon(

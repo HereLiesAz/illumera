@@ -67,6 +67,18 @@ fun AddonsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showingInstalled by remember { mutableStateOf(false) }
+    var showTorrentioConfig by remember { mutableStateOf(false) }
+    if (showTorrentioConfig) {
+        TorrentioConfigDialog(
+            installedUrl = viewModel.installedTorrentioUrl(),
+            connectedDebrid = remember { viewModel.connectedDebrid() },
+            onSave = { config ->
+                viewModel.saveTorrentio(config)
+                showTorrentioConfig = false
+            },
+            onDismiss = { showTorrentioConfig = false }
+        )
+    }
     var showRemotePaste by remember { mutableStateOf(false) }
     var showInstallUrl by remember { mutableStateOf(false) }
     var installUrl by remember { mutableStateOf("") }
@@ -133,10 +145,14 @@ fun AddonsScreen(
                 }
             },
             onConfigure = { item ->
-                item.configureUrl?.let { url ->
+                // Torrentio is configured natively; every other addon uses its own web page.
+                if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(item.transportUrl)) {
+                    showTorrentioConfig = true
+                } else item.configureUrl?.let { url ->
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
             },
+            onConfigureInstalled = { showTorrentioConfig = true },
             showingInstalled = showingInstalled,
             onInstalledSelected = { showingInstalled = true; removalGuidance = null },
             onRemoveInstalled = { pendingRemoval = it },

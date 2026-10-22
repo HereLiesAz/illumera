@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import java.util.Collections
+import com.hereliesaz.illumera.data.profile.BakedAddons
 import javax.inject.Inject
 
 sealed class AddonEvent {
@@ -318,6 +319,48 @@ class AddonsViewModel @Inject constructor(
                 throw ce
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Failed to remove addon")
+            }
+        }
+    }
+
+    /** Connected debrid service and key, for pre-filling Torrentio's native configuration. */
+    fun connectedDebrid(): Pair<com.hereliesaz.illumera.data.model.debrid.DebridProvider, String>? {
+        val provider = debridManager.connectedProvider.value ?: return null
+        val key = debridManager.getApiKey()?.takeIf { it.isNotBlank() } ?: return null
+        return provider to key
+    }
+
+    /** The installed Torrentio's URL, if any (its configuration lives in the URL). */
+    fun installedTorrentioUrl(): String? = _uiState.value.addons
+        .firstOrNull { com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(it.transportUrl) }
+        ?.transportUrl
+
+    /**
+     * Replaces the installed Torrentio with [config]'s URL. The new install is written
+     * before the old one is removed, so a failure leaves the previous configuration intact.
+     */
+    fun saveTorrentio(config: com.hereliesaz.illumera.data.debrid.TorrentioConfig) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            try {
+                val manifestUrl = config.manifestUrl()
+                val newTransport = manifestUrl.removeSuffix("/manifest.json")
+                val previous = _uiState.value.addons.filter {
+                    com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(it.transportUrl) &&
+                        it.transportUrl.trimEnd('/') != newTransport
+                }
+                repository.installAddonWithConfig(
+                    manifestUrl, home = false, movies = false, series = false,
+                    fallbackManifest = profileConfigurationManager.bakedManifest(BakedAddons.TORRENTIO_URL)
+                )
+                previous.forEach { repository.deleteAddon(it.transportUrl) }
+                persistProfileState()
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                _events.send(AddonEvent.InstallationSuccess)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Failed to save Torrentio")
             }
         }
     }
