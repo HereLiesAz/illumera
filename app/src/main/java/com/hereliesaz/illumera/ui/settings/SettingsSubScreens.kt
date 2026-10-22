@@ -401,18 +401,22 @@ fun PlaybackSettings(
                 blockUp = true
             )
 
-            // 3D DISPLAY (Android can't report HDMI 3D capability; the viewer tells us)
+            // DISABLE 3D (Android can't report HDMI 3D capability, so this is the viewer's call)
             val stereoContext = LocalContext.current
-            var tvPlays3d by remember {
-                mutableStateOf(com.hereliesaz.illumera.ui.player.base.Stereo3d.displaySupports3d(stereoContext))
+            var disable3d by remember {
+                mutableStateOf(!com.hereliesaz.illumera.ui.player.base.Stereo3d.displaySupports3d(stereoContext))
             }
             SettingToggleRow(
-                label = "TV Plays 3D",
-                subtitle = "Off: 3D plays as 2D (Blu-ray 3D automatically, side-by-side/top-bottom on request). Android can't detect 3D TVs, so set this if yours is one",
-                isChecked = tvPlays3d,
+                label = "Disable 3D",
+                subtitle = if (disable3d) {
+                    "3D plays as 2D: Blu-ray 3D automatically, side-by-side/top-bottom on request. Turn off only if your TV shows 3D"
+                } else {
+                    "3D video is passed to the TV as-is"
+                },
+                isChecked = disable3d,
                 onCheckedChange = {
-                    tvPlays3d = it
-                    com.hereliesaz.illumera.ui.player.base.Stereo3d.setDisplaySupports3d(stereoContext, it)
+                    disable3d = it
+                    com.hereliesaz.illumera.ui.player.base.Stereo3d.setDisplaySupports3d(stereoContext, !it)
                 },
                 onBack = onGoBack
             )

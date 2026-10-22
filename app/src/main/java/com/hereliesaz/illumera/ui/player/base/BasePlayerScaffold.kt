@@ -268,7 +268,7 @@ fun BasePlayerScaffold(
             title = "3D video"
         ) {
             Text(
-                "This source is 3D, and this TV isn't set up to show 3D. Play it in 2D?",
+                "This source is 3D and Disable 3D is on. Play it in 2D?",
                 color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.height(16.dp))
@@ -287,7 +287,7 @@ fun BasePlayerScaffold(
                     onClick = { stereoPromptSourceId = null }
                 )
                 com.hereliesaz.illumera.ui.addons.VoidButton(
-                    text = "My TV plays 3D",
+                    text = "Turn off Disable 3D",
                     onClick = {
                         Stereo3d.setDisplaySupports3d(stereoContext, true)
                         stereoPromptSourceId = null

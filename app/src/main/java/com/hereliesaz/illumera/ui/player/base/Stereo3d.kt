@@ -10,7 +10,7 @@ enum class StereoLayout { OFF, SIDE_BY_SIDE, TOP_BOTTOM }
  *
  * Android exposes no API that reports whether the attached TV can show 3D (HDMI 3D
  * capability never reaches apps), so the display is assumed 2D unless the viewer says
- * otherwise in Settings → Playback. On a 2D display a 3D source shows both eyes squeezed
+ * otherwise (Settings → Playback → Disable 3D off). On a 2D display a 3D source shows both eyes squeezed
  * together; "Play in 2D" shows one eye at the correct aspect instead. Blu-ray 3D (MVC)
  * is reduced to its base view automatically on such a display (MvcStripExtractors).
  */
