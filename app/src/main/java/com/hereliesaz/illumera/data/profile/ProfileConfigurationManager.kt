@@ -205,6 +205,9 @@ class ProfileConfigurationManager @Inject constructor(
             }
             }
         } else snapshot
+        val repairedSnapshot = withBakedCatalogs(finalSnapshot).also {
+            if (it !== finalSnapshot) writeSnapshot(profileId, it)
+        }
         // Merging (keep-newest) watch history only makes sense when reloading the
         // SAME profile that's already active in the DB (e.g. recovering from a
         // crash before the last onStop snapshot was written). On a genuine switch
@@ -212,15 +215,15 @@ class ProfileConfigurationManager @Inject constructor(
         // profile and must be fully replaced, not merged in — merging it would leak
         // that profile's progress/watched-state into the incoming one.
         dao.replaceRuntimeState(
-            addons = finalSnapshot.addons.map { addon ->
+            addons = repairedSnapshot.addons.map { addon ->
                 if (addon.transportUrl.trimEnd('/') == "https://stremio-trailer-addon.vercel.app")
                     addon.copy(supportsStream = false)
                 else addon
             },
-            catalogConfigs = finalSnapshot.catalogConfigs,
-            hubRows = finalSnapshot.hubRows,
-            hubRowItems = finalSnapshot.hubRowItems,
-            watchHistory = finalSnapshot.watchHistory,
+            catalogConfigs = repairedSnapshot.catalogConfigs,
+            hubRows = repairedSnapshot.hubRows,
+            hubRowItems = repairedSnapshot.hubRowItems,
+            watchHistory = repairedSnapshot.watchHistory,
             mergeWatchHistory = sameProfile,
             ownerProfileId = profileId
         )
@@ -479,6 +482,57 @@ class ProfileConfigurationManager @Inject constructor(
         )
     }
 
+    /**
+     * A baked addon installed while its provider was unreachable was stored with no
+     * catalogs, so its rows never appeared. Fill those from the bundled manifest.
+     * Returns [snapshot] itself when nothing needed repair.
+     */
+    private fun withBakedCatalogs(snapshot: ProfileRuntimeSnapshot): ProfileRuntimeSnapshot {
+        var changed = false
+        val configured = snapshot.catalogConfigs.mapTo(mutableSetOf()) { it.uniqueId }
+        val extraConfigs = mutableListOf<CatalogConfigEntity>()
+        val addons = snapshot.addons.map { addon ->
+            val url = addon.transportUrl.trimEnd('/')
+            if (!BakedAddons.isBaked(url)) return@map addon
+            val current = runCatching {
+                gson.fromJson(addon.catalogsJson, Array<CatalogManifest>::class.java)?.toList()
+            }.getOrNull().orEmpty()
+            if (current.isNotEmpty()) return@map addon
+            val manifest = BakedAddons.manifest(context, url) ?: return@map addon
+            val catalogs = manifest.catalogs.orEmpty()
+            if (catalogs.isEmpty()) return@map addon
+            changed = true
+            catalogs.forEachIndexed { index, catalog ->
+                val uniqueId = "$url/${catalog.type}/${catalog.id}"
+                if (uniqueId in configured) return@forEachIndexed
+                val isMovie = catalog.type == "movie"
+                val isSeries = catalog.type == "series"
+                extraConfigs += CatalogConfigEntity(
+                    uniqueId = uniqueId,
+                    transportUrl = url,
+                    addonName = addon.name,
+                    catalogType = catalog.type,
+                    catalogId = catalog.id,
+                    catalogName = catalog.name,
+                    customTitle = null,
+                    showInHome = isMovie || isSeries,
+                    showInMovies = isMovie,
+                    showInSeries = isSeries,
+                    homeOrder = 20 + index,
+                    moviesOrder = if (isMovie) 20 + index else 999,
+                    seriesOrder = if (isSeries) 20 + index else 999
+                )
+            }
+            addon.copy(
+                catalogsJson = gson.toJson(catalogs),
+                supportsMeta = addon.supportsMeta || manifest.supportsResource("meta"),
+                typesJson = gson.toJson(manifest.types.orEmpty())
+            )
+        }
+        if (!changed) return snapshot
+        return snapshot.copy(addons = addons, catalogConfigs = snapshot.catalogConfigs + extraConfigs)
+    }
+
     private suspend fun createDefaultRuntimeSnapshot(): ProfileRuntimeSnapshot {
         val fallbackCatalogs = listOf(
             CatalogManifest(type = "movie", id = "top", name = "Top"),
@@ -491,7 +545,7 @@ class ProfileConfigurationManager @Inject constructor(
             throw cancelled
         } catch (_: Exception) {
             null
-        }
+        } ?: BakedAddons.manifest(context, DEFAULT_CINEMETA_TRANSPORT_URL)
         val catalogs = manifest?.catalogs
             ?.filter { it.type == "movie" || it.type == "series" }
             ?.ifEmpty { fallbackCatalogs }
@@ -562,8 +616,7 @@ class ProfileConfigurationManager @Inject constructor(
         // imaginary metadata or streaming capabilities until they respond.
         data class DefaultAddon(val url: String, val name: String, val stream: Boolean)
         val defaults = listOf(
-            DefaultAddon("https://7a82163c306e-stremio-netflix-catalog-addon.baby-beamup.club",
-                "Streaming Catalogs", false),
+            DefaultAddon(BakedAddons.STREAMING_CATALOGS_URL, "Streaming Catalogs", false),
             DefaultAddon("https://94c8cb9f702d-tmdb-addon.baby-beamup.club",
                 "The Movie Database Addon", false),
             DefaultAddon("https://seedsphere.fly.dev", "SeedSphere", true),
@@ -580,7 +633,7 @@ class ProfileConfigurationManager @Inject constructor(
                         throw e
                     } catch (_: Exception) {
                         null
-                    }
+                    } ?: BakedAddons.manifest(context, entry.url)
                     val addonCatalogs = manifest?.catalogs.orEmpty()
                     val entity = AddonEntity(
                         transportUrl = entry.url,

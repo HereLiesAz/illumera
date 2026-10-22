@@ -436,6 +436,8 @@ internal fun DebridLibrarySection(
             }
         )
     }
+    // An empty library shows nothing: no header, no placeholder text.
+    if (state.items.isEmpty() && !state.isLoading) return
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(start = startPadding, end = 16.dp),

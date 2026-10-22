@@ -40,6 +40,20 @@ interface TraktSyncApiService {
         @Query("limit") limit: Int = 30
     ): Response<List<TraktShow>>
 
+    // ── Related titles (public; no user context needed) ──
+
+    @GET("movies/{id}/related")
+    suspend fun getRelatedMovies(
+        @Path("id") id: String,
+        @Query("limit") limit: Int = 20
+    ): Response<List<TraktMovie>>
+
+    @GET("shows/{id}/related")
+    suspend fun getRelatedShows(
+        @Path("id") id: String,
+        @Query("limit") limit: Int = 20
+    ): Response<List<TraktShow>>
+
     // ── Watchlist ──
 
     @GET("sync/watchlist")

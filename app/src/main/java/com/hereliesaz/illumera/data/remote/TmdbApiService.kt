@@ -125,6 +125,22 @@ interface TmdbApiService {
         @Query("page") page: Int = 1
     ): Response<TmdbRecommendationsResponse>
 
+    @GET("movie/{movie_id}/similar")
+    suspend fun getMovieSimilar(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String? = null,
+        @Query("page") page: Int = 1
+    ): Response<TmdbRecommendationsResponse>
+
+    @GET("tv/{tv_id}/similar")
+    suspend fun getTvSimilar(
+        @Path("tv_id") tvId: Int,
+        @Query("api_key") apiKey: String,
+        @Query("language") language: String? = null,
+        @Query("page") page: Int = 1
+    ): Response<TmdbRecommendationsResponse>
+
     // ── Collections ──
 
     @GET("collection/{collection_id}")

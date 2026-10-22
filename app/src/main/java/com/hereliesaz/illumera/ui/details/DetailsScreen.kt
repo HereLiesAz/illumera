@@ -1289,6 +1289,8 @@ private fun CastRow(
     focusMemory: FocusMemory? = null,
     rowKey: String = "tmdb_cast"
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (leadingCrew.isEmpty() && cast.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current
@@ -1440,6 +1442,8 @@ private fun StudioRow(
     focusMemory: FocusMemory? = null,
     rowKey: String = ""
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (studios.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current
@@ -1531,6 +1535,8 @@ private fun RecommendationRow(
     onItemClick: (type: String, id: String, rowKey: String, index: Int) -> Unit = { _, _, _, _ -> },
     focusMemory: FocusMemory? = null
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (items.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current

@@ -122,7 +122,12 @@ fun CastDetailScreen(
             is CastDetailState.Success -> {
                 val initialFocusRequester = remember { FocusRequester() }
 
-                RestoreFocusOnResume(memory = focusMemory, fallback = initialFocusRequester)
+                RestoreFocusOnResume(
+                    memory = focusMemory,
+                    fallback = initialFocusRequester.takeIf {
+                        state.person.movieCredits.isNotEmpty() || state.person.tvCredits.isNotEmpty()
+                    }
+                )
 
                 CastDetailContent(
                     state.person, bg, accentColor, textColor,
@@ -285,6 +290,8 @@ private fun FilmographySection(
     focusMemory: FocusMemory,
     initialFocusRequester: FocusRequester? = null
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (credits.isEmpty()) return
     val density = LocalDensity.current
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val startPad = 48.dp

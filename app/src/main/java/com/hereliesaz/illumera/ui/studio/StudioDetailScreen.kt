@@ -128,7 +128,7 @@ fun StudioDetailScreen(
                 // With no rails nothing carries initialFocusRequester, so don't hand it out as the fallback.
                 RestoreFocusOnResume(
                     memory = focusMemory,
-                    fallback = initialFocusRequester.takeIf { state.rails.isNotEmpty() }
+                    fallback = initialFocusRequester.takeIf { state.rails.any { it.items.isNotEmpty() } }
                 )
 
                 StudioContent(
@@ -200,7 +200,7 @@ private fun StudioContent(
                     contentPadding = PaddingValues(top = 5.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    rails.forEachIndexed { railIndex, rail ->
+                    rails.filter { it.items.isNotEmpty() }.forEachIndexed { railIndex, rail ->
                         val rowKey = "${rail.mediaType}_${rail.railType}"
                         item(key = rowKey) {
                             DiscoverRailSection(
@@ -306,6 +306,8 @@ private fun DiscoverRailSection(
     rowKey: String,
     initialFocusRequester: FocusRequester? = null
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (rail.items.isEmpty()) return
     val density = LocalDensity.current
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val startPad = 48.dp

@@ -500,6 +500,8 @@ private fun QueueCardRow(
     onRemoveSuggestion: ((QueueItem) -> Unit)? = null,
     actions: @Composable (QueueItem, Int) -> Unit
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (items.isEmpty()) return
     var movingKey by remember { mutableStateOf<String?>(null) }
     BackHandler(enabled = movingKey != null) { movingKey = null }
 

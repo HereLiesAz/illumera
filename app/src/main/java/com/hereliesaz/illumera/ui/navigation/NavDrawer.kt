@@ -570,7 +570,7 @@ fun SidebarItem(
     val showIndicator = if (isDrawerActive) isFocused else isSelected
 
     val contentColor by animateColorAsState(
-        targetValue = if (showIndicator) Color.White else Color(0xFF8E9099),
+        targetValue = if (showIndicator) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
         label = "contentColor"
     )
 
@@ -617,7 +617,7 @@ fun SidebarItem(
                 focusedContainerColor = Color.Transparent,
                 pressedContainerColor = Color.Transparent,
                 contentColor = contentColor,
-                focusedContentColor = Color.White
+                focusedContentColor = MaterialTheme.colorScheme.onBackground
             )
         ) {
             Row(
@@ -683,7 +683,7 @@ fun ProfileAvatarItem(
     val showIndicator = if (isDrawerActive) isFocused else false
     
     val contentColor by animateColorAsState(
-        targetValue = if (showIndicator) Color.White else Color(0xFF8E9099),
+        targetValue = if (showIndicator) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
         label = "contentColor"
     )
     
@@ -739,7 +739,7 @@ fun ProfileAvatarItem(
                 focusedContainerColor = Color.Transparent,
                 pressedContainerColor = Color.Transparent,
                 contentColor = contentColor,
-                focusedContentColor = Color.White
+                focusedContentColor = MaterialTheme.colorScheme.onBackground
             )
         ) {
             Row(

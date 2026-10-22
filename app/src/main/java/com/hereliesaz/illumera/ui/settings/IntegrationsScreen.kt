@@ -379,7 +379,7 @@ fun IntegrationsScreen(
     if (showResetSyncConfirm) {
         DisconnectConfirmDialog(
             title = "Reset Stremio sync?",
-            message = "This profile is signed out of Stremio, every addon except Cinemeta is removed, " +
+            message = "This profile is signed out of Stremio, every addon except the built-in Cinemeta and Streaming Catalogs is removed, " +
                 "and the sync history is forgotten. Your Stremio account itself isn't changed. " +
                 "Sign in again to set up addons and Continue Watching from your account. " +
                 "Local watch progress is kept.",

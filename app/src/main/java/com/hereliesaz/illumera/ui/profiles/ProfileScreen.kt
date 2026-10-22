@@ -162,7 +162,7 @@ fun WelcomeView(onStart: () -> Unit) {
         Text(
             "WELCOME TO ILLUMERA",
             style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(16.dp))
         Text(
@@ -209,7 +209,7 @@ fun ProfileSelectorView(
         Text(
             "WHO IS WATCHING?",
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
 
         Spacer(Modifier.height(50.dp))
@@ -426,7 +426,7 @@ private fun ProfileInitialSetupDialog(
             modifier = Modifier
                 .width(rememberDialogWidth(520))
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .padding(32.dp)
         ) {
@@ -434,7 +434,7 @@ private fun ProfileInitialSetupDialog(
                 Text(
                     text = "Set Up \"$profileName\"",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -484,7 +484,7 @@ private fun CopyProfileSelectionDialog(
             modifier = Modifier
                 .width(rememberDialogWidth(560))
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .padding(32.dp)
         ) {
@@ -492,7 +492,7 @@ private fun CopyProfileSelectionDialog(
                 Text(
                     text = "Copy Configuration",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -544,7 +544,7 @@ private fun ScratchConfirmDialog(
             modifier = Modifier
                 .width(rememberDialogWidth(520))
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .padding(32.dp)
         ) {
@@ -552,7 +552,7 @@ private fun ScratchConfirmDialog(
                 Text(
                     text = "Start From Scratch?",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -670,7 +670,7 @@ private fun StremioConnectDialog(
                 .width(rememberDialogWidth(560))
                 .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.9f).dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .verticalScroll(rememberScrollState())
                 .padding(32.dp)
@@ -679,7 +679,7 @@ private fun StremioConnectDialog(
                 Text(
                     text = "Connect Stremio",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -731,7 +731,7 @@ private fun StremioConnectDialog(
                         Text(
                             text = "Use my connected account avatar if available",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
                             text = "Uses the Stremio avatar returned after email, Facebook, or Apple sign-in.",
@@ -778,7 +778,7 @@ private fun StremioConnectDialog(
                     Text(
                         text = "Or enter your Stremio credentials on your phone",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onBackground,
                         textAlign = TextAlign.Center
                     )
                     Spacer(Modifier.height(10.dp))
@@ -789,7 +789,7 @@ private fun StremioConnectDialog(
                             modifier = Modifier
                                 .size(150.dp)
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(Color.White)
+                                .background(MaterialTheme.colorScheme.onBackground)
                                 .padding(4.dp)
                         ) {
                             Image(
@@ -855,7 +855,7 @@ private fun SetupSocialLoginDialog(
             modifier = Modifier
                 .width(rememberDialogWidth(440))
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -863,7 +863,7 @@ private fun SetupSocialLoginDialog(
             Text(
                 text = if (provider == SetupSocialProvider.APPLE) "Sign in with Apple" else "Continue with Facebook",
                 style = MaterialTheme.typography.headlineSmall,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             Spacer(Modifier.height(12.dp))
 
@@ -903,7 +903,7 @@ private fun SetupSocialLoginDialog(
                         modifier = Modifier
                             .size(180.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color.White)
+                            .background(MaterialTheme.colorScheme.onBackground)
                             .padding(6.dp)
                     ) {
                         Image(
@@ -976,7 +976,7 @@ private fun ProfileWizardTextField(
     val borderBrush = if (isFocused) {
         Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary))
     } else {
-        SolidColor(Color.White.copy(0.1f))
+        SolidColor(MaterialTheme.colorScheme.onBackground.copy(0.1f))
     }
 
     Box(
@@ -993,7 +993,7 @@ private fun ProfileWizardTextField(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onBackground),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             singleLine = true,
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
@@ -1035,7 +1035,7 @@ fun ProfileOptionsDialog(
                 modifier = Modifier
                     .width(rememberDialogWidth(400))
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color.Black)
+                    .background(MaterialTheme.colorScheme.background)
                     .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                     .padding(32.dp),
                 contentAlignment = Alignment.Center
@@ -1064,7 +1064,7 @@ fun ProfileOptionsDialog(
                     Text(
                         text = profile.name.uppercase(),
                         style = MaterialTheme.typography.headlineSmall,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(Modifier.height(32.dp))
 
@@ -1126,7 +1126,7 @@ fun DeleteConfirmationDialog(
             modifier = Modifier
                 .width(rememberDialogWidth(400))
                 .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .border(2.dp, Color(0xFF333333), RoundedCornerShape(24.dp))
                 .padding(32.dp)
                 .alpha(if (isReady) 1f else 0f),
@@ -1136,7 +1136,7 @@ fun DeleteConfirmationDialog(
                 Text(
                     text = "Delete Profile?",
                     style = MaterialTheme.typography.headlineSmall,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -1190,7 +1190,7 @@ fun WizardNameStep(initialName: String, onNext: (String) -> Unit, onCancel: () -
         Text(
             if(initialName.isEmpty()) "What should we call you?" else "Update your name",
             style = MaterialTheme.typography.headlineMedium,
-            color = Color.White
+            color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(32.dp))
 
@@ -1231,7 +1231,7 @@ fun WizardAvatarStep(onNext: (String) -> Unit, onBack: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Choose an Avatar", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+        Text("Choose an Avatar", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
         Spacer(Modifier.height(16.dp))
         Text("Select an avatar that represents you.", color = Color.Gray)
 
@@ -1355,7 +1355,7 @@ fun WizardThemeStep(onFinish: (String) -> Unit, onBack: () -> Unit) {
             // Offset for theme name labels below circles (not present in avatar selector)
             Spacer(Modifier.height(32.dp))
             
-            Text("Choose a Theme", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Text("Choose a Theme", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(16.dp))
             Text("Select a color scheme for your experience.", color = Color.Gray)
 
@@ -1412,7 +1412,7 @@ fun WizardThemeStep(onFinish: (String) -> Unit, onBack: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
+                    .background(MaterialTheme.colorScheme.background)
                     .padding(32.dp)
             ) {
                 ThemeEditorScreen(
@@ -1503,7 +1503,7 @@ fun ThemePickItem(
                     .background(Color(theme.backgroundColor.toInt()))
                     .border(
                         3.dp,
-                        if (isFocused) Color.White else Color.Transparent,
+                        if (isFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
                         CircleShape
                     )
                     .padding(12.dp)
@@ -1525,7 +1525,7 @@ fun ThemePickItem(
         Text(
             text = theme.name,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = if (isFocused) Color.White else Color.Gray
+            color = if (isFocused) MaterialTheme.colorScheme.onBackground else Color.Gray
         )
     }
 }
@@ -1602,7 +1602,7 @@ fun ProfileCard(
         Text(
             text = profile.name.uppercase(),
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-            color = if(isCardFocused || isEditFocused) Color.White else Color.Gray
+            color = if(isCardFocused || isEditFocused) MaterialTheme.colorScheme.onBackground else Color.Gray
         )
         
         Spacer(Modifier.height(8.dp))
@@ -1617,7 +1617,7 @@ fun ProfileCard(
                 .scale(editScale)
                 .alpha(pencilAlpha)
                 .clip(CircleShape)
-                .background(if (isEditFocused) Color.White else Color.Transparent)
+                .background(if (isEditFocused) MaterialTheme.colorScheme.primary else Color.Transparent)
                 .clickable(
                     interactionSource = editInteractionSource,
                     indication = null,
@@ -1629,7 +1629,7 @@ fun ProfileCard(
             Icon(
                 imageVector = Icons.Default.Edit,
                 contentDescription = "Edit Profile",
-                tint = if (isEditFocused) Color.Black else Color.White,
+                tint = if (isEditFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -1652,20 +1652,20 @@ fun AddProfileCard(onClick: () -> Unit, focusRequester: FocusRequester? = null) 
             modifier = Modifier
                 .size(120.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(0.1f))
-                .border(2.dp, if(isFocused) Color.White else Color.Transparent, CircleShape)
+                .background(MaterialTheme.colorScheme.onBackground.copy(0.1f))
+                .border(2.dp, if(isFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent, CircleShape)
                 .then(focusModifier)
                 .clickable(interactionSource = interactionSource, indication = null) { onClick() }
                 .focusable(interactionSource = interactionSource),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(40.dp))
+            Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(40.dp))
         }
         Spacer(Modifier.height(12.dp))
         Text(
             "ADD PROFILE",
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
-            color = if(isFocused) Color.White else Color.Gray
+            color = if(isFocused) MaterialTheme.colorScheme.onBackground else Color.Gray
         )
         Spacer(Modifier.height(8.dp))
         Spacer(Modifier.height(32.dp))
