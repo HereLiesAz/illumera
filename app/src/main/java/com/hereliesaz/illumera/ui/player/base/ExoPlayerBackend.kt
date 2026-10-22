@@ -1535,10 +1535,12 @@ class ExoPlayerBackend(
             AssRenderersFactory(appContext, handler)
                 .setExtensionRendererMode(playbackSettings.decoderPriority)
                 .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)
+                .setMediaCodecSelector(MvcStats.codecSelector)
         } else {
             SubtitleDelayRenderersFactory(appContext, subtitleDelayUs::get)
                 .setExtensionRendererMode(playbackSettings.decoderPriority)
                 .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)
+                .setMediaCodecSelector(MvcStats.codecSelector)
         }
 
         val mediaSourceFactory = if (playbackSettings.assRendererEnabled) {
