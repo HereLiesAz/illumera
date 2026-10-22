@@ -25,10 +25,11 @@ object ImageLoaderModule {
         return ImageLoader.Builder(context)
             // Use shared OkHttpClient with connection pooling
             .okHttpClient(okHttpClient)
-            // Large memory cache for TV (25% of available memory for smooth scrolling)
+            // Memory cache at 15% of app memory: bitmaps are hardware (graphics memory, shared
+            // with the whole box), and a larger cache starved low-memory TV boxes.
             .memoryCache {
                 MemoryCache.Builder(context)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.15)
                     .strongReferencesEnabled(true)
                     .build()
             }

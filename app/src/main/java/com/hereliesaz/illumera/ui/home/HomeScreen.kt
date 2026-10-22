@@ -378,7 +378,10 @@ internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 
 internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
 
 /** Cards per row whose cinematic art is resolved and decoded ahead of focus. */
-private const val ART_PRELOAD_ITEMS = 5
+// Each 1080p backdrop is ~8 MB of graphics memory; preloading dozens at once exhausted it on
+// low-memory TV boxes and took the whole device down. Keep the ahead-of-focus set small.
+private const val ART_PRELOAD_ITEMS = 3
+private const val ART_PRELOAD_ROWS_AHEAD = 1
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -649,7 +652,7 @@ fun CinematicLayout(
                                 .filter { it >= 0 }
                             (slots.minOrNull() ?: 0) to (slots.maxOrNull() ?: -1)
                         }.collect { (first, last) ->
-                            visibleMixedRows.drop(first).take(last - first + 1 + 3)
+                            visibleMixedRows.drop(first).take(last - first + 1 + ART_PRELOAD_ROWS_AHEAD)
                                 .map { it.value }.filterIsInstance<CategoryRow>()
                                 .flatMap { it.items.take(ART_PRELOAD_ITEMS) }
                                 .forEach { item ->
