@@ -85,6 +85,12 @@ class DetailsFocusReturnTest {
         )
     }
 
+    /** No Hilt here: the Love / Like / Don't like buttons get a stub with no verdicts. */
+    private fun tasteActions(): com.hereliesaz.illumera.ui.components.MediaActionsViewModel =
+        mockk(relaxed = true) {
+            every { tastes } returns kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+        }
+
     /** Play's label follows the resume state: "Loading…", "Resume" or "Play Movie". */
     private fun playButton() = compose.onNode(
         hasContentDescription("Play Movie") or hasContentDescription("Loading…") or hasContentDescription("Resume")
@@ -93,6 +99,7 @@ class DetailsFocusReturnTest {
     @Test
     fun backFromThePlayerFocusesTheHeroButtonThatStartedIt() {
         val vm = newViewModel()
+        val actions = tasteActions()
         lateinit var backStack: NavBackStack<NavKey>
         compose.setContent {
             backStack = androidx.compose.runtime.remember { NavBackStack(HomeKey(), DetailsKey("movie", "tt1")) }
@@ -113,7 +120,8 @@ class DetailsFocusReturnTest {
                             type = key.type,
                             id = key.id,
                             onPlayClick = { _, _, _, _, _, _, _, _, _, _ -> },
-                            viewModel = vm
+                            viewModel = vm,
+                            tasteActions = actions
                         )
                     }
                     entry<PlayerKey> { Text("player") }
