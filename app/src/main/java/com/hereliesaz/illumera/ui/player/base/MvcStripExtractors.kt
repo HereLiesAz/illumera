@@ -64,13 +64,29 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
     private var pending = ByteArray(256 * 1024)
     private var pendingSize = 0
     private val scratch = ParsableByteArray()
+    /**
+     * The H.264 format, held back until the first sample shows whether the stream is MVC,
+     * so the decoder is chosen knowing that (MvcStats.codecSelector).
+     */
+    private var heldFormat: Format? = null
 
     override fun format(format: Format) {
         flushPending()
+        releaseFormat()
         filtering = format.sampleMimeType == MimeTypes.VIDEO_H264
         passthrough = false
-        if (filtering) MvcStats.onFormat(format.frameRate)
+        if (filtering) {
+            MvcStats.onFormat(format.frameRate)
+            if (!MvcStats.mvcDetected) {
+                heldFormat = format
+                return
+            }
+        }
         inner.format(format)
+    }
+
+    private fun releaseFormat() {
+        heldFormat?.let { heldFormat = null; inner.format(it) }
     }
 
     override fun sampleData(input: DataReader, length: Int, allowEndOfInput: Boolean, sampleDataPart: Int): Int {
@@ -101,6 +117,7 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
         if (part != TrackOutput.SAMPLE_DATA_PART_MAIN && !passthrough) {
             // Keep byte order: what is buffered goes first, then this sample passes through.
             flushPending()
+            releaseFormat()
             passthrough = true
         }
         return !passthrough
@@ -108,6 +125,7 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
 
     override fun sampleMetadata(timeUs: Long, flags: Int, size: Int, offset: Int, cryptoData: TrackOutput.CryptoData?) {
         if (!filtering) {
+            releaseFormat()
             inner.sampleMetadata(timeUs, flags, size, offset, cryptoData)
             return
         }
@@ -116,6 +134,7 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
         if (passthrough || cryptoData != null || start < 0) {
             // Not ours to rewrite: everything already went (or now goes) to inner unchanged.
             flushPending()
+            releaseFormat()
             passthrough = false
             MvcStats.passedThrough.incrementAndGet()
             inner.sampleMetadata(timeUs, flags, size, offset, cryptoData)
@@ -123,7 +142,11 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
         }
         val newSize = stripMvcNalUnits(pending, start, end)
         MvcStats.samples.incrementAndGet()
-        if (newSize < size) MvcStats.stripped.incrementAndGet()
+        if (newSize < size) {
+            MvcStats.stripped.incrementAndGet()
+            MvcStats.mvcDetected = true
+        }
+        releaseFormat()
         scratch.reset(pending, start + newSize)
         scratch.setPosition(start)
         inner.sampleData(scratch, newSize, TrackOutput.SAMPLE_DATA_PART_MAIN)
@@ -135,6 +158,7 @@ private class MvcStripTrackOutput(private val inner: TrackOutput) : TrackOutput 
 
     private fun flushPending() {
         if (pendingSize == 0) return
+        releaseFormat()
         scratch.reset(pending, pendingSize)
         inner.sampleData(scratch, pendingSize, TrackOutput.SAMPLE_DATA_PART_MAIN)
         pendingSize = 0
@@ -155,6 +179,21 @@ object MvcStats {
     val passedThrough = java.util.concurrent.atomic.AtomicLong()
     @Volatile var frameRate: Float = Format.NO_VALUE.toFloat()
     @Volatile var decoderName: String? = null
+    /** The current stream carries MVC (second-eye) data. */
+    @Volatile var mvcDetected: Boolean = false
+
+    /**
+     * Prefers software H.264 decoders once a stream is known to be MVC. Some TV-box
+     * hardware decoders (Rockchip) mishandle Blu-ray 3D, from flickering between the eyes
+     * to taking the whole device down; the software decoder shows the stripped base view.
+     */
+    val codecSelector = androidx.media3.exoplayer.mediacodec.MediaCodecSelector { mimeType, secure, tunneling ->
+        val infos = androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT
+            .getDecoderInfos(mimeType, secure, tunneling)
+        if (mvcDetected && mimeType == MimeTypes.VIDEO_H264 && !secure) {
+            infos.sortedByDescending { it.softwareOnly }
+        } else infos
+    }
 
     fun onFormat(rate: Float) {
         frameRate = rate
@@ -162,7 +201,7 @@ object MvcStats {
 
     fun reset() {
         samples.set(0); stripped.set(0); passedThrough.set(0)
-        frameRate = Format.NO_VALUE.toFloat(); decoderName = null
+        frameRate = Format.NO_VALUE.toFloat(); decoderName = null; mvcDetected = false
     }
 }
 
