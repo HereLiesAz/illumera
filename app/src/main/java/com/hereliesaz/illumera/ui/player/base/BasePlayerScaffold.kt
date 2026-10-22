@@ -51,6 +51,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.ThreeDRotation
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -242,6 +243,58 @@ fun BasePlayerScaffold(
             episode = soundtrackTarget.third,
             onDismiss = { showSoundtrack = false }
         )
+    }
+    // Frame-packed 3D on a display that can't show it: offer one eye at its true aspect.
+    val stereoContext = androidx.compose.ui.platform.LocalContext.current
+    val currentSource = sources.firstOrNull { it.id == uiState.currentSourceId }
+    val detectedStereo = remember(currentSource?.id) {
+        currentSource?.let {
+            Stereo3d.detect(it.title, it.name, it.description, it.fileName, it.label)
+        } ?: StereoLayout.OFF
+    }
+    var stereoPromptSourceId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(currentSource?.id) {
+        // Each source starts as its full frame; the choice is per source.
+        if (uiState.stereoLayout != StereoLayout.OFF) playbackController.setStereoLayout(StereoLayout.OFF)
+        stereoPromptSourceId = currentSource?.id?.takeIf {
+            !isTrailer && detectedStereo != StereoLayout.OFF && !Stereo3d.displaySupports3d(stereoContext)
+        }
+    }
+    if (stereoPromptSourceId != null && stereoPromptSourceId == currentSource?.id) {
+        val playIn2dFocus = remember { FocusRequester() }
+        LaunchedEffect(Unit) { runCatching { playIn2dFocus.requestFocus() } }
+        com.hereliesaz.illumera.ui.addons.VoidDialog(
+            onDismissRequest = { stereoPromptSourceId = null },
+            title = "3D video"
+        ) {
+            Text(
+                "This source is 3D and Disable 3D is on. Play it in 2D?",
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.hereliesaz.illumera.ui.addons.VoidButton(
+                    text = "Play in 2D",
+                    isPrimary = true,
+                    focusRequester = playIn2dFocus,
+                    onClick = {
+                        playbackController.setStereoLayout(detectedStereo)
+                        stereoPromptSourceId = null
+                    }
+                )
+                com.hereliesaz.illumera.ui.addons.VoidButton(
+                    text = "Keep 3D",
+                    onClick = { stereoPromptSourceId = null }
+                )
+                com.hereliesaz.illumera.ui.addons.VoidButton(
+                    text = "Turn off Disable 3D",
+                    onClick = {
+                        Stereo3d.setDisplaySupports3d(stereoContext, true)
+                        stereoPromptSourceId = null
+                    }
+                )
+            }
+        }
     }
     var showPauseOverlay by remember { mutableStateOf(false) }
     var showSubtitleOffsetBar by remember { mutableStateOf(false) }
@@ -963,6 +1016,22 @@ fun BasePlayerScaffold(
                     showControlsTemporarily()
                 },
                 showSoundtrackControl = soundtrackTarget != null,
+                showStereoControl = detectedStereo != StereoLayout.OFF || uiState.stereoLayout != StereoLayout.OFF,
+                stereoLayout = uiState.stereoLayout,
+                onCycleStereo = {
+                    markInteraction()
+                    // 3D → 2D (detected packing) → 2D (other packing, if detection guessed wrong) → 3D
+                    val first = detectedStereo.takeIf { it != StereoLayout.OFF } ?: StereoLayout.SIDE_BY_SIDE
+                    val second = if (first == StereoLayout.SIDE_BY_SIDE) StereoLayout.TOP_BOTTOM else StereoLayout.SIDE_BY_SIDE
+                    playbackController.setStereoLayout(
+                        when (uiState.stereoLayout) {
+                            StereoLayout.OFF -> first
+                            first -> second
+                            else -> StereoLayout.OFF
+                        }
+                    )
+                    showControlsTemporarily()
+                },
                 onShowSoundtrack = {
                     markInteraction()
                     showSoundtrack = true
@@ -1445,6 +1514,9 @@ private fun PlayerControlsOverlay(
     showEpisodesControl: Boolean = false,
     onShowEpisodesPanel: () -> Unit = {},
     showSoundtrackControl: Boolean = false,
+    showStereoControl: Boolean = false,
+    stereoLayout: StereoLayout = StereoLayout.OFF,
+    onCycleStereo: () -> Unit = {},
     onShowSoundtrack: () -> Unit = {},
     onResetHideTimer: () -> Unit
 ) {
@@ -1567,6 +1639,21 @@ private fun PlayerControlsOverlay(
                             icon = Icons.Default.MusicNote,
                             contentDescription = "Soundtrack",
                             onClick = onShowSoundtrack,
+                            onFocused = onResetHideTimer,
+                            buttonSize = 44.dp,
+                            iconSize = 18.dp
+                        )
+                    }
+
+                    if (showStereoControl) {
+                        ControlButton(
+                            icon = Icons.Default.ThreeDRotation,
+                            contentDescription = when (stereoLayout) {
+                                StereoLayout.OFF -> "Play in 2D"
+                                StereoLayout.SIDE_BY_SIDE -> "2D (side-by-side) — switch to top-bottom"
+                                StereoLayout.TOP_BOTTOM -> "2D (top-bottom) — back to 3D"
+                            },
+                            onClick = onCycleStereo,
                             onFocused = onResetHideTimer,
                             buttonSize = 44.dp,
                             iconSize = 18.dp

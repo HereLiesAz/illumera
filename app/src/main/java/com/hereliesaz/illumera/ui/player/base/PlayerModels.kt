@@ -115,6 +115,8 @@ data class PlayerUiState(
     /** User's subtitle pick to remember when the shown one is an automatic "None". */
     val subtitleChoiceToRemember: String? = null,
     val resizeMode: Int = 0,
+    /** Frame-packed 3D being shown as one eye ("Play in 2D"); OFF shows the frame as-is. */
+    val stereoLayout: StereoLayout = StereoLayout.OFF,
     val subtitleVerticalOffsetPercent: Int = 0,
     val subtitleSizePercent: Int = 100,
     val subtitleDelayMs: Long = 0L,

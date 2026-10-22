@@ -401,6 +401,26 @@ fun PlaybackSettings(
                 blockUp = true
             )
 
+            // DISABLE 3D (Android can't report HDMI 3D capability, so this is the viewer's call)
+            val stereoContext = LocalContext.current
+            var disable3d by remember {
+                mutableStateOf(!com.hereliesaz.illumera.ui.player.base.Stereo3d.displaySupports3d(stereoContext))
+            }
+            SettingToggleRow(
+                label = "Disable 3D",
+                subtitle = if (disable3d) {
+                    "3D plays as 2D: Blu-ray 3D automatically, side-by-side/top-bottom on request. Turn off only if your TV shows 3D"
+                } else {
+                    "3D video is passed to the TV as-is"
+                },
+                isChecked = disable3d,
+                onCheckedChange = {
+                    disable3d = it
+                    com.hereliesaz.illumera.ui.player.base.Stereo3d.setDisplaySupports3d(stereoContext, !it)
+                },
+                onBack = onGoBack
+            )
+
             // DV7 → HEVC FALLBACK
             SettingToggleRow(
                 label = "Dolby Vision Profile 7 Fallback",
