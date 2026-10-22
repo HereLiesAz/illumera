@@ -30,6 +30,8 @@ class AssRenderersFactory(
         // Enable legacy decoding on all text renderers so they accept raw text/x-ssa
         for (renderer in out) {
             if (renderer is TextRenderer) {
+                // Deprecated, but raw text/x-ssa cues need the legacy path to reach the renderer.
+                @Suppress("DEPRECATION")
                 renderer.experimentalSetLegacyDecodingEnabled(true)
             }
         }

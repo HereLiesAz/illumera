@@ -45,7 +45,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 .post(body.toString().toRequestBody(jsonType))
                 .build()
             val response = slowClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: "{}"
+            val responseBody = response.body.string()
             response.close()
             if (!response.isSuccessful) {
                 throw Exception("Failed to add torrent: HTTP ${response.code}")
@@ -122,7 +122,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "TorrServer settings get HTTP ${response.code}")
                 return null
             }
-            val raw = response.body?.string().orEmpty()
+            val raw = response.body.string()
             if (raw.isBlank()) return null
             val parsed = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return null
             val nested = parsed.getAsJsonObject("sets")
@@ -142,7 +142,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 .post(body.toString().toRequestBody(jsonType))
                 .build()
             val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: "{}"
+            val responseBody = response.body.string()
             response.close()
             if (!response.isSuccessful) {
                 return@withContext TorrentStats()
@@ -183,7 +183,7 @@ class TorrServerApi(private val baseUrl: String = "http://127.0.0.1:8090") {
                 .build()
             try {
                 val response = slowClient.newCall(request).execute()
-                val responseBody = response.body?.string() ?: "{}"
+                val responseBody = response.body.string()
                 response.close()
                 if (!response.isSuccessful) {
                     if (BuildConfig.DEBUG) Log.w("LumeraTorrent", "getFileList HTTP ${response.code}")

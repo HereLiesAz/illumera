@@ -474,12 +474,12 @@ class AvatarUploadServer(
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
 
-            val token = session.parms["csrf_token"]
+            val token = session.parameters["csrf_token"]?.firstOrNull()
             if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            val base64Image = session.parms["image"]
+            val base64Image = session.parameters["image"]?.firstOrNull()
 
             if (base64Image.isNullOrBlank()) {
                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No image received")

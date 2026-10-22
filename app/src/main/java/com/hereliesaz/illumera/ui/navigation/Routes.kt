@@ -190,6 +190,9 @@ internal val AppBackStackSaver: Saver<NavBackStack<NavKey>, SavedState> = Saver(
  * MainActivity's back stack, saved across process death. A saved stack this version can't read
  * (see [restoreAppBackStackOrNull]) gives way to a fresh Home instead of crashing or blanking.
  */
+// The explicit key is deprecated, but it is what earlier versions saved the stack under;
+// dropping it would lose a stack saved before an update (BackStackRestoreTest).
+@Suppress("DEPRECATION")
 @Composable
 fun rememberAppBackStack(): NavBackStack<NavKey> =
     rememberSaveable(saver = AppBackStackSaver, key = APP_BACK_STACK_SAVE_KEY) { NavBackStack<NavKey>(HomeKey()) }

@@ -694,7 +694,7 @@ class TraktSyncManager @Inject constructor(
                             val showTitle = item.show?.title ?: "Unknown"
                             when {
                                 ep?.title != null -> ep.title
-                                ep?.season != null && ep.number != null -> "S${ep.season}:E${ep.number} - $showTitle"
+                                ep?.season != null -> "S${ep.season}:E${ep.number} - $showTitle"
                                 else -> showTitle
                             }
                         }
@@ -798,7 +798,7 @@ class TraktSyncManager @Inject constructor(
                             val revived = existing?.isComplete == true
                             val badgeState = when {
                                 revived -> true
-                                unchanged -> existing?.isNewEpisode ?: false
+                                unchanged -> existing.isNewEpisode
                                 else -> false
                             }
 

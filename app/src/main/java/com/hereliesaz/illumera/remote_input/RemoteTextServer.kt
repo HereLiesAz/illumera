@@ -126,10 +126,10 @@ class RemoteTextServer(
         return try {
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
-            if (!PairingSession.constantTimeEquals(session.parms["csrf_token"], csrfToken)) {
+            if (!PairingSession.constantTimeEquals(session.parameters["csrf_token"]?.firstOrNull(), csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
-            val value = session.parms["value"]?.trim()
+            val value = session.parameters["value"]?.firstOrNull()?.trim()
             if (value.isNullOrBlank()) {
                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Value required")
             }

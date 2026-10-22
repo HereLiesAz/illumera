@@ -497,18 +497,18 @@ class HubBulkUploadServer(
 
     private fun handleImageUpload(session: IHTTPSession): Response {
         try {
-            val id = session.parms["id"] ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
+            val id = session.parameters["id"]?.firstOrNull() ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
             if (items.none { it.configUniqueId == id }) return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unknown item id")
 
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
 
-            val token = session.parms["csrf_token"]
+            val token = session.parameters["csrf_token"]?.firstOrNull()
             if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            val base64Image = session.parms["image"]
+            val base64Image = session.parameters["image"]?.firstOrNull()
             if (!base64Image.isNullOrBlank()) {
                 // Reject on the encoded length before the decode allocation. Base64 is
                 // ~4/3 the size of the decoded bytes; allow 4/3 plus slack for padding
@@ -561,12 +561,12 @@ class HubBulkUploadServer(
             val files = mutableMapOf<String, String>()
             session.parseBody(files)
 
-            val token = session.parms["csrf_token"]
+            val token = session.parameters["csrf_token"]?.firstOrNull()
             if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            val id = session.parms["id"]
+            val id = session.parameters["id"]?.firstOrNull()
                 ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
             if (items.none { it.configUniqueId == id }) return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unknown item id")
             uploadedPreviews.remove(id)
@@ -580,7 +580,7 @@ class HubBulkUploadServer(
     }
 
     private fun servePreview(session: IHTTPSession): Response {
-        val id = session.parms["id"]
+        val id = session.parameters["id"]?.firstOrNull()
             ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No ID")
         val base64 = uploadedPreviews.remove(id)
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "No preview")

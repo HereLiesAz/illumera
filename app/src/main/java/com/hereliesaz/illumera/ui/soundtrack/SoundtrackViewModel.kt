@@ -56,14 +56,14 @@ class SoundtrackViewModel @Inject constructor(
             }
             if (!canCheck) return@launch
 
-            val songs = attempt("Tunefind lookup failed") { tunefind.load(type, title!!, season, episode) }
+            val songs = attempt("Tunefind lookup failed") { tunefind.load(type, title, season, episode) }
             _state.value = when {
                 !songs.isNullOrEmpty() -> {
-                    val base = imdb?.groups?.firstOrNull() ?: SoundtrackGroup(season, episode)
+                    val base = imdb.groups.firstOrNull() ?: SoundtrackGroup(season, episode)
                     val merged = base.copy(songs = Tunefind.merge(songs, base.songs))
-                    State.Loaded(imdb!!.copy(groups = listOf(merged)), fromTunefind = true)
+                    State.Loaded(imdb.copy(groups = listOf(merged)), fromTunefind = true)
                 }
-                imdb != null && imdb.groups.isNotEmpty() -> State.Loaded(imdb)
+                imdb.groups.isNotEmpty() -> State.Loaded(imdb)
                 else -> State.Empty
             }
         }

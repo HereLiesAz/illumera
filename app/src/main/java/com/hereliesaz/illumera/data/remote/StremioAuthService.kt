@@ -224,7 +224,7 @@ class StremioAuthService @Inject constructor() {
             .build()
 
         return client.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string()
+            val responseBody = response.body.string()
             if (!response.isSuccessful || responseBody == null) {
                 throw StremioAuthError.NetworkError("Server returned ${response.code}")
             }
@@ -250,7 +250,7 @@ class StremioAuthService @Inject constructor() {
 
         try {
             val (responseBody, isSuccessful, code) = client.newCall(request).execute().use { response ->
-                Triple(response.body?.string(), response.isSuccessful, response.code)
+                Triple(response.body.string(), response.isSuccessful, response.code)
             }
 
             if (!isSuccessful || responseBody == null) {
@@ -295,7 +295,7 @@ class StremioAuthService @Inject constructor() {
 
         try {
             client.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string()
+                val responseBody = response.body.string()
                 if (responseBody == null) {
                     throw StremioAuthError.NetworkError("Server returned ${response.code}")
                 }
@@ -393,7 +393,7 @@ class StremioAuthService @Inject constructor() {
         
         try {
             val (responseBody, isSuccessful, code) = client.newCall(request).execute().use { response ->
-                Triple(response.body?.string(), response.isSuccessful, response.code)
+                Triple(response.body.string(), response.isSuccessful, response.code)
             }
 
             if (!isSuccessful || responseBody == null) {
@@ -440,7 +440,7 @@ class StremioAuthService @Inject constructor() {
             try {
                 val request = Request.Builder().url("$FB_LOGIN_POLL_BASE/$state").get().build()
                 val (body, isSuccessful) = client.newCall(request).execute().use { response ->
-                    response.body?.string() to response.isSuccessful
+                    response.body.string() to response.isSuccessful
                 }
                 if (isSuccessful && body != null) {
                     val json = JsonParser.parseString(body).asJsonObject
@@ -480,7 +480,7 @@ class StremioAuthService @Inject constructor() {
             try {
                 val request = Request.Builder().url("$APPLE_LOGIN_POLL_BASE/$state").get().build()
                 client.newCall(request).execute().use { response ->
-                    val body = response.body?.string()
+                    val body = response.body.string()
                     if (response.isSuccessful && body != null) {
                         val user = JsonParser.parseString(body).asJsonObject.getAsJsonObject("user")
                         val token = user?.get("token")?.takeIf { !it.isJsonNull }?.asString
@@ -519,7 +519,7 @@ class StremioAuthService @Inject constructor() {
 
         try {
             client.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string()
+                val responseBody = response.body.string()
                     ?: throw StremioAuthError.NetworkError("Server returned ${response.code}")
                 val json = runCatching { JsonParser.parseString(responseBody).asJsonObject }.getOrNull()
                 val apiError = json?.getAsJsonObject("error")
@@ -667,7 +667,7 @@ class StremioAuthService @Inject constructor() {
         val request = Request.Builder().url(url).get().build()
         try {
             val (body, isSuccessful, code) = client.newCall(request).execute().use { response ->
-                Triple(response.body?.string(), response.isSuccessful, response.code)
+                Triple(response.body.string(), response.isSuccessful, response.code)
             }
             if (!isSuccessful || body == null) {
                 throw StremioAuthError.NetworkError("Failed to fetch manifest: $code")

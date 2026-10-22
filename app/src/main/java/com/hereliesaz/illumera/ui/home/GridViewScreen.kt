@@ -123,7 +123,7 @@ fun GridViewScreen(
     val shown = remember(items, order, sortable, originalsOnly, originalKeys) {
         when {
             !sortable -> items
-            originalsOnly -> items.filter { StreamingOriginals.matches(it, originalKeys!!) }
+            originalsOnly -> items.filter { StreamingOriginals.matches(it, originalKeys) }
             else -> ScreenGenreRows.sortTitles(items, order)
         }
     }

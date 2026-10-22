@@ -139,7 +139,7 @@ class PlayStoreUpdateManager @Inject constructor(
         val url = "https://raw.githubusercontent.com/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/main/version.properties"
         okHttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
             if (!response.isSuccessful) return null
-            return response.body?.string().orEmpty().lineSequence()
+            return response.body.string().lineSequence()
                 .map { it.trim() }
                 .firstOrNull { it.startsWith("versionCode=") }
                 ?.substringAfter('=')?.trim()?.toIntOrNull()
@@ -151,7 +151,7 @@ class PlayStoreUpdateManager @Inject constructor(
         okHttpClient.newCall(Request.Builder().url(url)
             .header("Accept", "application/vnd.github+json").build()).execute().use { response ->
             if (!response.isSuccessful) return null
-            val json = JsonParser.parseString(response.body?.string() ?: return null).asJsonObject
+            val json = JsonParser.parseString(response.body.string()).asJsonObject
             val tag = json.get("tag_name")?.asString ?: return null
             val asset = json.getAsJsonArray("assets")?.firstOrNull { item ->
                 item.asJsonObject.get("name")?.asString?.endsWith(".apk", ignoreCase = true) == true

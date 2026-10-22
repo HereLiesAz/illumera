@@ -207,12 +207,12 @@ class LinkServer(
             session.parseBody(files)
 
             // Validate CSRF token
-            val token = session.parms["csrf_token"]
+            val token = session.parameters["csrf_token"]?.firstOrNull()
             if (!PairingSession.constantTimeEquals(token, csrfToken)) {
                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Invalid request")
             }
 
-            val rawUrl = session.parms["url"]?.trim()
+            val rawUrl = session.parameters["url"]?.firstOrNull()?.trim()
             if (!rawUrl.isNullOrBlank()) {
                 if (rawUrl.length > MAX_URL_LENGTH) {
                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "URL too long")

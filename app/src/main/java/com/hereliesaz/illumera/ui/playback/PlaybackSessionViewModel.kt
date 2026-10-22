@@ -1188,6 +1188,8 @@ class PlaybackSessionViewModel @Inject constructor(
         torrent.release()
     }
 
+    // SavedStateHandle.get returns T?; a key that is present holds a T (possibly null for a nullable T).
+    @Suppress("UNCHECKED_CAST")
     private fun <T> saved(key: String, default: T): ReadWriteProperty<Any?, T> =
         object : ReadWriteProperty<Any?, T> {
             private val state = mutableStateOf(

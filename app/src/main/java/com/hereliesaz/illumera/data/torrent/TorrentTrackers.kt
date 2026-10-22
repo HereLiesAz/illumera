@@ -56,7 +56,7 @@ object TorrentTrackerCache {
                         return@use
                     }
 
-                    val body = response.body ?: return@use
+                    val body = response.body
                     val declaredLength = body.contentLength()
                     if (declaredLength > MAX_RESPONSE_BYTES) {
                         if (BuildConfig.DEBUG) Log.w(TAG, "Tracker response too large: $declaredLength bytes")

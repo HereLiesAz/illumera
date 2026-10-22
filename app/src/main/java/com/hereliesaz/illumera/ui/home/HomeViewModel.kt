@@ -1468,7 +1468,7 @@ class HomeViewModel @Inject constructor(
                 tmdbEnrichedIds = emptySet(),
                 likedIds = emptySet(),
                 personalRows = if (screenName == "home") _state.value.personalRows else emptyList(),
-                tmdbEnabled = currentProfile?.tmdbEnabled == true
+                tmdbEnabled = currentProfile.tmdbEnabled
             )
             tmdbEnrichmentInFlight.clear()
             positions(screenName).clear()
@@ -1508,7 +1508,7 @@ class HomeViewModel @Inject constructor(
                 // Rebuilt only when the most recently watched title changes, not on every
                 // progress tick.
                 launch {
-                    val language = currentProfile?.tmdbLanguage?.ifBlank { null }
+                    val language = currentProfile.tmdbLanguage.ifBlank { null }
                         ?: java.util.Locale.getDefault().toLanguageTag()
                     dao.getWatchHistory()
                         .distinctUntilChangedBy { history ->
@@ -1601,7 +1601,7 @@ class HomeViewModel @Inject constructor(
 
                 // Fetch HERO row separately (even if hidden in dashboard).
                 val tabEnum = DashboardTab.fromString(screenName)
-                val heroConfig = currentProfile?.heroFor(tabEnum)
+                val heroConfig = currentProfile.heroFor(tabEnum)
                 val automaticAggregateId = when (screenName) {
                     "movies" -> "catalog-aggregate:movie:all"
                     "series" -> "catalog-aggregate:series:all"
@@ -1650,7 +1650,7 @@ class HomeViewModel @Inject constructor(
                         loadedProfileId = currentProfileId,
                         enrichedMeta = restored?.enrichedMeta ?: it.enrichedMeta,
                         tmdbEnrichedIds = restored?.tmdbEnrichedIds ?: it.tmdbEnrichedIds,
-                        tmdbEnabled = currentProfile?.tmdbEnabled == true
+                        tmdbEnabled = currentProfile.tmdbEnabled
                     )
                 }
 
@@ -1675,10 +1675,10 @@ class HomeViewModel @Inject constructor(
                                         items = repository.getHomePairCatalogPage(configuredPair.configId, page)
                                     }
                                 }
-                                configuredPair.copy(items = items.take(heroConfig?.posterCount ?: 10))
+                                configuredPair.copy(items = items.take(heroConfig.posterCount))
                             } else repository.getCategoryRowPreview(
                                 configId = selectedHeroId,
-                                maxItems = heroConfig?.posterCount ?: 10,
+                                maxItems = heroConfig.posterCount,
                                 timeoutMs = initialDashboardTimeoutMs
                             )
                         } catch (cancelled: CancellationException) {

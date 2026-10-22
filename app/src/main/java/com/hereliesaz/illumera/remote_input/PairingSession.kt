@@ -140,7 +140,7 @@ abstract class PairedLanServer(
             return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Forbidden")
         }
         if (session.uri == "/ping") return DisconnectBanner.pingResponse()
-        return when (pairingSession.check(session.parms["pin"], session.headers["remote-addr"])) {
+        return when (pairingSession.check(session.parameters["pin"]?.firstOrNull(), session.headers["remote-addr"])) {
             PairingSession.Result.AUTHORIZED -> serveAuthorized(session)
             PairingSession.Result.WRONG_PIN -> wrongPinResponse()
             PairingSession.Result.EXPIRED -> expiredResponse()

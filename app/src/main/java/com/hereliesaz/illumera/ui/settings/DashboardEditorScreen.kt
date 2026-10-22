@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.CatalogConfigEntity
 import com.hereliesaz.illumera.data.model.HubRowEntity
 import com.hereliesaz.illumera.data.model.HubRowItemEntity
@@ -282,7 +282,7 @@ fun DashboardEditorScreen(
                     heroConfig.categoryId == "catalog-aggregate:${if (dashboardTab == DashboardTab.MOVIES) "movie" else "series"}:all"
                         && dashboardTab != DashboardTab.HOME) {
                     "Hero Carousel · Automatic"
-                } else if (heroConfig.categoryId != null && !heroDisabled) {
+                } else if (!heroDisabled) {
                     val cat = configs.find { it.uniqueId == heroConfig.categoryId }
                     val catName = cat?.customTitle ?: cat?.catalogName ?: cat?.addonName ?: "Unknown"
                     val catType = cat?.catalogType?.replaceFirstChar { it.uppercase() } ?: ""

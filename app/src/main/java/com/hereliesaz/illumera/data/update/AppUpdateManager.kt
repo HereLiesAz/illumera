@@ -194,7 +194,7 @@ class AppUpdateManager @Inject constructor(
         val response = okHttpClient.newCall(request).execute()
         if (!response.isSuccessful) throw Exception("Update check failed: HTTP ${response.code}")
 
-        val body = response.body?.string() ?: throw Exception("Update check failed: empty response")
+        val body = response.body.string()
         return gson.fromJson(body, GitHubRelease::class.java)
             ?: throw Exception("Update check failed: malformed response")
     }
@@ -212,11 +212,11 @@ class AppUpdateManager @Inject constructor(
         updateDir.mkdirs()
         val apkFile = File(updateDir, "lumera-update.apk")
 
-        val totalBytes = response.body?.contentLength() ?: -1L
+        val totalBytes = response.body.contentLength()
         var downloadedBytes = 0L
         val digest = MessageDigest.getInstance("SHA-256")
 
-        response.body?.byteStream()?.use { input ->
+        response.body.byteStream().use { input ->
             apkFile.outputStream().use { output ->
                 val buffer = ByteArray(8192)
                 var bytesRead: Int

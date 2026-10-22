@@ -1,3 +1,7 @@
+// androidx.security-crypto (EncryptedSharedPreferences, MasterKey) is deprecated without a
+// replacement; migrating would make stored credentials unreadable, so its use stays.
+@file:Suppress("DEPRECATION")
+
 package com.hereliesaz.illumera.data.auth
 
 import android.content.Context
