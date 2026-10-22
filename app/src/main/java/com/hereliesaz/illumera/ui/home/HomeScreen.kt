@@ -377,10 +377,10 @@ internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 
 /** Reserve actual space after expanded artwork, rather than drawing onto the next heading. */
 internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
 
-@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 /** Cards per row whose cinematic art is resolved and decoded ahead of focus. */
 private const val ART_PRELOAD_ITEMS = 5
 
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun CinematicLayout(
     heroItems: List<MetaItem>,
