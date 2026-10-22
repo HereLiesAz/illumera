@@ -929,9 +929,10 @@ class AddonRepository @Inject constructor(
                 } catch (e: retrofit2.HttpException) {
                     // 404 is an addon saying it has no streams for this id (or no stream
                     // resource at all: rows stored before supportsStream was read default
-                    // to true). Not an error; anything else still reports.
+                    // to true). Any other status is the third-party addon's server failing
+                    // (e.g. HTTP 500), not the app: logged and shown, never filed as a crash.
                     if (e.code() != 404) {
-                        AppErrors.w(TAG, "Streams from ${addon.name} failed for $type/$requestId", e)
+                        android.util.Log.w(TAG, "Streams from ${addon.name} failed for $type/$requestId: HTTP ${e.code()}")
                     }
                     outcome = AddonStreamOutcome(sourceLabel, 0, if (e.code() == 404) null else "HTTP ${e.code()}")
                     emptyList()
