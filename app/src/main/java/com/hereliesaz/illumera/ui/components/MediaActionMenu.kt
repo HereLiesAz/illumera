@@ -6,11 +6,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.LibraryAddCheck
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Recommend
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbDownOffAlt
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbUpOffAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -33,6 +39,8 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.taste.Taste
+import com.hereliesaz.illumera.data.taste.TasteStore
 import com.hereliesaz.illumera.data.trakt.TraktSyncManager
 import com.hereliesaz.illumera.data.trakt.traktIdsFor
 import com.hereliesaz.illumera.data.wutch.WutchManager
@@ -100,7 +108,8 @@ data class MediaActionState(
     val inWatchlist: Boolean = false,
     val watched: Boolean = false,
     val traktAvailable: Boolean = false,
-    val inTraktCollection: Boolean = false
+    val inTraktCollection: Boolean = false,
+    val taste: Taste? = null
 )
 
 private data class ResolvedMediaTarget(
@@ -118,7 +127,9 @@ class MediaActionsViewModel @Inject constructor(
     private val repository: AddonRepository,
     private val traktSyncManager: TraktSyncManager,
     private val wutchManager: WutchManager,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val tasteStore: TasteStore,
+    private val tmdbService: com.hereliesaz.illumera.data.tmdb.TmdbService
 ) : ViewModel() {
 
     suspend fun loadState(target: MediaActionTarget): MediaActionState = withContext(Dispatchers.IO) {
@@ -137,7 +148,8 @@ class MediaActionsViewModel @Inject constructor(
                 watched = watched,
                 traktAvailable = resolved.traktAvailable,
                 inTraktCollection = resolved.traktAvailable &&
-                    traktSyncManager.isInTraktCollection(resolved.canonicalId)
+                    traktSyncManager.isInTraktCollection(resolved.canonicalId),
+                taste = tasteStore.tasteOf(resolved.canonicalId, target.parentSeriesId, target.id)
             )
         }
     }
@@ -201,6 +213,42 @@ class MediaActionsViewModel @Inject constructor(
                 if (currentlyInLibrary) {
                     traktSyncManager.pushRemoveFromCollection(resolved.canonicalId, resolved.type)
                 } else {
+                    traktSyncManager.pushAddToCollection(resolved.canonicalId, resolved.type)
+                }
+            }
+        }
+    }
+
+    /** Active profile's verdicts, for screens that show them live (Details). */
+    val tastes = tasteStore.entries
+
+    /**
+     * Records Like / Love / Don't like (null clears). An episode's verdict is its show's.
+     * Love also adds the title to the Trakt library; Don't like hides it from every row.
+     */
+    fun setTaste(target: MediaActionTarget, taste: Taste?) {
+        val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
+                val resolved = resolveTarget(target)
+                // TMDB-sourced screens (More like this) know titles only by TMDB id.
+                val tmdbId = try {
+                    tmdbService.ensureTmdbId(resolved.canonicalId, tmdbService.normalizeMediaType(resolved.type))
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                val ids = listOfNotNull(
+                    resolved.canonicalId,
+                    target.parentSeriesId,
+                    target.id.takeIf { target.type != "episode" },
+                    tmdbId?.removePrefix("tmdb:")?.let { "tmdb:$it" }
+                )
+                tasteStore.set(ids, resolved.type, resolved.title, taste)
+                if (taste == Taste.LOVE && resolved.traktAvailable &&
+                    !traktSyncManager.isInTraktCollection(resolved.canonicalId)
+                ) {
                     traktSyncManager.pushAddToCollection(resolved.canonicalId, resolved.type)
                 }
             }
@@ -501,6 +549,51 @@ fun MediaCardActionMenu(
                 )
             }
         }
+        val taste = state?.taste
+        // Choosing the current verdict again clears it.
+        fun chooseTaste(choice: Taste) {
+            val next = choice.takeIf { it != taste }
+            viewModel.setTaste(target, next)
+            state = state?.copy(
+                taste = next,
+                inTraktCollection = state?.inTraktCollection == true ||
+                    (next == Taste.LOVE && state?.traktAvailable == true)
+            )
+            onDismissRequest()
+        }
+        DropdownMenuItem(
+            text = { Text(if (taste == Taste.LOVE) "Loved" else "Love") },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (taste == Taste.LOVE) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = null
+                )
+            },
+            enabled = state != null,
+            onClick = { chooseTaste(Taste.LOVE) }
+        )
+        DropdownMenuItem(
+            text = { Text(if (taste == Taste.LIKE) "Liked" else "Like") },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (taste == Taste.LIKE) Icons.Default.ThumbUp else Icons.Default.ThumbUpOffAlt,
+                    contentDescription = null
+                )
+            },
+            enabled = state != null,
+            onClick = { chooseTaste(Taste.LIKE) }
+        )
+        DropdownMenuItem(
+            text = { Text("Don't like") },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (taste == Taste.DISLIKE) Icons.Default.ThumbDown else Icons.Default.ThumbDownOffAlt,
+                    contentDescription = null
+                )
+            },
+            enabled = state != null,
+            onClick = { chooseTaste(Taste.DISLIKE) }
+        )
         val inTraktLibrary = state?.inTraktCollection == true
         DropdownMenuItem(
             text = { Text(if (inTraktLibrary) "Remove from Trakt library" else "Add to Trakt library") },

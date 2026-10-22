@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.details
 
+import com.hereliesaz.illumera.data.taste.dislikes
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -40,6 +41,13 @@ import androidx.compose.material.icons.filled.Recommend
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import com.hereliesaz.illumera.data.taste.Taste
+import androidx.compose.material.icons.filled.ThumbUpOffAlt
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDownOffAlt
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -364,6 +372,9 @@ fun DetailsScreen(
 
             @OptIn(ExperimentalFoundationApi::class)
             CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
+            // "Don't like" keeps a title out of this page's TMDB rows.
+            val dislikeTastes by hiltViewModel<com.hereliesaz.illumera.ui.components.MediaActionsViewModel>()
+                .tastes.collectAsStateWithLifecycle()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -729,6 +740,16 @@ fun DetailsScreen(
                             onClick = { viewModel.toggleWatchlist() }
                         )
 
+                        DetailsTasteButtons(
+                            target = com.hereliesaz.illumera.ui.components.MediaActionTarget(
+                                id = state.resolvedId ?: state.meta?.id ?: streamId,
+                                type = type,
+                                title = state.meta?.name.orEmpty(),
+                                poster = state.meta?.poster
+                            ),
+                            focusMemory = focusMemory
+                        )
+
                         if (resumePlaybackId != null) {
                             ExpandableIconButton(
                                 label = "Clear Progress",
@@ -841,6 +862,16 @@ fun DetailsScreen(
                             onClick = { viewModel.toggleWatchlist() }
                         )
 
+                        DetailsTasteButtons(
+                            target = com.hereliesaz.illumera.ui.components.MediaActionTarget(
+                                id = state.resolvedId ?: state.meta?.id ?: streamId,
+                                type = type,
+                                title = state.meta?.name.orEmpty(),
+                                poster = state.meta?.poster
+                            ),
+                            focusMemory = focusMemory
+                        )
+
                         if (resumePlaybackId != null) {
                             ExpandableIconButton(
                                 label = "Clear Progress",
@@ -874,6 +905,7 @@ fun DetailsScreen(
                 val companies = enrichment?.productionCompanies.orEmpty()
                 val networks = enrichment?.networks.orEmpty()
                 val tmdbRecommendations = state.tmdbRecommendations
+                    .filterNot { dislikeTastes.dislikes("tmdb:${it.tmdbId}") }
                 val tmdbCollection = state.tmdbCollection
 
                 val leadingCrew = directorMembers + writerMembers
@@ -1289,6 +1321,8 @@ private fun CastRow(
     focusMemory: FocusMemory? = null,
     rowKey: String = "tmdb_cast"
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (leadingCrew.isEmpty() && cast.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current
@@ -1393,7 +1427,7 @@ private fun CastCard(member: TmdbCastInfo, accentColor: Color, textColor: Color,
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(Color.White.copy(0.08f))
+                    .background(textColor.copy(0.08f))
                     .border(
                         width = if (isFocused) 2.dp else 0.dp,
                         color = if (isFocused) accentColor else Color.Transparent,
@@ -1413,7 +1447,7 @@ private fun CastCard(member: TmdbCastInfo, accentColor: Color, textColor: Color,
             Text(
                 text = member.name,
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                color = if (isFocused) Color.White else textColor.copy(alpha = 0.85f),
+                color = if (isFocused) textColor else textColor.copy(alpha = 0.85f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1440,6 +1474,8 @@ private fun StudioRow(
     focusMemory: FocusMemory? = null,
     rowKey: String = ""
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (studios.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current
@@ -1531,6 +1567,8 @@ private fun RecommendationRow(
     onItemClick: (type: String, id: String, rowKey: String, index: Int) -> Unit = { _, _, _, _ -> },
     focusMemory: FocusMemory? = null
 ) {
+    // Nothing to show: render nothing, so the empty row neither shows nor traps focus.
+    if (items.isEmpty()) return
     val rowState = rememberLazyListState()
     val repeatGate = remember { DpadRepeatGate(horizontalRepeatIntervalMs = 150L) }
     val density = LocalDensity.current
@@ -1659,4 +1697,37 @@ private fun playbackIdBelongsToSeries(seriesId: String, playbackId: String): Boo
     val episode = parts.last().toIntOrNull()
     if (season == null || episode == null) return playbackId == seriesId
     return parts.dropLast(2).joinToString(":") == seriesId
+}
+
+/** Love / Like / Don't like for this title; choosing the active verdict again clears it. */
+@Composable
+private fun DetailsTasteButtons(
+    target: com.hereliesaz.illumera.ui.components.MediaActionTarget,
+    focusMemory: FocusMemory,
+    actions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel()
+) {
+    val tastes by actions.tastes.collectAsStateWithLifecycle()
+    val taste = (tastes[target.id] ?: tastes[target.id.substringBefore(':')])?.taste
+    fun choose(choice: Taste) = actions.setTaste(target, choice.takeIf { it != taste })
+    ExpandableIconButton(
+        label = if (taste == Taste.LOVE) "Loved" else "Love",
+        icon = if (taste == Taste.LOVE) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+        modifier = Modifier.restorableFocus("hero:love", focusMemory),
+        isActive = taste == Taste.LOVE,
+        onClick = { choose(Taste.LOVE) }
+    )
+    ExpandableIconButton(
+        label = if (taste == Taste.LIKE) "Liked" else "Like",
+        icon = if (taste == Taste.LIKE) Icons.Default.ThumbUp else Icons.Default.ThumbUpOffAlt,
+        modifier = Modifier.restorableFocus("hero:like", focusMemory),
+        isActive = taste == Taste.LIKE,
+        onClick = { choose(Taste.LIKE) }
+    )
+    ExpandableIconButton(
+        label = "Don't like",
+        icon = if (taste == Taste.DISLIKE) Icons.Default.ThumbDown else Icons.Default.ThumbDownOffAlt,
+        modifier = Modifier.restorableFocus("hero:dislike", focusMemory),
+        isActive = taste == Taste.DISLIKE,
+        onClick = { choose(Taste.DISLIKE) }
+    )
 }

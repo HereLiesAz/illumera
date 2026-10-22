@@ -298,7 +298,7 @@ fun WatchlistScreen(
             }
             item(key = "library_sort", span = { GridItemSpan(maxLineSpan) }) {
                 Column(modifier = Modifier.padding(top = 12.dp, end = 12.dp)) {
-                    Text("Library", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                    Text("Library", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
                     val modes = listOf(
                         "recent" to "Recent", "added" to "Recently added",
                         "az" to "A–Z", "za" to "Z–A",
@@ -316,12 +316,12 @@ fun WatchlistScreen(
                             Text(
                                 mode.second,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = if (selected || focused) MaterialTheme.colorScheme.primary else Color.White,
+                                color = if (selected || focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.27f)
-                                        else if (selected) Color.White.copy(alpha = 0.14f)
-                                        else Color.White.copy(alpha = 0.05f))
+                                        else if (selected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.14f)
+                                        else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
                                     .border(
                                         if (focused) 2.dp else 0.dp,
                                         MaterialTheme.colorScheme.primary,
@@ -345,7 +345,7 @@ fun WatchlistScreen(
                     Text(
                         text = "Your watchlist is empty",
                         style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.5f),
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
                 }
@@ -436,6 +436,8 @@ internal fun DebridLibrarySection(
             }
         )
     }
+    // An empty library shows nothing: no header, no placeholder text.
+    if (state.items.isEmpty() && !state.isLoading) return
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(start = startPadding, end = 16.dp),
@@ -444,7 +446,7 @@ internal fun DebridLibrarySection(
             Text(
                 text = "Cloud Storage (${provider?.displayName ?: ""})",
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             if (state.isLoading) {
                 Spacer(Modifier.width(12.dp))
@@ -461,7 +463,7 @@ internal fun DebridLibrarySection(
             Text(
                 text = "No items in your cloud storage",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 modifier = Modifier.padding(start = startPadding)
             )
         } else {
@@ -499,7 +501,7 @@ private fun DebridItemCard(
         modifier = Modifier
             .width(180.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(0.06f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(0.06f))
             .border(
                 if (isFocused) 2.dp else 0.dp,
                 if (isFocused) accentColor else Color.Transparent,
@@ -521,13 +523,13 @@ private fun DebridItemCard(
                     CircularProgressIndicator(
                         modifier = Modifier.width(14.dp).height(14.dp),
                         strokeWidth = 2.dp,
-                        color = if (isFocused) accentColor else Color.White.copy(0.7f)
+                        color = if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(0.7f)
                     )
                 } else {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
                         contentDescription = null,
-                        tint = if (isFocused) accentColor else Color.White.copy(0.7f),
+                        tint = if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(0.7f),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -535,7 +537,7 @@ private fun DebridItemCard(
                 Text(
                     text = if (isResolving) "Resolving..." else "Play",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isFocused) accentColor else Color.White.copy(0.7f)
+                    color = if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(0.7f)
                 )
             }
             Box(
@@ -550,7 +552,7 @@ private fun DebridItemCard(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Remove from cloud storage",
-                    tint = Color.White.copy(0.5f),
+                    tint = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -561,7 +563,7 @@ private fun DebridItemCard(
         Text(
             text = item.name,
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -574,7 +576,7 @@ private fun DebridItemCard(
                     item.status
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(0.5f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

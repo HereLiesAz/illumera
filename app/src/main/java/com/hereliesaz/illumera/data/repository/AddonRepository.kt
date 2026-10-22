@@ -959,8 +959,21 @@ class AddonRepository @Inject constructor(
             ?: emptyMap()
     }
 
-    suspend fun installAddonWithConfig(url: String, home: Boolean, movies: Boolean, series: Boolean) = withContext(Dispatchers.IO) {
-        val manifest = withTimeout(30_000L) { api.getManifest(url) }
+    suspend fun installAddonWithConfig(
+        url: String,
+        home: Boolean,
+        movies: Boolean,
+        series: Boolean,
+        fallbackManifest: com.hereliesaz.illumera.data.model.stremio.Manifest? = null
+    ) = withContext(Dispatchers.IO) {
+        // A baked addon (fallbackManifest) installs even when its provider is unreachable.
+        val manifest = try {
+            withTimeout(30_000L) { api.getManifest(url) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            fallbackManifest ?: throw e
+        }
         // Gson deserializes straight into the fields without honoring Kotlin's default
         // values, so a manifest missing "id"/"name" would otherwise reach the DB as a
         // literal null against a non-null Room column and crash with a raw
@@ -1018,6 +1031,11 @@ class AddonRepository @Inject constructor(
     suspend fun renameAddon(transportUrl: String, newName: String) = withContext(Dispatchers.IO) {
         val target = dao.getAddon(transportUrl)
         if (target != null) dao.insertAddon(target.copy(nickname = newName))
+    }
+
+    /** A disabled addon stays installed but contributes no catalogs, metadata or streams. */
+    suspend fun setAddonEnabled(transportUrl: String, enabled: Boolean) = withContext(Dispatchers.IO) {
+        dao.setAddonEnabled(transportUrl, enabled)
     }
 
     suspend fun deleteAddon(transportUrl: String) = withContext(Dispatchers.IO) {

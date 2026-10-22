@@ -129,7 +129,7 @@ fun AvatarUploadDialog(
                 .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(32.dp)
                 .focusRequester(focusRequester)
                 .focusable()
@@ -141,7 +141,7 @@ fun AvatarUploadDialog(
                 Text(
                     "Upload Avatar",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
                 
                 Text(
@@ -172,7 +172,7 @@ fun AvatarUploadDialog(
                         Text(
                             "Choose Photo",
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
                     Spacer(Modifier.height(20.dp))
@@ -222,7 +222,7 @@ fun AvatarUploadDialog(
                                 fontWeight = FontWeight.SemiBold,
                                 letterSpacing = 0.5.sp
                             ),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }

@@ -104,6 +104,63 @@ internal fun firstFocusableCinematicRowIndex(
     }
 }?.index
 
+/** Per-tab presentation: profile genre ordering on Movies/Series, watched titles hidden on Home. */
+private fun displayStateFor(
+    tab: DashboardTab,
+    state: HomeViewModel.HomeState,
+    profileId: Int?,
+    genreContext: android.content.Context
+): HomeViewModel.HomeState =
+    if (tab != DashboardTab.HOME) {
+        val screen = if (tab == DashboardTab.MOVIES) "movies" else "series"
+        if (profileId == null) state else state.copy(
+            rows = state.rows.map { row ->
+                row.copy(items = ScreenGenreRows.sortTitles(
+                    row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                ))
+            },
+            mixedRows = state.mixedRows.map { row ->
+                if (row is CategoryRow) row.copy(items = ScreenGenreRows.sortTitles(
+                    row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
+                )) else row
+            }
+        )
+    } else {
+        // Home-only rule: once a movie or any episode of a series is watched,
+        // remove that title from Home catalog/hero lists immediately. The
+        // Continue Watching data remains untouched and manages itself from history.
+        val hiddenIds = state.watchedIds
+        if (hiddenIds.isEmpty()) {
+            state
+        } else {
+            state.copy(
+                rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) },
+                mixedRows = state.mixedRows.map { row ->
+                    if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in hiddenIds }) else row
+                },
+                heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
+            )
+        }
+    }
+
+/** Home gets the personal rows; they sit after every catalog row (see visibleMixedRows). */
+internal fun withPersonalRows(tab: DashboardTab, state: HomeViewModel.HomeState): HomeViewModel.HomeState =
+    if (tab != DashboardTab.HOME || state.personalRows.isEmpty()) state
+    else state.copy(mixedRows = state.mixedRows + state.personalRows)
+
+/** "Don't like" removes a title from every row and the hero. */
+internal fun withoutDisliked(state: HomeViewModel.HomeState): HomeViewModel.HomeState {
+    val disliked = state.dislikedIds
+    if (disliked.isEmpty()) return state
+    return state.copy(
+        rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in disliked }) },
+        mixedRows = state.mixedRows.map { row ->
+            if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in disliked }) else row
+        },
+        heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in disliked }) }
+    )
+}
+
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 60L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 70L
 private const val PREVIEW_NAVIGATION_IDLE_MS = 750L
@@ -124,38 +181,7 @@ fun HomeScreen(
     val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
     DisposableEffect(trailerPreloader) { onDispose { trailerPreloader.release() } }
     val displayState = remember(tab, state, currentProfile?.id) {
-        if (tab != DashboardTab.HOME) {
-            val profileId = currentProfile?.id
-            val screen = if (tab == DashboardTab.MOVIES) "movies" else "series"
-            if (profileId == null) state else state.copy(
-                rows = state.rows.map { row ->
-                    row.copy(items = ScreenGenreRows.sortTitles(
-                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
-                    ))
-                },
-                mixedRows = state.mixedRows.map { row ->
-                    if (row is CategoryRow) row.copy(items = ScreenGenreRows.sortTitles(
-                        row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
-                    )) else row
-                }
-            )
-        } else {
-            // Home-only rule: once a movie or any episode of a series is watched,
-            // remove that title from Home catalog/hero lists immediately. The
-            // Continue Watching data remains untouched and manages itself from history.
-            val hiddenIds = state.watchedIds
-            if (hiddenIds.isEmpty()) {
-                state
-            } else {
-                state.copy(
-                    rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) },
-                    mixedRows = state.mixedRows.map { row ->
-                        if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in hiddenIds }) else row
-                    },
-                    heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
-                )
-            }
-        }
+        displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext)
     }
     // All discovery tabs share the non-configurable cinematic row hierarchy:
     // inactive landscape rails and portrait cards only in the focused row.
@@ -416,11 +442,28 @@ fun CinematicLayout(
             revealedGenres.add(row.id)
         }
     }
+    // Rows that never had content are not composed at all: they take no space and
+    // cannot trap the D-pad. Their first fetch is started here instead of by the
+    // (absent) row item. Revealed rows stay mounted (see above) even if emptied.
+    val requestedEmptyRows = remember(state.loadedScreen, state.loadedProfileId) { mutableSetOf<String>() }
+    LaunchedEffect(state.mixedRows) {
+        state.mixedRows.forEach { row ->
+            if (row is CategoryRow && row.items.isEmpty() &&
+                row.id.startsWith("catalog-home:") && requestedEmptyRows.add(row.id)
+            ) onLoadMore(row.id)
+        }
+    }
     // Preserve original poster indices while ranking rows for the active profile.
-    // Keep unpopulated genre shells so the screen does not end at the first
-    // successfully loaded group; they are skipped by TV focus navigation.
-    val visibleMixedRows = remember(state.mixedRows, state.loadedScreen, state.watchedIds, state.likedIds) {
-        val original = state.mixedRows.withIndex().toList()
+    val visibleMixedRows = remember(
+        state.mixedRows, state.loadedScreen, state.watchedIds, state.likedIds, revealedGenres.size
+    ) {
+        val original = state.mixedRows.withIndex().filter { (_, row) ->
+            when (row) {
+                is CategoryRow -> row.items.isNotEmpty() || row.id in revealedGenres
+                is HubGroupRow -> row.items.isNotEmpty()
+                else -> true
+            }
+        }
         if (state.loadedScreen in setOf("movies", "series")) {
             original.sortedWith(
                 compareByDescending<IndexedValue<HomeRowItem>> { indexed ->
@@ -431,7 +474,11 @@ fun CinematicLayout(
                     else Int.MIN_VALUE
                 }.thenBy { it.index }
             )
-        } else original
+        } else {
+            // Personal rows are appended (so their indices never shift catalog rows' focus
+            // keys) but shown first, right under Continue Watching.
+            original.sortedBy { if (it.value.id.startsWith("personal:")) 0 else 1 }
+        }
     }
     val firstFocusableRowIndex = remember(visibleMixedRows) {
         firstFocusableCinematicRowIndex(visibleMixedRows)
@@ -850,18 +897,6 @@ fun CinematicLayout(
                                         onPositionChanged = { onScrollPositionChange(rowKey, it) }
                                     )
                                     
-                                    // A genre row is created without eagerly querying all
-                                    // addon catalogs. Fetch when its LazyColumn item first
-                                    // enters view, then keep pagination on horizontal scrolling.
-                                    // Genre probes are already owned by the ViewModel's
-                                    // one-shot background lanes. A row entering/re-entering
-                                    // the LazyColumn must not restart an empty genre fetch.
-                                    LaunchedEffect(item.id) {
-                                        if (item.id.startsWith("catalog-home:") &&
-                                            item.items.isEmpty()
-                                        ) onLoadMore(item.id)
-                                    }
-
                                     // Explicit card focus, not layout measurements
                                     // emitted during a row shape switch, drives paging.
                                     val itemId = item.id
@@ -1226,6 +1261,27 @@ fun SimpleLayout(
         historyItems.take(15).forEach { item -> onHeroItemVisible(item) }
     }
 
+    // Empty rows are never composed (they would show a bare title and trap the D-pad);
+    // their first fetch starts here instead of from the row item.
+    val requestedEmptyRows = remember(state.loadedScreen, state.loadedProfileId) { mutableSetOf<String>() }
+    LaunchedEffect(state.mixedRows) {
+        state.mixedRows.forEach { row ->
+            if (row is CategoryRow && row.items.isEmpty() &&
+                (row.id.startsWith("catalog-home:") || row.id.startsWith("catalog-aggregate:")) &&
+                requestedEmptyRows.add(row.id)
+            ) onLoadMore(row.id)
+        }
+    }
+    val simpleRows = remember(state.mixedRows) {
+        state.mixedRows.filter { row ->
+            when (row) {
+                is CategoryRow -> row.items.isNotEmpty()
+                is HubGroupRow -> row.items.isNotEmpty()
+                else -> true
+            }
+        }
+    }
+
     // Redirect stale continue-watching focus key after progress was cleared
     val effectiveLastFocusedKey = remember(lastFocusedKey, historyItems) {
         resolveEffectiveFocusKey(lastFocusedKey, historyItems)
@@ -1386,7 +1442,7 @@ fun SimpleLayout(
             }
 
             itemsIndexed(
-                items = state.mixedRows,
+                items = simpleRows,
                 key = { _, item -> 
                     when(item) {
                         is HubGroupRow -> "simple_hub_${item.id}"
@@ -1438,7 +1494,7 @@ fun SimpleLayout(
                             externalListState = hubListState,
                             upKeyDebouncer = upKeyDebouncer,
                             repeatGate = dpadRepeatGate,
-                            isLastRow = rowIndex == state.mixedRows.lastIndex,
+                            isLastRow = rowIndex == simpleRows.lastIndex,
                             pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && rowIndex == 0) firstRowPivotRequester else null,
                             isGlobalFocusPresent = effectiveLastFocusedKey != null
                         )
@@ -1446,12 +1502,6 @@ fun SimpleLayout(
                     is CategoryRow -> {
                         // Create list state with saved scroll position for this row
                         // Reset when focus was redirected from a removed history item to this first row
-                        LaunchedEffect(item.id) {
-                            if ((item.id.startsWith("catalog-home:") ||
-                                    item.id.startsWith("catalog-aggregate:")) &&
-                                item.items.isEmpty()
-                            ) onLoadMore(item.id)
-                        }
                         val rowKey = item.id
                         val resetScroll = historyFocusRedirected && historyItems.isEmpty() && rowIndex == 0
                         val savedPosition = if (resetScroll) null else rowScrollPositions[rowKey]
@@ -1486,7 +1536,7 @@ fun SimpleLayout(
                         }
                         
                         // Custom row height: 193dp for last row in Top Nav, 210dp standard
-                        val rowHeight = if (isTopNav && rowIndex == state.mixedRows.lastIndex) 193.dp else 210.dp
+                        val rowHeight = if (isTopNav && rowIndex == simpleRows.lastIndex) 193.dp else 210.dp
 
                         // STABILIZE LAMBDAS:
                         // These specific lambda instances must remain referentially equal

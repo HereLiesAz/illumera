@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ToggleOff
+import androidx.compose.material.icons.filled.ToggleOn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +72,8 @@ fun AddonCatalogContent(
     showingInstalled: Boolean = false,
     onInstalledSelected: () -> Unit = {},
     onRemoveInstalled: (String) -> Unit = {},
+    onToggleInstalled: (String, Boolean) -> Unit = { _, _ -> },
+    onConfigureInstalled: (String) -> Unit = {},
     onInstallUrl: () -> Unit = {},
     modifier: Modifier = Modifier,
     entryRequester: FocusRequester? = null,
@@ -116,13 +120,13 @@ fun AddonCatalogContent(
             Text(
                 "Browse Add-ons",
                 style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 "Official, Community, 3rd Party, and saved collections",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.58f),
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.58f),
                 modifier = Modifier.padding(top = 4.dp)
             )
 
@@ -215,7 +219,7 @@ fun AddonCatalogContent(
                 }
                 Text(
                     "Supports Stremio addon-catalog manifests, modern collection JSON, and compatible legacy repositories.",
-                    color = Color.White.copy(alpha = 0.48f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.48f),
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.padding(top = 6.dp)
                 )
@@ -225,7 +229,7 @@ fun AddonCatalogContent(
                 Spacer(Modifier.height(12.dp))
                 Text(
                     "Collections",
-                    color = Color.White.copy(alpha = 0.62f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.62f),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -273,14 +277,42 @@ fun AddonCatalogContent(
                     items(filteredInstalled, key = { it.transportUrl }) { addon ->
                         Row(
                             modifier = Modifier.fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.05f))
+                                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(addon.nickname ?: addon.name, color = Color.White)
-                                Text(addon.transportUrl, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    addon.nickname ?: addon.name,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                        .copy(alpha = if (addon.isEnabled) 1f else 0.5f)
+                                )
+                                Text(
+                                    if (addon.isEnabled) addon.transportUrl else "Disabled · ${addon.transportUrl}",
+                                    color = Color.Gray,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
+                            val addonLabel = addon.nickname ?: addon.name
+                            if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(addon.transportUrl)) {
+                                AddonIconAction(
+                                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    label = "Configure $addonLabel",
+                                    onClick = { onConfigureInstalled(addon.transportUrl) },
+                                    modifier = Modifier.restorableFocus("addons:configure:${addon.transportUrl}", focusMemory)
+                                )
+                            }
+                            AddonIconAction(
+                                icon = {
+                                    Icon(
+                                        if (addon.isEnabled) Icons.Default.ToggleOn else Icons.Default.ToggleOff,
+                                        contentDescription = null
+                                    )
+                                },
+                                label = if (addon.isEnabled) "Disable $addonLabel" else "Enable $addonLabel",
+                                onClick = { onToggleInstalled(addon.transportUrl, !addon.isEnabled) },
+                                modifier = Modifier.restorableFocus("addons:toggle:${addon.transportUrl}", focusMemory)
+                            )
                             AddonIconAction(
                                 icon = { Icon(Icons.Default.Delete, contentDescription = "Uninstall ${addon.nickname ?: addon.name}") },
                                 label = "Uninstall ${addon.nickname ?: addon.name}",
@@ -389,7 +421,7 @@ private fun AddonCatalogRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.White.copy(alpha = 0.05f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -397,7 +429,7 @@ private fun AddonCatalogRow(
             modifier = Modifier
                 .size(58.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.White.copy(alpha = 0.06f)),
+                .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f)),
             contentAlignment = Alignment.Center
         ) {
             if (!manifest.logo.isNullOrBlank()) {
@@ -421,7 +453,7 @@ private fun AddonCatalogRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 manifest.name,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
@@ -430,7 +462,7 @@ private fun AddonCatalogRow(
             if (!manifest.description.isNullOrBlank()) {
                 Text(
                     manifest.description,
-                    color = Color.White.copy(alpha = 0.58f),
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.58f),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -501,7 +533,7 @@ internal fun AddonIconAction(
             .semantics { contentDescription = label }
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.12f),
+                if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f),
                 RoundedCornerShape(8.dp)
             )
     ) {
@@ -513,11 +545,11 @@ internal fun AddonIconAction(
 private fun AddonBadge(label: String) {
     Text(
         label,
-        color = Color.White.copy(alpha = 0.68f),
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.68f),
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.07f))
+            .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f))
             .padding(horizontal = 7.dp, vertical = 3.dp)
     )
 }

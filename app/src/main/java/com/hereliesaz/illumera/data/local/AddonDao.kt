@@ -41,6 +41,9 @@ interface AddonDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAddons(addons: List<AddonEntity>)
 
+    @Query("UPDATE addons SET isEnabled = :enabled WHERE transportUrl = :url")
+    suspend fun setAddonEnabled(url: String, enabled: Boolean)
+
     @Query("DELETE FROM addons WHERE transportUrl = :url")
     suspend fun deleteAddonByUrl(url: String)
 

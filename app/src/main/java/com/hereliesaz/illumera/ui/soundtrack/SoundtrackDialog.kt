@@ -81,7 +81,7 @@ fun SoundtrackDialog(
                 .width(rememberDialogWidth(560))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -89,17 +89,17 @@ fun SoundtrackDialog(
             Text(
                 soundtrack?.title?.let { "$it · Soundtrack" } ?: "Soundtrack",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Light),
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
             if (nowPlaying != null) {
-                Text("Now playing", color = Color.White.copy(0.5f), style = MaterialTheme.typography.labelMedium)
+                Text("Now playing", color = MaterialTheme.colorScheme.onBackground.copy(0.5f), style = MaterialTheme.typography.labelMedium)
                 SongRow(null, nowPlaying, highlighted = true)
             }
             when (val s = state) {
                 SoundtrackViewModel.State.Loading ->
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.align(Alignment.CenterHorizontally))
                 SoundtrackViewModel.State.Empty ->
-                    Text("No songs listed for this title.", color = Color.White.copy(0.6f))
+                    Text("No songs listed for this title.", color = MaterialTheme.colorScheme.onBackground.copy(0.6f))
                 is SoundtrackViewModel.State.Loaded -> {
                     val rows = remember(s.soundtrack) { soundtrackRows(s.soundtrack) }
                     LaunchedEffect(rows) { runCatching { firstRow.requestFocus() } }
@@ -110,7 +110,7 @@ fun SoundtrackDialog(
                             when (row) {
                                 is ListRow.Heading -> Text(
                                     row.text,
-                                    color = Color.White.copy(0.55f),
+                                    color = MaterialTheme.colorScheme.onBackground.copy(0.55f),
                                     style = MaterialTheme.typography.titleSmall,
                                     modifier = focus.focusable().padding(top = 16.dp, bottom = 4.dp)
                                 )
@@ -127,7 +127,7 @@ fun SoundtrackDialog(
                     loaded?.checking == true -> "Song data from IMDb · checking Tunefind…"
                     else -> "Song data from IMDb."
                 },
-                color = Color.White.copy(0.3f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.3f),
                 style = MaterialTheme.typography.labelSmall
             )
         }
@@ -143,17 +143,17 @@ private fun SongRow(number: Int?, song: SoundtrackSong, modifier: Modifier = Mod
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(if (focused || highlighted) Color.White.copy(0.1f) else Color.Transparent)
+            .background(if (focused || highlighted) MaterialTheme.colorScheme.onBackground.copy(0.1f) else Color.Transparent)
             .focusable(interactionSource = interaction)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(number?.toString() ?: "♪", color = Color.White.copy(0.35f), modifier = Modifier.width(24.dp))
+        Text(number?.toString() ?: "♪", color = MaterialTheme.colorScheme.onBackground.copy(0.35f), modifier = Modifier.width(24.dp))
         Column {
-            Text(song.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.title, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
             song.artist?.let {
-                Text(it, color = Color.White.copy(0.55f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(it, color = MaterialTheme.colorScheme.onBackground.copy(0.55f), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

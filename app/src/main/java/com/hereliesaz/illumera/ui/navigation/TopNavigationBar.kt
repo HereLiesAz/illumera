@@ -428,9 +428,9 @@ fun TopNavItem(
     // Animations
     val iconColor by animateColorAsState(
         targetValue = when {
-            isFocused -> Color.White
-            showIndicator -> Color.White
-            else -> Color.White.copy(alpha = 0.5f)
+            isFocused -> MaterialTheme.colorScheme.onBackground
+            showIndicator -> MaterialTheme.colorScheme.onBackground
+            else -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
         },
         animationSpec = tween(200),
         label = "iconColor"
@@ -509,7 +509,7 @@ fun TopNavItem(
                 focusedContainerColor = accentColor.copy(alpha = 0.2f),
                 pressedContainerColor = accentColor.copy(alpha = 0.2f),
                 contentColor = iconColor,
-                focusedContentColor = Color.White
+                focusedContentColor = MaterialTheme.colorScheme.onBackground
             )
         ) {
             // Icon + Text row
@@ -567,7 +567,7 @@ fun TopNavProfileAvatar(
     
     // Content color animation
     val contentColor by animateColorAsState(
-        targetValue = if (showIndicator) Color.White else Color(0xFF8E9099),
+        targetValue = if (showIndicator) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
         label = "contentColor"
     )
     
@@ -622,7 +622,7 @@ fun TopNavProfileAvatar(
                 focusedContainerColor = Color.Transparent,
                 pressedContainerColor = Color.Transparent,
                 contentColor = contentColor,
-                focusedContentColor = Color.White
+                focusedContentColor = MaterialTheme.colorScheme.onBackground
             )
         ) {
             Row(

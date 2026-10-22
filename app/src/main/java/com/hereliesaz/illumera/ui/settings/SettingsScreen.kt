@@ -165,7 +165,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 20.sp
             ),
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 32.dp, start = 16.dp)
         )
 
@@ -411,7 +411,7 @@ fun SettingsSidebarItem(
     val showHighlight = isFocused || isSelected
     
     val contentColor by animateColorAsState(
-        if (showHighlight) Color.White else Color.White.copy(0.4f), 
+        if (showHighlight) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.4f), 
         label = "Content"
     )
     
@@ -465,18 +465,18 @@ private fun WatchlistSettings(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Watchlist", style = MaterialTheme.typography.titleLarge, color = Color.White)
+        Text("Watchlist", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
         Text("Suggested Next appears first, then Queue, then the Library grid.",
             style = MaterialTheme.typography.bodyMedium, color = Color.LightGray)
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item(key = "queue_preferences") {
-                Text("Queue & suggestions", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Text("Queue & suggestions", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
                 Spacer(Modifier.height(8.dp))
                 QueuePreferencesSettings()
                 Spacer(Modifier.height(14.dp))
             }
             item(key = "default_library_sort_header") {
-                Text("Default Library sorting", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Text("Default Library sorting", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
             }
             items(modes) { mode ->
                 val selected = defaultSort == mode.first
@@ -484,11 +484,11 @@ private fun WatchlistSettings(
                 val focused by interactionSource.collectIsFocusedAsState()
                 Text(
                     text = "${if (selected) "✓  " else ""}${mode.second}",
-                    color = if (selected) MaterialTheme.colorScheme.primary else Color.White,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = if (focused) 0.2f else if (selected) 0.13f else 0.05f))
+                        .background(MaterialTheme.colorScheme.onBackground.copy(alpha = if (focused) 0.2f else if (selected) 0.13f else 0.05f))
                         // D-pad users need to see which row has focus.
                         .border(
                             width = 2.dp,

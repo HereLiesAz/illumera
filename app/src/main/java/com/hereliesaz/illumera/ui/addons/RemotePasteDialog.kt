@@ -88,7 +88,7 @@ fun RemotePasteDialog(
                 .width(rememberDialogWidth(420))
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.background)
-                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(0.1f), RoundedCornerShape(16.dp))
                 .padding(32.dp)
                 .focusRequester(focusRequester)
                 .focusable()
@@ -100,7 +100,7 @@ fun RemotePasteDialog(
                 Text(
                     if (isConfigurationFlow) "Configure Addon" else "Remote Paste",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Text(
@@ -155,7 +155,7 @@ fun RemotePasteDialog(
                                 fontWeight = FontWeight.SemiBold,
                                 letterSpacing = 0.5.sp
                             ),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.onBackground,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(top = 4.dp)
                         )

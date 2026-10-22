@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import com.hereliesaz.illumera.data.profile.BakedAddons
 import javax.inject.Inject
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.ui.addons.CINEMETA_TRANSPORT_URL
@@ -433,7 +434,7 @@ class IntegrationsViewModel @Inject constructor(
             val removeCount = if (remoteSet.isEmpty()) 0 else {
                 addonRepository.getAddons().first().count { addon ->
                     val localUrl = normalizeTransportUrl(addon.transportUrl)
-                    localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet
+                    !BakedAddons.isBaked(localUrl) && localUrl !in remoteSet
                 }
             }
             if (removeCount > 0) {
@@ -486,7 +487,7 @@ class IntegrationsViewModel @Inject constructor(
                     // wipe every local addon; only prune when the account lists some.
                     if (remoteSet.isNotEmpty()) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
-                        if (localUrl != CINEMETA_TRANSPORT_URL && localUrl !in remoteSet) {
+                        if (!BakedAddons.isBaked(localUrl) && localUrl !in remoteSet) {
                             try {
                                 addonRepository.deleteAddon(addon.transportUrl)
                             } catch (cancelled: CancellationException) {
@@ -549,7 +550,7 @@ class IntegrationsViewModel @Inject constructor(
     /**
      * Undoes Stremio sync on this profile so it can be set up again from scratch: signs out,
      * forgets the library-sync baseline (so a fresh sign-in merges instead of pushing
-     * deletions), and removes every addon except Cinemeta. Local watch progress stays.
+     * deletions), and removes every addon except the baked ones (Cinemeta, Streaming Catalogs). Local watch progress stays.
      */
     fun resetStremioSync() {
         val profileId = profileConfigurationManager.getLastActiveProfileId() ?: return
@@ -563,7 +564,7 @@ class IntegrationsViewModel @Inject constructor(
                     stremioAuthManager.disconnect()
                     stremioLibrarySyncManager.clearSyncState(profileId)
                     val addons = addonRepository.getAddons().first()
-                    addons.filter { normalizeTransportUrl(it.transportUrl) != CINEMETA_TRANSPORT_URL }.forEach { addon ->
+                    addons.filter { !BakedAddons.isBaked(normalizeTransportUrl(it.transportUrl)) }.forEach { addon ->
                         addonRepository.deleteAddon(addon.transportUrl)
                         removed++
                     }

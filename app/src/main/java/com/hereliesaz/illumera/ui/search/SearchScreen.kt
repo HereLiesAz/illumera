@@ -223,16 +223,16 @@ fun SearchScreen(
                     }
                 } else if (state.results.isEmpty() && state.query.isNotEmpty() && state.searchFailed) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Search failed — check your connection", color = Color.White.copy(0.5f))
+                        Text("Search failed — check your connection", color = MaterialTheme.colorScheme.onBackground.copy(0.5f))
                     }
                 } else if (state.results.isEmpty() && state.query.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No results for \"${state.query}\"", color = Color.White.copy(0.5f))
+                        Text("No results for \"${state.query}\"", color = MaterialTheme.colorScheme.onBackground.copy(0.5f))
                     }
                 } else if (state.query.isEmpty()) {
                     if (state.recentSearches.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Search for movies, series, and more", color = Color.White.copy(0.3f))
+                            Text("Search for movies, series, and more", color = MaterialTheme.colorScheme.onBackground.copy(0.3f))
                         }
                     } else {
                         RecentSearchesList(
@@ -264,7 +264,7 @@ fun SearchScreen(
                                     style = TvMaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.SemiBold
                                     ),
-                                    color = Color.White.copy(0.9f),
+                                    color = MaterialTheme.colorScheme.onBackground.copy(0.9f),
                                     modifier = Modifier.padding(bottom = if (isTopNav) 12.dp else 4.dp)
                                 )
 
@@ -314,7 +314,7 @@ fun SearchScreen(
                                     style = TvMaterialTheme.typography.titleMedium.copy(
                                         fontWeight = FontWeight.SemiBold
                                     ),
-                                    color = Color.White.copy(0.9f),
+                                    color = MaterialTheme.colorScheme.onBackground.copy(0.9f),
                                     modifier = Modifier.padding(bottom = if (isTopNav) 12.dp else 4.dp)
                                 )
 
@@ -399,7 +399,7 @@ fun SearchScreen(
                         Icon(
                             Icons.Default.Search,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.size(28.dp)
                         )
                         Spacer(modifier = Modifier.width(16.dp))
@@ -443,10 +443,10 @@ fun SearchScreen(
                                         } else false
                                     },
                                 textStyle = MaterialTheme.typography.headlineMedium.copy(
-                                    color = Color.White,
+                                    color = MaterialTheme.colorScheme.onBackground,
                                     fontWeight = FontWeight.Normal
                                 ),
-                                cursorBrush = SolidColor(Color.White),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                                 keyboardActions = KeyboardActions(
                                     onSearch = {
@@ -463,7 +463,7 @@ fun SearchScreen(
                                                     fontSize = 20.sp,
                                                     fontWeight = FontWeight.Normal
                                                 ),
-                                                color = Color.White.copy(alpha = 0.5f)
+                                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                                             )
                                         }
                                         innerTextField()
@@ -509,7 +509,7 @@ private fun TouchSearchLayout(
             Icon(
                 Icons.Default.Search,
                 contentDescription = null,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -518,10 +518,10 @@ private fun TouchSearchLayout(
                 onValueChange = { viewModel.onQueryChange(it) },
                 modifier = Modifier.weight(1f),
                 textStyle = MaterialTheme.typography.headlineSmall.copy(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Normal
                 ),
-                cursorBrush = SolidColor(Color.White),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.onBackground),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(
                     onSearch = { keyboardController?.hide() }
@@ -532,7 +532,7 @@ private fun TouchSearchLayout(
                             Text(
                                 text = "Type to search...",
                                 style = MaterialTheme.typography.headlineSmall,
-                                color = Color.White.copy(alpha = 0.5f)
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                             )
                         }
                         innerTextField()
@@ -550,12 +550,12 @@ private fun TouchSearchLayout(
                 }
                 state.query.isNotEmpty() && state.results.isEmpty() && state.searchFailed -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Search failed — check your connection", color = Color.White.copy(0.5f))
+                        Text("Search failed — check your connection", color = MaterialTheme.colorScheme.onBackground.copy(0.5f))
                     }
                 }
                 state.query.isNotEmpty() && state.results.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No results for \"${state.query}\"", color = Color.White.copy(0.5f))
+                        Text("No results for \"${state.query}\"", color = MaterialTheme.colorScheme.onBackground.copy(0.5f))
                     }
                 }
                 state.query.isNotEmpty() -> {
@@ -567,7 +567,7 @@ private fun TouchSearchLayout(
                 }
                 state.recentSearches.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Search for movies, series, and more", color = Color.White.copy(0.3f))
+                        Text("Search for movies, series, and more", color = MaterialTheme.colorScheme.onBackground.copy(0.3f))
                     }
                 }
                 else -> {
@@ -636,7 +636,7 @@ private fun RecentSearchesList(
             Text(
                 text = "Recent Searches",
                 style = TvMaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = Color.White.copy(0.9f),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.9f),
                 modifier = Modifier.padding(bottom = 8.dp)
             )
         }
@@ -678,8 +678,8 @@ private fun RecentSearchRow(
         modifier = modifier.touchClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(0.05f),
-            focusedContainerColor = Color.White.copy(0.15f)
+            containerColor = MaterialTheme.colorScheme.onBackground.copy(0.05f),
+            focusedContainerColor = MaterialTheme.colorScheme.onBackground.copy(0.15f)
         )
     ) {
         Row(
@@ -689,14 +689,14 @@ private fun RecentSearchRow(
             Icon(
                 Icons.Default.History,
                 contentDescription = null,
-                tint = Color.White.copy(if (isFocused) 0.8f else 0.5f),
+                tint = MaterialTheme.colorScheme.onBackground.copy(if (isFocused) 0.8f else 0.5f),
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = query,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (isFocused) Color.White else Color.White.copy(0.8f)
+                color = if (isFocused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.8f)
             )
         }
     }
@@ -850,7 +850,7 @@ fun KeyButton(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
-    val dynamicContentColor = if (isFocused) Color.Black else Color.White
+    val dynamicContentColor = if (isFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onBackground
 
     Surface(
         onClick = onClick,
@@ -858,8 +858,8 @@ fun KeyButton(
         modifier = modifier.height(35.dp).fillMaxWidth().touchClick(onClick = onClick),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(4.dp)),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.White.copy(0.1f),
-            focusedContainerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.onBackground.copy(0.1f),
+            focusedContainerColor = MaterialTheme.colorScheme.primary,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f)
     ) {
