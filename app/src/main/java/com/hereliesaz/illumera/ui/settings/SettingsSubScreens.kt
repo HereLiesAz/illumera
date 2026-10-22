@@ -421,6 +421,29 @@ fun PlaybackSettings(
                 onBack = onGoBack
             )
 
+            // FLOATING PLAYER (the app's own PiP; TV boxes have no system one)
+            var floating by remember {
+                mutableStateOf(com.hereliesaz.illumera.ui.player.FloatingPlayer.isEnabled(stereoContext))
+            }
+            val overlayAllowed = com.hereliesaz.illumera.ui.player.FloatingPlayer.hasPermission(stereoContext)
+            SettingToggleRow(
+                label = "Floating player",
+                subtitle = when {
+                    floating && !overlayAllowed -> "Needs \"Display over other apps\" for Illumera — turn this off and on to allow it"
+                    floating -> "Pressing Home keeps the video playing in a corner over other apps; open Illumera to return"
+                    else -> "Keep watching in a small window after pressing Home"
+                },
+                isChecked = floating,
+                onCheckedChange = {
+                    floating = it
+                    com.hereliesaz.illumera.ui.player.FloatingPlayer.setEnabled(stereoContext, it)
+                    if (it && !com.hereliesaz.illumera.ui.player.FloatingPlayer.hasPermission(stereoContext)) {
+                        com.hereliesaz.illumera.ui.player.FloatingPlayer.requestPermission(stereoContext)
+                    }
+                },
+                onBack = onGoBack
+            )
+
             // DV7 → HEVC FALLBACK
             SettingToggleRow(
                 label = "Dolby Vision Profile 7 Fallback",
