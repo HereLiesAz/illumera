@@ -155,7 +155,9 @@ fun DetailsScreen(
     onTrailerClick: (youtubeKey: String, trailerName: String) -> Unit = { _, _ -> },
     isTrailerLoading: Boolean = false,
     // Scoped to this page's back-stack entry: every Details page has its own.
-    viewModel: DetailsViewModel = hiltViewModel()
+    viewModel: DetailsViewModel = hiltViewModel(),
+    // Love / Like / Don't like buttons and the dislike filter on this page's TMDB rows.
+    tasteActions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel()
 ) {
     LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
     val context = LocalContext.current
@@ -373,8 +375,7 @@ fun DetailsScreen(
             @OptIn(ExperimentalFoundationApi::class)
             CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
             // "Don't like" keeps a title out of this page's TMDB rows.
-            val dislikeTastes by hiltViewModel<com.hereliesaz.illumera.ui.components.MediaActionsViewModel>()
-                .tastes.collectAsStateWithLifecycle()
+            val dislikeTastes by tasteActions.tastes.collectAsStateWithLifecycle()
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
@@ -747,7 +748,8 @@ fun DetailsScreen(
                                 title = state.meta?.name.orEmpty(),
                                 poster = state.meta?.poster
                             ),
-                            focusMemory = focusMemory
+                            focusMemory = focusMemory,
+                            actions = tasteActions
                         )
 
                         if (resumePlaybackId != null) {
@@ -869,7 +871,8 @@ fun DetailsScreen(
                                 title = state.meta?.name.orEmpty(),
                                 poster = state.meta?.poster
                             ),
-                            focusMemory = focusMemory
+                            focusMemory = focusMemory,
+                            actions = tasteActions
                         )
 
                         if (resumePlaybackId != null) {
@@ -1704,7 +1707,7 @@ private fun playbackIdBelongsToSeries(seriesId: String, playbackId: String): Boo
 private fun DetailsTasteButtons(
     target: com.hereliesaz.illumera.ui.components.MediaActionTarget,
     focusMemory: FocusMemory,
-    actions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel()
+    actions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel
 ) {
     val tastes by actions.tastes.collectAsStateWithLifecycle()
     val taste = (tastes[target.id] ?: tastes[target.id.substringBefore(':')])?.taste
