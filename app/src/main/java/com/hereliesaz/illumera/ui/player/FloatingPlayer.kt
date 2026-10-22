@@ -1,26 +1,15 @@
 package com.hereliesaz.illumera.ui.player
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.net.Uri
-import android.os.Build
-import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
 import android.view.SurfaceView
 import android.view.WindowManager
-import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.hereliesaz.illumera.MainActivity
 
 /**
  * The app's own picture-in-picture for TV boxes without the system one: on leaving the app
@@ -75,8 +64,8 @@ object FloatingPlayer {
 
     /**
      * Moves [player]'s video into the floating window; [onClosed] runs when the window goes.
-     * The window is added before the foreground service starts: a visible overlay is what
-     * lets a backgrounded app start one on Android 12+.
+     * No foreground service: Play would require a declaration for one, and a visible overlay
+     * already keeps the process at perceptible priority.
      */
     fun show(context: Context, player: ExoPlayer, onClosed: () -> Unit) {
         val app = context.applicationContext
@@ -107,10 +96,6 @@ object FloatingPlayer {
         this.onClosed = onClosed
         player.setVideoSurfaceView(view)
         player.addListener(listener)
-        // Keeps the process from being reclaimed while only the overlay is showing.
-        runCatching {
-            androidx.core.content.ContextCompat.startForegroundService(app, Intent(app, FloatingPlayerService::class.java))
-        }
     }
 
     /** Closes the floating window, if any, and hands the video back via its onClosed. */
@@ -127,46 +112,6 @@ object FloatingPlayer {
             held?.clearVideoSurfaceView(view)
             runCatching { (app.getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) }
         }
-        app.stopService(Intent(app, FloatingPlayerService::class.java))
         closed?.invoke()
-    }
-}
-
-/** Foreground service holding the process while the floating window plays. */
-class FloatingPlayerService : Service() {
-    companion object {
-        private const val CHANNEL = "floating_player"
-        private const val NOTIFICATION_ID = 4107
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, notification(),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
-        )
-        return START_NOT_STICKY
-    }
-
-    private fun notification(): Notification {
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL, "Floating player", NotificationManager.IMPORTANCE_LOW)
-            )
-        }
-        val open = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("Playing in a floating window")
-            .setContentText("Open Illumera to return to full screen")
-            .setContentIntent(open)
-            .setOngoing(true)
-            .build()
     }
 }
