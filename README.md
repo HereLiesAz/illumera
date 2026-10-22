@@ -76,6 +76,7 @@ import your existing addon collection and sync Continue Watching progress.
   source tags one (overridable per-profile in Settings)
 - Subtitle customization (size, position, timing offset)
 - Playback speed control
+- **3D on a 2D TV:** a frame-packed 3D source (SBS/HSBS, OU/HOU/TAB) offers to play in 2D — one eye, at its true aspect. Android can't detect 3D TVs, so 3D-capable TVs are marked in **Settings → Playback → TV Plays 3D**; the player's 3D button cycles 2D side-by-side / 2D top-bottom / 3D.
 - Source switching mid-playback
 - Skip intro/outro segments via IntroDb integration
 

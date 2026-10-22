@@ -401,6 +401,22 @@ fun PlaybackSettings(
                 blockUp = true
             )
 
+            // 3D DISPLAY (Android can't report HDMI 3D capability; the viewer tells us)
+            val stereoContext = LocalContext.current
+            var tvPlays3d by remember {
+                mutableStateOf(com.hereliesaz.illumera.ui.player.base.Stereo3d.displaySupports3d(stereoContext))
+            }
+            SettingToggleRow(
+                label = "TV Plays 3D",
+                subtitle = "Off: 3D sources offer to play in 2D. Android can't detect 3D TVs, so set this if yours is one",
+                isChecked = tvPlays3d,
+                onCheckedChange = {
+                    tvPlays3d = it
+                    com.hereliesaz.illumera.ui.player.base.Stereo3d.setDisplaySupports3d(stereoContext, it)
+                },
+                onBack = onGoBack
+            )
+
             // DV7 → HEVC FALLBACK
             SettingToggleRow(
                 label = "Dolby Vision Profile 7 Fallback",

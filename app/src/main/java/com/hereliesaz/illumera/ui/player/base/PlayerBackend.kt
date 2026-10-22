@@ -40,6 +40,9 @@ interface PlayerPlaybackController {
 
     fun setResizeMode(mode: Int)
 
+    /** Show one eye of a frame-packed 3D source at its true aspect; OFF restores the full frame. */
+    fun setStereoLayout(layout: StereoLayout) {}
+
     fun release()
 }
 

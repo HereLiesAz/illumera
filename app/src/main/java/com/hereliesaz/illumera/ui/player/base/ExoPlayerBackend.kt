@@ -1140,19 +1140,81 @@ class ExoPlayerBackend(
         playerView?.let { applyVideoResizeMode(it, normalizedMode) }
     }
 
+    /** The content frame already carrying the stereo re-layout listener (one per view tree). */
+    private var stereoLayoutListenerView: android.view.View? = null
+
+    override fun setStereoLayout(layout: StereoLayout) {
+        if (released) return
+        _uiState.update { it.copy(stereoLayout = layout) }
+        playerView?.let { applyVideoResizeMode(it, _uiState.value.resizeMode) }
+    }
+
     private fun applyVideoResizeMode(pv: PlayerView, mode: Int) {
-        val encodedZoom = mode == 5
-        pv.resizeMode = if (encodedZoom) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode
+        val stereo = _uiState.value.stereoLayout
+        val encodedZoom = mode == 5 && stereo == StereoLayout.OFF
+        pv.resizeMode = if (encodedZoom || stereo != StereoLayout.OFF) AspectRatioFrameLayout.RESIZE_MODE_FIT else mode
 
         val contentFrame = pv.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_content_frame)
         val targetView = contentFrame ?: (pv.videoSurfaceView as? android.view.View)
+        if (targetView != null && stereoLayoutListenerView !== targetView) {
+            // The eye transform depends on the laid-out frame; redo it whenever that changes.
+            stereoLayoutListenerView = targetView
+            targetView.addOnLayoutChangeListener { _, l, t, r, b, oldL, oldT, oldR, oldB ->
+                if (r - l != oldR - oldL || b - t != oldB - oldT) {
+                    playerView?.let { applyVideoResizeMode(it, _uiState.value.resizeMode) }
+                }
+            }
+        }
+        if (targetView != null && stereo != StereoLayout.OFF) {
+            applyStereoEyeTransform(pv, targetView, stereo)
+            return
+        }
         val scale = if (encodedZoom) 1.34f else 1.0f
-        if (targetView != null && (targetView.scaleX != scale || targetView.scaleY != scale)) {
+        if (targetView != null && (targetView.scaleX != scale || targetView.scaleY != scale ||
+                targetView.translationX != 0f || targetView.translationY != 0f || targetView.clipBounds != null)
+        ) {
+            targetView.translationX = 0f
+            targetView.translationY = 0f
+            targetView.clipBounds = null
+            targetView.pivotX = targetView.width / 2f
+            targetView.pivotY = targetView.height / 2f
             targetView.scaleX = scale
             targetView.scaleY = scale
             targetView.requestLayout()
             targetView.invalidate()
         }
+    }
+
+    /**
+     * Shows the left (side-by-side) or top (top-bottom) eye only: clip the frame to that eye,
+     * scale it to fit the screen at the eye's true aspect, and centre it.
+     */
+    private fun applyStereoEyeTransform(pv: PlayerView, frame: android.view.View, layout: StereoLayout) {
+        val fw = frame.width.toFloat()
+        val fh = frame.height.toFloat()
+        val pw = pv.width.toFloat()
+        val ph = pv.height.toFloat()
+        if (fw <= 0f || fh <= 0f || pw <= 0f || ph <= 0f) return
+        val eyeAspect = Stereo3d.eyeAspect(layout, fw / fh)
+        val (targetW, targetH) = if (pw / ph > eyeAspect) ph * eyeAspect to ph else pw to pw / eyeAspect
+        if (layout == StereoLayout.SIDE_BY_SIDE) {
+            frame.clipBounds = android.graphics.Rect(0, 0, (fw / 2f).toInt(), fh.toInt())
+            frame.pivotX = fw / 4f
+            frame.pivotY = fh / 2f
+            frame.scaleX = targetW / (fw / 2f)
+            frame.scaleY = targetH / fh
+            frame.translationX = fw / 4f
+            frame.translationY = 0f
+        } else {
+            frame.clipBounds = android.graphics.Rect(0, 0, fw.toInt(), (fh / 2f).toInt())
+            frame.pivotX = fw / 2f
+            frame.pivotY = fh / 4f
+            frame.scaleX = targetW / fw
+            frame.scaleY = targetH / (fh / 2f)
+            frame.translationX = 0f
+            frame.translationY = fh / 4f
+        }
+        frame.invalidate()
     }
 
     private fun applySubtitleCaptionStyle(pv: PlayerView) {
