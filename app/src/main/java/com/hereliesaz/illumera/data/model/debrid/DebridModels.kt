@@ -46,6 +46,12 @@ enum class DebridItemOrigin {
     DOWNLOAD
 }
 
+/** A service connected to the active profile, with the account name it reported. */
+data class DebridConnection(
+    val provider: DebridProvider,
+    val username: String?
+)
+
 /** Minimal account info used to confirm a key is valid and show who's connected. */
 data class DebridAccountInfo(
     val username: String,

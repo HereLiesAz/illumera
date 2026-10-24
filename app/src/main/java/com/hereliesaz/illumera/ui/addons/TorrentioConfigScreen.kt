@@ -27,22 +27,24 @@ import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 
 /**
  * Native Torrentio configuration, replacing its web configure page. Starts from the
- * installed URL's settings; when no debrid key is set yet, the connected debrid service
+ * installed URL's settings; when no debrid key is set yet, the primary connected debrid service
  * (Settings → Integrations) and its key are filled in.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TorrentioConfigDialog(
     installedUrl: String?,
-    connectedDebrid: Pair<DebridProvider, String>?,
+    /** Connected services and keys, primary first. */
+    connectedDebrid: List<Pair<DebridProvider, String>>,
     onSave: (TorrentioConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
     var config by remember(installedUrl) {
         val parsed = installedUrl?.let(TorrentioConfig::parse) ?: TorrentioConfig()
         mutableStateOf(
-            if (parsed.debridProvider == null && connectedDebrid != null) {
-                parsed.copy(debridProvider = connectedDebrid.first, debridKey = connectedDebrid.second)
+            val primary = connectedDebrid.firstOrNull()
+            if (parsed.debridProvider == null && primary != null) {
+                parsed.copy(debridProvider = primary.first, debridKey = primary.second)
             } else parsed
         )
     }
@@ -65,7 +67,7 @@ fun TorrentioConfigDialog(
                 }
                 DebridProvider.entries.forEach { provider ->
                     Chip(provider.displayName, config.debridProvider == provider) {
-                        val key = connectedDebrid?.takeIf { it.first == provider }?.second
+                        val key = connectedDebrid.firstOrNull { it.first == provider }?.second
                             ?: config.debridKey.takeIf { config.debridProvider == provider }.orEmpty()
                         config = config.copy(debridProvider = provider, debridKey = key)
                     }
@@ -81,7 +83,7 @@ fun TorrentioConfigDialog(
                     compact = true
                 )
                 connectedDebrid
-                    ?.takeIf { it.first == config.debridProvider && it.second == config.debridKey }
+                    .firstOrNull { it.first == config.debridProvider && it.second == config.debridKey }
                     ?.let { Note("Filled in from your connected ${it.first.displayName} account.") }
                 VoidToggleRow("Hide download-to-debrid links", config.noDownloadLinks, {
                     config = config.copy(noDownloadLinks = !config.noDownloadLinks)

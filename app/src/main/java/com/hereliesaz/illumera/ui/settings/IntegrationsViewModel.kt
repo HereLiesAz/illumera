@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
 import com.hereliesaz.illumera.data.local.AddonDao
+import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
@@ -89,8 +90,8 @@ data class IntegrationsUiState(
     val tmdbLanguage: String = "",
     val traktConnected: Boolean = false,
     val traktAuthState: DeviceAuthState = DeviceAuthState.Idle,
-    val debridProvider: DebridProvider? = null,
-    val debridUsername: String? = null,
+    /** Connected debrid services, primary first. */
+    val debridConnections: List<DebridConnection> = emptyList(),
     val debridConnecting: Boolean = false,
     val wutchUsername: String? = null,
     val wutchBusy: Boolean = false
@@ -153,13 +154,8 @@ class IntegrationsViewModel @Inject constructor(
         }
         // Observe Debrid connection state
         viewModelScope.launch {
-            debridManager.connectedProvider.collect { provider ->
-                _uiState.update { it.copy(debridProvider = provider) }
-            }
-        }
-        viewModelScope.launch {
-            debridManager.connectedUsername.collect { username ->
-                _uiState.update { it.copy(debridUsername = username) }
+            debridManager.connections.collect { connections ->
+                _uiState.update { it.copy(debridConnections = connections) }
             }
         }
         // Follow the active profile's TMDB settings (this VM outlives profile switches)
@@ -618,8 +614,12 @@ class IntegrationsViewModel @Inject constructor(
         }
     }
 
-    fun disconnectDebrid() {
-        debridManager.disconnect()
+    fun disconnectDebrid(provider: DebridProvider) {
+        debridManager.disconnect(provider)
+    }
+
+    fun setPrimaryDebrid(provider: DebridProvider) {
+        debridManager.setPrimary(provider)
     }
 
     // ── wutch.tv ──

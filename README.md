@@ -33,7 +33,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Two-way sync with your Stremio account: pull your addon collection, push it back, and sync Continue Watching progress
 - Automatic catalog loading from all enabled addons
 - Cinemeta, Streaming Catalogs and Torrentio are baked into the app (bundled manifests): their catalogs appear even when the providers are unreachable, and Stremio account sync never removes them. Any addon can be switched off in Add-ons → Installed without uninstalling it.
-- **Native Torrentio setup:** Configure opens an in-app screen (debrid service and key pre-filled from your connected account, sorting, quality exclusions, providers, languages) — no web page or phone needed.
+- **Native Torrentio setup:** Configure opens an in-app screen (debrid service and key pre-filled from your primary connected account, sorting, quality exclusions, providers, languages) — no web page or phone needed.
 - Fresh and existing profiles receive Cinemeta, YouTube Trailers, Streaming Catalogs, TMDB, SeedSphere, and Stremio Stats as stock addon entries. Configured Stremio Stats data requires personal account authorization; unavailable manifest endpoints are retained without invented capabilities.
 - **Add-ons is a top-level side-menu (and top-navigation) destination**, not a Settings section. Its full-screen native browser offers Official, Community, **3rd Party**, and collections, plus a searchable, vertically scrolling catalog. Configure/install/uninstall are compact focusable icons; installed addons and manual URL/phone-paste installation remain available.
 - Addon developers: see [`docs/ADDONS.md`](docs/ADDONS.md) for what illumera reads beyond the Stremio protocol
