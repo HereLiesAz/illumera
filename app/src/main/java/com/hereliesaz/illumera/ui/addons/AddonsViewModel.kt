@@ -323,12 +323,9 @@ class AddonsViewModel @Inject constructor(
         }
     }
 
-    /** Connected debrid service and key, for pre-filling Torrentio's native configuration. */
-    fun connectedDebrid(): Pair<com.hereliesaz.illumera.data.model.debrid.DebridProvider, String>? {
-        val provider = debridManager.connectedProvider.value ?: return null
-        val key = debridManager.getApiKey()?.takeIf { it.isNotBlank() } ?: return null
-        return provider to key
-    }
+    /** Connected debrid services and keys (primary first), for pre-filling Torrentio's configuration. */
+    fun connectedDebrid(): List<Pair<com.hereliesaz.illumera.data.model.debrid.DebridProvider, String>> =
+        debridManager.connectedKeys()
 
     /** The installed Torrentio's URL, if any (its configuration lives in the URL). */
     fun installedTorrentioUrl(): String? = _uiState.value.addons

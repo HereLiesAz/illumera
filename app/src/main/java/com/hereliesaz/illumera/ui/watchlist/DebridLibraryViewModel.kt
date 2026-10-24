@@ -26,15 +26,22 @@ sealed class DebridLibraryEvent {
 data class DebridLibraryUiState(
     val items: List<DebridItem> = emptyList(),
     val isLoading: Boolean = false,
+    /** [libraryKey] of the item being resolved. */
     val resolvingItemId: String? = null
 )
+
+/** Unique across services: two providers can reuse the same item id. */
+val DebridItem.libraryKey: String get() = "${provider.id}:$id"
 
 @HiltViewModel
 class DebridLibraryViewModel @Inject constructor(
     private val debridManager: DebridManager
 ) : ViewModel() {
 
-    val connectedProvider: StateFlow<DebridProvider?> = debridManager.connectedProvider
+    /** Connected services, primary first; the library merges all of them. */
+    val connectedProviders: StateFlow<List<DebridProvider>> = debridManager.connections
+        .map { list -> list.map { it.provider } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, debridManager.connections.value.map { it.provider })
 
     private val _uiState = MutableStateFlow(DebridLibraryUiState())
     val uiState: StateFlow<DebridLibraryUiState> = _uiState
@@ -44,8 +51,8 @@ class DebridLibraryViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            debridManager.connectedProvider.collect { provider ->
-                if (provider != null) refresh() else _uiState.value = DebridLibraryUiState()
+            connectedProviders.collect { providers ->
+                if (providers.isNotEmpty()) refresh() else _uiState.value = DebridLibraryUiState()
             }
         }
     }
@@ -75,7 +82,7 @@ class DebridLibraryViewModel @Inject constructor(
     fun play(item: DebridItem) {
         playJob?.cancel()
         playJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(resolvingItemId = item.id)
+            _uiState.value = _uiState.value.copy(resolvingItemId = item.libraryKey)
             when (val result = debridManager.getStreamUrl(item)) {
                 is DebridResult.Success -> {
                     _uiState.value = _uiState.value.copy(resolvingItemId = null)

@@ -42,7 +42,7 @@ Continue Watching sync against the `datastoreMeta`/`Get`/`Put` library API;
 see `StremioAuthManager`/`StremioAuthService`/`StremioLibrarySyncManager`),
 `debrid` (a `DebridManager` fronting
 per-provider implementations: Real-Debrid, AllDebrid, Premiumize, TorBox,
-Offcloud, Debrid-Link, EasyDebrid), `tmdb` (metadata enrichment), `trakt`
+Offcloud, Debrid-Link, EasyDebrid; several can be connected per profile, the first being primary, and the library merges all of them), `tmdb` (metadata enrichment), `trakt`
 (auth, library sync, scrobbling), `wutch` (wutch.tv: sign-in with a personal
 API key, watchlist and progress import, progress and watchlist write-back), `torrent` (a TorrServer client),
 `player` (persisted per-playback audio/subtitle/source selection),
@@ -263,7 +263,7 @@ Home, Movies and Series publish their row shells and accept D-pad focus before a
 
 **Disabling addons:** Add-ons → Installed has an enable/disable toggle per addon (`AddonDao.setAddonEnabled`), so a baked or any other addon can be switched off without uninstalling.
 
-**Native Torrentio configuration** (`data/debrid/TorrentioConfig.kt`, `ui/addons/TorrentioConfigScreen.kt`): Torrentio's settings live in its install URL (`/<key=value|…>/manifest.json`). The Add-ons Configure action for Torrentio (catalog card or Installed row) opens a native dialog instead of the web page: debrid service + key (pre-filled from the connected debrid account), debrid link/catalog options, sort, results per quality, excluded qualities, providers and priority languages. Saving installs the new URL first, then removes the previous Torrentio, so a failure keeps the old configuration; the bundled manifest covers an unreachable provider. Torrentio is matched by host, so any configured URL counts as the baked install; existing profiles receive the stock install once (`baked_torrentio_v1_`), and an account's own Torrentio replaces the stock one on Stremio import.
+**Native Torrentio configuration** (`data/debrid/TorrentioConfig.kt`, `ui/addons/TorrentioConfigScreen.kt`): Torrentio's settings live in its install URL (`/<key=value|…>/manifest.json`). The Add-ons Configure action for Torrentio (catalog card or Installed row) opens a native dialog instead of the web page: debrid service + key (pre-filled from the primary connected debrid account; any other connected service's key fills in when picked), debrid link/catalog options, sort, results per quality, excluded qualities, providers and priority languages. Saving installs the new URL first, then removes the previous Torrentio, so a failure keeps the old configuration; the bundled manifest covers an unreachable provider. Torrentio is matched by host, so any configured URL counts as the baked install; existing profiles receive the stock install once (`baked_torrentio_v1_`), and an account's own Torrentio replaces the stock one on Stremio import.
 
 ## 3D sources on 2D displays (October 22, 2026)
 

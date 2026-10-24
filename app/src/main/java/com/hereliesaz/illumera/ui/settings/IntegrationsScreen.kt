@@ -70,6 +70,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
+import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
 import com.hereliesaz.illumera.remote_input.ServerInfo
@@ -245,10 +246,14 @@ fun IntegrationsScreen(
         // Debrid Integration Item
         IntegrationItem(
             title = "Debrid Service",
-            subtitle = state.debridProvider?.let { provider ->
-                "${provider.displayName}${state.debridUsername?.let { " · $it" } ?: ""}"
-            } ?: "Not Connected",
-            isConnected = state.debridProvider != null,
+            subtitle = when (state.debridConnections.size) {
+                0 -> "Not Connected"
+                1 -> state.debridConnections[0].let { c ->
+                    "${c.provider.displayName}${c.username?.let { " · $it" } ?: ""}"
+                }
+                else -> state.debridConnections.joinToString(" · ") { it.provider.displayName }
+            },
+            isConnected = state.debridConnections.isNotEmpty(),
             onClick = { showDebridDialog = true },
             modifier = goBackModifier
         )
@@ -420,11 +425,11 @@ fun IntegrationsScreen(
     // Debrid Dialog
     if (showDebridDialog) {
         DebridDialog(
-            connectedProvider = state.debridProvider,
-            connectedUsername = state.debridUsername,
+            connections = state.debridConnections,
             isConnecting = state.debridConnecting,
             onConnect = { provider, apiKey -> viewModel.connectDebrid(provider, apiKey) },
-            onDisconnect = { viewModel.disconnectDebrid() },
+            onDisconnect = { viewModel.disconnectDebrid(it) },
+            onMakePrimary = { viewModel.setPrimaryDebrid(it) },
             onDismiss = { showDebridDialog = false },
             deviceFormFactor = deviceFormFactor
         )
@@ -2296,17 +2301,20 @@ private fun WutchDialog(
 
 @Composable
 private fun DebridDialog(
-    connectedProvider: DebridProvider?,
-    connectedUsername: String?,
+    connections: List<DebridConnection>,
     isConnecting: Boolean,
     onConnect: (DebridProvider, String) -> Unit,
-    onDisconnect: () -> Unit,
+    onDisconnect: (DebridProvider) -> Unit,
+    onMakePrimary: (DebridProvider) -> Unit,
     onDismiss: () -> Unit,
     deviceFormFactor: DeviceFormFactor
 ) {
-    var selectedProvider by remember { mutableStateOf(connectedProvider ?: DebridProvider.REAL_DEBRID) }
+    // Services not yet connected; the add form offers only these.
+    val available = DebridProvider.entries.filter { p -> connections.none { it.provider == p } }
+    var selectedProvider by remember { mutableStateOf(available.firstOrNull() ?: DebridProvider.REAL_DEBRID) }
+    if (selectedProvider !in available && available.isNotEmpty()) selectedProvider = available.first()
     var apiKey by remember { mutableStateOf("") }
-    var confirmDisconnect by remember { mutableStateOf(false) }
+    var confirmDisconnect by remember { mutableStateOf<DebridProvider?>(null) }
     val focusRequester = remember { FocusRequester() }
     val accentColor = MaterialTheme.colorScheme.primary
     val context = LocalContext.current
@@ -2322,25 +2330,25 @@ private fun DebridDialog(
         runCatching { focusRequester.requestFocus() }
     }
 
-    if (confirmDisconnect && connectedProvider != null) {
+    confirmDisconnect?.let { provider ->
         DisconnectConfirmDialog(
-            title = "Disconnect ${connectedProvider.displayName}?",
-            message = "Your debrid cloud library and cached-stream lookups stop for this profile until you connect again.",
+            title = "Disconnect ${provider.displayName}?",
+            message = "Its cloud library and cached-stream lookups stop for this profile until you connect it again.",
             confirmText = "Disconnect",
-            onDismiss = { confirmDisconnect = false },
+            onDismiss = { confirmDisconnect = null },
             onConfirm = {
-                confirmDisconnect = false
-                onDisconnect()
+                confirmDisconnect = null
+                onDisconnect(provider)
             }
         )
     }
 
-    LaunchedEffect(deviceFormFactor, selectedProvider, connectedProvider) {
+    LaunchedEffect(deviceFormFactor, selectedProvider, available.isEmpty()) {
         remoteTextServer.stopServer()
         remoteServerInfo = null
         remoteQrBitmap = null
         remoteError = null
-        if (deviceFormFactor == DeviceFormFactor.TV && connectedProvider == null) {
+        if (deviceFormFactor == DeviceFormFactor.TV && available.isNotEmpty()) {
             val providerAtStart = selectedProvider
             val info = remoteTextServer.startServer(
                 title = "Connect ${providerAtStart.displayName}",
@@ -2389,7 +2397,7 @@ private fun DebridDialog(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        "Connect a debrid service to browse and stream your cloud storage from the Library.",
+                        "Connect one or more debrid services to browse and stream their cloud storage from the Library. The primary service is the one Torrentio uses.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.Gray,
                         modifier = Modifier.padding(top = 4.dp)
@@ -2397,30 +2405,42 @@ private fun DebridDialog(
 
                     Spacer(Modifier.height(20.dp))
 
-                    if (connectedProvider != null) {
+                    connections.forEachIndexed { index, connection ->
+                        val provider = connection.provider
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Connected to ${connectedProvider.displayName}${connectedUsername?.let { " ($it)" } ?: ""}",
+                                "${provider.displayName}${connection.username?.let { " ($it)" } ?: ""}${if (index == 0) " · Primary" else ""}",
                                 color = MaterialTheme.colorScheme.onBackground,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
-
-                        Spacer(Modifier.height(24.dp))
-
+                        Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
                         ) {
+                            if (index != 0) {
+                                IntegrationButton(
+                                    text = "Make primary",
+                                    onClick = { onMakePrimary(provider) },
+                                    modifier = Modifier.width(150.dp)
+                                )
+                            }
                             IntegrationButton(
                                 text = "Disconnect",
-                                onClick = { confirmDisconnect = true },
+                                onClick = { confirmDisconnect = provider },
                                 isDestructive = true,
                                 modifier = Modifier.width(130.dp)
                             )
-                            // Initial focus lands on the non-destructive action.
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    if (available.isEmpty()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            // Every service is connected; initial focus lands on the non-destructive action.
                             IntegrationButton(
                                 text = "Close",
                                 onClick = onDismiss,
@@ -2430,7 +2450,7 @@ private fun DebridDialog(
                         }
                     } else {
                         Text(
-                            "Service",
+                            if (connections.isEmpty()) "Service" else "Add another service",
                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                             color = MaterialTheme.colorScheme.onBackground.copy(0.8f)
                         )
@@ -2442,7 +2462,7 @@ private fun DebridDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            DebridProvider.entries.forEach { provider ->
+                            available.forEach { provider ->
                                 SettingToggleChip(
                                     label = provider.displayName,
                                     isChecked = selectedProvider == provider,

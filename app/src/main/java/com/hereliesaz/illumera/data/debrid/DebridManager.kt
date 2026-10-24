@@ -17,6 +17,7 @@ import com.hereliesaz.illumera.data.debrid.providers.PremiumizeService
 import com.hereliesaz.illumera.data.debrid.providers.RealDebridService
 import com.hereliesaz.illumera.data.debrid.providers.TorBoxService
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
+import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
@@ -25,6 +26,9 @@ import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,9 +51,12 @@ class DebridManager @Inject constructor(
     companion object {
         private const val TAG = "DebridManager"
         private const val PREFS_NAME = "debrid_auth"
+        /** Legacy single-service keys (one provider per profile); migrated on first read. */
         private const val KEY_PROVIDER = "provider"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_USERNAME = "username"
+        /** Comma-separated provider ids, primary first. */
+        private const val KEY_PROVIDERS = "providers"
         private const val POLL_MS = 5_000L
         private const val STALL_BAIL_MS = 60_000L
     }
@@ -92,7 +99,14 @@ class DebridManager @Inject constructor(
 
     private fun activeProfileId(): Int? = profileConfigurationManager.getLastActiveProfileId()
     private fun profileKey(key: String, profileId: Int) = "${key}_$profileId"
+    private fun providerKey(key: String, provider: DebridProvider, profileId: Int) =
+        "${key}_${provider.id}_$profileId"
 
+    /** Every service connected to the active profile, primary first. */
+    private val _connections = MutableStateFlow<List<DebridConnection>>(emptyList())
+    val connections: StateFlow<List<DebridConnection>> = _connections
+
+    /** The primary service: the one Torrentio and other single-key consumers use. */
     private val _connectedProvider = MutableStateFlow<DebridProvider?>(null)
     val connectedProvider: StateFlow<DebridProvider?> = _connectedProvider
 
@@ -103,15 +117,42 @@ class DebridManager @Inject constructor(
 
     fun refreshConnectionState() {
         val profileId = activeProfileId()
-        if (profileId == null) {
-            _connectedProvider.value = null
-            _connectedUsername.value = null
-            return
+        publish(if (profileId == null) emptyList() else readConnections(profileId))
+    }
+
+    private fun publish(list: List<DebridConnection>) {
+        _connections.value = list
+        _connectedProvider.value = list.firstOrNull()?.provider
+        _connectedUsername.value = list.firstOrNull()?.username
+    }
+
+    private fun readProviders(profileId: Int): List<DebridProvider> {
+        val p = prefs ?: return emptyList()
+        migrateLegacy(p, profileId)
+        return p.getString(profileKey(KEY_PROVIDERS, profileId), null).orEmpty()
+            .split(',').mapNotNull { DebridProvider.fromId(it.trim()) }.distinct()
+    }
+
+    private fun readConnections(profileId: Int): List<DebridConnection> =
+        readProviders(profileId).map { provider ->
+            DebridConnection(provider, prefs?.getString(providerKey(KEY_USERNAME, provider, profileId), null))
         }
-        _connectedProvider.value = DebridProvider.fromId(
-            prefs?.getString(profileKey(KEY_PROVIDER, profileId), null)
-        )
-        _connectedUsername.value = prefs?.getString(profileKey(KEY_USERNAME, profileId), null)
+
+    /** Moves a pre-multi-service single connection into the per-provider layout. */
+    private fun migrateLegacy(p: SharedPreferences, profileId: Int) {
+        val legacy = DebridProvider.fromId(p.getString(profileKey(KEY_PROVIDER, profileId), null)) ?: return
+        val editor = p.edit()
+        if (!p.contains(profileKey(KEY_PROVIDERS, profileId))) {
+            editor.putString(profileKey(KEY_PROVIDERS, profileId), legacy.id)
+            p.getString(profileKey(KEY_API_KEY, profileId), null)
+                ?.let { editor.putString(providerKey(KEY_API_KEY, legacy, profileId), it) }
+            p.getString(profileKey(KEY_USERNAME, profileId), null)
+                ?.let { editor.putString(providerKey(KEY_USERNAME, legacy, profileId), it) }
+        }
+        editor.remove(profileKey(KEY_PROVIDER, profileId))
+            .remove(profileKey(KEY_API_KEY, profileId))
+            .remove(profileKey(KEY_USERNAME, profileId))
+            .apply()
     }
 
     private fun serviceFor(provider: DebridProvider): DebridService = when (provider) {
@@ -138,10 +179,16 @@ class DebridManager @Inject constructor(
             DebridResult.Failure(e.message ?: "Unexpected debrid response")
         }
 
-    fun getApiKey(): String? {
+    /** The key for [provider], or for the primary service when omitted. */
+    fun getApiKey(provider: DebridProvider? = _connectedProvider.value): String? {
         val profileId = activeProfileId() ?: return null
-        return prefs?.getString(profileKey(KEY_API_KEY, profileId), null)
+        provider ?: return null
+        return prefs?.getString(providerKey(KEY_API_KEY, provider, profileId), null)
     }
+
+    /** Every connected service with its key, primary first. */
+    fun connectedKeys(): List<Pair<DebridProvider, String>> =
+        _connections.value.mapNotNull { c -> getApiKey(c.provider)?.takeIf { it.isNotBlank() }?.let { c.provider to it } }
 
     suspend fun connect(provider: DebridProvider, apiKey: String): DebridResult<DebridAccountInfo> {
         val profileId = activeProfileId()
@@ -156,19 +203,18 @@ class DebridManager @Inject constructor(
                 // that SQLite may later reuse for a different profile.
                 val securePrefs = prefs
                     ?: return DebridResult.Failure("Secure storage unavailable")
+                // Adds the service, or refreshes its key in place; the primary is kept.
                 val saved = profileMutationCoordinator.withExistingProfile(profileId) {
+                    val providers = (readProviders(profileId) + provider).distinct()
                     securePrefs.edit()
-                        .putString(profileKey(KEY_PROVIDER, profileId), provider.id)
-                        .putString(profileKey(KEY_API_KEY, profileId), trimmedKey)
-                        .putString(profileKey(KEY_USERNAME, profileId), result.value.username)
+                        .putString(profileKey(KEY_PROVIDERS, profileId), providers.joinToString(",") { it.id })
+                        .putString(providerKey(KEY_API_KEY, provider, profileId), trimmedKey)
+                        .putString(providerKey(KEY_USERNAME, provider, profileId), result.value.username)
                         .apply()
                     true
                 } == true
                 if (!saved) return DebridResult.Failure("Profile no longer exists")
-                if (activeProfileId() == profileId) {
-                    _connectedProvider.value = provider
-                    _connectedUsername.value = result.value.username
-                }
+                if (activeProfileId() == profileId) publish(readConnections(profileId))
                 result
             }
             is DebridResult.Failure -> {
@@ -178,44 +224,68 @@ class DebridManager @Inject constructor(
         }
     }
 
-    fun disconnect() {
-        val profileId = activeProfileId()
-        if (profileId != null) {
-            prefs?.edit()
-                ?.remove(profileKey(KEY_PROVIDER, profileId))
-                ?.remove(profileKey(KEY_API_KEY, profileId))
-                ?.remove(profileKey(KEY_USERNAME, profileId))
-                ?.apply()
-        }
-        _connectedProvider.value = null
-        _connectedUsername.value = null
+    /** Disconnects [provider] from the active profile; the next service becomes primary. */
+    fun disconnect(provider: DebridProvider) {
+        val profileId = activeProfileId() ?: return
+        val p = prefs ?: return
+        val remaining = readProviders(profileId) - provider
+        p.edit()
+            .putString(profileKey(KEY_PROVIDERS, profileId), remaining.joinToString(",") { it.id })
+            .remove(providerKey(KEY_API_KEY, provider, profileId))
+            .remove(providerKey(KEY_USERNAME, provider, profileId))
+            .apply()
+        publish(readConnections(profileId))
+    }
+
+    /** Makes [provider] the primary service (first in order). */
+    fun setPrimary(provider: DebridProvider) {
+        val profileId = activeProfileId() ?: return
+        val p = prefs ?: return
+        val providers = readProviders(profileId)
+        if (provider !in providers) return
+        p.edit()
+            .putString(profileKey(KEY_PROVIDERS, profileId), (listOf(provider) + (providers - provider)).joinToString(",") { it.id })
+            .apply()
+        publish(readConnections(profileId))
     }
 
     fun clearForProfile(profileId: Int) {
-        prefs?.edit()
-            ?.remove(profileKey(KEY_PROVIDER, profileId))
-            ?.remove(profileKey(KEY_API_KEY, profileId))
-            ?.remove(profileKey(KEY_USERNAME, profileId))
-            ?.apply()
+        val p = prefs ?: return
+        val editor = p.edit()
+        DebridProvider.entries.forEach {
+            editor.remove(providerKey(KEY_API_KEY, it, profileId))
+            editor.remove(providerKey(KEY_USERNAME, it, profileId))
+        }
+        editor.remove(profileKey(KEY_PROVIDERS, profileId))
+            .remove(profileKey(KEY_PROVIDER, profileId))
+            .remove(profileKey(KEY_API_KEY, profileId))
+            .remove(profileKey(KEY_USERNAME, profileId))
+            .apply()
     }
 
+    /**
+     * Every connected service's library, merged in connection order. One failing service
+     * doesn't hide the others; only when all fail is the first failure returned.
+     */
     suspend fun listLibrary(): DebridResult<List<DebridItem>> {
-        val provider = _connectedProvider.value ?: return DebridResult.Failure("No debrid service connected")
-        val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
-        return guarded { serviceFor(provider).listLibrary(apiKey) }
+        val keys = connectedKeys()
+        if (keys.isEmpty()) return DebridResult.Failure("No debrid service connected")
+        val results = coroutineScope {
+            keys.map { (provider, key) -> async { guarded { serviceFor(provider).listLibrary(key) } } }.awaitAll()
+        }
+        val items = results.filterIsInstance<DebridResult.Success<List<DebridItem>>>()
+        return if (items.isEmpty()) results.first() else DebridResult.Success(items.flatMap { it.value })
     }
 
     suspend fun getStreamUrl(item: DebridItem): DebridResult<String> {
-        val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
-        val connected = _connectedProvider.value
-        if (item.provider != connected) {
-            return DebridResult.Failure("Stream provider ${item.provider} does not match connected provider")
-        }
+        val apiKey = getApiKey(item.provider)
+            ?: return DebridResult.Failure("${item.provider.displayName} is not connected")
         return guarded { serviceFor(item.provider).getStreamUrl(apiKey, item) }
     }
 
     suspend fun deleteItem(item: DebridItem): DebridResult<Unit> {
-        val apiKey = getApiKey() ?: return DebridResult.Failure("No debrid service connected")
+        val apiKey = getApiKey(item.provider)
+            ?: return DebridResult.Failure("${item.provider.displayName} is not connected")
         return guarded { serviceFor(item.provider).deleteItem(apiKey, item) }
     }
 
@@ -231,9 +301,7 @@ class DebridManager @Inject constructor(
         onProgress: (percent: Int) -> Unit = {}
     ): String? {
         if (maxWaitSeconds <= 0) return null
-        val provider = _connectedProvider.value ?: return null
-        val apiKey = getApiKey() ?: return null
-        val service = serviceFor(provider)
+        if (connectedKeys().isEmpty()) return null
         val wantedHash = infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
         if (wantedHash == null && normalizeFileName(fileName) == null) return null
 
@@ -244,7 +312,8 @@ class DebridManager @Inject constructor(
         var lastAdvanceAt = started
 
         while (System.currentTimeMillis() < deadline) {
-            val library = when (val result = guarded { service.listLibrary(apiKey) }) {
+            // Polls every connected service: the placeholder may live in any of them.
+            val library = when (val result = listLibrary()) {
                 is DebridResult.Success -> result.value
                 is DebridResult.Failure -> return null
             }
@@ -260,7 +329,7 @@ class DebridManager @Inject constructor(
                     "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
                 )
                 if (ready) {
-                    when (val stream = guarded { service.getStreamUrl(apiKey, item) }) {
+                    when (val stream = getStreamUrl(item)) {
                         is DebridResult.Success -> return stream.value
                         is DebridResult.Failure -> Unit
                     }

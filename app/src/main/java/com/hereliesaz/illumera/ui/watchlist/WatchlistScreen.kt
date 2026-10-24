@@ -102,7 +102,7 @@ fun WatchlistScreen(
     viewModel: WatchlistViewModel = hiltViewModel(),
     debridViewModel: DebridLibraryViewModel = hiltViewModel()
 ) {
-    val debridProvider by debridViewModel.connectedProvider.collectAsStateWithLifecycle()
+    val debridProviders by debridViewModel.connectedProviders.collectAsStateWithLifecycle()
     val debridState by debridViewModel.uiState.collectAsStateWithLifecycle()
     val latestOnPlay by androidx.compose.runtime.rememberUpdatedState(onPlayResolvedStream)
     val toastContext = LocalContext.current
@@ -285,10 +285,10 @@ fun WatchlistScreen(
                     }
                 )
             }
-            if (debridProvider != null) {
+            if (debridProviders.isNotEmpty()) {
                 item(key = "watchlist_cloud_storage", span = { GridItemSpan(maxLineSpan) }) {
                     DebridLibrarySection(
-                        provider = debridProvider,
+                        providers = debridProviders,
                         state = debridState,
                         startPadding = 0.dp,
                         onPlay = { debridViewModel.play(it) },
@@ -416,7 +416,7 @@ fun WatchlistScreen(
 
 @Composable
 internal fun DebridLibrarySection(
-    provider: com.hereliesaz.illumera.data.model.debrid.DebridProvider?,
+    providers: List<com.hereliesaz.illumera.data.model.debrid.DebridProvider>,
     state: DebridLibraryUiState,
     startPadding: androidx.compose.ui.unit.Dp,
     onPlay: (DebridItem) -> Unit,
@@ -427,7 +427,7 @@ internal fun DebridLibrarySection(
     pendingDelete?.let { item ->
         com.hereliesaz.illumera.ui.settings.DisconnectConfirmDialog(
             title = "Remove from cloud storage?",
-            message = "\"${item.name}\" will be deleted from your ${provider?.displayName ?: "debrid"} account. This can't be undone.",
+            message = "\"${item.name}\" will be deleted from your ${item.provider.displayName} account. This can't be undone.",
             confirmText = "Remove",
             onDismiss = { pendingDelete = null },
             onConfirm = {
@@ -444,7 +444,7 @@ internal fun DebridLibrarySection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Cloud Storage (${provider?.displayName ?: ""})",
+                text = "Cloud Storage (${providers.joinToString(", ") { it.displayName }})",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -471,10 +471,11 @@ internal fun DebridLibrarySection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(start = startPadding, end = 24.dp)
             ) {
-                items(state.items, key = { it.id }) { item ->
+                items(state.items, key = { it.libraryKey }) { item ->
                     DebridItemCard(
                         item = item,
-                        isResolving = state.resolvingItemId == item.id,
+                        showProvider = providers.size > 1,
+                        isResolving = state.resolvingItemId == item.libraryKey,
                         onPlay = { onPlay(item) },
                         onDelete = { pendingDelete = item }
                     )
@@ -489,6 +490,7 @@ internal fun DebridLibrarySection(
 @Composable
 private fun DebridItemCard(
     item: DebridItem,
+    showProvider: Boolean,
     isResolving: Boolean,
     onPlay: () -> Unit,
     onDelete: () -> Unit
@@ -568,10 +570,11 @@ private fun DebridItemCard(
             overflow = TextOverflow.Ellipsis
         )
 
-        if (item.sizeBytes != null || item.status != null) {
+        if (item.sizeBytes != null || item.status != null || showProvider) {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = listOfNotNull(
+                    item.provider.displayName.takeIf { showProvider },
                     item.sizeBytes?.let { formatBytes(it) },
                     item.status
                 ).joinToString(" · "),

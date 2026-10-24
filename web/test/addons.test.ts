@@ -105,3 +105,15 @@ describe('withDebridKey (mirrors Android DebridAddonUrlHelper)', () => {
     expect(withDebridKey('https://torrentio.strem.fun/manifest.json', null)).toBe('https://torrentio.strem.fun/manifest.json')
   })
 })
+
+import { debridKeys } from '../src/core/debrid'
+
+describe('debridKeys', () => {
+  it('reads both the list and the legacy single-key format', () => {
+    const rd = { provider: 'realdebrid' as const, apiKey: 'A' }
+    const tb = { provider: 'torbox' as const, apiKey: 'B' }
+    expect(debridKeys(null)).toEqual([])
+    expect(debridKeys(rd)).toEqual([rd])
+    expect(debridKeys([tb, rd])).toEqual([tb, rd])
+  })
+})
