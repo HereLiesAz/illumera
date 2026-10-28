@@ -244,7 +244,7 @@ internal fun buildEmbeddedSubtitlePayloadItem(
     ) ?: return null
 
     val fallbackName = subtitleNameFromUrl(resolvedUrl) ?: "Embedded subtitle"
-    val name = sanitizeSubtitleSourceName(subtitle.name, fallbackName)
+    val name = sanitizeSubtitleSourceName(subtitle.label?.takeIf { it.isNotBlank() } ?: subtitle.name, fallbackName)
     val language = normalizeSubtitleLanguageTag(subtitle.lang)
     val subtitleId = subtitle.id
         ?.trim()
@@ -265,7 +265,7 @@ internal fun buildEmbeddedSubtitlePayloadItem(
 internal fun buildAddonSubtitlePayload(addonSubtitles: List<AddonSubtitle>): List<PlayerSubtitlePayload> {
     return addonSubtitles.mapNotNull { subtitle ->
         val resolvedUrl = resolveSubtitleUrl(subtitle.url, addonTransportUrl = null) ?: return@mapNotNull null
-        val name = sanitizeSubtitleSourceName(subtitle.addonName, "Addon subtitle")
+        val name = sanitizeSubtitleSourceName(subtitle.label ?: subtitle.addonName, "Addon subtitle")
         val language = normalizeSubtitleLanguageTag(subtitle.lang)
         val subtitleId = subtitle.id
             .trim()

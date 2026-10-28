@@ -32,7 +32,9 @@ class TraktSyncManager @Inject constructor(
     private val traktAuthManager: TraktAuthManager,
     private val dao: AddonDao,
     private val profileConfigurationManager: ProfileConfigurationManager,
-    private val pendingStore: TraktWatchlistPendingStore
+    private val pendingStore: TraktWatchlistPendingStore,
+    // Addon `library` event resource (Stremio protocol) for watchlist adds/removes.
+    private val addonEvents: com.hereliesaz.illumera.data.repository.AddonEventDispatcher
 ) {
     companion object {
         private const val TAG = "TraktSyncManager"
@@ -294,6 +296,7 @@ class TraktSyncManager @Inject constructor(
                 connected
             }
         }
+        addonEvents.library(item.type, item.id, com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.ADD)
         if (!push) return
         withContext(Dispatchers.IO) {
             try {
@@ -327,6 +330,7 @@ class TraktSyncManager @Inject constructor(
                 connected
             }
         }
+        addonEvents.library(type, itemId, com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.REMOVE)
         if (!push) return
         withContext(Dispatchers.IO) {
             try {

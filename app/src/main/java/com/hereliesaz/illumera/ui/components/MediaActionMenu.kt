@@ -129,7 +129,9 @@ class MediaActionsViewModel @Inject constructor(
     private val wutchManager: WutchManager,
     private val profileConfigurationManager: ProfileConfigurationManager,
     private val tasteStore: TasteStore,
-    private val tmdbService: com.hereliesaz.illumera.data.tmdb.TmdbService
+    private val tmdbService: com.hereliesaz.illumera.data.tmdb.TmdbService,
+    // Addon `library` event resource (Stremio protocol) for watched/unwatched marks.
+    private val addonEvents: com.hereliesaz.illumera.data.repository.AddonEventDispatcher
 ) : ViewModel() {
 
     suspend fun loadState(target: MediaActionTarget): MediaActionState = withContext(Dispatchers.IO) {
@@ -287,6 +289,10 @@ class MediaActionsViewModel @Inject constructor(
         resolved: ResolvedMediaTarget,
         currentlyWatched: Boolean
     ) {
+        addonEvents.library(
+            "movie", resolved.canonicalId,
+            if (currentlyWatched) com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.UNWATCHED else com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.WATCHED
+        )
         if (currentlyWatched) {
             dao.deleteHistoryItem(resolved.canonicalId)
             if (resolved.traktAvailable) traktSyncManager.pushMovieUnwatched(resolved.canonicalId)
@@ -321,6 +327,11 @@ class MediaActionsViewModel @Inject constructor(
         val season = target.season ?: return
         val episode = target.episode ?: return
         val playbackId = "${resolved.canonicalId}:$season:$episode"
+        addonEvents.library(
+            "series", resolved.canonicalId,
+            if (currentlyWatched) com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.UNWATCHED else com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.WATCHED,
+            videoIds = listOf(playbackId)
+        )
         if (currentlyWatched) {
             dao.deleteHistoryItem(playbackId)
             dao.getSeriesEpisodeHistory("$playbackId:%").forEach { dao.deleteHistoryItem(it.id) }
@@ -357,6 +368,13 @@ class MediaActionsViewModel @Inject constructor(
         ownerProfileId: Int
     ) {
         val episodes = airedEpisodes(resolved.videos)
+        if (episodes.isNotEmpty()) {
+            addonEvents.library(
+                "series", resolved.canonicalId,
+                if (currentlyWatched) com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.UNWATCHED else com.hereliesaz.illumera.data.repository.AddonEventDispatcher.LibraryAction.WATCHED,
+                videoIds = episodes.map { "${resolved.canonicalId}:${it.season}:${it.episode}" }
+            )
+        }
         if (currentlyWatched) {
             dao.deleteSeriesHistory("${resolved.canonicalId}:%")
             dao.deleteSeriesNextUp(ownerProfileId, resolved.canonicalId)
