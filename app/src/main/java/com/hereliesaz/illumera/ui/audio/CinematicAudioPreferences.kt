@@ -14,7 +14,10 @@ import androidx.compose.ui.platform.LocalContext
 data class CinematicAudioPreferences(
     val autoPlayPreviews: Boolean = true,
     val previewSound: Boolean = false,
-    val navigationSounds: Boolean = true
+    val navigationSounds: Boolean = true,
+    // Home layout: false = trailers play inside the focused card; true = a persistent
+    // Hero-sized preview above landscape rows shows whichever card has focus.
+    val persistentPreview: Boolean = false
 )
 
 private const val PREFS_FILE = "illumera_cinematic_audio"
@@ -25,7 +28,8 @@ internal fun readCinematicAudioPreferences(
 ): CinematicAudioPreferences = CinematicAudioPreferences(
     autoPlayPreviews = prefs.getBoolean(preferenceKey(profileId, "autoplay"), true),
     previewSound = prefs.getBoolean(preferenceKey(profileId, "preview_sound"), false),
-    navigationSounds = prefs.getBoolean(preferenceKey(profileId, "navigation_sounds"), true)
+    navigationSounds = prefs.getBoolean(preferenceKey(profileId, "navigation_sounds"), true),
+    persistentPreview = prefs.getBoolean(preferenceKey(profileId, "persistent_preview"), false)
 )
 
 internal fun writeCinematicAudioPreference(
@@ -34,7 +38,7 @@ internal fun writeCinematicAudioPreference(
     key: String,
     enabled: Boolean
 ) {
-    require(key in setOf("autoplay", "preview_sound", "navigation_sounds"))
+    require(key in setOf("autoplay", "preview_sound", "navigation_sounds", "persistent_preview"))
     prefs.edit().putBoolean(preferenceKey(profileId, key), enabled).apply()
 }
 

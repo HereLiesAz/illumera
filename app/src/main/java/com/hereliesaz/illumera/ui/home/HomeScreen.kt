@@ -287,8 +287,14 @@ fun HomeScreen(
                         (displayState.heroRow?.items?.takeIf { it.isNotEmpty() } ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items)
                             .orEmpty().take(heroConfig.posterCount)
                 }
+                val persistentPreview = cinematicAudio.persistentPreview
                 CinematicLayout(
-                    heroItems = heroItems,
+                    // The persistent preview replaces the Hero: it occupies the Hero's place
+                    // and opens on the Hero's first title until a card takes focus.
+                    heroItems = if (persistentPreview) emptyList() else heroItems,
+                    persistentPreview = persistentPreview,
+                    previewSeed = heroItems.firstOrNull()
+                        ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items?.firstOrNull(),
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
                     autoPlayPreviews = cinematicAudio.autoPlayPreviews && !isNavigating,
@@ -414,8 +420,14 @@ fun CinematicLayout(
     onRowsVisible: (List<String>, List<String>) -> Unit = { _, _ -> },
     onRowFocused: (String, Int) -> Unit = { _, _ -> },
     // Resolves a title's backdrop/metadata when the catalog entry lacks it.
-    onArtNeeded: (MetaItem) -> Unit = {}
+    onArtNeeded: (MetaItem) -> Unit = {},
+    // Persistent layout: rows stay landscape and the focused card's art, details and trailer
+    // fill a fixed Hero-sized preview above them, instead of expanding inline.
+    persistentPreview: Boolean = false,
+    previewSeed: MetaItem? = null
 ) {
+    // Focused title and the one after it in its row (for trailer preloading / auto-advance).
+    var previewFocus by remember(state.loadedScreen) { mutableStateOf<Pair<MetaItem, MetaItem?>?>(null) }
     // The row only controls whether its active poster expands inline.
     // The Hero is an ordinary LazyColumn item, never a sticky header.
     var activeCinematicRow by remember(state.loadedScreen) { mutableStateOf<String?>(null) }
@@ -536,7 +548,10 @@ fun CinematicLayout(
     val density = LocalDensity.current
     // Keep the preceding compact landscape rail almost entirely on-screen
     // when a newly focused portrait row reaches its vertical pivot.
-    val titleHeadroomPx = remember(density) { with(density) { 175.dp.toPx() } }
+    // The persistent layout pins the focused row to the top of the rows area instead.
+    val titleHeadroomPx = remember(density, persistentPreview) {
+        with(density) { (if (persistentPreview) 0.dp else 175.dp).toPx() }
+    }
     
     // Skip vertical scroll on restoration (when we have a saved focus key)
     val isVerticalRestoration = effectiveLastFocusedKey != null
@@ -562,8 +577,19 @@ fun CinematicLayout(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
+            if (persistentPreview) {
+                val focused = previewFocus?.first ?: previewSeed
+                PersistentCinematicPreview(
+                    item = focused?.let { state.enrichedMeta["${it.type}:${it.id}"] ?: it },
+                    nextItem = previewFocus?.second,
+                    resolveTrailer = resolveTrailer,
+                    autoPlayPreviews = autoPlayPreviews,
+                    previewSound = previewSound,
+                    startPadding = startPadding
+                )
+            }
             // LIST SECTION
-            Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 CompositionLocalProvider(LocalBringIntoViewSpec provides verticalPivot) {
                     // Use persisted vertical scroll position for instant restoration.
                     // When the continue watching row first appears at index 0, all saved
@@ -734,7 +760,7 @@ fun CinematicLayout(
                                 Column(modifier = Modifier.then(
                                     if (heroItems.isNotEmpty()) returnToHeroFromFirstRow else Modifier
                                 )) {
-                                val historyRowActive = isCinematicRowActive(
+                                val historyRowActive = !persistentPreview && isCinematicRowActive(
                                     activeCinematicRow, "history", effectiveLastFocusedKey, "-1_"
                                 )
                                 // Reset scroll position when focus was redirected (cleared item removed)
@@ -763,6 +789,9 @@ fun CinematicLayout(
                                     onFocused = { item: MetaItem?, key: String ->
                                         activeCinematicRow = "history"
                                         item?.let(onPreviewItemVisible)
+                                        if (item != null) previewFocus = item to historyItems
+                                            .indexOfFirst { it.id == item.id }
+                                            .takeIf { it >= 0 }?.let { historyItems.getOrNull(it + 1) }
                                         wrappedOnFocusChange(key)
                                     },
                                     entryRequester = entryRequester,
@@ -782,7 +811,7 @@ fun CinematicLayout(
                                     isLandscapeCards = !historyRowActive,
                                     enrichedItems = state.enrichedMeta,
                                     rowHeight = cinematicRailHeight(historyRowActive),
-                                    inlineCinematicPreview = { poster ->
+                                    inlineCinematicPreview = if (persistentPreview) null else { poster ->
                                         InlineFocusedPosterPreview(
                                             poster, state, resolveTrailer, autoPlayPreviews, previewSound,
                                             nextItem = historyItems.indexOfFirst { it.id == poster.id }
@@ -879,7 +908,7 @@ fun CinematicLayout(
                                     // Create list state with saved scroll position for this row
                                     // Reset when focus was redirected from a removed history item to this first row
                                     val rowKey = item.id
-                                    val categoryRowActive = isCinematicRowActive(
+                                    val categoryRowActive = !persistentPreview && isCinematicRowActive(
                                         activeCinematicRow, rowKey, effectiveLastFocusedKey, "${index}_"
                                     )
                                     val resetScroll = historyFocusRedirected && historyItems.isEmpty() && index == firstFocusableRowIndex
@@ -921,6 +950,9 @@ fun CinematicLayout(
                                             onFocused = { focusItem: MetaItem?, key: String ->
                                                 activeCinematicRow = rowKey
                                                 focusItem?.let(onPreviewItemVisible)
+                                                if (focusItem != null) previewFocus = focusItem to item.items
+                                                    .indexOfFirst { it.id == focusItem.id }
+                                                    .takeIf { it >= 0 }?.let { item.items.getOrNull(it + 1) }
                                                 wrappedOnFocusChange(key)
                                                 val focusedIndex = key.substringAfterLast('_').toIntOrNull()
                                                 if (focusItem != null && focusedIndex != null) {
@@ -949,7 +981,7 @@ fun CinematicLayout(
                                             isLandscapeCards = !categoryRowActive,
                                             enrichedItems = state.enrichedMeta,
                                             rowHeight = cinematicRailHeight(categoryRowActive),
-                                            inlineCinematicPreview = { poster ->
+                                            inlineCinematicPreview = if (persistentPreview) null else { poster ->
                                                 InlineFocusedPosterPreview(
                                                 poster, state, resolveTrailer, autoPlayPreviews, previewSound,
                                                 nextItem = item.items.indexOfFirst { it.id == poster.id }
@@ -1068,6 +1100,144 @@ private fun InlineFocusedPosterPreview(
             }
         }
     }
+}
+
+/**
+ * Persistent layout preview height: the Hero's 420dp where the screen allows, otherwise
+ * whatever leaves room for two full landscape rails below, never under 38% of the screen.
+ */
+internal fun persistentPreviewHeight(screenHeight: Dp): Dp =
+    (screenHeight - PERSISTENT_ROWS_RESERVE).coerceIn(screenHeight * 0.38f, 420.dp)
+
+// Two compact rails: 116dp rail + ~26dp heading + 20dp row gap each, plus list top padding.
+private val PERSISTENT_ROWS_RESERVE = 330.dp
+
+/**
+ * The persistent layout's Hero-sized stage. It follows focus rather than owning it: the
+ * focused card's backdrop, details and trailer appear here while the rows below keep focus.
+ */
+@Composable
+private fun PersistentCinematicPreview(
+    item: MetaItem?,
+    nextItem: MetaItem?,
+    resolveTrailer: suspend (MetaItem) -> String?,
+    autoPlayPreviews: Boolean,
+    previewSound: Boolean,
+    startPadding: Dp
+) {
+    val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
+    val density = LocalDensity.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val height = persistentPreviewHeight(LocalConfiguration.current.screenHeightDp.dp)
+    val leftFade = remember(backgroundColor, density) {
+        Brush.horizontalGradient(
+            0f to backgroundColor.copy(0.95f),
+            0.45f to backgroundColor.copy(0.55f),
+            1f to Color.Transparent,
+            endX = with(density) { 700.dp.toPx() }
+        )
+    }
+    val bottomFade = remember(backgroundColor) {
+        Brush.verticalGradient(0.55f to Color.Transparent, 1f to backgroundColor)
+    }
+    Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
+        Crossfade(
+            targetState = item,
+            animationSpec = tween(500),
+            label = "PersistentPreviewArt"
+        ) { current ->
+            if (current != null) {
+                val context = LocalContext.current
+                val image = current.background?.takeIf { it.isNotBlank() } ?: current.poster
+                val request = remember(image) {
+                    ImageRequest.Builder(context)
+                        .data(image)
+                        .crossfade(false)
+                        .size(backdropDecodeSize(context))
+                        .build()
+                }
+                AsyncImage(
+                    model = request,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        TrailerPreview(
+            item = item,
+            resolveTrailer = resolveTrailer,
+            modifier = Modifier.fillMaxSize(),
+            autoPlay = autoPlayPreviews,
+            soundEnabled = previewSound,
+            nextItem = nextItem,
+            // Focus stays in the rows; advancing focus advances the preview with it.
+            onEnded = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right) }
+        )
+        Spacer(
+            Modifier.fillMaxSize().drawWithCache {
+                onDrawWithContent {
+                    drawRect(brush = leftFade)
+                    drawRect(brush = bottomFade)
+                }
+            }
+        )
+        com.hereliesaz.illumera.ui.components.NoiseOverlay()
+        if (item != null) {
+            AnimatedContent(
+                targetState = item,
+                transitionSpec = { fadeIn(tween(400)).togetherWith(fadeOut(tween(200))) },
+                contentKey = { "${it.type}:${it.id}" },
+                label = "PersistentPreviewInfo",
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = startPadding, end = 40.dp, bottom = 24.dp)
+            ) { current ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(0.5f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (!current.logo.isNullOrEmpty()) {
+                        SubcomposeAsyncImage(
+                            model = current.logo,
+                            contentDescription = current.name,
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.BottomStart,
+                            modifier = Modifier.heightIn(max = 64.dp).widthIn(max = 360.dp),
+                            error = { PersistentPreviewTitle(current.name) }
+                        )
+                    } else {
+                        PersistentPreviewTitle(current.name)
+                    }
+                    HomeMetaStrip(current)
+                    current.description?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            maxLines = if (height < 300.dp) 2 else 4,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = 14.sp, lineHeight = 1.3.em
+                            ),
+                            color = Color.White.copy(0.75f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersistentPreviewTitle(name: String) {
+    Text(
+        text = name,
+        style = MaterialTheme.typography.displaySmall.copy(
+            fontWeight = FontWeight.ExtraBold, fontSize = 32.sp
+        ),
+        color = Color.White,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 /**
