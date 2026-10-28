@@ -548,9 +548,11 @@ fun CinematicLayout(
     val density = LocalDensity.current
     // Keep the preceding compact landscape rail almost entirely on-screen
     // when a newly focused portrait row reaches its vertical pivot.
-    // The persistent layout pins the focused row to the top of the rows area instead.
+    // The persistent layout pins the focused row to the top of the rows area instead. The
+    // pivot positions the focused *card*, so leave room above it for the row heading and the
+    // card's focus scale; at 0dp both were clipped against the preview.
     val titleHeadroomPx = remember(density, persistentPreview) {
-        with(density) { (if (persistentPreview) 0.dp else 175.dp).toPx() }
+        with(density) { (if (persistentPreview) PERSISTENT_ROW_HEADROOM else 175.dp).toPx() }
     }
     
     // Skip vertical scroll on restoration (when we have a saved focus key)
@@ -1111,6 +1113,10 @@ internal fun persistentPreviewHeight(screenHeight: Dp): Dp =
 
 // Two compact rails: 116dp rail + ~26dp heading + 20dp row gap each, plus list top padding.
 private val PERSISTENT_ROWS_RESERVE = 330.dp
+
+// Space above a focused card in the persistent layout: row heading (~26dp) plus the
+// card's 1.05x focus scale and border.
+private val PERSISTENT_ROW_HEADROOM = 44.dp
 
 /**
  * The persistent layout's Hero-sized stage. It follows focus rather than owning it: the
