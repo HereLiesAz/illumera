@@ -7,6 +7,7 @@ import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
 import com.hereliesaz.illumera.data.wutch.WutchManager
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
+import com.hereliesaz.illumera.data.repository.AddonEventDispatcher
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -48,7 +49,9 @@ class PlayerViewModel @Inject constructor(
     private val traktScrobbleManager: TraktScrobbleManager,
     private val wutchManager: WutchManager,
     private val stremioLibrarySyncManager: StremioLibrarySyncManager,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    // Addon `player` event resource (Stremio protocol), sent alongside Trakt scrobbles.
+    private val addonEvents: AddonEventDispatcher
 ) : ViewModel() {
 
     // Where saves and scrobbles run; tests swap in a virtual-time dispatcher.
@@ -218,6 +221,7 @@ class PlayerViewModel @Inject constructor(
 
     fun scrobbleStart(id: String, type: String, positionMs: Long, durationMs: Long) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
+        addonEvents.player(type, id, AddonEventDispatcher.PlayerAction.START, positionMs, durationMs)
         enqueueScrobble {
             traktScrobbleManager.scrobbleStart(id, type, positionMs, durationMs)
         }
@@ -225,6 +229,7 @@ class PlayerViewModel @Inject constructor(
 
     fun scrobblePause(id: String, type: String, positionMs: Long, durationMs: Long, force: Boolean = false) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
+        addonEvents.player(type, id, AddonEventDispatcher.PlayerAction.PAUSE, positionMs, durationMs)
         enqueueScrobble {
             traktScrobbleManager.scrobblePause(id, type, positionMs, durationMs, force = force)
             wutchManager.onPlayback(id, positionMs, finished = false)
@@ -233,6 +238,7 @@ class PlayerViewModel @Inject constructor(
 
     fun scrobbleStop(id: String, type: String, positionMs: Long, durationMs: Long) {
         if (classifyDuration(type, durationMs) != PlaybackDurationStatus.NORMAL) return
+        addonEvents.player(type, id, AddonEventDispatcher.PlayerAction.STOP, positionMs, durationMs)
         enqueueScrobble {
             traktScrobbleManager.scrobbleStop(id, type, positionMs, durationMs)
             wutchManager.onPlayback(id, positionMs, finished = isCompleted(positionMs, durationMs, type))

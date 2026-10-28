@@ -23,10 +23,11 @@ if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
     exit 1
 fi
 
-# Stremio/media at STREMIO_MEDIA_REF declares this NDK through its Android
-# configuration. Keep the helper scripts and Gradle on the exact same version;
-# forcing a newer ndk.dir makes AGP fail with CXX1104 before any module builds.
-NDK_VERSION="27.0.12077973"
+# Stremio/media at STREMIO_MEDIA_REF sets no ndkVersion, so AGP's default applies:
+# AGP 9.0.1 (media3 1.11.1-stremio01) defaults to NDK 28.2.13676358. Keep the helper
+# scripts and Gradle on that exact version; a different ndk.dir makes AGP fail with
+# CXX1104 before any module builds. Re-check this whenever the fork's AGP changes.
+NDK_VERSION="28.2.13676358"
 CMAKE_VERSION="3.22.1"
 
 echo "Installing native Android toolchain..."
@@ -79,10 +80,10 @@ rm -rf "$IAMF_JNI/iamf_tools"
 mkdir -p "$IAMF_JNI/iamf_tools"
 git -C "$IAMF_JNI/iamf_tools" init
 git -C "$IAMF_JNI/iamf_tools" remote add origin https://github.com/AOMediaCodec/iamf-tools.git
-git -C "$IAMF_JNI/iamf_tools" fetch --depth=1 origin de364b983447a45d8be81f9172eea422c139dcf0
+git -C "$IAMF_JNI/iamf_tools" fetch --depth=1 origin e552e7d6d8b55530d201fd2764ca7e12d2c66cd6
 git -C "$IAMF_JNI/iamf_tools" checkout --detach FETCH_HEAD
 chmod +x "$IAMF_JNI/build_iamf_tools.sh"
-"$IAMF_JNI/build_iamf_tools.sh" "$IAMF_MAIN"
+"$IAMF_JNI/build_iamf_tools.sh" "$IAMF_MAIN" "$NDK_PATH"
 
 MPEGH_JNI="$STREMIO_DIR/libraries/decoder_mpegh/src/main/jni"
 rm -rf "$MPEGH_JNI/libmpegh"

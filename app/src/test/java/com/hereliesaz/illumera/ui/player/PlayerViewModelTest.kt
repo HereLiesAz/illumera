@@ -6,6 +6,7 @@ import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.trakt.TraktScrobbleManager
 import com.hereliesaz.illumera.data.wutch.WutchManager
+import com.hereliesaz.illumera.data.repository.AddonEventDispatcher
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -66,7 +67,8 @@ class PlayerViewModelTest {
             traktScrobbleManager = mockk<TraktScrobbleManager>(relaxed = true),
             wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
-            profileConfigurationManager = profileManager
+            profileConfigurationManager = profileManager,
+            addonEvents = mockk<AddonEventDispatcher>(relaxed = true)
         )
         advanceUntilIdle()
 
@@ -95,7 +97,8 @@ class PlayerViewModelTest {
             traktScrobbleManager = trakt,
             wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
-            profileConfigurationManager = profileManager
+            profileConfigurationManager = profileManager,
+            addonEvents = mockk<AddonEventDispatcher>(relaxed = true)
         )
         coEvery {
             profileManager.withActiveProfileRuntime<Boolean>(1, any())
@@ -123,7 +126,8 @@ class PlayerViewModelTest {
             traktScrobbleManager = mockk<TraktScrobbleManager>(relaxed = true),
             wutchManager = mockk<WutchManager>(relaxed = true),
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
-            profileConfigurationManager = profileManager
+            profileConfigurationManager = profileManager,
+            addonEvents = mockk<AddonEventDispatcher>(relaxed = true)
         )
         advanceUntilIdle()
 
@@ -147,7 +151,8 @@ class PlayerViewModelTest {
             traktScrobbleManager = trakt,
             wutchManager = wutch,
             stremioLibrarySyncManager = mockk<StremioLibrarySyncManager>(relaxed = true),
-            profileConfigurationManager = profileManager
+            profileConfigurationManager = profileManager,
+            addonEvents = mockk<AddonEventDispatcher>(relaxed = true)
         )
         viewModel.ioDispatcher = dispatcher
 

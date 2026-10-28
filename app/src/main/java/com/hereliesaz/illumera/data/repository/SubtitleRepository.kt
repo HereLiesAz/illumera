@@ -362,7 +362,8 @@ class SubtitleRepository @Inject constructor(
             id = subtitleId,
             url = resolvedUrl,
             lang = normalizeLanguageCode(lang),
-            addonName = addonName
+            addonName = addonName,
+            label = label?.trim()?.takeIf { it.isNotEmpty() }
         )
     }
 

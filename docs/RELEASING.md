@@ -90,7 +90,7 @@ In the central Android release workflow (`HereLiesAz/workflows`):
    [`ci/build-stremio-media.sh`](../ci/build-stremio-media.sh) builds
    `:lib-exoplayer`, `:lib-decoder-av1`, `:lib-decoder-ffmpeg`,
    `:lib-decoder-iamf`, `:lib-decoder-mpegh` with Gradle, using a pinned NDK
-   (`27.0.12077973`) and CMake version.
+   (`28.2.13676358`, the default of the fork's AGP 9.0.1) and CMake version.
 3. The five resulting AARs are copied into `playbackcore/libs/`, overwriting
    whatever was checked into the repo, **before** `assembleRelease` runs.
    The workflow refuses to publish if any of the five is missing.

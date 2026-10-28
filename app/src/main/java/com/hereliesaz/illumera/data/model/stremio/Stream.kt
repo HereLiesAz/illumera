@@ -37,6 +37,8 @@ data class StreamSubtitle(
     val lang: String? = null,
     val url: String? = null,
     val name: String? = null,
+    // Picker label that overrides the language name, e.g. "English [CC]" (addon protocol).
+    val label: String? = null,
     val transportUrl: String? = null
 )
 
