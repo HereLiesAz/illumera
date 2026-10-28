@@ -200,7 +200,13 @@ For steps 2–4 the returned `meta.id` must equal the requested ID. `idPrefixes`
 
 - Addons whose manifest declares no matching subtitle resource are skipped. If the manifest can't be fetched, the addon is asked anyway.
 - Object-form resource `types` and `idPrefixes` **are** honored here. Declared prefixes are lowercased before matching, so write them in lowercase.
-- The track label for `/subtitles/` results is the addon's name. Format comes from the URL extension (`.vtt`, `.ass`/`.ssa`, `.ttml`/`.dfxp`, `.srt`), and anything else is sniffed.
+- The track label is the subtitle's `label` when given, otherwise the addon's name (or, for stream-embedded subtitles, `name`). Square brackets are stripped. Format comes from the URL extension (`.vtt`, `.ass`/`.ssa`, `.ttml`/`.dfxp`, `.srt`), and anything else is sniffed.
+
+### Player and library events
+
+- Addons whose manifest declares a `player` or `library` resource receive the viewer's activity, matched by `types` and `idPrefixes` (object-form resources honored; a string resource uses the manifest-level filters). Addons that don't declare them never receive it, and an unreachable manifest sends nothing. Responses are ignored.
+- `player`: `/player/{type}/{videoId}/action=start|pause|stop&currentTime={ms}&duration={ms}.json`, sent with the same start/pause/stop as Trakt scrobbles.
+- `library`: `/library/{type}/{id}/action=libraryAdd|libraryRemove.json` on watchlist changes, and `action=watched|unwatched` on watched marks. Episode and whole-series marks add `&videoId=` with URL-encoded, comma-separated video IDs, at most 100 per request.
 
 ### Torrents
 
@@ -228,6 +234,8 @@ Don't rely on these in illumera:
 - Addon search catalogs. Search uses Cinemeta.
 - Catalog extras other than `skip` and `genre`. `genre` is supported: a catalog with an optional `genre` extra is filtered by it when the genre screens ask for one, and one whose `genre` is required is requested once per `options` value. On the Movies and Series screens, a catalog with any other required extra (such as `search`) is skipped; elsewhere catalogs are requested without extras.
 - Manifest `config`, `background` and `contactEmail`, and catalog `hasMore`.
+- The native live-TV programme guide (`behaviorHints.epgProvider`, `date` extra on `tv` catalogs). `tv` catalogs show as ordinary channel lists.
+- ASS/SSA subtitles identified only by content: give their URL a `.ass` or `.ssa` extension.
 - `cacheMaxAge` and the other cache hints.
 - Intro and outro skipping comes from IntroDB; addons can't supply it. Home-screen trailer previews come from, in order, the `stremio-trailer-addon` (if it is installed and enabled; its stream `ytId`, `externalUrl` or YouTube `url`), TMDB's video index, and Cinemeta's meta `trailerStreams`/`trailers`. No other addon can supply trailers.
 - When a profile turns on TMDB enrichment, TMDB overwrites the addon's `name`, `description`, images, `genres`, `releaseInfo`, `imdbRating` and `runtime`.
