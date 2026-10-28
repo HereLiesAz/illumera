@@ -187,6 +187,20 @@ fun AddonsScreen(
                 compact = true
             )
             Spacer(Modifier.height(10.dp))
+            val clipboardContext = LocalContext.current
+            VoidButton(
+                // This device's own clipboard: replaces the field with the first clip's text.
+                text = "Paste from clipboard",
+                onClick = {
+                    val clipboard = clipboardContext.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard?.primaryClip?.takeIf { it.itemCount > 0 }
+                        ?.getItemAt(0)?.coerceToText(clipboardContext)?.toString()?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { installUrl = it }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                compact = true
+            )
             VoidButton(
                 text = "Paste link from phone",
                 onClick = {
