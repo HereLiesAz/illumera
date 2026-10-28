@@ -18,12 +18,14 @@ class CinematicAudioPreferencesTest {
         every { prefs.getBoolean("17.autoplay", true) } returns true
         every { prefs.getBoolean("17.preview_sound", false) } returns false
         every { prefs.getBoolean("17.navigation_sounds", true) } returns true
+        every { prefs.getBoolean("17.persistent_preview", false) } returns false
 
         assertEquals(
             CinematicAudioPreferences(
                 autoPlayPreviews = true,
                 previewSound = false,
-                navigationSounds = true
+                navigationSounds = true,
+                persistentPreview = false
             ),
             readCinematicAudioPreferences(prefs, 17)
         )

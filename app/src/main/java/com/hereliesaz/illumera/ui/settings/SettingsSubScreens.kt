@@ -239,6 +239,15 @@ fun PersonalizationSettings(
             modifier = Modifier.padding(bottom = 8.dp)
         )
         SettingToggleRow(
+            label = "Persistent preview layout",
+            subtitle = "Show the focused title's art and trailer in a large preview above the rows",
+            isChecked = audioSettings.persistentPreview,
+            onCheckedChange = {
+                setCinematicAudioPreference(context, currentProfile.id, "persistent_preview", it)
+            },
+            onBack = onGoBack
+        )
+        SettingToggleRow(
             label = "Autoplay previews",
             subtitle = "Automatically play trailers in the Hero and focused poster",
             isChecked = audioSettings.autoPlayPreviews,

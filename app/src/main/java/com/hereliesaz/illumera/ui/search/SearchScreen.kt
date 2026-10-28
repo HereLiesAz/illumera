@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SpaceBar
 import androidx.compose.material3.*
@@ -178,6 +179,10 @@ fun SearchScreen(
                 verticalArrangement = Arrangement.Top
             ) {
                 TvKeyboard(
+                    onVoiceSearch = rememberVoiceSearchLauncher { spoken ->
+                        viewModel.onQueryChange(spoken)
+                        keepFocused = false
+                    },
                     onKeyPress = { char ->
                         viewModel.appendCharacter(char)
                         keepFocused = false
@@ -540,6 +545,19 @@ private fun TouchSearchLayout(
                     }
                 }
             )
+            val voiceSearch = rememberVoiceSearchLauncher { spoken ->
+                keyboardController?.hide()
+                viewModel.onQueryChange(spoken)
+            }
+            if (voiceSearch != null) {
+                IconButton(onClick = voiceSearch) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = "Voice search",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -709,6 +727,8 @@ fun TvKeyboard(
     onBackspace: () -> Unit,
     onSpace: () -> Unit,
     onOpenSystemKeyboard: () -> Unit,
+    // Null when the device has no speech recognizer: the key is not shown.
+    onVoiceSearch: (() -> Unit)? = null,
     entryRequester: FocusRequester,
     drawerRequester: FocusRequester,
     isTopNav: Boolean,
@@ -835,6 +855,39 @@ fun TvKeyboard(
                         } else false
                     }
             )
+        }
+
+        if (onVoiceSearch != null) {
+            val voiceIndex = keys.size + 3
+            item(span = { GridItemSpan(6) }) {
+                val isRemembered = voiceIndex == lastFocusedIndex
+                KeyButton(
+                    icon = Icons.Default.Mic,
+                    onClick = onVoiceSearch,
+                    label = "Voice",
+                    modifier = Modifier
+                        .onFocusChanged { if (it.isFocused) lastFocusedIndex = voiceIndex }
+                        .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
+                        .onPreviewKeyEvent {
+                            if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            when (it.key) {
+                                Key.DirectionLeft -> {
+                                    if (!isTopNav) drawerRequester.openNavDrawer()
+                                    true
+                                }
+                                Key.DirectionRight -> {
+                                    if (!hasResults) return@onPreviewKeyEvent true
+                                    if (contentEntryRequester != null) {
+                                        runCatching { contentEntryRequester.requestFocus() }
+                                        return@onPreviewKeyEvent true
+                                    }
+                                    false
+                                }
+                                else -> false
+                            }
+                        }
+                )
+            }
         }
     }
 }
