@@ -5,10 +5,13 @@ import com.google.gson.JsonElement
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.AddonEntity
+import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioApiService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -26,13 +29,19 @@ import javax.inject.Singleton
  * `types`/`idPrefixes` as for every other resource. An unreachable manifest means no events:
  * watch activity is never sent to an addon that has not asked for it.
  *
+ * Each event is bound to the profile active when it happened: its addon snapshot is read
+ * under that profile's runtime lock, and the event is dropped if the profile has changed.
+ * Events reach each addon in the order they happened (one queue per addon); different
+ * addons are served concurrently.
+ *
  *   /player/{type}/{videoId}/action=start|pause|stop&currentTime={ms}&duration={ms}.json
  *   /library/{type}/{id}/action=libraryAdd|libraryRemove|watched|unwatched[&videoId=a,b].json
  */
 @Singleton
 class AddonEventDispatcher @Inject constructor(
     private val dao: AddonDao,
-    private val api: StremioApiService
+    private val api: StremioApiService,
+    private val profiles: ProfileConfigurationManager
 ) {
     enum class PlayerAction(val wire: String) { START("start"), PAUSE("pause"), STOP("stop") }
     enum class LibraryAction(val wire: String) {
@@ -41,10 +50,26 @@ class AddonEventDispatcher @Inject constructor(
 
     private data class Rule(val types: Set<String>, val idPrefixes: Set<String>)
 
+    private data class Event(
+        val profileId: Int,
+        val resource: String,
+        val type: String,
+        val id: String,
+        val extras: List<String>
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val gson = Gson()
     // transportUrl -> resource name -> rules; an empty map means the manifest declares neither.
     private val rulesCache = ConcurrentHashMap<String, Map<String, List<Rule>>>()
+    // Every event, in the order it happened; routed one at a time so order survives.
+    private val events = Channel<Event>(Channel.UNLIMITED)
+    // transportUrl -> that addon's own delivery queue, drained sequentially.
+    private val addonQueues = ConcurrentHashMap<String, Channel<Pair<AddonEntity, Event>>>()
+
+    init {
+        scope.launch { for (event in events) route(event) }
+    }
 
     fun player(type: String, videoId: String, action: PlayerAction, positionMs: Long, durationMs: Long) {
         val extra = "action=${action.wire}&currentTime=${positionMs.coerceAtLeast(0)}" +
@@ -63,19 +88,35 @@ class AddonEventDispatcher @Inject constructor(
 
     private fun dispatch(resource: String, type: String, id: String, extras: List<String>) {
         if (type.isBlank() || id.isBlank()) return
-        scope.launch {
-            val addons = dao.getAllAddons().firstOrNull()?.filter { it.isEnabled }.orEmpty()
-            addons.forEach { addon ->
-                launch {
-                    if (!accepts(addon, resource, type, id)) return@launch
-                    val base = addon.transportUrl.trimEnd('/')
-                    extras.forEach { extra ->
-                        // Fire and forget: the response carries nothing the app uses.
-                        withTimeoutOrNull(EVENT_TIMEOUT_MS) {
-                            runCatching { api.getJson("$base/$resource/$type/$id/$extra.json") }
-                        }
-                    }
-                }
+        val profileId = profiles.activeProfileId.value ?: return
+        events.trySend(Event(profileId, resource, type, id, extras))
+    }
+
+    private suspend fun route(event: Event) {
+        val addons = try {
+            profiles.withActiveProfileRuntime(event.profileId) {
+                dao.getAllAddons().firstOrNull()?.filter { it.isEnabled }.orEmpty()
+            }
+        } catch (_: CancellationException) {
+            return // The originating profile is no longer active: its addons are gone.
+        }
+        addons.forEach { addon -> queueFor(addon.transportUrl).trySend(addon to event) }
+    }
+
+    private fun queueFor(transportUrl: String): Channel<Pair<AddonEntity, Event>> =
+        addonQueues.computeIfAbsent(transportUrl) {
+            Channel<Pair<AddonEntity, Event>>(Channel.UNLIMITED).also { queue ->
+                scope.launch { for ((addon, event) in queue) deliver(addon, event) }
+            }
+        }
+
+    private suspend fun deliver(addon: AddonEntity, event: Event) {
+        if (!accepts(addon, event.resource, event.type, event.id)) return
+        val base = addon.transportUrl.trimEnd('/')
+        event.extras.forEach { extra ->
+            // Fire and forget: the response carries nothing the app uses.
+            withTimeoutOrNull(EVENT_TIMEOUT_MS) {
+                runCatching { api.getJson("$base/${event.resource}/${event.type}/${event.id}/$extra.json") }
             }
         }
     }

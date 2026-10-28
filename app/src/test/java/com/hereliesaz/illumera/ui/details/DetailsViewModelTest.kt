@@ -216,6 +216,7 @@ class DetailsViewModelTest {
         tmdbMetadataService = mockk<TmdbMetadataService>(relaxed = true),
         traktSyncManager = mockk<TraktSyncManager>(relaxed = true),
         wutchManager = mockk<WutchManager>(relaxed = true),
-        savedStateHandle = androidx.lifecycle.SavedStateHandle()
+        savedStateHandle = androidx.lifecycle.SavedStateHandle(),
+        addonEvents = mockk<com.hereliesaz.illumera.data.repository.AddonEventDispatcher>(relaxed = true)
     )
 }

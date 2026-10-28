@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.hereliesaz.illumera.data.repository.AddonEventDispatcher
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
@@ -70,7 +71,9 @@ class DetailsViewModel @Inject constructor(
     private val tmdbMetadataService: TmdbMetadataService,
     private val traktSyncManager: TraktSyncManager,
     private val wutchManager: WutchManager,
-    private val savedStateHandle: SavedStateHandle
+    private val savedStateHandle: SavedStateHandle,
+    // Addon `library` event resource (Stremio protocol) for watched/unwatched marks.
+    private val addonEvents: AddonEventDispatcher
 ) : ViewModel() {
 
     /**
@@ -708,6 +711,7 @@ class DetailsViewModel @Inject constructor(
         val itemId = _state.value.resolvedId ?: meta.id
         val isCurrentlyWatched = _state.value.isMovieWatched
 
+        addonEvents.library("movie", itemId, if (isCurrentlyWatched) AddonEventDispatcher.LibraryAction.UNWATCHED else AddonEventDispatcher.LibraryAction.WATCHED)
         viewModelScope.launch(Dispatchers.IO) {
             if (isCurrentlyWatched) {
                 dao.deleteHistoryItem(itemId)
@@ -746,6 +750,11 @@ class DetailsViewModel @Inject constructor(
         val key = "S${episode.season}:E${episode.episode}"
         val currentProgress = _state.value.episodeProgressMap[key]
         val isCurrentlyWatched = currentProgress?.watched ?: false
+        addonEvents.library(
+            "series", streamId,
+            if (isCurrentlyWatched) AddonEventDispatcher.LibraryAction.UNWATCHED else AddonEventDispatcher.LibraryAction.WATCHED,
+            videoIds = listOf("$streamId:${episode.season}:${episode.episode}")
+        )
 
         viewModelScope.launch(Dispatchers.IO) {
             if (isCurrentlyWatched) {
