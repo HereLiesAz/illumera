@@ -7,6 +7,8 @@ import com.hereliesaz.illumera.data.model.RecentSearchEntity
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.model.debrid.DebridResult
+import com.hereliesaz.illumera.data.torrentclaw.TorrentClawIntegration
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -21,7 +23,8 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val repository: AddonRepository,
     private val dao: AddonDao,
-    private val profileConfigurationManager: ProfileConfigurationManager
+    private val profileConfigurationManager: ProfileConfigurationManager,
+    private val torrentClaw: TorrentClawIntegration
 ) : ViewModel() {
 
     companion object {
@@ -110,7 +113,22 @@ class SearchViewModel @Inject constructor(
         val ownerProfileId = profileConfigurationManager.activeProfileId.value
         _state.value = _state.value.copy(isLoading = true, searchFailed = false)
         try {
-            val results = repository.searchMovies(query)
+            // A provider failure must not suppress results from the other provider.
+            // TorrentClaw supplies canonical titles only; playable streams still come
+            // from the installed addons when the title's Details screen opens.
+            val addons = try {
+                repository.searchMovies(query)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            val claw = torrentClaw.search(query)
+            val clawResults = (claw as? DebridResult.Success)?.value.orEmpty()
+            if (addons == null && clawResults.isEmpty()) {
+                throw IllegalStateException("Search providers unavailable")
+            }
+            val results = (addons.orEmpty() + clawResults).distinctBy { it.type to it.id }
             val movies = results.filter { it.type == "movie" }
             val series = results.filter { it.type == "series" }
             _state.value = _state.value.copy(
