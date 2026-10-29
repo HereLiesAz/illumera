@@ -98,6 +98,7 @@ fun ThemeScreen(
 
     // One scrollable grid owns both the settings header and theme cards. A weighted grid
     // below a fixed header could clip the controls on short TV viewports.
+    // Two columns on compact panes prevent the theme preview swatches from being crushed.
     val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
     val themeColumnCount = if (isCompactTheme) 2 else 4
     LazyVerticalGrid(
@@ -216,10 +217,6 @@ fun ThemeScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // --- THEME GRID ---
-                // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
-                // gap) below its content width on a phone screen; drop to 2 columns there. The
-                // column count feeds the left-edge (D-pad back) check below so it stays correct.
             } // Header and toolbar are part of the same scroll container.
         }
         items(filteredThemes, key = { "theme:${it.id}" }) { theme ->
