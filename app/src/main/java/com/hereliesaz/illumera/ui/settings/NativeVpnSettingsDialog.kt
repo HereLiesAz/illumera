@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -37,6 +38,9 @@ import com.hereliesaz.illumera.data.vpn.NativeVpnProtocol
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * One Settings surface for supported native VPN engines. Never advertises an unimplemented
@@ -49,6 +53,7 @@ fun NativeVpnSettingsDialog(
     viewModel: NativeVpnViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
     val status by viewModel.status.collectAsStateWithLifecycle()
     var protocol by remember { mutableStateOf(NativeVpnProtocol.WIREGUARD) }
     var configText by remember { mutableStateOf("") }
@@ -89,25 +94,37 @@ fun NativeVpnSettingsDialog(
     }
     val importWireGuard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching {
-                // A VPN profile is a small text config, not an arbitrary multi-megabyte upload.
-                val bytes = readBoundedProfileBytes(context, uri, 131072)
-                val imported = bytes.toString(Charsets.UTF_8)
-                viewModel.saveWireGuard(imported).getOrThrow()
-                savedWireGuard = true
-                feedback = "WireGuard profile saved securely"
-            }.onFailure { feedback = it.message ?: "Could not import profile" }
+            importScope.launch {
+                // Document providers may be cloud-backed; opening/reading/parsing and
+                // encrypted writes must never block the Android UI/D-pad thread.
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = readBoundedProfileBytes(context, uri, 131072)
+                        viewModel.saveWireGuard(bytes.toString(Charsets.UTF_8)).getOrThrow()
+                    }
+                }
+                result.onSuccess {
+                    savedWireGuard = true
+                    feedback = "WireGuard profile saved securely"
+                }.onFailure { feedback = it.message ?: "Could not import profile" }
+            }
         }
     }
 
     val importIkev2Ca = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching {
-                val bytes = readBoundedProfileBytes(context, uri, 65536)
-                viewModel.saveIkev2Ca(bytes).getOrThrow()
-                savedIkev2Ca = true
-                feedback = "Trusted server CA saved securely"
-            }.onFailure { feedback = it.message ?: "Could not import CA certificate" }
+            importScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = readBoundedProfileBytes(context, uri, 65536)
+                        viewModel.saveIkev2Ca(bytes).getOrThrow()
+                    }
+                }
+                result.onSuccess {
+                    savedIkev2Ca = true
+                    feedback = "Trusted server CA saved securely"
+                }.onFailure { feedback = it.message ?: "Could not import CA certificate" }
+            }
         }
     }
 
