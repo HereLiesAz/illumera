@@ -102,6 +102,7 @@ fun IntegrationsScreen(
     val repositoriesViewModel: AddonRepositoriesViewModel = androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
     val addonRepositories by repositoriesViewModel.repositories.collectAsStateWithLifecycle()
     var showWutchDialog by remember { mutableStateOf(false) }
+    var showTorrentClawDialog by remember { mutableStateOf(false) }
 
     // Handle events
     LaunchedEffect(Unit) {
@@ -243,6 +244,20 @@ fun IntegrationsScreen(
             subtitle = state.wutchUsername ?: "Not Connected",
             isConnected = state.wutchUsername != null,
             onClick = { showWutchDialog = true },
+            modifier = goBackModifier
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // TorrentClaw contributes canonical movie/series discoveries to Search.
+        IntegrationItem(
+            title = "TorrentClaw",
+            subtitle = if (state.torrentClawEnabled) {
+                if (state.torrentClawHasKey) "Search enabled · API key saved"
+                else "Search enabled · Anonymous limits"
+            } else "Disabled",
+            isConnected = state.torrentClawEnabled,
+            onClick = { showTorrentClawDialog = true },
             modifier = goBackModifier
         )
 
@@ -445,6 +460,17 @@ fun IntegrationsScreen(
         )
     }
 
+    if (showTorrentClawDialog) {
+        TorrentClawSettingsDialog(
+            enabled = state.torrentClawEnabled,
+            hasApiKey = state.torrentClawHasKey,
+            onEnabledChange = viewModel::setTorrentClawEnabled,
+            onSaveKey = viewModel::saveTorrentClawKey,
+            onClearKey = viewModel::clearTorrentClawKey,
+            onDismiss = { showTorrentClawDialog = false }
+        )
+    }
+
     // Debrid Dialog
     if (showDebridDialog) {
         DebridDialog(
@@ -468,6 +494,87 @@ fun IntegrationsScreen(
             onDismiss = { showWutchDialog = false },
             deviceFormFactor = deviceFormFactor
         )
+    }
+}
+
+
+/** Optional discovery integration: never represents TorrentClaw as a debrid service. */
+@Composable
+private fun TorrentClawSettingsDialog(
+    enabled: Boolean,
+    hasApiKey: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onSaveKey: (String) -> Boolean,
+    onClearKey: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var apiKey by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(180.dp)
+    com.hereliesaz.illumera.ui.addons.VoidDialog(
+        onDismissRequest = onDismiss,
+        title = "TorrentClaw"
+    ) {
+        Column(
+            modifier = Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Add TorrentClaw's indexed movies and series to Search. Results open the normal Details screen; playback still uses your installed addons. No torrent is downloaded automatically.",
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodySmall
+            )
+            com.hereliesaz.illumera.ui.addons.VoidToggleRow(
+                "Enable TorrentClaw discovery", enabled, { onEnabledChange(!enabled) }
+            )
+            Text(
+                if (hasApiKey) "API key saved (encrypted)" else "Optional API key · anonymous access has lower limits",
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.bodySmall
+            )
+            IntegrationTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it; error = null },
+                placeholder = "Paste TorrentClaw API key (optional)",
+                isPassword = true,
+                keyboardType = KeyboardType.Password,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IntegrationButton(
+                    text = "Save key",
+                    enabled = apiKey.isNotBlank(),
+                    onClick = {
+                        if (onSaveKey(apiKey)) {
+                            apiKey = ""
+                            error = null
+                        } else {
+                            error = "Could not store the API key securely"
+                        }
+                    },
+                    isPrimary = true,
+                    modifier = Modifier.weight(1f)
+                )
+                IntegrationButton(
+                    text = "Clear key",
+                    enabled = hasApiKey,
+                    onClick = { onClearKey(); apiKey = "" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            IntegrationButton(
+                text = "API docs",
+                onClick = {
+                    openExternalUrl(context, "https://torrentclaw.com/api/docs#/Discovery/searchContent")
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            IntegrationButton(
+                text = "Done", onClick = onDismiss, modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
