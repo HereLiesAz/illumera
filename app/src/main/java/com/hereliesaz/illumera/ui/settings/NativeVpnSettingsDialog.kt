@@ -182,7 +182,9 @@ fun NativeVpnSettingsDialog(
             } else if (protocol == NativeVpnProtocol.IKEV2) {
                 Text(
                     "IKEv2/IPsec works with correctly configured strongSwan and Libreswan servers " +
-                        "on Android 11+. This uses Android's native authenticated IPsec engine, " +
+                        "on Android 11+. Local IKE identity is the client's ID, not the server's. " +
+                        "Android derives server identity from the hostname and verifies its certificate. " +
+                        "This uses Android's native authenticated IPsec engine, " +
                         "not a bundled strongSwan or Libreswan daemon.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f)
