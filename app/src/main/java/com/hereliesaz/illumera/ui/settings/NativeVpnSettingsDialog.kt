@@ -36,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hereliesaz.illumera.data.vpn.Ikev2AuthMode
 import com.hereliesaz.illumera.data.vpn.NativeVpnPhase
 import com.hereliesaz.illumera.data.vpn.NativeVpnProtocol
+import com.hereliesaz.illumera.data.vpn.mayRequestNativeVpnConnection
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import kotlinx.coroutines.delay
@@ -66,6 +67,8 @@ fun NativeVpnSettingsDialog(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var feedback by remember { mutableStateOf("") }
+    // Per-dialog, per-protocol opt-in: importing a profile is not permission to route traffic.
+    var privacyAcknowledged by remember { mutableStateOf(false) }
     var savedWireGuard by remember { mutableStateOf(viewModel.hasWireGuardProfile()) }
     var savedIkev2 by remember { mutableStateOf(viewModel.hasIkev2Profile()) }
     var savedIkev2Ca by remember { mutableStateOf(viewModel.hasIkev2Ca()) }
@@ -95,14 +98,18 @@ fun NativeVpnSettingsDialog(
     }
 
     val wireGuardConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == Activity.RESULT_OK) {
+        if (it.resultCode == Activity.RESULT_OK &&
+            mayRequestNativeVpnConnection(NativeVpnProtocol.WIREGUARD, privacyAcknowledged)
+        ) {
             viewModel.connectWireGuard()
-        } else feedback = "Android VPN permission denied; no tunnel started"
+        } else feedback = "VPN authorization or disclosure acknowledgement missing; no tunnel started"
     }
     val ikev2Consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == Activity.RESULT_OK) {
+        if (it.resultCode == Activity.RESULT_OK &&
+            mayRequestNativeVpnConnection(NativeVpnProtocol.IKEV2, privacyAcknowledged)
+        ) {
             viewModel.connectIkev2()
-        } else feedback = "Android VPN permission denied; no tunnel started"
+        } else feedback = "VPN authorization or disclosure acknowledgement missing; no tunnel started"
     }
     val importWireGuard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -195,8 +202,11 @@ fun NativeVpnSettingsDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                "Device-wide VPN · opt-in only. Android may show a system permission prompt. " +
-                    "Only one VPN can be active; confirm your provider's server and certificates.",
+                "Connecting creates a device-wide VPN. Android will route traffic that matches " +
+                    "your VPN profile through the server you configure, which may see your connection " +
+                    "metadata and DNS requests. Illumera does not operate that server or inspect or " +
+                    "store packet contents. Only one device VPN can be active at a time. " +
+                    "You may disconnect here or in Android's VPN settings.",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.78f),
                 style = MaterialTheme.typography.bodySmall
             )
@@ -206,12 +216,27 @@ fun NativeVpnSettingsDialog(
                 NativeVpnProtocol.entries.forEach { option ->
                     VoidButton(
                         text = option.label,
-                        onClick = { protocol = option; feedback = "" },
+                        onClick = {
+                            protocol = option
+                            privacyAcknowledged = false
+                            feedback = ""
+                        },
                         isPrimary = option == protocol,
                         compact = true
                     )
                 }
             }
+            if (protocol.ready) {
+                VoidButton(
+                    text = if (privacyAcknowledged)
+                        "Acknowledged: connect through my configured VPN server"
+                    else "Acknowledge VPN routing and server access to connection metadata",
+                    onClick = { privacyAcknowledged = !privacyAcknowledged },
+                    isPrimary = privacyAcknowledged,
+                    compact = true
+                )
+            }
+
             if (protocol == NativeVpnProtocol.WIREGUARD) {
                 Text(
                     if (savedWireGuard) "WireGuard configuration stored (encrypted)"
@@ -254,6 +279,9 @@ fun NativeVpnSettingsDialog(
                     onClick = {
                         runCatching {
                             check(savedWireGuard) { "Import a WireGuard profile first" }
+                            check(mayRequestNativeVpnConnection(protocol, privacyAcknowledged)) {
+                                "Acknowledge VPN routing and third-party server access first"
+                            }
                             val consent = viewModel.requestWireGuardConsent()
                             if (consent == null) {
                                 viewModel.connectWireGuard()
@@ -404,6 +432,8 @@ fun NativeVpnSettingsDialog(
                             feedback = "IKEv2 requires Android 11 or newer"
                         } else if (!savedIkev2) {
                             feedback = "Save your IKEv2 profile first"
+                        } else if (!mayRequestNativeVpnConnection(protocol, privacyAcknowledged)) {
+                            feedback = "Acknowledge VPN routing and third-party server access first"
                         } else {
                             importScope.launch {
                                 // CPU-heavy PKCS#12 decoding and provisioning run on IO;
