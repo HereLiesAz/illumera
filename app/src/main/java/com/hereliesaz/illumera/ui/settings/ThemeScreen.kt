@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -93,7 +94,19 @@ fun ThemeScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // One scrollable grid owns both the settings header and theme cards. A weighted grid
+    // below a fixed header could clip the controls on short TV viewports.
+    val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
+    val themeColumnCount = if (isCompactTheme) 2 else 4
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(themeColumnCount),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 50.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }, key = "theme_controls") {
+            Column {
         // Header
         Text(
             "Theme",
@@ -204,16 +217,9 @@ fun ThemeScreen(
         // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
         // gap) below its content width on a phone screen; drop to 2 columns there. The
         // column count feeds the left-edge (D-pad back) check below so it stays correct.
-        val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
-        val themeColumnCount = if (isCompactTheme) 2 else 4
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(themeColumnCount),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 50.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            items(filteredThemes, key = { it.id }) { theme ->
+            } // Header and toolbar are part of the same scroll container.
+        }
+        items(filteredThemes, key = { "theme:${it.id}" }) { theme ->
                 val isFirst = filteredThemes.indexOf(theme) == 0
                 // Only first column items should go back on Left
                 val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
@@ -229,7 +235,6 @@ fun ThemeScreen(
                     onPenClick = if (!theme.isBuiltIn) {{ themeToManage = theme }} else null
                 )
             }
-        }
     }
 
     // --- MANAGE THEME DIALOG ---
