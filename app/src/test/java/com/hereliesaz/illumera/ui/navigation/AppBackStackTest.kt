@@ -81,24 +81,45 @@ class AppBackStackTest {
     }
 
     @Test
-    fun queueAdvancePushesDetailsOnTopAndTwoBacksReachMain() {
+    fun queueAdvanceWithinSameShowReplacesDetailsRatherThanDuplicatingIt() {
         val s = stack(HomeKey())
         BackStackOps.openDetails(s, type = "series", id = "tt3")
+        val first = s.last() as DetailsKey
         BackStackOps.openPlayer(s)
 
-        BackStackOps.queueAdvance(s, type = "series", id = "tt3", title = "Next", poster = "")
-        assertEquals(3, s.size)
+        BackStackOps.queueAdvance(s, type = "series", id = "tt3", title = "Next", poster = "", queueAutoPlayId = "tt3:1:2")
+        assertEquals(2, s.size)
         val advanced = s.last() as DetailsKey
         assertEquals("tt3", advanced.id)
-        // Same title twice on the stack stays two distinct entries.
-        assertTrue(advanced != s[1])
+        assertEquals("tt3:1:2", advanced.queueAutoPlayId)
+        assertTrue(advanced.instance > first.instance)
 
         assertTrue(BackStackOps.pop(s))
-        assertEquals(DetailsKey("series", "tt3"), s.last())
-        assertTrue(BackStackOps.pop(s))
         assertEquals(listOf<NavKey>(HomeKey()), s)
-        // Main alone: Back belongs to the menu area.
         assertFalse(BackStackOps.pop(s))
+    }
+
+    @Test
+    fun consecutiveQueueAdvancesDoNotAccumulateUnplayedDetailsPages() {
+        val s = stack(HomeKey())
+        BackStackOps.openDetails(s, type = "movie", id = "original")
+        BackStackOps.openPlayer(s)
+
+        BackStackOps.queueAdvance(s, type = "movie", id = "queuedA", title = "A", poster = "", queueAutoPlayId = "queuedA")
+        val first = s.last() as DetailsKey
+        assertEquals(listOf("original", "queuedA"), s.filterIsInstance<DetailsKey>().map { it.id })
+        BackStackOps.openPlayer(s)
+
+        BackStackOps.queueAdvance(s, type = "movie", id = "queuedB", title = "B", poster = "", queueAutoPlayId = "queuedB")
+        val second = s.last() as DetailsKey
+        assertEquals(listOf("original", "queuedB"), s.filterIsInstance<DetailsKey>().map { it.id })
+        assertTrue(second.instance > first.instance)
+        BackStackOps.openPlayer(s)
+        assertTrue(BackStackOps.returnFromPlayer(s))
+        assertEquals("queuedB", (s.last() as DetailsKey).id)
+        assertTrue(BackStackOps.pop(s))
+        assertEquals("original", (s.last() as DetailsKey).id)
+        assertTrue(BackStackOps.pop(s))
         assertEquals(listOf<NavKey>(HomeKey()), s)
     }
 
@@ -145,6 +166,7 @@ class AppBackStackTest {
         BackStackOps.queueAdvance(s, type = "series", id = "tt4", title = "Next", poster = "", queueAutoPlayId = "tt4:1:1")
         assertEquals("tt4:1:1", (s.last() as DetailsKey).queueAutoPlayId)
         assertNull((s[1] as DetailsKey).queueAutoPlayId)
+        assertEquals(3, s.size)
     }
 
     @Test
