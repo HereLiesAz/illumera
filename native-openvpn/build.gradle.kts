@@ -7,7 +7,11 @@ plugins {
 android {
     namespace = "de.blinkt.openvpn"
     compileSdk = 37
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        // Preserve native entry points and serialized VPN profiles under release R8.
+        consumerProguardFiles("../vendor/openvpn-android/proguard-rules.pro")
+    }
     buildFeatures { aidl = true; buildConfig = true }
     sourceSets.getByName("main") {
         manifest.srcFile("../native-openvpn/AndroidManifest.xml")
