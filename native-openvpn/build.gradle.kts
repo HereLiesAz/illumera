@@ -12,13 +12,18 @@ android {
         consumerProguardFiles("../vendor/openvpn-android/proguard-rules.pro")
     }
     buildFeatures { aidl = true; buildConfig = true }
-    sourceSets.getByName("main") {
-        manifest.srcFile("../native-openvpn/AndroidManifest.xml")
-        java.srcDirs("../vendor/openvpn-android/src/main/java")
-        res.srcDirs("../vendor/openvpn-android/src/main/res")
-        assets.srcDirs("../vendor/openvpn-android/src/main/assets")
-        jniLibs.srcDirs("../vendor/openvpn-android/src/main/jniLibs")
-        aidl.srcDirs("../vendor/openvpn-android/src/main/aidl")
+    // AGP 9.2–9.4: the getter exposes a legacy AndroidLibrarySourceSet type
+    // which the runtime DefaultAndroidLibrarySourceSet does not implement.
+    // The sourceSets block overload uses the corrected DSL type (Issue #550220873).
+    sourceSets {
+        named("main").configure {
+            manifest.srcFile("../native-openvpn/AndroidManifest.xml")
+            java.srcDirs("../vendor/openvpn-android/src/main/java")
+            res.srcDirs("../vendor/openvpn-android/src/main/res")
+            assets.srcDirs("../vendor/openvpn-android/src/main/assets")
+            jniLibs.srcDirs("../vendor/openvpn-android/src/main/jniLibs")
+            aidl.srcDirs("../vendor/openvpn-android/src/main/aidl")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
