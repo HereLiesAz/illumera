@@ -278,8 +278,11 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     private fun stopIkev2IfRunning() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching { context.getSystemService(VpnManager::class.java).stopProvisionedVpnProfile() }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            _status.value.protocol == NativeVpnProtocol.IKEV2
+        ) {
+            // Do not report a successful disconnect when Android rejected the request.
+            context.getSystemService(VpnManager::class.java).stopProvisionedVpnProfile()
         }
     }
 
