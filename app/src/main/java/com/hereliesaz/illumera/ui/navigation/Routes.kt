@@ -205,7 +205,8 @@ fun rememberAppBackStack(): NavBackStack<NavKey> =
  * - Choosing a main screen in the menu clears the stack down to that screen's fresh root.
  * - Back pops one entry; at the root alone it pops nothing and the main screen handles Back.
  * - Leaving the player pops only the player, so Back lands on whatever opened it.
- * - A queue advance replaces the player with the next item's Details on top of the stack.
+ * - A queue advance replaces any previous auto-opened Details with the current item,
+ *   without accumulating phantom pages for earlier queued episodes or titles.
  * - Details, Cast and Studio pages are flat entries: each opened page is pushed, Back pops it.
  */
 object BackStackOps {
@@ -235,7 +236,8 @@ object BackStackOps {
         title: String = "",
         poster: String = "",
         logo: String = "",
-        queueAutoPlayId: String? = null
+        queueAutoPlayId: String? = null,
+        instance: Int = stack.count { it is DetailsKey }
     ) {
         stack.add(
             DetailsKey(
@@ -246,7 +248,7 @@ object BackStackOps {
                 poster = poster,
                 logo = logo,
                 queueAutoPlayId = queueAutoPlayId,
-                instance = stack.count { it is DetailsKey }
+                instance = instance
             )
         )
     }
@@ -280,7 +282,13 @@ object BackStackOps {
         return true
     }
 
-    /** The queue moved on: the player gives way to the next item's Details, pushed on top. */
+    /**
+     * Replace the player with the current queue title's Details. A prior queue-generated
+     * Details entry is discarded rather than turning each automatic hand-off into Back
+     * history. When the next episode belongs to the same show as the originating Details,
+     * replace that page too; Back should never visit a duplicate of the current show.
+     * Keep a fresh instance for the new entry so its one-shot autoplay state is not reused.
+     */
     fun queueAdvance(
         stack: MutableList<NavKey>,
         type: String,
@@ -289,8 +297,20 @@ object BackStackOps {
         poster: String,
         queueAutoPlayId: String? = null
     ) {
+        val nextInstance = (stack.filterIsInstance<DetailsKey>().maxOfOrNull { it.instance } ?: -1) + 1
         returnFromPlayer(stack)
-        openDetails(stack, type = type, id = id, title = title, poster = poster, queueAutoPlayId = queueAutoPlayId)
+        val previous = stack.lastOrNull() as? DetailsKey
+        if (previous != null && (
+                previous.queueAutoPlayId != null ||
+                    (previous.type == type && previous.id == id)
+            )
+        ) {
+            stack.removeAt(stack.lastIndex)
+        }
+        openDetails(
+            stack, type = type, id = id, title = title, poster = poster,
+            queueAutoPlayId = queueAutoPlayId, instance = nextInstance
+        )
     }
 
     /** Back: pops one entry unless only the main root is left. */
