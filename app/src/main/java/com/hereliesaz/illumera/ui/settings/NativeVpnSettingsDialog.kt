@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hereliesaz.illumera.data.vpn.Ikev2AuthMode
 import com.hereliesaz.illumera.data.vpn.NativeVpnPhase
 import com.hereliesaz.illumera.data.vpn.NativeVpnProtocol
 import com.hereliesaz.illumera.ui.addons.VoidButton
@@ -59,6 +60,9 @@ fun NativeVpnSettingsDialog(
     var configText by remember { mutableStateOf("") }
     var server by remember { mutableStateOf("") }
     var localIdentity by remember { mutableStateOf("") }
+    var ikev2AuthMode by remember { mutableStateOf(viewModel.ikev2AuthMode()) }
+    var preSharedKey by remember { mutableStateOf("") }
+    var pkcs12Password by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var feedback by remember { mutableStateOf("") }
@@ -124,6 +128,34 @@ fun NativeVpnSettingsDialog(
                     savedIkev2Ca = true
                     feedback = "Trusted server CA saved securely"
                 }.onFailure { feedback = it.message ?: "Could not import CA certificate" }
+            }
+        }
+    }
+
+    val importIkev2ClientIdentity = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            // Never retain a decrypted client private key in Compose state, logs, or a URL.
+            val clientServer = server
+            val clientLocalId = localIdentity
+            val exportPassword = pkcs12Password
+            importScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = readBoundedProfileBytes(context, uri, 262144)
+                        viewModel.saveIkev2Certificate(
+                            clientServer, clientLocalId, bytes, exportPassword
+                        ).getOrThrow()
+                        bytes.fill(0)
+                    }
+                }
+                result.onSuccess {
+                    savedIkev2 = true
+                    ikev2AuthMode = Ikev2AuthMode.CERTIFICATE
+                    pkcs12Password = ""
+                    feedback = "Client identity saved securely; VPN profile ready"
+                }.onFailure { feedback = it.message ?: "PKCS#12 client import failed" }
             }
         }
     }
@@ -211,41 +243,115 @@ fun NativeVpnSettingsDialog(
                     color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.bodySmall
                 )
-                Text(
-                    if (savedIkev2Ca) "Custom server CA imported (encrypted)"
-                    else "Server CA: system-trusted roots by default",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground
+                Text("Authentication", color = MaterialTheme.colorScheme.onBackground)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Ikev2AuthMode.entries.forEach { mode ->
+                        VoidButton(
+                            text = mode.label,
+                            compact = true,
+                            isPrimary = mode == ikev2AuthMode,
+                            onClick = { ikev2AuthMode = mode; feedback = "" }
+                        )
+                    }
+                }
+                if (ikev2AuthMode != Ikev2AuthMode.PSK) {
+                    Text(
+                        if (savedIkev2Ca) "Custom server CA imported (encrypted)"
+                        else "Server CA: system-trusted roots by default",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    VoidButton(
+                        text = "Import server CA (PEM / DER)",
+                        onClick = { importIkev2Ca.launch(arrayOf("*/*")) },
+                        compact = true
+                    )
+                    if (savedIkev2Ca) VoidButton(
+                        text = "Use system CAs instead",
+                        onClick = {
+                            viewModel.clearIkev2Ca()
+                            savedIkev2Ca = false
+                            feedback = "Custom CA cleared"
+                        }, compact = true
+                    )
+                } else {
+                    Text(
+                        "The shared key authenticates both peers; X.509 CA trust is not used in PSK mode.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                OutlinedTextField(
+                    server, { server = it }, label = { Text("VPN server hostname") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
                 )
-                VoidButton(text = "Import server CA (PEM / DER)",
-                    onClick = { importIkev2Ca.launch(arrayOf("*/*")) }, compact = true)
-                if (savedIkev2Ca) VoidButton(
-                    text = "Use system CAs instead",
-                    onClick = {
-                        viewModel.clearIkev2Ca()
-                        savedIkev2Ca = false
-                        feedback = "Custom CA cleared"
-                    }, compact = true
+                OutlinedTextField(
+                    localIdentity, { localIdentity = it },
+                    label = { Text("Local IKE identity / client ID") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
                 )
-                OutlinedTextField(server, { server = it }, label = { Text("VPN server hostname") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(localIdentity, { localIdentity = it }, label = { Text("Local IKE identity / client ID") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(username, { username = it }, label = { Text("Username") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(password, { password = it }, label = { Text("Password") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(), singleLine = true)
-                VoidButton(
-                    text = "Save IKEv2 profile",
-                    onClick = {
-                        viewModel.saveIkev2(server, localIdentity, username, password).onSuccess {
-                            server = ""; localIdentity = ""; username = ""; password = ""
-                            savedIkev2 = true
-                            feedback = "IKEv2 profile saved securely"
-                        }.onFailure { feedback = it.message ?: "Invalid IKEv2 profile" }
-                    }, compact = true
-                )
+                when (ikev2AuthMode) {
+                    Ikev2AuthMode.EAP -> {
+                        OutlinedTextField(username, { username = it }, label = { Text("Username") },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        OutlinedTextField(password, { password = it }, label = { Text("Password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
+                    Ikev2AuthMode.PSK -> {
+                        OutlinedTextField(
+                            preSharedKey, { preSharedKey = it },
+                            label = { Text("IKEv2 pre-shared key") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                    }
+                    Ikev2AuthMode.CERTIFICATE -> {
+                        Text(
+                            "Select a password-protected PKCS#12 client identity (.p12 or .pfx). " +
+                                "It must contain both the user certificate and its private key.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        OutlinedTextField(
+                            pkcs12Password, { pkcs12Password = it },
+                            label = { Text("PKCS#12 export password") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(), singleLine = true
+                        )
+                        VoidButton(
+                            text = "Import and save client identity",
+                            onClick = {
+                                if (server.isBlank() || localIdentity.isBlank() || pkcs12Password.isBlank()) {
+                                    feedback = "Enter server, local identity and export password first"
+                                } else importIkev2ClientIdentity.launch(arrayOf("*/*"))
+                            }, compact = true
+                        )
+                    }
+                }
+                if (ikev2AuthMode != Ikev2AuthMode.CERTIFICATE) {
+                    VoidButton(
+                        text = "Save IKEv2 profile",
+                        onClick = {
+                            val result = when (ikev2AuthMode) {
+                                Ikev2AuthMode.EAP ->
+                                    viewModel.saveIkev2(server, localIdentity, username, password)
+                                Ikev2AuthMode.PSK ->
+                                    viewModel.saveIkev2Psk(server, localIdentity, preSharedKey)
+                                Ikev2AuthMode.CERTIFICATE -> error("Client certificate import is required")
+                            }
+                            result.onSuccess {
+                                server = ""; localIdentity = ""; username = ""; password = ""
+                                preSharedKey = ""
+                                savedIkev2 = true
+                                feedback = "IKEv2 profile saved securely"
+                            }.onFailure { feedback = it.message ?: "Invalid IKEv2 profile" }
+                        }, compact = true
+                    )
+                }
                 VoidButton(
                     text = "Connect IKEv2",
                     onClick = {
