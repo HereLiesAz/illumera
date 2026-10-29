@@ -73,7 +73,10 @@ class AddonsViewModel @Inject constructor(
     )
 
     private val _uiState = MutableStateFlow(
-        UiState(savedCollections = catalogRepository.repositories.value.enabledCollections)
+        UiState(
+            savedCollections = catalogRepository.repositories.value.enabledCollections,
+            enabledBuiltIns = catalogRepository.repositories.value.enabledBuiltIns
+        )
     )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -176,6 +179,7 @@ class AddonsViewModel @Inject constructor(
     fun selectCatalogSource(source: AddonCatalogSource) {
         if (source == AddonCatalogSource.COLLECTION) return
         val current = _uiState.value
+        if (source != AddonCatalogSource.ALL && source !in current.enabledBuiltIns) return
         if (current.catalogSource == source && current.catalogItems.isNotEmpty()) return
         _uiState.value = current.copy(activeCollection = null)
         loadCatalog(source, force = true)
