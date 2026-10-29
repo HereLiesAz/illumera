@@ -70,6 +70,15 @@ class TorrentClawIntegration @Inject constructor(
         profileId()?.let { id -> runCatching { secrets.edit().remove(apiKeyName(id)).apply() } }
     }
 
+    /**
+     * Profile deletion must erase discovery preferences and credentials before SQLite can
+     * reuse the ID for a different person.
+     */
+    fun clearForProfile(profileId: Int) {
+        preferences.edit().remove(enabledKey(profileId)).commit()
+        runCatching { secrets.edit().remove(apiKeyName(profileId)).commit() }
+    }
+
     suspend fun search(query: String): DebridResult<List<MetaItem>> {
         val id = profileId() ?: return DebridResult.Success(emptyList())
         if (!preferences.getBoolean(enabledKey(id), false) || query.isBlank()) {
