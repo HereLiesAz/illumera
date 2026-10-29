@@ -49,6 +49,42 @@ class DebridProvidersParsingTest {
     }
 
     @Test
+    fun torrinValidatesAndReadsTheDocumentedCompatibleLibrary() = runTest {
+        coEvery { http.get("https://api.torrin.app/rest/1.0/user", any(), any()) } returns json(
+            """{"username":"torrin-viewer","expiration":"2027-01-01T00:00:00Z"}"""
+        )
+        coEvery { http.get("https://api.torrin.app/rest/1.0/torrents", any(), any()) } returns json(
+            """[{"id":"t42","filename":"Film.mkv","status":"downloaded","progress":100,"links":["https://torrin.app/d/42"]}]"""
+        )
+
+        val service = TorrinService(http)
+        assertEquals("torrin-viewer", service.validateApiKey("key").value().username)
+        val item = service.listLibrary("key").value().single()
+        assertEquals(DebridProvider.TORRIN, item.provider)
+        assertEquals("t42", item.id)
+        coVerify(exactly = 0) { http.get(match { it.endsWith("/downloads") }, any(), any()) }
+    }
+
+    @Test
+    fun torrinUnrestrictAndDeleteUseTorrinHostNotRealDebrid() = runTest {
+        coEvery { http.post(any(), any(), any(), any()) } returns json(
+            """{"download":"https://cdn.torrin.app/film.mkv","filename":"film.mkv"}"""
+        )
+        coEvery { http.delete(any(), any()) } returns json("{}")
+        val service = TorrinService(http)
+        val item = DebridItem(
+            id = "t42", name = "Film.mkv", provider = DebridProvider.TORRIN,
+            directLinks = listOf("https://torrin.app/d/42")
+        )
+
+        assertEquals("https://cdn.torrin.app/film.mkv", service.getStreamUrl("key", item).value())
+        service.deleteItem("key", item)
+
+        coVerify(exactly = 1) { http.post("https://api.torrin.app/rest/1.0/unrestrict/link", any(), any(), any()) }
+        coVerify(exactly = 1) { http.delete("https://api.torrin.app/rest/1.0/torrents/delete/t42", any()) }
+    }
+
+    @Test
     fun realDebridUnrestrictsTorrentLinksEvenWhenDownloaded() = runTest {
         coEvery { http.post(match { it.endsWith("/unrestrict/link") }, any(), any(), any()) } returns json(
             """{"download":"https://cdn/video.mkv","filename":"video.mkv","type":null}"""

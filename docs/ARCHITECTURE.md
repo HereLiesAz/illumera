@@ -42,7 +42,7 @@ Continue Watching sync against the `datastoreMeta`/`Get`/`Put` library API;
 see `StremioAuthManager`/`StremioAuthService`/`StremioLibrarySyncManager`),
 `debrid` (a `DebridManager` fronting
 per-provider implementations: Real-Debrid, AllDebrid, Premiumize, TorBox,
-Offcloud, Debrid-Link, EasyDebrid; several can be connected per profile, the first being primary, and the library merges all of them), `tmdb` (metadata enrichment), `trakt`
+Offcloud, Debrid-Link, EasyDebrid, Torrin; several can be connected per profile, the first being primary, and the library merges all of them), `tmdb` (metadata enrichment), `trakt`
 (auth, library sync, scrobbling), `wutch` (wutch.tv: sign-in with a personal
 API key, watchlist and progress import, progress and watchlist write-back), `torrent` (a TorrServer client),
 `player` (persisted per-playback audio/subtitle/source selection),
@@ -231,6 +231,14 @@ Addon installations are keyed by their **complete transport URL**, including con
 Movies/Series keep previously revealed empty genre shells mounted to avoid detaching the focused LazyColumn subtree. This is a focus-stability decision, **not** evidence that those shells are focusable. The Hero Up/Down return pivot now uses `firstFocusableCinematicRowIndex` to skip empty Category and Hub rows while retaining the original indexed focus IDs. The drawer's Profile/Up regression must prove Search became focused before asserting the boundary.
 
 
+
+## Torrin debrid and TorrentClaw discovery (October 29, 2026)
+
+Torrin is a distinct `DebridProvider.TORRIN` connected through `DebridManager` and the same encrypted per-profile service key store used for Real-Debrid, TorBox and others. Torrin's `https://api.torrin.app/rest/1.0` implements the documented RealDebrid-compatible `/user`, `/torrents`, `/unrestrict/link`, and torrent deletion endpoints. `TorrinService` reuses the tested RD-shaped response parser while intentionally omitting the separate `/downloads` endpoint (not documented by Torrin). Cloud items retain the Torrin provider identity so library aggregation, stream resolution and deletion dispatch to the correct service. The Torrentio editor and auto-injection helper exclude Torrin because Torrentio has no Torrin config field.
+
+TorrentClaw is **not** a debrid provider. Its `TorrentClawIntegration` is explicitly opt-in under Settings → Integrations and scoped per profile. `DebridHttp` sends URL-encoded GET requests to `https://torrentclaw.com/api/v1/search`; an optional API key is stored in Android encrypted preferences and passed in the Authorization header, never in a URL. Results without canonical IMDb IDs or supported movie/series types are dropped. `SearchViewModel` merges TorrentClaw metadata with installed-addon search results, deduplicating by type + IMDb ID; one provider's failure does not erase the other's results. Successful installed-addon results are published immediately without waiting for the optional TorrentClaw HTTP call, so a slow provider cannot hold the normal Search UI behind a spinner. Playback still resolves through installed Stremio addons; TorrentClaw magnets are not treated as direct streams. Profile deletion clears its enabled flag and key.
+
+API contracts: https://docs.torrin.app/api-reference/introduction ; https://torrentclaw.com/api/docs#/Discovery/searchContent .
 
 ## Settings scrolling and repository discovery ownership (October 29, 2026)
 

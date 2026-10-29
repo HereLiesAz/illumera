@@ -41,7 +41,7 @@ fun TorrentioConfigDialog(
 ) {
     var config by remember(installedUrl) {
         val parsed = installedUrl?.let(TorrentioConfig::parse) ?: TorrentioConfig()
-        val primary = connectedDebrid.firstOrNull()
+        val primary = connectedDebrid.firstOrNull { it.first != DebridProvider.TORRIN }
         mutableStateOf(
             if (parsed.debridProvider == null && primary != null) {
                 parsed.copy(debridProvider = primary.first, debridKey = primary.second)
@@ -65,7 +65,7 @@ fun TorrentioConfigDialog(
                 Chip("None", config.debridProvider == null) {
                     config = config.copy(debridProvider = null, debridKey = "")
                 }
-                DebridProvider.entries.forEach { provider ->
+                DebridProvider.entries.filterNot { it == DebridProvider.TORRIN }.forEach { provider ->
                     Chip(provider.displayName, config.debridProvider == provider) {
                         val key = connectedDebrid.firstOrNull { it.first == provider }?.second
                             ?: config.debridKey.takeIf { config.debridProvider == provider }.orEmpty()

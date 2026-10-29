@@ -5,16 +5,20 @@ import com.hereliesaz.illumera.data.model.RecentSearchEntity
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
+import com.hereliesaz.illumera.data.torrentclaw.TorrentClawIntegration
+import com.hereliesaz.illumera.data.model.debrid.DebridResult
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -31,6 +35,7 @@ class SearchViewModelTest {
     private lateinit var repository: AddonRepository
     private lateinit var dao: AddonDao
     private lateinit var profileManager: ProfileConfigurationManager
+    private lateinit var torrentClaw: TorrentClawIntegration
     private lateinit var activeProfileId: MutableStateFlow<Int?>
 
     @Before
@@ -39,6 +44,8 @@ class SearchViewModelTest {
         repository = mockk()
         dao = mockk(relaxed = true)
         profileManager = mockk()
+        torrentClaw = mockk()
+        coEvery { torrentClaw.search(any()) } returns DebridResult.Success(emptyList())
         activeProfileId = MutableStateFlow(7)
         every { profileManager.activeProfileId } returns activeProfileId
         coEvery { dao.getRecentSearches(7) } returns emptyList()
@@ -202,5 +209,59 @@ class SearchViewModelTest {
         coVerify(exactly = 1) { repository.searchMovies("alien") }
     }
 
-    private fun newViewModel() = SearchViewModel(repository, dao, profileManager)
+    @Test
+    fun torrentClawResultsMergeWithoutDuplicatingAddonTitles() = runTest(dispatcher) {
+        val existing = MetaItem(id = "tt1375666", type = "movie", name = "Inception")
+        val newShow = MetaItem(id = "tt0903747", type = "series", name = "Breaking Bad")
+        coEvery { repository.searchMovies("in") } returns listOf(existing)
+        coEvery { torrentClaw.search("in") } returns DebridResult.Success(listOf(existing.copy(name = "Alias"), newShow))
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+
+        viewModel.onQueryChange("in")
+        advanceUntilIdle()
+
+        assertEquals(listOf(existing, newShow), viewModel.state.value.results)
+        assertEquals(listOf(existing), viewModel.state.value.movies)
+        assertEquals(listOf(newShow), viewModel.state.value.series)
+    }
+
+    @Test
+    fun addonResultsAppearBeforeSlowTorrentClawCompletes() = runTest(dispatcher) {
+        val addonMovie = MetaItem(id = "tt1375666", type = "movie", name = "Inception")
+        val clawShow = MetaItem(id = "tt0903747", type = "series", name = "Breaking Bad")
+        val slowResponse = CompletableDeferred<DebridResult<List<MetaItem>>>()
+        coEvery { repository.searchMovies("in") } returns listOf(addonMovie)
+        coEvery { torrentClaw.search("in") } coAnswers { slowResponse.await() }
+        val viewModel = newViewModel()
+        runCurrent()
+
+        viewModel.onQueryChange("in")
+        advanceTimeBy(350)
+        runCurrent()
+
+        assertEquals(listOf(addonMovie), viewModel.state.value.results)
+        assertFalse("Addon results must be visible while TorrentClaw is pending", viewModel.state.value.isLoading)
+        slowResponse.complete(DebridResult.Success(listOf(clawShow)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(addonMovie, clawShow), viewModel.state.value.results)
+        assertFalse(viewModel.state.value.isLoading)
+    }
+
+    @Test
+    fun torrentClawFailureDoesNotHideWorkingAddonSearch() = runTest(dispatcher) {
+        val movie = MetaItem(id = "tt1375666", type = "movie", name = "Inception")
+        coEvery { repository.searchMovies("in") } returns listOf(movie)
+        coEvery { torrentClaw.search("in") } returns DebridResult.Failure("429")
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+        viewModel.onQueryChange("in")
+        advanceUntilIdle()
+
+        assertEquals(listOf(movie), viewModel.state.value.results)
+        assertFalse(viewModel.state.value.searchFailed)
+    }
+
+    private fun newViewModel() = SearchViewModel(repository, dao, profileManager, torrentClaw)
 }

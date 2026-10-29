@@ -7,6 +7,7 @@ import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
+import com.hereliesaz.illumera.data.torrentclaw.TorrentClawIntegration
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
@@ -43,7 +44,8 @@ class ProfileViewModel @Inject constructor(
     private val stremioLibrarySyncManager: StremioLibrarySyncManager,
     private val debridManager: DebridManager,
     private val traktAuthManager: TraktAuthManager,
-    private val queueManager: QueueManager
+    private val queueManager: QueueManager,
+    private val torrentClaw: TorrentClawIntegration
 ) : ViewModel() {
 
     private val _profiles = MutableStateFlow<List<ProfileEntity>>(emptyList())
@@ -384,6 +386,7 @@ class ProfileViewModel @Inject constructor(
                 // SQLite ID reuse can never inherit an old sync/deletion snapshot.
                 stremioLibrarySyncManager.clearSyncState(id)
                 debridManager.clearForProfile(id)
+                torrentClaw.clearForProfile(id)
                 traktAuthManager.clearTokensForProfile(id)
                 queueManager.clearForProfile(id)
             }
