@@ -724,6 +724,7 @@ fun FilterDropdown(currentValue: String, options: List<String>, modifier: Modifi
                     .clip(RoundedCornerShape(8.dp))
                     .border(1.dp, Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
             ) {
+                com.hereliesaz.illumera.ui.audio.FollowNavigationSounds() // Menus are their own window.
                 // Calculate which item should be focused based on currentValue
                 val selectedIndex = remember(options, currentValue) { options.indexOf(currentValue).coerceAtLeast(0) }
 
@@ -1262,6 +1263,7 @@ fun RawSourceItem(
             properties = PopupProperties(focusable = !dpadKeyHeld),
             onDismissRequest = { if (!dpadKeyHeld) menuExpanded = false }
         ) {
+            com.hereliesaz.illumera.ui.audio.FollowNavigationSounds() // Menus are their own window.
             if (onToggleExcluded != null) {
                 DropdownMenuItem(
                     text = { Text(if (isExcluded) "Include in source queue" else "Exclude from source queue") },

@@ -1096,7 +1096,7 @@ fun DetailsScreen(
 
         // Clear progress confirmation dialog
         if (showClearProgressDialog) {
-            androidx.compose.ui.window.Dialog(
+            com.hereliesaz.illumera.ui.audio.Dialog(
                 onDismissRequest = { showClearProgressDialog = false },
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {

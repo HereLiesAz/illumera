@@ -25,6 +25,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
@@ -130,6 +134,7 @@ internal fun reconcileGenreMixedRows(
     }
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: AddonRepository,
@@ -368,6 +373,33 @@ class HomeViewModel @Inject constructor(
     }
 
     val state: StateFlow<HomeState> = _state
+
+    // Set when something Home's loaded rows depend on changed outside the load key (TMDB
+    // on/off or language, the installed/enabled addon set): the next loadScreen rebuilds
+    // instead of reusing the cached screen. Marked rather than invalidated on the spot, so
+    // a background addon sync never blanks a screen that is on display.
+    @Volatile private var contentStale = false
+
+    init {
+        viewModelScope.launch {
+            var last: Pair<Int, Any>? = null
+            profileConfigurationManager.activeProfileId
+                .flatMapLatest { id ->
+                    if (id == null) flowOf(null) else combine(
+                        dao.getProfileFlow(id).map { p -> p?.let { it.tmdbEnabled to it.tmdbLanguage } },
+                        dao.getAllAddons().map { addons -> addons.map { it.transportUrl to it.isEnabled }.toSet() }
+                    ) { tmdb, addons -> id to (tmdb to addons) }
+                }
+                .collect { current ->
+                    val previous = last
+                    last = current
+                    // Only a change within the same profile; a profile switch reloads anyway.
+                    if (current != null && previous != null && previous.first == current.first &&
+                        previous.second != current.second
+                    ) contentStale = true
+                }
+        }
+    }
 
     init {
         // Building the language/country tables takes a moment on a TV box; do it off the
@@ -1416,7 +1448,10 @@ class HomeViewModel @Inject constructor(
             _state.value = HomeState(isLoading = false)
             return
         }
-        // ... (existing code)
+        if (contentStale) {
+            contentStale = false
+            invalidate()
+        }
         // Skip reload if this screen is already loaded with data
         if (
             _state.value.loadedScreen == screenName &&

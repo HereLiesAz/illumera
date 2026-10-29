@@ -18,15 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.platform.LocalView
-import android.view.SoundEffectConstants
-import android.os.SystemClock
-import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import androidx.navigation3.runtime.NavEntryDecorator
 import com.hereliesaz.illumera.data.model.ProfileEntity
 
@@ -102,15 +95,6 @@ class MainShellState {
     }
 }
 
-/** Platform navigation clicks, kept separate from play/pause and selection. */
-internal fun soundForNavigationKey(key: Key): Int? = when (key) {
-    Key.DirectionLeft -> SoundEffectConstants.NAVIGATION_LEFT
-    Key.DirectionRight -> SoundEffectConstants.NAVIGATION_RIGHT
-    Key.DirectionUp -> SoundEffectConstants.NAVIGATION_UP
-    Key.DirectionDown -> SoundEffectConstants.NAVIGATION_DOWN
-    else -> null
-}
-
 /** The [MainShellState] over the current back-stack entry; null outside [MainShell]. */
 val LocalMainShellState = staticCompositionLocalOf<MainShellState?> { null }
 
@@ -183,10 +167,6 @@ fun MainShell(
 ) {
     val contentState = state.contentState
     val isTop = navPosition == "top"
-    val audioPreferences = rememberCinematicAudioPreferences(currentProfile?.id)
-    val rootView = LocalView.current
-    // A mutable holder avoids redrawing the full shell for every key repeat.
-    val previousNavigationSoundAt = remember { longArrayOf(0L) }
     SideEffect {
         // The same close as the chrome's own: the side menu restores the content's focused
         // element first; the top bar hands focus to the screen's entry point.
@@ -198,19 +178,10 @@ fun MainShell(
         state.exitAction = onExit
     }
     Box(
-        modifier = modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            if (audioPreferences.navigationSounds && event.type == KeyEventType.KeyDown) {
-                val sound = soundForNavigationKey(event.key)
-                if (sound != null) {
-                    val now = SystemClock.uptimeMillis()
-                    if (now - previousNavigationSoundAt[0] >= 110L) {
-                        previousNavigationSoundAt[0] = now
-                        rootView.playSoundEffect(sound)
-                    }
-                }
-            }
-            false // Never consume a D-pad event or interfere with navigation.
-        }
+        // Navigation sounds are Compose's own focus-move sounds, switched per window by
+        // FollowNavigationSounds. An extra click played here doubled every move and ignored
+        // the setting in dialogs, so there is none.
+        modifier = modifier.fillMaxSize()
     ) {
         Box(modifier = Modifier.fillMaxSize().navDrawerContentLayer(contentState)) {
             CompositionLocalProvider(LocalMainShellState provides state) {

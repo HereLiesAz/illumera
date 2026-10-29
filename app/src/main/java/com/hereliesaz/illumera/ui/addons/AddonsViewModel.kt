@@ -65,6 +65,8 @@ class AddonsViewModel @Inject constructor(
         val catalogSource: AddonCatalogSource = AddonCatalogSource.ALL,
         val activeCollection: SavedAddonCollection? = null,
         val savedCollections: List<SavedAddonCollection> = emptyList(),
+        // Built-in catalog sources switched on in Integrations → Addon Repositories.
+        val enabledBuiltIns: List<AddonCatalogSource> = AddonCatalogRepository.BUILT_IN_SOURCES,
         val catalogItems: List<AddonCatalogItem> = emptyList(),
         val isCatalogLoading: Boolean = false,
         val catalogError: String? = null
@@ -79,7 +81,31 @@ class AddonsViewModel @Inject constructor(
     val events = _events.receiveAsFlow()
     private var catalogLoadJob: Job? = null
 
-    init { loadAddons() }
+    init {
+        loadAddons()
+        // Repositories are managed in Integrations; follow every change while browsing.
+        viewModelScope.launch {
+            catalogRepository.repositories.collect { repos ->
+                val current = _uiState.value
+                val sourceGone = (current.catalogSource in AddonCatalogRepository.BUILT_IN_SOURCES &&
+                    current.catalogSource !in repos.enabledBuiltIns) ||
+                    (current.catalogSource == AddonCatalogSource.COLLECTION &&
+                        repos.collections.none { it.url == current.activeCollection?.url })
+                val listChanged = current.enabledBuiltIns != repos.enabledBuiltIns ||
+                    current.savedCollections != repos.collections
+                _uiState.value = current.copy(
+                    savedCollections = repos.collections,
+                    enabledBuiltIns = repos.enabledBuiltIns,
+                    activeCollection = if (sourceGone) null else current.activeCollection
+                )
+                // "All" spans every repository, so it reloads when the set changes.
+                if (sourceGone) loadCatalog(AddonCatalogSource.ALL, force = true)
+                else if (listChanged && current.catalogSource == AddonCatalogSource.ALL &&
+                    current.catalogItems.isNotEmpty()
+                ) loadCatalog(AddonCatalogSource.ALL, force = true)
+            }
+        }
+    }
 
     private fun loadAddons() {
         viewModelScope.launch {
@@ -169,7 +195,6 @@ class AddonsViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     catalogSource = AddonCatalogSource.COLLECTION,
                     activeCollection = result.collection,
-                    savedCollections = catalogRepository.getSavedCollections(),
                     catalogItems = result.addons,
                     isCatalogLoading = false,
                     catalogError = null
@@ -205,21 +230,8 @@ class AddonsViewModel @Inject constructor(
     }
 
     fun removeCollection(collection: SavedAddonCollection) {
+        // The repositories observer updates the list and leaves the collection if it was open.
         catalogRepository.removeCollection(collection.url)
-        val current = _uiState.value
-        val updated = catalogRepository.getSavedCollections()
-        if (current.activeCollection?.url == collection.url) {
-            _uiState.value = current.copy(
-                catalogSource = AddonCatalogSource.ALL,
-                activeCollection = null,
-                savedCollections = updated,
-                catalogItems = emptyList(),
-                catalogError = null
-            )
-            loadCatalog(AddonCatalogSource.ALL, force = true)
-        } else {
-            _uiState.value = current.copy(savedCollections = updated)
-        }
     }
 
     fun retryCatalog() {

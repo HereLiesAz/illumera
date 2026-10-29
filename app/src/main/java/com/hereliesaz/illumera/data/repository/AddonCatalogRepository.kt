@@ -24,6 +24,9 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,6 +39,46 @@ class AddonCatalogRepository @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val savedCollectionListType = object : TypeToken<List<SavedAddonCollection>>() {}.type
     private val addonItemListType = object : TypeToken<List<AddonCatalogItem>>() {}.type
+
+    /** The addon repositories the Add-ons browser reads, managed from Integrations. */
+    data class Repositories(
+        // Built-in catalog sources switched on, in display order.
+        val enabledBuiltIns: List<AddonCatalogSource>,
+        // Saved collection URLs, in the viewer's order.
+        val collections: List<SavedAddonCollection>
+    )
+
+    private val _repositories = MutableStateFlow(readRepositories())
+    /** Live: Integrations and the Add-ons browser both follow every change at once. */
+    val repositories: StateFlow<Repositories> = _repositories.asStateFlow()
+
+    private fun readRepositories() = Repositories(
+        enabledBuiltIns = BUILT_IN_SOURCES.filter { it.name !in disabledBuiltIns() },
+        collections = getSavedCollections()
+    )
+
+    private fun publish() { _repositories.value = readRepositories() }
+
+    private fun disabledBuiltIns(): Set<String> =
+        prefs.getStringSet(KEY_DISABLED_BUILT_INS, emptySet()).orEmpty()
+
+    fun setBuiltInEnabled(source: AddonCatalogSource, enabled: Boolean) = synchronized(this) {
+        if (source !in BUILT_IN_SOURCES) return@synchronized
+        val next = disabledBuiltIns().let { if (enabled) it - source.name else it + source.name }
+        prefs.edit().putStringSet(KEY_DISABLED_BUILT_INS, next).apply()
+        publish()
+    }
+
+    /** Moves the saved collection at [url] one place up ([delta] -1) or down (+1). */
+    fun moveCollection(url: String, delta: Int) = synchronized(this) {
+        val list = getSavedCollections().toMutableList()
+        val from = list.indexOfFirst { it.url == url }
+        val to = from + delta
+        if (from < 0 || to !in list.indices) return@synchronized
+        list.add(to, list.removeAt(from))
+        prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(list)).apply()
+        publish()
+    }
 
     fun getSavedCollections(): List<SavedAddonCollection> = synchronized(this) {
         runCatching {
@@ -52,6 +95,7 @@ class AddonCatalogRepository @Inject constructor(
         val normalized = normalizeExternalUrl(url) ?: url.trim()
         val next = getSavedCollections().filterNot { it.url == normalized }
         prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
+        publish()
     }
 
     suspend fun fetch(
@@ -60,7 +104,8 @@ class AddonCatalogRepository @Inject constructor(
     ): List<AddonCatalogItem> = withContext(Dispatchers.IO) {
         val items = when (source) {
             AddonCatalogSource.ALL -> supervisorScope {
-                val sources = listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET)
+                // Only the repositories switched on in Integrations.
+                val sources = _repositories.value.enabledBuiltIns
                 val tasks = (sources.map { it to null } + getSavedCollections().map { AddonCatalogSource.COLLECTION to it })
                     .map { (catalogSource, saved) ->
                         async {
@@ -70,6 +115,7 @@ class AddonCatalogRepository @Inject constructor(
                         }
                     }
                 val results = tasks.awaitAll()
+                if (tasks.isEmpty()) throw IllegalStateException("No addon repositories are switched on. Add or enable one in Settings → Integrations → Addon Repositories.")
                 if (results.all { it == null }) throw IllegalStateException("No addon catalogs are available")
                 results.filterNotNull().flatten().distinctBy { it.transportUrl.trimEnd('/').lowercase() }
             }
@@ -260,9 +306,11 @@ class AddonCatalogRepository @Inject constructor(
 
     private fun saveCollection(collection: SavedAddonCollection) = synchronized(this) {
         val existing = getSavedCollections()
-        val next = (existing.filterNot { it.url == collection.url } + collection)
-            .sortedBy { it.name.lowercase() }
+        // Kept in place when re-added; new ones go last. The viewer orders them in Integrations.
+        val index = existing.indexOfFirst { it.url == collection.url }
+        val next = if (index >= 0) existing.toMutableList().also { it[index] = collection } else existing + collection
         prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
+        publish()
     }
 
     /**
@@ -358,6 +406,10 @@ class AddonCatalogRepository @Inject constructor(
     companion object {
         private const val PREFS_FILE = "illumera_addon_catalogs"
         private const val KEY_COLLECTIONS = "saved_collections"
+        private const val KEY_DISABLED_BUILT_INS = "disabled_built_in_sources"
+        val BUILT_IN_SOURCES = listOf(
+            AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET
+        )
         private const val CATALOG_TIMEOUT_MS = 20_000L
         private const val STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS = 60_000L
         private const val LEGACY_MANIFEST_TIMEOUT_MS = 5_000L

@@ -285,6 +285,8 @@ class ExoPlayerBackend(
     private var pendingAudioTrackId: String? = null
     private var pendingSubtitleTrackId: String? = null
     private var hasAppliedAudioLanguagePref = false
+    // The viewer chose an audio track in the panel: no language rule overrides it.
+    private var userPickedAudioTrack = false
     private var hasAppliedSubtitleLanguagePref = false
 
     private var externalSubtitleSources: Map<String, PlayerSubtitleSource> = emptyMap()
@@ -669,6 +671,7 @@ class ExoPlayerBackend(
             wantsSubtitles = pendingSubtitleTrackId.let { !it.isNullOrBlank() && it != SUBTITLE_OFF_TRACK_ID }
             forcedSubtitleTrackId = pendingSubtitleTrackId?.takeIf { it in externalSubtitleSources.keys }
             hasAppliedAudioLanguagePref = false
+            userPickedAudioTrack = false
             hasAppliedSubtitleLanguagePref = false
 
             val defaultSource = PlayerSourceOption(
@@ -987,6 +990,7 @@ class ExoPlayerBackend(
         pendingAudioTrackId = null
         pendingSubtitleTrackId = null
         hasAppliedAudioLanguagePref = false
+        userPickedAudioTrack = false
         hasAppliedSubtitleLanguagePref = false
         currentSourceId = sourceId
         stopOutOfBandSubtitle()
@@ -1006,6 +1010,12 @@ class ExoPlayerBackend(
     }
 
     override fun selectAudioTrack(trackId: String?) {
+        if (released) return
+        if (!trackId.isNullOrBlank()) userPickedAudioTrack = true
+        applyAudioTrack(trackId)
+    }
+
+    private fun applyAudioTrack(trackId: String?) {
         if (released) return
         val id = trackId?.takeIf { it.isNotBlank() } ?: return
         val player = exoPlayer ?: return
@@ -2313,24 +2323,7 @@ class ExoPlayerBackend(
     }
 
     private fun applyPendingTrackSelections() {
-        // A forced language wins over a remembered track in another language: a source
-        // chosen because it carries that language must actually play it.
-        val forcedAudioId = resolveForcedTrack(
-            _audioTracks.value, forcedAudioLanguages(), pendingAudioTrackId
-        ) { tracks, language -> findTrackByLanguage(tracks, language) }
-        val audioId = pendingAudioTrackId
-        if (forcedAudioId != null && !hasAppliedAudioLanguagePref) {
-            selectAudioTrack(forcedAudioId)
-            hasAppliedAudioLanguagePref = true
-        } else if (!audioId.isNullOrBlank()) {
-            selectAudioTrack(audioId)
-        } else if (!hasAppliedAudioLanguagePref) {
-            val preferredId = resolvePreferredAudioTrack()
-            if (preferredId != null) {
-                selectAudioTrack(preferredId)
-                hasAppliedAudioLanguagePref = true
-            }
-        }
+        applyAudioLanguagePolicy()
 
         // Subtitles stay off until the user turns them on (a remembered non-"None" pick).
         // Once on, a forced language is used whenever the source has it; a source without
@@ -2381,6 +2374,38 @@ class ExoPlayerBackend(
             }
         }
         if (userTurnedSubtitlesOn) selectSubtitleTrack(subtitleId)
+    }
+
+    /**
+     * Picks the audio track. Tracks often arrive over several onTracksChanged calls, so a
+     * choice is only final (hasAppliedAudioLanguagePref) once it is the best possible: a
+     * forced or primary-language track, or the remembered track. A secondary-language or
+     * English fallback is applied but stays open to upgrade when a better track shows up;
+     * before, it settled at once and blocked the forced/primary track arriving later.
+     */
+    private fun applyAudioLanguagePolicy() {
+        if (userPickedAudioTrack || hasAppliedAudioLanguagePref) return
+        val tracks = _audioTracks.value
+        if (tracks.isEmpty()) return
+        fun use(id: String, final: Boolean) {
+            if (_uiState.value.selectedAudioTrackId != id) applyAudioTrack(id)
+            if (final) {
+                hasAppliedAudioLanguagePref = true
+                pendingAudioTrackId = null
+            }
+        }
+        // A forced language wins over a remembered track in another language: a source
+        // chosen because it carries that language must actually play it.
+        val remembered = pendingAudioTrackId?.takeIf { id -> tracks.any { it.id == id } }
+        resolveForcedTrack(tracks, forcedAudioLanguages(), remembered) { t, language ->
+            findTrackByLanguage(t, language)
+        }?.let { return use(it, final = true) }
+        if (remembered != null) return use(remembered, final = true)
+        val primary = playbackSettings.preferredAudioLanguage.trim()
+        if (primary.isNotEmpty() && primary != "#off") {
+            findTrackByLanguage(tracks, primary)?.let { return use(it.id, final = true) }
+        }
+        resolvePreferredAudioTrack()?.let { use(it, final = false) }
     }
 
     /** Subtitle languages to start in: the forced ones, else the profile's default when no pick is remembered. */
