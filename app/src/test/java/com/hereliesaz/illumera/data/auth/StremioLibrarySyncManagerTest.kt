@@ -3,6 +3,8 @@ package com.hereliesaz.illumera.data.auth
 import android.content.Context
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchlistEntity
+import com.hereliesaz.illumera.data.remote.StremioLibraryItem
+import com.hereliesaz.illumera.data.remote.StremioLibraryItemState
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioAuthService
 import io.mockk.coEvery
@@ -75,6 +77,62 @@ class StremioLibrarySyncManagerTest {
                     entries.single().type == "movie"
             })
         }
+    }
+
+    @Test
+    fun stremioBookmarkWithoutPlaybackIsNotWatchHistory() = runTest {
+        val time = "2026-10-29T10:00:00Z"
+        val mtime = java.time.Instant.parse(time).toEpochMilli()
+        coEvery { authService.datastoreMeta("auth-1") } returns
+            mapOf("tt0000001" to mtime)
+        coEvery { authService.datastoreGet("auth-1", any()) } returns listOf(
+            StremioLibraryItem(
+                id = "tt0000001", name = "Only bookmarked", type = "movie",
+                mtime = time, state = StremioLibraryItemState()
+            )
+        )
+        val manager = newManager()
+        assertTrue(manager.syncLibrary().isSuccess)
+        coVerify(exactly = 1) {
+            dao.addToWatchlist(match { it.id == "tt0000001" && it.title == "Only bookmarked" })
+        }
+        coVerify(exactly = 0) { dao.upsertHistory(any()) }
+    }
+
+    @Test
+    fun newerUnplayedBookmarkCannotEraseLocalPlayback() = runTest {
+        val lastPlayed = 1_600_000_000_000L
+        val local = com.hereliesaz.illumera.data.model.WatchHistoryEntity(
+            id = "tt0000002", title = "Actually watched", poster = null,
+            position = 60_000L, duration = 300_000L, lastWatched = lastPlayed, type = "movie"
+        )
+        coEvery { dao.getAllWatchHistoryOnce() } returns listOf(local)
+        coEvery { dao.getHistoryItem("tt0000002") } returns local
+        val time = "2026-10-29T10:00:00Z"
+        coEvery { authService.datastoreMeta("auth-1") } returns
+            mapOf("tt0000002" to java.time.Instant.parse(time).toEpochMilli())
+        coEvery { authService.datastoreGet("auth-1", any()) } returns listOf(
+            StremioLibraryItem(
+                id = "tt0000002", name = "Metadata updated", type = "movie",
+                mtime = time, state = StremioLibraryItemState()
+            )
+        )
+        val manager = newManager()
+        assertTrue(manager.syncLibrary().isSuccess)
+        coVerify(exactly = 0) { dao.upsertHistory(any()) }
+    }
+
+    @Test
+    fun completedAndRealProgressStremioStatesAreAllowedButEmptyStatesAreNot() {
+        assertTrue(!stremioStateHasPlaybackEvidence(StremioLibraryItemState()))
+        assertTrue(!stremioStateHasPlaybackEvidence(
+            StremioLibraryItemState(timeOffset = 4_999L, duration = 300_000L)
+        ))
+        assertTrue(stremioStateHasPlaybackEvidence(
+            StremioLibraryItemState(timeOffset = 5_000L, duration = 300_000L)
+        ))
+        assertTrue(stremioStateHasPlaybackEvidence(StremioLibraryItemState(timesWatched = 1)))
+        assertTrue(stremioStateHasPlaybackEvidence(StremioLibraryItemState(flaggedWatched = 1)))
     }
 
     @Test
