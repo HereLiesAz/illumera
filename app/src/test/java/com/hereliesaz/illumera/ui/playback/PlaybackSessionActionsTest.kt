@@ -502,7 +502,7 @@ class PlaybackSessionActionsTest {
         val vm = session()
         val events = events(vm)
 
-        vm.end(PlayerSessionResult(100_000L, 100_000L, true, watching.url, null, null), autoplayProfile)
+        vm.end(PlayerSessionResult(100_000L, 100_000L, true, watching.url, null, null), autoplayProfile, advanceQueue = true)
         runCurrent()
 
         assertEquals(
@@ -521,6 +521,23 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `back after watched threshold exits without advancing queue`() = runTest(dispatcher) {
+        every { queueManager.state } returns MutableStateFlow(QueueState(preferences = QueuePreferences(enabled = true)))
+        val vm = session()
+        val events = events(vm)
+        vm.queuePlaybackActive = true
+        vm.queueWholeShowActive = true
+
+        vm.end(PlayerSessionResult(100_000L, 100_000L, true, watching.url, null, null), autoplayProfile)
+
+        verify(exactly = 0) { queueManager.advanceAfterPlayback(any()) }
+        assertEquals(listOf<PlaybackNav>(PlaybackNav.ReturnFromPlayer()), events)
+        assertFalse(vm.queueStartPending)
+        assertFalse(vm.queuePlaybackActive)
+        assertFalse(vm.queueWholeShowActive)
+    }
+
+    @Test
     fun `queue with nothing next ends queue playback`() = runTest(dispatcher) {
         every { queueManager.state } returns MutableStateFlow(QueueState(preferences = QueuePreferences(enabled = true)))
         every { queueManager.advanceAfterPlayback(any()) } returns null
@@ -529,7 +546,7 @@ class PlaybackSessionActionsTest {
         vm.queuePlaybackActive = true
         vm.queueWholeShowActive = true
 
-        vm.end(PlayerSessionResult(100_000L, 100_000L, true, null, null, null), autoplayProfile)
+        vm.end(PlayerSessionResult(100_000L, 100_000L, true, null, null, null), autoplayProfile, advanceQueue = true)
 
         assertFalse(vm.queuePlaybackActive)
         assertFalse(vm.queueWholeShowActive)

@@ -577,13 +577,16 @@ fun CinematicLayout(
 
     val wrappedOnFocusChange: (String) -> Unit = onFocusChange
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Measure the actual content viewport (the top navigation chrome may consume height)
+    // instead of the configuration's entire screen, so the stage is never pushed off-screen.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (persistentPreview) {
                 val focused = previewFocus?.first ?: previewSeed
                 PersistentCinematicPreview(
                     item = focused?.let { state.enrichedMeta["${it.type}:${it.id}"] ?: it },
                     nextItem = previewFocus?.second,
+                    availableHeight = maxHeight,
                     resolveTrailer = resolveTrailer,
                     autoPlayPreviews = autoPlayPreviews,
                     previewSound = previewSound,
@@ -1105,14 +1108,15 @@ private fun InlineFocusedPosterPreview(
 }
 
 /**
- * Persistent layout preview height: the Hero's 420dp where the screen allows, otherwise
- * whatever leaves room for two full landscape rails below, never under 38% of the screen.
+ * Keep the entire cinematic stage on screen, up to the Hero's 420dp height. Only the
+ * first landscape rail needs to fit beneath it; subsequent rails may be partially visible
+ * until scrolled into focus. Compact TV viewports retain at least 38% for the stage.
  */
 internal fun persistentPreviewHeight(screenHeight: Dp): Dp =
     (screenHeight - PERSISTENT_ROWS_RESERVE).coerceIn(screenHeight * 0.38f, 420.dp)
 
-// Two compact rails: 116dp rail + ~26dp heading + 20dp row gap each, plus list top padding.
-private val PERSISTENT_ROWS_RESERVE = 330.dp
+// One landscape rail (116dp), its smaller heading, row gap and top focus clearance.
+private val PERSISTENT_ROWS_RESERVE = 180.dp
 
 // Space above a focused card in the persistent layout: row heading (~26dp) plus the
 // card's 1.05x focus scale and border.
@@ -1126,6 +1130,7 @@ private val PERSISTENT_ROW_HEADROOM = 44.dp
 private fun PersistentCinematicPreview(
     item: MetaItem?,
     nextItem: MetaItem?,
+    availableHeight: Dp,
     resolveTrailer: suspend (MetaItem) -> String?,
     autoPlayPreviews: Boolean,
     previewSound: Boolean,
@@ -1134,7 +1139,7 @@ private fun PersistentCinematicPreview(
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val density = LocalDensity.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val height = persistentPreviewHeight(LocalConfiguration.current.screenHeightDp.dp)
+    val height = persistentPreviewHeight(availableHeight)
     val leftFade = remember(backgroundColor, density) {
         Brush.horizontalGradient(
             0f to backgroundColor.copy(0.95f),

@@ -698,9 +698,8 @@ class MainActivity : ComponentActivity() {
                             // Pops only the player: Back lands on Details, or on the menu area
                             // for debrid library playback started from Watchlist.
                             is PlaybackNav.ReturnFromPlayer -> BackStackOps.returnFromPlayer(backStack)
-                            // On top of the stack: Back returns to the previous show's page, then
-                            // to the menu area as the viewer left it. The new page starts
-                            // queueAutoPlayId once.
+                            // Advance automatically to the next queue item without stacking
+                            // obsolete auto-generated Details pages behind the player.
                             is PlaybackNav.OpenDetails -> BackStackOps.queueAdvance(
                                 backStack,
                                 type = event.movieType,
@@ -1320,7 +1319,10 @@ class MainActivity : ComponentActivity() {
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status -> session.onSuspectSource(status, currentProfile) },
                                 onSourceChanged = session::onPlayerSourceChanged,
-                                onBack = { sessionResult -> session.end(sessionResult, currentProfile) }
+                                onBack = { sessionResult -> session.end(sessionResult, currentProfile) },
+                                onPlaybackCompleted = { sessionResult ->
+                                    session.end(sessionResult, currentProfile, advanceQueue = true)
+                                }
                             )
                             }
                             }
