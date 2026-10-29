@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.vpn
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.system.Os
 import androidx.core.content.ContextCompat
 import de.blinkt.openvpn.core.ConfigParser
 import de.blinkt.openvpn.core.ConnectionStatus
@@ -91,9 +92,18 @@ internal class EmbeddedVpnController(
         }
     }
 
-    fun connectSoftEther(host: String, port: Int, hub: String, user: String, password: String) {
+    fun connectSoftEther(
+        host: String, port: Int, hub: String, user: String, password: String,
+        trustedServerCertSha256: String
+    ) {
         check(VpnService.prepare(context) == null) { "Android VPN permission required" }
         validateSoftEtherProfile(host, port, hub, user, password)?.let { error(it) }
+        val pin = normalizedSoftEtherCertPin(trustedServerCertSha256)
+            ?: error("A trusted SoftEther certificate SHA-256 fingerprint is required")
+        // The upstream VPN service runs in this app process. Its native OpenSSL
+        // handshake obtains the exact expected pin from this process environment.
+        // Never accept TOFU or learn the fingerprint from the untrusted connection.
+        Os.setenv("ILLUMERA_SOFTETHER_CERT_SHA256", pin, true)
         val config = ConnectionConfig(
             serverHost = host, serverPort = port,
             username = user, password = password, virtualHub = hub,
@@ -116,10 +126,13 @@ internal class EmbeddedVpnController(
                 context.deleteFile("temporary-vpn-profile.cp")
                 context.deleteFile("temporary-vpn-profile.vp")
             }
-            NativeVpnProtocol.SOFTETHER ->
+            NativeVpnProtocol.SOFTETHER -> {
                 context.startService(Intent(context, SoftEtherVpnService::class.java).apply {
                     action = SoftEtherVpnService.ACTION_DISCONNECT
                 })
+                // A stale pin must not become a default trust choice for another server.
+                runCatching { Os.unsetenv("ILLUMERA_SOFTETHER_CERT_SHA256") }
+            }
             else -> Unit
         }
     }
