@@ -5,6 +5,8 @@ enum class AddonCatalogSource(val displayName: String) {
     OFFICIAL("Official"),
     COMMUNITY("Community"),
     STREMIO_ADDONS_NET("3rd Party"),
+    AIOMETADATA("AIOMetadata"),
+    GITHUB_STREMIO_ADDONS("GitHub Add-ons"),
     COLLECTION("Collection")
 }
 
