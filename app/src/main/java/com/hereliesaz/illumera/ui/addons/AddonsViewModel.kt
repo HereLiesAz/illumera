@@ -65,7 +65,7 @@ class AddonsViewModel @Inject constructor(
         val catalogSource: AddonCatalogSource = AddonCatalogSource.ALL,
         val activeCollection: SavedAddonCollection? = null,
         val savedCollections: List<SavedAddonCollection> = emptyList(),
-        // Built-in catalog sources switched on in Integrations → Addon Repositories.
+        // Only enabled custom repositories and built-in sources are browsable.
         val enabledBuiltIns: List<AddonCatalogSource> = AddonCatalogRepository.BUILT_IN_SOURCES,
         val catalogItems: List<AddonCatalogItem> = emptyList(),
         val isCatalogLoading: Boolean = false,
@@ -73,7 +73,7 @@ class AddonsViewModel @Inject constructor(
     )
 
     private val _uiState = MutableStateFlow(
-        UiState(savedCollections = catalogRepository.getSavedCollections())
+        UiState(savedCollections = catalogRepository.repositories.value.enabledCollections)
     )
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
@@ -90,19 +90,19 @@ class AddonsViewModel @Inject constructor(
                 val sourceGone = (current.catalogSource in AddonCatalogRepository.BUILT_IN_SOURCES &&
                     current.catalogSource !in repos.enabledBuiltIns) ||
                     (current.catalogSource == AddonCatalogSource.COLLECTION &&
-                        repos.collections.none { it.url == current.activeCollection?.url })
+                        repos.enabledCollections.none { it.url == current.activeCollection?.url })
                 val listChanged = current.enabledBuiltIns != repos.enabledBuiltIns ||
-                    current.savedCollections != repos.collections
+                    current.savedCollections != repos.enabledCollections
                 _uiState.value = current.copy(
-                    savedCollections = repos.collections,
+                    savedCollections = repos.enabledCollections,
                     enabledBuiltIns = repos.enabledBuiltIns,
                     activeCollection = if (sourceGone) null else current.activeCollection
                 )
                 // "All" spans every repository, so it reloads when the set changes.
                 if (sourceGone) loadCatalog(AddonCatalogSource.ALL, force = true)
-                else if (listChanged && current.catalogSource == AddonCatalogSource.ALL &&
-                    current.catalogItems.isNotEmpty()
-                ) loadCatalog(AddonCatalogSource.ALL, force = true)
+                else if (listChanged && current.catalogSource == AddonCatalogSource.ALL) {
+                    loadCatalog(AddonCatalogSource.ALL, force = true)
+                }
             }
         }
     }
@@ -181,42 +181,9 @@ class AddonsViewModel @Inject constructor(
         loadCatalog(source, force = true)
     }
 
-    fun addCollection(url: String) {
-        if (url.isBlank()) return
-        catalogLoadJob?.cancel()
-        _uiState.value = _uiState.value.copy(
-            isCatalogLoading = true,
-            catalogError = null,
-            catalogItems = emptyList()
-        )
-        catalogLoadJob = viewModelScope.launch {
-            try {
-                val result = catalogRepository.addCollection(url)
-                _uiState.value = _uiState.value.copy(
-                    catalogSource = AddonCatalogSource.COLLECTION,
-                    activeCollection = result.collection,
-                    catalogItems = result.addons,
-                    isCatalogLoading = false,
-                    catalogError = null
-                )
-            } catch (_: TimeoutCancellationException) {
-                _uiState.value = _uiState.value.copy(
-                    isCatalogLoading = false,
-                    catalogError = "The addon collection request timed out"
-                )
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isCatalogLoading = false,
-                    catalogError = e.message ?: "Could not add the addon collection"
-                )
-            }
-        }
-    }
-
     fun selectCollection(collection: SavedAddonCollection) {
         val current = _uiState.value
+        if (collection !in current.savedCollections) return
         if (current.catalogSource == AddonCatalogSource.COLLECTION &&
             current.activeCollection == collection && current.catalogItems.isNotEmpty()
         ) return
@@ -227,11 +194,6 @@ class AddonsViewModel @Inject constructor(
             catalogError = null
         )
         loadCatalog(AddonCatalogSource.COLLECTION, force = true)
-    }
-
-    fun removeCollection(collection: SavedAddonCollection) {
-        // The repositories observer updates the list and leaves the collection if it was open.
-        catalogRepository.removeCollection(collection.url)
     }
 
     fun retryCatalog() {
