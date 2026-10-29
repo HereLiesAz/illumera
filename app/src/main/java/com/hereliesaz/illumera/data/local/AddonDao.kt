@@ -185,6 +185,14 @@ interface AddonDao {
     @Query("SELECT * FROM watch_history")
     suspend fun getAllWatchHistoryOnce(): List<WatchHistoryEntity>
 
+    /**
+     * One-time repair of legacy sync-created placeholders. A 0/0 movie/episode was
+     * often only a saved Stremio bookmark or an unrepresentable Trakt percentage.
+     * Preserve explicit watched=true entries, even without a measured runtime.
+     */
+    @Query("DELETE FROM watch_history WHERE watched = 0 AND position < 5000")
+    suspend fun pruneUnplayedHistory()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertHistory(item: WatchHistoryEntity)
 
@@ -534,7 +542,10 @@ interface AddonDao {
             watchHistory
         }
         clearWatchHistory()
-        if (finalHistory.isNotEmpty()) upsertHistoryItems(finalHistory)
+        // Older profile snapshots must never resurrect fake 0/0 history after
+        // switching profiles or recovering from a crash. Bookmarks are separate.
+        val confirmedHistory = finalHistory.filter(WatchHistoryEntity::hasPlaybackEvidence)
+        if (confirmedHistory.isNotEmpty()) upsertHistoryItems(confirmedHistory)
         if (ownerProfileId != null) setRuntimeOwner(RuntimeOwnerEntity(profileId = ownerProfileId))
     }
 }

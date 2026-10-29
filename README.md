@@ -65,7 +65,7 @@ import your existing addon collection and sync Continue Watching progress.
 - Rows with nothing to show are hidden and never block scrolling past them.
 - Hero carousel with auto-scrolling featured content
 - Global search across all addons, with live title suggestions from the first character typed and per-profile recent search history
-- Continue watching with progress tracking and auto-resume
+- Continue watching with progress tracking and auto-resume. **Only actual playback (at least five seconds) or an explicit completed/watched action counts as watch history**: unplayed Stremio bookmarks remain in Library but cannot enter Continue Watching, Queue history suggestions, or Home's More Like This / Because You Watched recommendations. Legacy zero-progress history is cleaned from the active profile and from restored snapshots.
 - Dashboard row/category reordering (D-pad up/down or tap ▲▼ in reorder mode)
 - Row display modes: infinite scroll, finite with a "View More" card that opens a grid, or linear
 

@@ -129,27 +129,78 @@ class AddonDaoIntegrationTest {
     }
 
     @Test
+    fun legacyUnplayedHistoryIsDeletedButBookmarksAndWatchedMarkersSurvive() = runTest {
+        dao.upsertHistory(WatchHistoryEntity(
+            id = "ghost", title = "Unplayed Bookmark", poster = null,
+            position = 0L, duration = 0L, lastWatched = 500L, type = "movie"
+        ))
+        dao.upsertHistory(WatchHistoryEntity(
+            id = "tiny", title = "One-second artifact", poster = null,
+            position = 1_000L, duration = 300_000L, lastWatched = 400L, type = "movie"
+        ))
+        dao.upsertHistory(WatchHistoryEntity(
+            id = "watched", title = "Explicit watched", poster = null,
+            position = 0L, duration = 0L, lastWatched = 300L,
+            type = "movie", watched = true
+        ))
+        dao.upsertHistory(history("started", lastWatched = 200L, position = 5_000L))
+        dao.addToWatchlist(watchlist(profileId = 1, id = "ghost", addedAt = 500L))
+
+        dao.pruneUnplayedHistory()
+
+        assertEquals(null, dao.getHistoryItem("ghost"))
+        assertEquals(null, dao.getHistoryItem("tiny"))
+        assertTrue(dao.getHistoryItem("watched")?.watched == true)
+        assertEquals(5_000L, dao.getHistoryItem("started")?.position)
+        assertEquals(listOf("ghost"), dao.getWatchlistOnce(1).map { it.id })
+    }
+
+    @Test
+    fun crashRecoveryNeverResurrectsZeroProgressHistoryFromLegacySnapshot() = runTest {
+        val ghost = WatchHistoryEntity(
+            id = "ghost", title = "Never played", poster = null,
+            position = 0L, duration = 0L, lastWatched = 900L, type = "movie"
+        )
+        val real = history("real", lastWatched = 100L, position = 50_000L)
+
+        dao.replaceRuntimeState(
+            emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(ghost, real), mergeWatchHistory = false, ownerProfileId = 1
+        )
+        assertEquals(null, dao.getHistoryItem("ghost"))
+        assertEquals("real", dao.getHistoryItem("real")?.id)
+
+        dao.upsertHistory(ghost)
+        dao.replaceRuntimeState(
+            emptyList(), emptyList(), emptyList(), emptyList(),
+            listOf(ghost, real), mergeWatchHistory = true, ownerProfileId = 1
+        )
+        assertEquals(null, dao.getHistoryItem("ghost"))
+        assertEquals("real", dao.getHistoryItem("real")?.id)
+    }
+
+    @Test
     fun replaceRuntimeStateWithoutMergeFullyReplacesWatchHistory() = runTest {
-        dao.upsertHistory(history("old", lastWatched = 100L, position = 50L))
+        dao.upsertHistory(history("old", lastWatched = 100L, position = 50000L))
 
         dao.replaceRuntimeState(
             addons = listOf(addon("https://new", "New", 1)),
             catalogConfigs = emptyList(),
             hubRows = emptyList(),
             hubRowItems = emptyList(),
-            watchHistory = listOf(history("snapshot", lastWatched = 200L, position = 80L)),
+            watchHistory = listOf(history("snapshot", lastWatched = 200L, position = 80000L)),
             mergeWatchHistory = false
         )
 
         assertNull(dao.getHistoryItem("old"))
-        assertEquals(80L, dao.getHistoryItem("snapshot")?.position)
+        assertEquals(80000L, dao.getHistoryItem("snapshot")?.position)
         assertEquals(listOf("New"), dao.getAllAddons().first().map { it.name })
     }
 
     @Test
     fun replaceRuntimeStateMergeKeepsNewestVersionPerHistoryId() = runTest {
-        dao.upsertHistory(history("same", lastWatched = 300L, position = 90L))
-        dao.upsertHistory(history("db-only", lastWatched = 150L, position = 20L))
+        dao.upsertHistory(history("same", lastWatched = 300L, position = 90000L))
+        dao.upsertHistory(history("db-only", lastWatched = 150L, position = 20000L))
 
         dao.replaceRuntimeState(
             addons = emptyList(),
@@ -157,31 +208,31 @@ class AddonDaoIntegrationTest {
             hubRows = emptyList(),
             hubRowItems = emptyList(),
             watchHistory = listOf(
-                history("same", lastWatched = 200L, position = 10L),
-                history("snapshot-only", lastWatched = 400L, position = 70L)
+                history("same", lastWatched = 200L, position = 10000L),
+                history("snapshot-only", lastWatched = 400L, position = 70000L)
             ),
             mergeWatchHistory = true
         )
 
-        assertEquals(90L, dao.getHistoryItem("same")?.position)
-        assertEquals(20L, dao.getHistoryItem("db-only")?.position)
-        assertEquals(70L, dao.getHistoryItem("snapshot-only")?.position)
+        assertEquals(90000L, dao.getHistoryItem("same")?.position)
+        assertEquals(20000L, dao.getHistoryItem("db-only")?.position)
+        assertEquals(70000L, dao.getHistoryItem("snapshot-only")?.position)
     }
 
     @Test
     fun replaceRuntimeStateMergeUsesSnapshotOnTimestampTie() = runTest {
-        dao.upsertHistory(history("same", lastWatched = 300L, position = 10L))
+        dao.upsertHistory(history("same", lastWatched = 300L, position = 10000L))
 
         dao.replaceRuntimeState(
             addons = emptyList(),
             catalogConfigs = emptyList(),
             hubRows = emptyList(),
             hubRowItems = emptyList(),
-            watchHistory = listOf(history("same", lastWatched = 300L, position = 99L)),
+            watchHistory = listOf(history("same", lastWatched = 300L, position = 99000L)),
             mergeWatchHistory = true
         )
 
-        assertEquals(99L, dao.getHistoryItem("same")?.position)
+        assertEquals(99000L, dao.getHistoryItem("same")?.position)
     }
 
     @Test
@@ -314,7 +365,7 @@ class AddonDaoIntegrationTest {
     private fun history(
         id: String,
         lastWatched: Long,
-        position: Long = 10L,
+        position: Long = 10_000L,
         type: String = "movie",
         seriesId: String? = null
     ) = WatchHistoryEntity(
@@ -323,7 +374,7 @@ class AddonDaoIntegrationTest {
         poster = null,
         seriesId = seriesId,
         position = position,
-        duration = 100L,
+        duration = 100_000L,
         lastWatched = lastWatched,
         type = type
     )

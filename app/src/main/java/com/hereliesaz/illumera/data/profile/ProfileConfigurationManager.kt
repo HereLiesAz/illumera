@@ -487,7 +487,8 @@ class ProfileConfigurationManager @Inject constructor(
             catalogConfigs = dao.getAllCatalogConfigs().firstOrNull() ?: emptyList(),
             hubRows = dao.getAllHubRows().firstOrNull() ?: emptyList(),
             hubRowItems = dao.getAllHubRowItems().firstOrNull() ?: emptyList(),
-            watchHistory = dao.getWatchHistory().firstOrNull() ?: emptyList()
+            watchHistory = (dao.getWatchHistory().firstOrNull() ?: emptyList())
+                .filter(WatchHistoryEntity::hasPlaybackEvidence)
         )
     }
 

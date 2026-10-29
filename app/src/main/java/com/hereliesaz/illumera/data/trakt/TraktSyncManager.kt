@@ -675,59 +675,17 @@ class TraktSyncManager @Inject constructor(
                     }
                 }
 
-                // 5. Pull new items from Trakt playback that aren't local
-                var added = 0
-                for ((id, item) in traktPlaybackIds) {
-                    // Fix 5: skip items being deleted
-                    if (id in pendingDeletes) continue
-
-                    val type = if (item.type == "movie") "movie" else "series"
-
-                    // Don't overwrite existing local progress (check both exact and with stream index)
-                    val existing = dao.getHistoryItem(id)
-                    if (existing != null) continue
-                    if (type == "series") {
-                        val hasLocal = dao.getLatestSeriesEpisodeHistory("$id:%") != null
-                        if (hasLocal) continue
-                    }
-
-                    val title = when (item.type) {
-                        "movie" -> item.movie?.title ?: "Unknown"
-                        else -> {
-                            val ep = item.episode
-                            val showTitle = item.show?.title ?: "Unknown"
-                            when {
-                                ep?.title != null -> ep.title
-                                ep?.season != null -> "S${ep.season}:E${ep.number} - $showTitle"
-                                else -> showTitle
-                            }
-                        }
-                    }
-
-                    // Trakt only reports a percentage and the runtime is unknown here. The player
-                    // resumes from the raw millisecond position, and the schema has no percent
-                    // field, so don't fabricate a position from a guessed runtime: store 0/0 and
-                    // let the item surface as in progress; local playback fills in real values.
-                    val estimatedDurationMs = 0L
-                    val estimatedPositionMs = 0L
-
-                    dao.upsertHistory(
-                        WatchHistoryEntity(
-                            id = id,
-                            title = title,
-                            poster = null,
-                            position = estimatedPositionMs,
-                            duration = estimatedDurationMs,
-                            lastWatched = parseIsoTimestamp(item.pausedAt),
-                            type = type,
-                            watched = false,
-                            scrobbled = true
-                        )
-                    )
-                    added++
-                }
-
-                Log.i(TAG, "Playback sync: added=$added, removed=$removed, markedWatched=$markedWatched")
+                // 5. Trakt /sync/playback reports ONLY a percentage, without a
+                // measured movie/episode runtime. Inserting fabricated 0/0 history
+                // made untouched-looking titles appear in Continue Watching and
+                // poisoned personal recommendations. Never manufacture a playback
+                // position or a watch-history row from percentage-only data.
+                //
+                // Authenticated Trakt playback remains authoritative above when
+                // reconciling local scrobbled progress. Once the user actually plays
+                // a title here, PlayerViewModel persists the measured milliseconds.
+                Log.i(TAG, "Playback sync: removed=$removed, markedWatched=$markedWatched; " +
+                    "no unmeasured remote playback placeholders imported")
                 true
             } catch (cancelled: CancellationException) {
                 throw cancelled

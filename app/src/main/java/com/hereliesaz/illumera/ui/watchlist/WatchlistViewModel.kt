@@ -109,6 +109,7 @@ class WatchlistViewModel @Inject constructor(
                     )
                 }
                 val historyEntries = history.mapNotNull { entry ->
+                    if (!entry.hasPlaybackEvidence()) return@mapNotNull null
                     if (entry.type !in setOf("movie", "series", "tv", "episode")) return@mapNotNull null
                     val parts = entry.id.split(':')
                     if (entry.type == "episode" && entry.seriesId.isNullOrBlank() &&

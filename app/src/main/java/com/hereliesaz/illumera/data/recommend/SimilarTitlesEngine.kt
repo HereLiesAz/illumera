@@ -65,6 +65,7 @@ class SimilarTitlesEngine @Inject constructor(
     ): List<CategoryRow> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext emptyList()
         val seeds = history
+            .filter(WatchHistoryEntity::hasPlaybackEvidence)
             .sortedByDescending { it.lastWatched }
             .mapNotNull(::seedOf)
             .distinctBy { it.id }
