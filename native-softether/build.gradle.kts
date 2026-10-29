@@ -19,7 +19,7 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
     externalNativeBuild {
-        cmake { path = file("../vendor/softether-android/src/main/cpp/CMakeLists.txt") }
+        cmake { path = file("CMakeLists.txt") }
     }
     sourceSets.getByName("main") {
         manifest.srcFile("../vendor/softether-android/src/main/AndroidManifest.xml")
