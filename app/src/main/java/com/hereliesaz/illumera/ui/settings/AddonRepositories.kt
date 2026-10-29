@@ -136,11 +136,6 @@ internal fun AddonRepositoriesDialog(
                     onToggle = { viewModel.setCollectionEnabled(collection, !enabled) }
                 )
                 Text(
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
                     collection.url,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.labelSmall,
