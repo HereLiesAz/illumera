@@ -124,6 +124,24 @@ class AppBackStackTest {
     }
 
     @Test
+    fun legacyQueuedHistoryIsCollapsedWhenQueueAdvancesAgain() {
+        val s = stack(
+            HomeKey(),
+            DetailsKey("movie", "original"),
+            DetailsKey("movie", "oldA", queueAutoPlayId = "oldA", instance = 1),
+            DetailsKey("movie", "oldB", queueAutoPlayId = "oldB", instance = 2),
+            PlayerKey
+        )
+
+        BackStackOps.queueAdvance(
+            s, type = "movie", id = "current", title = "Current", poster = "",
+            queueAutoPlayId = "current"
+        )
+        assertEquals(listOf("original", "current"), s.filterIsInstance<DetailsKey>().map { it.id })
+        assertEquals(3, (s.last() as DetailsKey).instance)
+    }
+
+    @Test
     fun castAndRecommendedDetailsAreFlatEntriesBackUnwindsThemInOrder() {
         val s = stack(HomeKey())
         BackStackOps.openDetails(s, type = "movie", id = "A")
