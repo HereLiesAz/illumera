@@ -94,6 +94,20 @@ class TorrentClawIntegrationTest {
     }
 
     @Test
+    fun deletingOneProfileClearsItsEnabledFlagWithoutTouchingAnother() {
+        val client = integration()
+        client.setEnabled(true)
+        activeProfile.value = 2
+        client.setEnabled(true)
+
+        client.clearForProfile(1)
+
+        assertTrue(client.isEnabled())
+        activeProfile.value = 1
+        assertFalse(client.isEnabled())
+    }
+
+    @Test
     fun rateLimitsRemainFailuresRatherThanFakeEmptySearches() = runTest {
         val client = integration()
         client.setEnabled(true)
