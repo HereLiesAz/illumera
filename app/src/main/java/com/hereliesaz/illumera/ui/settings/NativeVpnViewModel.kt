@@ -3,6 +3,8 @@ package com.hereliesaz.illumera.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.hereliesaz.illumera.data.vpn.NativeVpnManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
