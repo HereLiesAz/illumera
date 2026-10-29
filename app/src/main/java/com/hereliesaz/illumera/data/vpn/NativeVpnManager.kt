@@ -198,21 +198,21 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     suspend fun connectWireGuard(): Result<Unit> = withContext(Dispatchers.IO) {
         connectionMutex.withLock {
-        runCatching {
-            check(VpnService.prepare(context) == null) { "VPN permission was not granted" }
-            val text = secrets.getString(WG_PROFILE, null)
-                ?: error("Import a WireGuard configuration first")
-            val config = Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
-            stopIkev2IfRunning()
-            _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.CONNECTING)
-            check(backend.setState(tunnel, Tunnel.State.UP, config) == Tunnel.State.UP) {
-                "WireGuard could not establish its VPN interface"
-            }
-            _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ACTIVE,
-                "WireGuard tunnel interface active")
-        }.onFailure {
-            _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ERROR,
-                it.message ?: "WireGuard connection failed")
+            runCatching {
+                check(VpnService.prepare(context) == null) { "VPN permission was not granted" }
+                val text = secrets.getString(WG_PROFILE, null)
+                    ?: error("Import a WireGuard configuration first")
+                val config = Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
+                stopIkev2IfRunning()
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.CONNECTING)
+                check(backend.setState(tunnel, Tunnel.State.UP, config) == Tunnel.State.UP) {
+                    "WireGuard could not establish its VPN interface"
+                }
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ACTIVE,
+                    "WireGuard tunnel interface active")
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ERROR,
+                    it.message ?: "WireGuard connection failed")
         }
         }
     }
@@ -220,21 +220,21 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     /** Invoke only after provisionIkev2 consent has completed. */
     suspend fun connectIkev2(): Result<Unit> = withContext(Dispatchers.IO) {
         connectionMutex.withLock {
-        runCatching {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
-            runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
-            val manager = context.getSystemService(VpnManager::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                manager.startProvisionedVpnProfileSession()
-            } else {
-                @Suppress("DEPRECATION")
-                manager.startProvisionedVpnProfile()
-            }
-            _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
-                "IKEv2 session requested; Android manages authentication and connection")
-        }.onFailure {
-            _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
-                it.message ?: "IKEv2 connection failed")
+            runCatching {
+                check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
+                runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                val manager = context.getSystemService(VpnManager::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    manager.startProvisionedVpnProfileSession()
+                } else {
+                    @Suppress("DEPRECATION")
+                    manager.startProvisionedVpnProfile()
+                }
+                _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
+                    "IKEv2 session requested; Android manages authentication and connection")
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
+                    it.message ?: "IKEv2 connection failed")
         }
         }
     }
@@ -263,16 +263,16 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     suspend fun disconnect(): Result<Unit> = withContext(Dispatchers.IO) {
         connectionMutex.withLock {
-        runCatching {
-            when (_status.value.protocol) {
-                NativeVpnProtocol.WIREGUARD -> backend.setState(tunnel, Tunnel.State.DOWN, null)
-                NativeVpnProtocol.IKEV2 -> stopIkev2IfRunning()
-                else -> Unit
-            }
-            _status.value = NativeVpnStatus()
-        }.onFailure {
-            _status.value = NativeVpnStatus(_status.value.protocol, NativeVpnPhase.ERROR,
-                it.message ?: "VPN disconnect failed")
+            runCatching {
+                when (_status.value.protocol) {
+                    NativeVpnProtocol.WIREGUARD -> backend.setState(tunnel, Tunnel.State.DOWN, null)
+                    NativeVpnProtocol.IKEV2 -> stopIkev2IfRunning()
+                    else -> Unit
+                }
+                _status.value = NativeVpnStatus()
+            }.onFailure {
+                _status.value = NativeVpnStatus(_status.value.protocol, NativeVpnPhase.ERROR,
+                    it.message ?: "VPN disconnect failed")
         }
         }
     }
