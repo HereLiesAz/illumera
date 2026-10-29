@@ -143,7 +143,7 @@ fun AddonsScreen(
                 // Torrentio is configured natively; every other addon uses its own web page.
                 if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(item.transportUrl)) {
                     showTorrentioConfig = true
-                } else item.configureUrl?.let { url ->
+                } else (item.discoveryUrl ?: item.configureUrl)?.let { url ->
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
             },
