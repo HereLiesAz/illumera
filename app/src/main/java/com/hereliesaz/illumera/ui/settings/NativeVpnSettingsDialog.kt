@@ -81,6 +81,7 @@ fun NativeVpnSettingsDialog(
     var softEtherHub by remember { mutableStateOf("DEFAULT") }
     var softEtherUser by remember { mutableStateOf("") }
     var softEtherPassword by remember { mutableStateOf("") }
+    var softEtherTlsFingerprint by remember { mutableStateOf("") }
     val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(210.dp)
 
     LaunchedEffect(Unit) { viewModel.refreshIkev2Status() }
@@ -531,8 +532,10 @@ fun NativeVpnSettingsDialog(
                 )
             } else {
                 Text(
-                    "SoftEther SSL-VPN uses an embedded native C/JNI TLS packet engine. " +
-                        "Save server, hub and credentials, then authorize Android's VPN permission.",
+                    "SoftEther SSL-VPN uses a native TLS tunnel. Obtain the TLS server " +
+                        "certificate SHA-256 fingerprint directly from your VPN administrator, " +
+                        "not from an unverified connection. A missing or different certificate " +
+                        "will be rejected before any VPN traffic is exchanged.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -556,6 +559,11 @@ fun NativeVpnSettingsDialog(
                     label = { Text("Password") },
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    softEtherTlsFingerprint, { softEtherTlsFingerprint = it },
+                    label = { Text("Trusted server TLS certificate SHA-256 (64 hex digits)") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
                 VoidButton(
                     text = "Stage SoftEther server",
                     onClick = {
@@ -564,27 +572,24 @@ fun NativeVpnSettingsDialog(
                         val hub = softEtherHub
                         val user = softEtherUser
                         val passwordValue = softEtherPassword
+                        val fingerprint = softEtherTlsFingerprint
                         importScope.launch {
                             val result = withContext(Dispatchers.IO) {
-                                viewModel.stageSoftEtherProfile(host, port, hub, user, passwordValue)
+                                viewModel.stageSoftEtherProfile(host, port, hub, user, passwordValue, fingerprint)
                             }
                             result.onSuccess {
                                 softEtherStaged = true
                                 softEtherPassword = ""
-                                feedback = "SoftEther profile encrypted and saved · ready to connect"
+                                softEtherTlsFingerprint = ""
+                                feedback = "SoftEther profile and trusted certificate fingerprint stored securely"
                             }.onFailure { feedback = it.message ?: "Invalid SoftEther settings" }
                         }
                     }, compact = true
                 )
-                if (NativeVpnProtocol.SOFTETHER.ready) VoidButton(
+                VoidButton(
                     text = "Connect SoftEther",
                     onClick = { requestEmbeddedConnection(NativeVpnProtocol.SOFTETHER, softEtherStaged) },
                     compact = true
-                ) else Text(
-                    "SoftEther connections are temporarily blocked until mandatory TLS " +
-                        "certificate pin verification is implemented. Profiles can still be saved.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
                 )
             }
             if (!protocol.ready) {
