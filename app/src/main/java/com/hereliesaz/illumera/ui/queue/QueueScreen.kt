@@ -590,6 +590,7 @@ private fun QueueCardRow(
                             properties = PopupProperties(focusable = !remotePressHeld),
                             onDismissRequest = { if (!remotePressHeld) menuExpanded = false }
                         ) {
+                            com.hereliesaz.illumera.ui.audio.FollowNavigationSounds() // Menus are their own window.
                             if (onMoveSuggestion != null) {
                                 DropdownMenuItem(
                                     text = { Text("Move") },

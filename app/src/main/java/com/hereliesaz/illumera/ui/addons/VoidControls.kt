@@ -44,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.hereliesaz.illumera.ui.audio.Dialog
 import com.hereliesaz.illumera.ui.components.ButtonEmphasis
 import com.hereliesaz.illumera.ui.components.buttonColors
 import com.hereliesaz.illumera.ui.util.rememberDialogWidth

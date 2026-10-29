@@ -37,7 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.hereliesaz.illumera.ui.audio.Dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -765,8 +765,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Navigation sounds: per profile, live (the preference store notifies on change).
+            val navigationSounds = com.hereliesaz.illumera.ui.audio
+                .rememberCinematicAudioPreferences(currentProfile?.id).navigationSounds
+
             LumeraTheme(theme = currentTheme) {
                 CompositionLocalProvider(
+                    com.hereliesaz.illumera.ui.audio.LocalNavigationSounds provides navigationSounds,
                     LocalRoundCorners provides roundCorners,
                     LocalHubRoundCorners provides hubRoundCorners,
                     // "More like this" from any card menu or Details page.
@@ -774,6 +779,8 @@ class MainActivity : ComponentActivity() {
                         BackStackOps.openMoreLikeThis(backStack, likeType, likeId, likeTitle)
                     }
                 ) {
+                // The activity window; dialogs and menus apply it to their own windows.
+                com.hereliesaz.illumera.ui.audio.FollowNavigationSounds()
                 LumeraBackground {
                     if (currentProfile == null) {
                         // Same rule as the main screens: Back at a root with nothing left to unwind

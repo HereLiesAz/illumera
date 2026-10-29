@@ -508,6 +508,7 @@ fun MediaCardActionMenu(
         onDismissRequest = onDismissRequest,
         properties = PopupProperties(focusable = focusable)
     ) {
+        com.hereliesaz.illumera.ui.audio.FollowNavigationSounds() // Menus are their own window.
         DropdownMenuItem(
             text = { Text(watchlistLabel) },
             leadingIcon = {
