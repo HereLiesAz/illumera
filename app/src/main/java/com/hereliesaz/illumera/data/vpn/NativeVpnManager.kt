@@ -92,6 +92,27 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     private val _status = MutableStateFlow(NativeVpnStatus())
     val status: StateFlow<NativeVpnStatus> = _status
 
+    init {
+        // The platform IPsec session survives the UI/activity process. Recover its real
+        // state so a reopened app can disconnect an already established device-wide VPN.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                context.getSystemService(VpnManager::class.java).provisionedVpnProfileState
+            }.getOrNull()?.let { platformState ->
+                if (platformState.state == VpnProfileState.STATE_CONNECTED ||
+                    platformState.state == VpnProfileState.STATE_CONNECTING
+                ) {
+                    _status.value = NativeVpnStatus(
+                        NativeVpnProtocol.IKEV2,
+                        if (platformState.state == VpnProfileState.STATE_CONNECTED)
+                            NativeVpnPhase.ACTIVE else NativeVpnPhase.CONNECTING,
+                        "Restored Android IKEv2 session state"
+                    )
+                }
+            }
+        }
+    }
+
     fun hasWireGuardProfile(): Boolean =
         runCatching { !secrets.getString(WG_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
 
