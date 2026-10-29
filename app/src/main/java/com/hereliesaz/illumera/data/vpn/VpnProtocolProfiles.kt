@@ -14,7 +14,6 @@ data class OpenVpnProfileSummary(
 )
 
 private val hostPattern = Regex("^[A-Za-z0-9_.:-]{1,253}$")
-private val remotePattern = Regex("^remote\\s+(\\S+)(?:\\s+(\\d{1,5}))?.*$", RegexOption.IGNORE_CASE)
 private val deniedOpenVpnOptions = setOf(
     "script-security", "up", "down", "route-up", "route-pre-down", "ipchange",
     "learn-address", "client-connect", "client-disconnect", "auth-user-pass-verify",
@@ -35,6 +34,9 @@ internal fun inspectOpenVpnProfile(text: String): Result<OpenVpnProfileSummary> 
     require(optionNames.none { it in deniedOpenVpnOptions }) {
         "OpenVPN profile contains unsupported executable or management directives"
     }
+    require(directives.none {
+        it.startsWith("auth-user-pass ", ignoreCase = true)
+    }) { "External credential-file paths are not allowed in imported OpenVPN profiles" }
     require(lines.none { it.matches(Regex("^<(script|plugin|management)[^>]*>.*", RegexOption.IGNORE_CASE)) }) {
         "OpenVPN profile contains an executable block"
     }
@@ -47,13 +49,19 @@ internal fun inspectOpenVpnProfile(text: String): Result<OpenVpnProfileSummary> 
     require(directives.any { it.equals("dev tun", ignoreCase = true) }) {
         "Only OpenVPN layer-3 TUN profiles are supported"
     }
-    val remote = directives.firstNotNullOfOrNull { remotePattern.find(it) }
-        ?: error("OpenVPN profile is missing a remote server")
-    val host = remote.groupValues[1]
+    val remoteLine = directives.firstOrNull {
+        it.substringBefore(' ').equals("remote", ignoreCase = true)
+    } ?: error("OpenVPN profile is missing a remote server")
+    val remote = remoteLine.split(Regex("\\s+"))
+    require(remote.size in 2..4) { "Malformed OpenVPN remote directive" }
+    val host = remote[1]
     require(hostPattern.matches(host) && !host.contains("..") && !host.contains("://")) {
         "OpenVPN remote must be a hostname or IP address"
     }
-    val port = remote.groupValues[2].ifEmpty { "1194" }.toInt()
+    val port = when (val portArg = remote.getOrNull(2)) {
+        null -> 1194
+        else -> portArg.toIntOrNull() ?: error("Invalid OpenVPN remote port")
+    }
     require(port in 1..65535) { "Invalid OpenVPN remote port" }
     val proto = directives.firstOrNull { it.startsWith("proto ", ignoreCase = true) }
         ?.substringAfter(" ")?.lowercase() ?: "udp"
