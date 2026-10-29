@@ -28,7 +28,9 @@ data class AddonCatalogItem(
     val transportUrl: String = "",
     val transportName: String = "http",
     val manifest: Manifest = Manifest(),
-    val flags: AddonCatalogFlags? = null
+    val flags: AddonCatalogFlags? = null,
+    // Source/project page for discovery entries without a verified installable manifest.
+    val discoveryUrl: String? = null
 ) {
     val configureUrl: String?
         get() = if (
