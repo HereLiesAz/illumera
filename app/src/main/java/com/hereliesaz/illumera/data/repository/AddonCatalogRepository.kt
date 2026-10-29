@@ -133,7 +133,7 @@ class AddonCatalogRepository @Inject constructor(
                         }
                     }
                 val results = tasks.awaitAll()
-                if (tasks.isEmpty()) throw IllegalStateException("No addon repositories are switched on. Add or enable one in Settings → Integrations → Addon Repositories.")
+                if (tasks.isEmpty()) throw IllegalStateException("No addon repositories are switched on. Add or enable one in Settings → Integrations → Third-party Add-on Repositories.")
                 if (results.all { it == null }) throw IllegalStateException("No addon catalogs are available")
                 results.filterNotNull().flatten().distinctBy { it.transportUrl.trimEnd('/').lowercase() }
             }
@@ -141,7 +141,10 @@ class AddonCatalogRepository @Inject constructor(
             AddonCatalogSource.COMMUNITY -> fetchCommunity()
             AddonCatalogSource.STREMIO_ADDONS_NET -> fetchStremioAddonsNet()
             AddonCatalogSource.COLLECTION -> {
-                requireNotNull(collection) { "Choose an addon collection first" }
+                requireNotNull(collection) { "Choose an addon repository first" }
+                check(_repositories.value.enabledCollections.any { it.url == collection.url }) {
+                    "This addon repository is disabled in Settings → Integrations"
+                }
                 fetchCollection(collection.url, save = false).addons
             }
         }
