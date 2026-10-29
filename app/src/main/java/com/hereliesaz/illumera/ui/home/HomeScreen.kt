@@ -577,13 +577,16 @@ fun CinematicLayout(
 
     val wrappedOnFocusChange: (String) -> Unit = onFocusChange
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Measure the actual content viewport (the top navigation chrome may consume height)
+    // instead of the configuration's entire screen, so the stage is never pushed off-screen.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (persistentPreview) {
                 val focused = previewFocus?.first ?: previewSeed
                 PersistentCinematicPreview(
                     item = focused?.let { state.enrichedMeta["${it.type}:${it.id}"] ?: it },
                     nextItem = previewFocus?.second,
+                    availableHeight = maxHeight,
                     resolveTrailer = resolveTrailer,
                     autoPlayPreviews = autoPlayPreviews,
                     previewSound = previewSound,
@@ -1127,6 +1130,7 @@ private val PERSISTENT_ROW_HEADROOM = 44.dp
 private fun PersistentCinematicPreview(
     item: MetaItem?,
     nextItem: MetaItem?,
+    availableHeight: Dp,
     resolveTrailer: suspend (MetaItem) -> String?,
     autoPlayPreviews: Boolean,
     previewSound: Boolean,
@@ -1135,7 +1139,7 @@ private fun PersistentCinematicPreview(
     val backgroundColor = androidx.compose.material3.MaterialTheme.colorScheme.background
     val density = LocalDensity.current
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val height = persistentPreviewHeight(LocalConfiguration.current.screenHeightDp.dp)
+    val height = persistentPreviewHeight(availableHeight)
     val leftFade = remember(backgroundColor, density) {
         Brush.horizontalGradient(
             0f to backgroundColor.copy(0.95f),
