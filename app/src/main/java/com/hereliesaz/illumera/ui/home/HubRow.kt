@@ -150,7 +150,7 @@ fun HubRow(
         Text(
             text = hubGroup.title,
             color = Color.White.copy(0.9f),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(start = startPadding, bottom = if (forceLandscape) 4.dp else 12.dp)
         )
         
