@@ -213,5 +213,7 @@ private fun builtInLabel(source: AddonCatalogSource): String = when (source) {
     AddonCatalogSource.OFFICIAL -> "Official (Stremio)"
     AddonCatalogSource.COMMUNITY -> "Community (Stremio)"
     AddonCatalogSource.STREMIO_ADDONS_NET -> "3rd Party (stremio-addons.net)"
+    AddonCatalogSource.AIOMETADATA -> "AIOMetadata (ElfHosted)"
+    AddonCatalogSource.GITHUB_STREMIO_ADDONS -> "GitHub (stremio-addon topic)"
     else -> source.displayName
 }
