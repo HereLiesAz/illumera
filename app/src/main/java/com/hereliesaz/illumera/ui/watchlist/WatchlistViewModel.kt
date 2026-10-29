@@ -25,6 +25,25 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
+/**
+ * A visible item's resolution is only useful when it is not hydrated, already in flight,
+ * cooling down from failure, or just attempted. Keeping that decision outside UI composition
+ * lets each completed batch advance to subsequent posters instead of starving them.
+ */
+internal fun shouldAttemptWatchlistMetadata(
+    item: MetaItem,
+    inFlight: Boolean,
+    lastFailureAt: Long?,
+    lastAttemptAt: Long?,
+    now: Long
+): Boolean {
+    if (!item.poster.isNullOrBlank() && !item.releaseInfo.isNullOrBlank()) return false
+    if (inFlight) return false
+    if (lastFailureAt != null && now - lastFailureAt in 0 until 5 * 60_000L) return false
+    if (lastAttemptAt != null && now - lastAttemptAt in 0 until 30_000L) return false
+    return true
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class WatchlistViewModel @Inject constructor(
@@ -42,6 +61,10 @@ class WatchlistViewModel @Inject constructor(
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
     // resolvePosterIfNeeded for every previously-failed item every time).
     private val lastResolveFailureAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val lastResolveAttemptAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val _metadataResolutionSignal = MutableStateFlow(0L)
+    /** Advances when a metadata job finishes; drives the next bounded viewport batch. */
+    val metadataResolutionSignal: StateFlow<Long> = _metadataResolutionSignal
     private val resolveFailureCooldownMs = 5 * 60_000L
     private val enrichedLibraryMetas = MutableStateFlow<Map<String, MetaItem>>(emptyMap())
 
@@ -138,13 +161,24 @@ class WatchlistViewModel @Inject constructor(
      * Resolve poster from addons for items missing one (e.g., pulled from Trakt).
      * Updates the DB so the poster persists — the Flow will re-emit automatically.
      */
+    fun canScheduleMetadataEnrichment(item: MetaItem): Boolean {
+        val profileId = profileConfigurationManager.activeProfileId.value ?: return false
+        val key = "$profileId:${item.type}:${item.id}"
+        return shouldAttemptWatchlistMetadata(
+            item,
+            inFlight = key in resolveInFlight,
+            lastFailureAt = lastResolveFailureAt[key],
+            lastAttemptAt = lastResolveAttemptAt[key],
+            now = System.currentTimeMillis()
+        )
+    }
+
     fun resolvePosterIfNeeded(item: MetaItem) {
-        if (!item.poster.isNullOrBlank() && !item.releaseInfo.isNullOrBlank()) return
         val ownerProfileId = profileConfigurationManager.activeProfileId.value ?: return
+        if (!canScheduleMetadataEnrichment(item)) return
         val requestKey = "$ownerProfileId:${item.type}:${item.id}"
-        val lastFailure = lastResolveFailureAt[requestKey]
-        if (lastFailure != null && System.currentTimeMillis() - lastFailure < resolveFailureCooldownMs) return
         if (!resolveInFlight.add(requestKey)) return
+        lastResolveAttemptAt[requestKey] = System.currentTimeMillis()
 
         viewModelScope.launch(Dispatchers.IO) {
             var succeeded = false
@@ -204,6 +238,9 @@ class WatchlistViewModel @Inject constructor(
                 if (!succeeded && !cancelled) {
                     lastResolveFailureAt[requestKey] = System.currentTimeMillis()
                 }
+                // A failed/cooling job still frees a visible-window slot. Trigger a
+                // fresh viewport planner pass so requests past the first four advance.
+                _metadataResolutionSignal.update { it + 1L }
             }
         }
     }
