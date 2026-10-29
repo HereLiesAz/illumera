@@ -91,6 +91,33 @@ class AddonCatalogRepositoryTest {
     }
 
     @Test
+    fun readdingDisabledRepositoryEnablesItAndKeepsItsPosition() = runTest {
+        val catalog = repository()
+        catalog.setCollectionEnabled(sourceB, false)
+        coEvery { api.getJson(sourceB) } returns JsonParser.parseString(
+            """{"name":"Beta refreshed","addons":[{"transportUrl":"https://addon-b.example/manifest.json","manifest":{"id":"addon-b","name":"Addon B","version":"1.0.0"}}]}"""
+        )
+
+        catalog.addCollection(sourceB)
+
+        assertEquals(listOf(sourceA, sourceB), catalog.repositories.value.enabledCollections.map { it.url })
+        assertEquals(listOf("Alpha", "Beta refreshed"), catalog.repositories.value.collections.map { it.name })
+        assertEquals(listOf(sourceA, sourceB), repository().repositories.value.enabledCollections.map { it.url })
+    }
+
+    @Test
+    fun movingCustomRepositoryPersistsOrderEvenWhenItIsDisabled() {
+        val catalog = repository()
+        catalog.setCollectionEnabled(sourceB, false)
+
+        catalog.moveCollection(sourceB, -1)
+
+        assertEquals(listOf(sourceB, sourceA), catalog.repositories.value.collections.map { it.url })
+        assertEquals(listOf(sourceA), catalog.repositories.value.enabledCollections.map { it.url })
+        assertEquals(listOf(sourceB, sourceA), repository().repositories.value.collections.map { it.url })
+    }
+
+    @Test
     fun removingDisabledRepositoryClearsItsDisabledMarker() {
         val catalog = repository()
         catalog.setCollectionEnabled(sourceB, false)
