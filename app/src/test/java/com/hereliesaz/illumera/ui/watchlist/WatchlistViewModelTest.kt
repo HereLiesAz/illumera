@@ -124,6 +124,49 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun coolingOrAlreadyHydratedCandidatesDoNotStarveOtherVisiblePosters() {
+        val now = 2_000_000L
+        val visible = (1..12).map { "library_movie_tt$it" }
+        val candidateItems = (1..12).associate { n ->
+            "library_movie_tt$n" to com.hereliesaz.illumera.data.model.stremio.MetaItem(
+                id = "tt$n", type = "movie", name = "Movie $n",
+                poster = if (n == 4) "https://example.org/$n.jpg" else null,
+                releaseInfo = if (n == 4) "2024" else null
+            )
+        }
+        // Three failures and one fully hydrated item are the first four grid cells.
+        val eligible = candidateItems.filter { (key, item) ->
+            shouldAttemptWatchlistMetadata(
+                item = item,
+                inFlight = key == "library_movie_tt5",
+                lastFailureAt = if (key in setOf(
+                    "library_movie_tt1", "library_movie_tt2", "library_movie_tt3"
+                )) now - 1000L else null,
+                lastAttemptAt = null,
+                now = now
+            )
+        }.keys
+
+        assertEquals(
+            listOf("library_movie_tt6", "library_movie_tt7",
+                "library_movie_tt8", "library_movie_tt9"),
+            watchlistVisibleMetadataKeys(visible, eligible)
+        )
+    }
+
+    @Test
+    fun metadataCooldownAndInFlightStatePreventHotLoops() {
+        val item = com.hereliesaz.illumera.data.model.stremio.MetaItem(
+            id = "tt8", type = "series", name = "Eight", poster = null
+        )
+        assertTrue(shouldAttemptWatchlistMetadata(item, false, null, null, now = 10_000_000L))
+        assertEquals(false, shouldAttemptWatchlistMetadata(item, true, null, null, 10_000_000L))
+        assertEquals(false, shouldAttemptWatchlistMetadata(item, false, null, 9_990_000L, 10_000_000L))
+        assertEquals(false, shouldAttemptWatchlistMetadata(item, false, 9_999_000L, null, 10_000_000L))
+        assertTrue(shouldAttemptWatchlistMetadata(item, false, null, 9_900_000L, 10_000_000L))
+    }
+
+    @Test
     fun watchlistGridFitsTwoPortraitPostersOnCompactScreens() {
         assertEquals(2, watchlistGridColumnCount(393, 96, 122))
         assertEquals(1, watchlistGridColumnCount(260, 96, 122))

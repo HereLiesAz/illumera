@@ -71,6 +71,7 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.queue.QueueItem
 import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.queue.QueueSection
+import kotlinx.coroutines.flow.combine
 
 /**
  * Number of fixed-width poster cards that fit in the available Watchlist viewport.
@@ -252,11 +253,17 @@ fun WatchlistScreen(
         libraryItems.filter(::shouldEnrich).associateBy(::watchlistGridMediaKey)
     }
     LaunchedEffect(viewModel.watchlistGridState, eligibleLibraryByKey) {
-        snapshotFlow {
-            viewModel.watchlistGridState.layoutInfo.visibleItemsInfo.map { it.key }
-        }.collect { visibleKeys ->
-            watchlistVisibleMetadataKeys(visibleKeys, eligibleLibraryByKey.keys)
-                .mapNotNull(eligibleLibraryByKey::get)
+        combine(
+            snapshotFlow {
+                viewModel.watchlistGridState.layoutInfo.visibleItemsInfo.map { it.key }
+            },
+            viewModel.metadataResolutionSignal
+        ) { visibleKeys, _ -> visibleKeys }.collect { visibleKeys ->
+            val eligibleNow = eligibleLibraryByKey.filterValues(
+                viewModel::canScheduleMetadataEnrichment
+            )
+            watchlistVisibleMetadataKeys(visibleKeys, eligibleNow.keys)
+                .mapNotNull(eligibleNow::get)
                 .forEach(viewModel::resolvePosterIfNeeded)
         }
     }
