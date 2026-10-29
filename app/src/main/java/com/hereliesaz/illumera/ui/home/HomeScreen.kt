@@ -580,13 +580,16 @@ fun CinematicLayout(
     // Measure the actual content viewport (the top navigation chrome may consume height)
     // instead of the configuration's entire screen, so the stage is never pushed off-screen.
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Resolve the BoxWithConstraints receiver here, before entering ColumnScope.
+        // Referencing maxHeight inside the nested Column cannot access this receiver.
+        val viewportHeight = maxHeight
         Column(modifier = Modifier.fillMaxSize()) {
             if (persistentPreview) {
                 val focused = previewFocus?.first ?: previewSeed
                 PersistentCinematicPreview(
                     item = focused?.let { state.enrichedMeta["${it.type}:${it.id}"] ?: it },
                     nextItem = previewFocus?.second,
-                    availableHeight = maxHeight,
+                    availableHeight = viewportHeight,
                     resolveTrailer = resolveTrailer,
                     autoPlayPreviews = autoPlayPreviews,
                     previewSound = previewSound,
