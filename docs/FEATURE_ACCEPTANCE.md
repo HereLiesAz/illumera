@@ -252,6 +252,13 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - Run `testDebugUnitTest testReleaseUnitTest testPlayUnitTest --continue` and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.
 
 
+## Torrin debrid and TorrentClaw integration (October 29, 2026) — validation pending
+
+- Settings → Integrations → Debrid Service offers Torrin. Validates the API key at `/rest/1.0/user`, stores it encrypted per profile, lists Torrin cloud torrents, resolves their streams through `/rest/1.0/unrestrict/link`, and deletes them using Torrin endpoints. Does not call Real-Debrid or invent RD's separate downloads list.
+- A primary Torrin connection must not inject its key into Torrentio or appear in Torrentio's native provider picker. Previously supported providers remain unchanged.
+- Settings → Integrations offers an independent TorrentClaw enable switch, off by default. Anonymous search needs no key; an optional encrypted key is sent as a bearer header, not a query string. Search merges IMDb-linked movies/series, removes duplicates and preserves addon search if TorrentClaw fails or returns 429. No magnets are automatically submitted or presented as playable URLs.
+- Profile switching isolates the TorrentClaw setting and key, and deleting the profile clears them. Tests: `DebridProvidersParsingTest`, `TorrentClawIntegrationTest` and `SearchViewModelTest`. Gradle compilation, real service credentials, TV D-pad behavior, and cold GLEE review remain release gates.
+
 ## Third-party repository management in Integrations (October 29, 2026) — TV and CI verification pending
 
 - On short-height Android TV and phone layouts, open **Settings → Integrations**: **Third-party Add-on Repositories** follows Debrid Service in the original order and is reachable by scrolling beneath other services. Up/Down traverses all integration entries; the section itself scrolls, preserving the existing Left/Back behavior.
