@@ -26,6 +26,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -80,6 +82,8 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     private val backend by lazy { GoBackend(context) }
+    // Android owns a single VPN slot. Serialize user taps and protocol switches.
+    private val connectionMutex = Mutex()
     private val tunnel = object : Tunnel {
         override fun getName() = "Illumera"
         override fun onStateChange(newState: Tunnel.State) {
@@ -193,6 +197,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     suspend fun connectWireGuard(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
         runCatching {
             check(VpnService.prepare(context) == null) { "VPN permission was not granted" }
             val text = secrets.getString(WG_PROFILE, null)
@@ -209,10 +214,12 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ERROR,
                 it.message ?: "WireGuard connection failed")
         }
+        }
     }
 
     /** Invoke only after provisionIkev2 consent has completed. */
     suspend fun connectIkev2(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
         runCatching {
             check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
             runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
@@ -228,6 +235,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }.onFailure {
             _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
                 it.message ?: "IKEv2 connection failed")
+        }
         }
     }
 
@@ -254,6 +262,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     suspend fun disconnect(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
         runCatching {
             when (_status.value.protocol) {
                 NativeVpnProtocol.WIREGUARD -> backend.setState(tunnel, Tunnel.State.DOWN, null)
@@ -264,6 +273,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }.onFailure {
             _status.value = NativeVpnStatus(_status.value.protocol, NativeVpnPhase.ERROR,
                 it.message ?: "VPN disconnect failed")
+        }
         }
     }
 
