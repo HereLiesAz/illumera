@@ -207,6 +207,9 @@ class WutchManager @Inject constructor(
         id: String, seriesImdb: String, showTitle: String?, type: String, title: String, poster: String?,
         positionMs: Long, runtimeMinutes: Int?, watchedAt: Long,
     ) {
+        // A mere remote Up Next listing or a sub-second resume marker is not a play.
+        // Match PlayerViewModel's local playback threshold to avoid phantom history.
+        if (positionMs < com.hereliesaz.illumera.data.model.MIN_CONFIRMED_PLAYBACK_MS) return
         val existing = dao.getHistoryItem(id)
         if (existing != null && existing.lastWatched >= watchedAt) return
         val duration = (runtimeMinutes ?: 0) * 60_000L
