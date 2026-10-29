@@ -24,7 +24,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -37,7 +36,6 @@ import com.hereliesaz.illumera.data.vpn.NativeVpnPhase
 import com.hereliesaz.illumera.data.vpn.NativeVpnProtocol
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
 /**
@@ -51,7 +49,6 @@ fun NativeVpnSettingsDialog(
     viewModel: NativeVpnViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val status by viewModel.status.collectAsStateWithLifecycle()
     var protocol by remember { mutableStateOf(NativeVpnProtocol.WIREGUARD) }
     var configText by remember { mutableStateOf("") }
@@ -82,20 +79,12 @@ fun NativeVpnSettingsDialog(
 
     val wireGuardConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == Activity.RESULT_OK) {
-            scope.launch {
-                viewModel.connectWireGuard().onFailure { error ->
-                    feedback = error.message.orEmpty()
-                }
-            }
+            viewModel.connectWireGuard()
         } else feedback = "Android VPN permission denied; no tunnel started"
     }
     val ikev2Consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == Activity.RESULT_OK) {
-            scope.launch {
-                viewModel.connectIkev2().onFailure { error ->
-                    feedback = error.message.orEmpty()
-                }
-            }
+            viewModel.connectIkev2()
         } else feedback = "Android VPN permission denied; no tunnel started"
     }
     val importWireGuard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -184,9 +173,7 @@ fun NativeVpnSettingsDialog(
                             check(savedWireGuard) { "Import a WireGuard profile first" }
                             val consent = viewModel.requestWireGuardConsent()
                             if (consent == null) {
-                                scope.launch {
-                                    viewModel.connectWireGuard().onFailure { feedback = it.message.orEmpty() }
-                                }
+                                viewModel.connectWireGuard()
                             } else wireGuardConsent.launch(consent)
                         }.onFailure { feedback = it.message ?: "Could not request VPN permission" }
                     },
@@ -250,9 +237,7 @@ fun NativeVpnSettingsDialog(
                             check(savedIkev2) { "Save your IKEv2 profile first" }
                             val consent = viewModel.requestIkev2Consent()
                             if (consent == null) {
-                                scope.launch {
-                                    viewModel.connectIkev2().onFailure { feedback = it.message.orEmpty() }
-                                }
+                                viewModel.connectIkev2()
                             } else ikev2Consent.launch(consent)
                         }.onFailure { feedback = it.message ?: "IKEv2 provisioning failed" }
                     }, compact = true
@@ -293,7 +278,7 @@ fun NativeVpnSettingsDialog(
             )
             if (status.phase != NativeVpnPhase.DISCONNECTED) {
                 VoidButton(text = "Disconnect VPN", onClick = {
-                    scope.launch { viewModel.disconnect().onFailure { feedback = it.message.orEmpty() } }
+                    viewModel.disconnect()
                 }, compact = true)
             }
             Spacer(Modifier.height(4.dp))
