@@ -12,6 +12,12 @@ import javax.inject.Inject
 class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManager) : ViewModel() {
     val status = manager.status
 
+    fun hasOpenVpnProfile(): Boolean = manager.hasOpenVpnProfile()
+    fun stageOpenVpnProfile(text: String) = manager.stageOpenVpnProfile(text)
+    fun hasSoftEtherProfile(): Boolean = manager.hasSoftEtherProfile()
+    fun stageSoftEtherProfile(
+        host: String, port: Int, hub: String, username: String, password: String
+    ) = manager.stageSoftEtherProfile(host, port, hub, username, password)
     fun hasWireGuardProfile(): Boolean = manager.hasWireGuardProfile()
     fun hasIkev2Profile(): Boolean = manager.hasIkev2Profile()
     fun hasIkev2Ca(): Boolean = manager.hasIkev2Ca()
