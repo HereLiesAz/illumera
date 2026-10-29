@@ -8,6 +8,7 @@ android {
     compileSdk = 37
     defaultConfig {
         minSdk = 26
+        consumerProguardFiles("../vendor/softether-android/consumer-rules.pro")
         externalNativeBuild {
             cmake {
                 cppFlags("-O2", "-fPIC", "-std=c++17")
