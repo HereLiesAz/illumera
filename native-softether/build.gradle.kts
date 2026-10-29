@@ -1,7 +1,6 @@
 // Native SoftEther SSL-VPN client code is pinned at vendor/softether-android.
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
 }
 android {
     namespace = "vn.unlimit.softether"
