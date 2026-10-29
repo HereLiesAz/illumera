@@ -1533,8 +1533,13 @@ class HomeViewModel @Inject constructor(
                 null
             }
 
-            // Load History + Series Next Up only for Home
+            // Remove legacy fake history at the source (including currently active
+            // profiles), not merely from the UI. The profile lock prevents cleanup
+            // accidentally touching another profile during rapid switching.
             if (screenName == "home") {
+                profileConfigurationManager.withActiveProfileRuntime(currentProfileId) {
+                    dao.pruneUnplayedHistory()
+                }
                 launch {
                     dao.getWatchHistory().collect { history ->
                         _state.update { it.copy(history = history) }
