@@ -134,8 +134,8 @@ class NativeVpnConfigTest {
         val enabled = NativeVpnProtocol.entries.filter { it.ready }.map { it.label }
         assertEquals(
             listOf("WireGuard", "IKEv2/IPsec · strongSwan / Libreswan",
-                "OpenVPN"), enabled
+                "OpenVPN", "SoftEther SSL-VPN"), enabled
         )
-        assertEquals(false, NativeVpnProtocol.SOFTETHER.ready)
+        assertEquals(true, NativeVpnProtocol.SOFTETHER.ready)
     }
 }

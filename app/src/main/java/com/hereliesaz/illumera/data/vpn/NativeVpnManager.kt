@@ -45,8 +45,8 @@ enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
     WIREGUARD("WireGuard", true),
     IKEV2("IKEv2/IPsec · strongSwan / Libreswan", true),
     OPENVPN("OpenVPN", true),
-    // Never expose a CONNECT action until the engine verifies the configured server.
-    SOFTETHER("SoftEther SSL-VPN", false)
+    // Hardened native TLS compares the administrator-supplied SHA-256 cert pin.
+    SOFTETHER("SoftEther SSL-VPN", true)
 }
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
@@ -168,13 +168,20 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     fun hasSoftEtherProfile(): Boolean =
-        runCatching { !secrets.getString(SOFTETHER_HOST, null).isNullOrBlank() }.getOrDefault(false)
+        runCatching {
+            !secrets.getString(SOFTETHER_HOST, null).isNullOrBlank() &&
+                normalizedSoftEtherCertPin(secrets.getString(SOFTETHER_TLS_CERT_SHA256, null).orEmpty()) != null
+        }.getOrDefault(false)
 
     fun stageSoftEtherProfile(
-        host: String, port: Int, hub: String, username: String, password: String
+        host: String, port: Int, hub: String, username: String, password: String,
+        serverCertSha256: String
     ): Result<Unit> = runCatching {
         validateSoftEtherProfile(host, port, hub, username, password)?.let { error(it) }
+        val fingerprint = normalizedSoftEtherCertPin(serverCertSha256)
+            ?: error("Enter the trusted SoftEther TLS server certificate SHA-256 fingerprint")
         check(secrets.edit()
+            .putString(SOFTETHER_TLS_CERT_SHA256, fingerprint)
             .putString(SOFTETHER_HOST, host.trim())
             .putInt(SOFTETHER_PORT, port)
             .putString(SOFTETHER_HUB, hub.trim())
@@ -460,13 +467,16 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
                 val hub = prefs.getString(SOFTETHER_HUB, null).orEmpty()
                 val user = prefs.getString(SOFTETHER_USER, null).orEmpty()
                 val password = prefs.getString(SOFTETHER_PASSWORD, null).orEmpty()
+                val pin = normalizedSoftEtherCertPin(
+                    prefs.getString(SOFTETHER_TLS_CERT_SHA256, null).orEmpty()
+                ) ?: error("Trusted SoftEther TLS certificate fingerprint is missing or invalid")
                 check(VpnService.prepare(context) == null) { "Android VPN permission required" }
                 runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
                 stopIkev2IfRunning()
                 stopEmbeddedIfRunning()
                 _status.value = NativeVpnStatus(NativeVpnProtocol.SOFTETHER, NativeVpnPhase.CONNECTING,
                     "Starting native SoftEther TLS tunnel")
-                embedded.connectSoftEther(host, port, hub, user, password)
+                embedded.connectSoftEther(host, port, hub, user, password, pin)
             }.onFailure {
                 _status.value = NativeVpnStatus(NativeVpnProtocol.SOFTETHER, NativeVpnPhase.ERROR,
                     it.message ?: "SoftEther connection failed")
@@ -516,6 +526,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         const val SOFTETHER_HUB = "softether_hub_staged"
         const val SOFTETHER_USER = "softether_user_staged"
         const val SOFTETHER_PASSWORD = "softether_password_staged"
+        const val SOFTETHER_TLS_CERT_SHA256 = "softether_server_tls_cert_sha256"
         const val IKEV2_SERVER = "ikev2_server"
         const val IKEV2_IDENTITY = "ikev2_remote_identity"
         const val IKEV2_USER = "ikev2_username"

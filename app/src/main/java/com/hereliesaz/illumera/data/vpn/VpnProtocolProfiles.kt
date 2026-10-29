@@ -85,3 +85,11 @@ internal fun validateSoftEtherProfile(
     if (username.isBlank() || password.isBlank()) return "SoftEther username and password are required"
     return null
 }
+
+/** Exact SHA-256 leaf X.509 DER fingerprint, supplied by the server administrator.
+ * Colons are allowed for human-readable display; never learn trust from the live TLS socket.
+ */
+internal fun normalizedSoftEtherCertPin(input: String): String? {
+    val pin = input.trim().replace(":", "").lowercase(java.util.Locale.ROOT)
+    return pin.takeIf { it.length == 64 && it.all { c -> c in '0'..'9' || c in 'a'..'f' } }
+}

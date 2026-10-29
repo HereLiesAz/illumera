@@ -65,9 +65,22 @@ class VpnProtocolProfilesTest {
     }
 
     @Test
+    fun softEtherPinMustBeOutOfBandSha256NotArbitraryTlsFingerprint() {
+        val pin = "0123456789abcdef".repeat(4)
+        assertEquals(pin, normalizedSoftEtherCertPin(pin))
+        assertEquals(pin, normalizedSoftEtherCertPin(
+            pin.chunked(2).joinToString(":").uppercase()
+        ))
+        assertEquals(null, normalizedSoftEtherCertPin(""))
+        assertEquals(null, normalizedSoftEtherCertPin("A".repeat(63)))
+        assertEquals(null, normalizedSoftEtherCertPin("G".repeat(64)))
+        assertEquals(null, normalizedSoftEtherCertPin("0".repeat(65)))
+    }
+
+    @Test
     fun protocolReadinessRequiresRealNativeEngine() {
         assertTrue(NativeVpnProtocol.OPENVPN.ready)
-        assertFalse(NativeVpnProtocol.SOFTETHER.ready)
+        assertTrue(NativeVpnProtocol.SOFTETHER.ready)
         assertTrue(NativeVpnProtocol.WIREGUARD.ready)
         assertTrue(NativeVpnProtocol.IKEV2.ready)
     }
