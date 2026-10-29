@@ -10,6 +10,7 @@ import android.net.VpnManager
 import android.net.VpnProfileState
 import android.net.VpnService
 import android.os.Build
+import android.util.Base64
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.wireguard.android.backend.GoBackend
@@ -18,6 +19,8 @@ import com.wireguard.config.Config
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -95,6 +98,27 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     fun hasIkev2Profile(): Boolean =
         runCatching { !secrets.getString(IKEV2_SERVER, null).isNullOrBlank() }.getOrDefault(false)
 
+    fun hasIkev2Ca(): Boolean =
+        runCatching { !secrets.getString(IKEV2_CA, null).isNullOrBlank() }.getOrDefault(false)
+
+    /**
+     * Accept PEM or DER X.509 server CA certificates. A private CA is common on self-hosted
+     * strongSwan/Libreswan servers. Never disable server identity/certificate validation.
+     */
+    fun saveIkev2Ca(bytes: ByteArray): Result<Unit> = runCatching {
+        require(bytes.isNotEmpty() && bytes.size <= 65536) { "CA certificate must be 1–64 KiB" }
+        val cert = CertificateFactory.getInstance("X.509")
+            .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+        require(cert.basicConstraints >= 0) { "Expected an X.509 CA certificate" }
+        cert.checkValidity()
+        check(secrets.edit().putString(IKEV2_CA, Base64.encodeToString(bytes, Base64.NO_WRAP))
+            .commit()) { "Unable to store encrypted CA certificate" }
+    }
+
+    fun clearIkev2Ca() {
+        runCatching { secrets.edit().remove(IKEV2_CA).commit() }
+    }
+
     /** Config.parse checks WireGuard key formats, interface addresses and peers before saving. */
     fun saveWireGuardProfile(text: String): Result<Unit> = runCatching {
         require(text.isNotBlank()) { "Paste or import a WireGuard .conf first" }
@@ -133,8 +157,16 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         val user = prefs.getString(IKEV2_USER, null).orEmpty()
         val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
         validateIkev2Inputs(server, identity, user, password)?.let { error(it) }
+        val serverRootCa = prefs.getString(IKEV2_CA, null)?.let { encoded ->
+            val bytes = Base64.decode(encoded, Base64.DEFAULT)
+            val cert = CertificateFactory.getInstance("X.509")
+                .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+            require(cert.basicConstraints >= 0) { "Stored server certificate is not a CA" }
+            cert.checkValidity()
+            cert
+        }
         val profile = Ikev2VpnProfile.Builder(server, identity)
-            .setAuthUsernamePassword(user, password, null)
+            .setAuthUsernamePassword(user, password, serverRootCa)
             .build()
         return context.getSystemService(VpnManager::class.java).provisionVpnProfile(profile)
     }
@@ -226,5 +258,6 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         const val IKEV2_IDENTITY = "ikev2_remote_identity"
         const val IKEV2_USER = "ikev2_username"
         const val IKEV2_PASSWORD = "ikev2_password"
+        const val IKEV2_CA = "ikev2_root_ca"
     }
 }
