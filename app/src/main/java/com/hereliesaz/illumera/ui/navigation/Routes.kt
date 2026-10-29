@@ -299,12 +299,13 @@ object BackStackOps {
     ) {
         val nextInstance = (stack.filterIsInstance<DetailsKey>().maxOfOrNull { it.instance } ?: -1) + 1
         returnFromPlayer(stack)
+        // Also collapse stacks saved by older builds, where several queue-generated
+        // Details entries could remain after consecutive hand-offs.
+        while ((stack.lastOrNull() as? DetailsKey)?.queueAutoPlayId != null) {
+            stack.removeAt(stack.lastIndex)
+        }
         val previous = stack.lastOrNull() as? DetailsKey
-        if (previous != null && (
-                previous.queueAutoPlayId != null ||
-                    (previous.type == type && previous.id == id)
-            )
-        ) {
+        if (previous != null && previous.type == type && previous.id == id) {
             stack.removeAt(stack.lastIndex)
         }
         openDetails(
