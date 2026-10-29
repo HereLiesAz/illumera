@@ -129,6 +129,34 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }
     }
 
+    /** Staging is intentionally separate from a connection; native engines are not shipped. */
+    fun hasOpenVpnProfile(): Boolean =
+        runCatching { !secrets.getString(OPENVPN_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun stageOpenVpnProfile(text: String): Result<OpenVpnProfileSummary> = runCatching {
+        val summary = inspectOpenVpnProfile(text).getOrThrow()
+        check(secrets.edit().putString(OPENVPN_PROFILE, text).commit()) {
+            "Could not encrypt staged OpenVPN profile"
+        }
+        summary
+    }
+
+    fun hasSoftEtherProfile(): Boolean =
+        runCatching { !secrets.getString(SOFTETHER_HOST, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun stageSoftEtherProfile(
+        host: String, port: Int, hub: String, username: String, password: String
+    ): Result<Unit> = runCatching {
+        validateSoftEtherProfile(host, port, hub, username, password)?.let { error(it) }
+        check(secrets.edit()
+            .putString(SOFTETHER_HOST, host.trim())
+            .putInt(SOFTETHER_PORT, port)
+            .putString(SOFTETHER_HUB, hub.trim())
+            .putString(SOFTETHER_USER, username)
+            .putString(SOFTETHER_PASSWORD, password)
+            .commit()) { "Could not encrypt staged SoftEther profile" }
+    }
+
     fun hasWireGuardProfile(): Boolean =
         runCatching { !secrets.getString(WG_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
 
@@ -377,6 +405,12 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     private companion object {
         const val WG_PROFILE = "wireguard_profile"
+        const val OPENVPN_PROFILE = "openvpn_profile_staged"
+        const val SOFTETHER_HOST = "softether_host_staged"
+        const val SOFTETHER_PORT = "softether_port_staged"
+        const val SOFTETHER_HUB = "softether_hub_staged"
+        const val SOFTETHER_USER = "softether_user_staged"
+        const val SOFTETHER_PASSWORD = "softether_password_staged"
         const val IKEV2_SERVER = "ikev2_server"
         const val IKEV2_IDENTITY = "ikev2_remote_identity"
         const val IKEV2_USER = "ikev2_username"
