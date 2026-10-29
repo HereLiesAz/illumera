@@ -289,7 +289,7 @@ fun IntegrationsScreen(
             subtitle = when (nativeVpnStatus.phase) {
                 NativeVpnPhase.DISCONNECTED -> "WireGuard · IKEv2/IPsec · other protocol engines pending"
                 NativeVpnPhase.CONNECTING -> "VPN session requested"
-                NativeVpnPhase.ACTIVE -> "WireGuard interface active"
+                NativeVpnPhase.ACTIVE -> nativeVpnStatus.protocol?.let { "${it.label} active" } ?: "VPN active"
                 NativeVpnPhase.ERROR -> "VPN error · open settings"
             },
             isConnected = nativeVpnStatus.phase == NativeVpnPhase.ACTIVE,
