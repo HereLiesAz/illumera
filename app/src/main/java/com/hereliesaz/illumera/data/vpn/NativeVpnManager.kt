@@ -279,7 +279,12 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         val server = prefs.getString(IKEV2_SERVER, null).orEmpty()
         val identity = prefs.getString(IKEV2_IDENTITY, null).orEmpty()
         validateIkev2Server(server, identity)?.let { error(it) }
-        val serverRootCa = prefs.getString(IKEV2_CA, null)?.let { encoded ->
+        val mode = ikev2AuthMode()
+        // PSK authentication does not use X.509 roots. Do not let an expired staged
+        // CA prevent a perfectly valid PSK profile from being provisioned.
+        val serverRootCa = prefs.getString(IKEV2_CA, null)
+            ?.takeIf { mode != Ikev2AuthMode.PSK }
+            ?.let { encoded ->
             val bytes = Base64.decode(encoded, Base64.DEFAULT)
             val cert = CertificateFactory.getInstance("X.509")
                 .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
@@ -288,7 +293,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             cert
         }
         val builder = Ikev2VpnProfile.Builder(server, identity)
-        when (ikev2AuthMode()) {
+        when (mode) {
             Ikev2AuthMode.EAP -> {
                 val user = prefs.getString(IKEV2_USER, null).orEmpty()
                 val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
