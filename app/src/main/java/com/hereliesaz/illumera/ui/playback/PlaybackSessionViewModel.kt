@@ -968,10 +968,11 @@ class PlaybackSessionViewModel @Inject constructor(
 
     /**
      * The viewer left the player. Settles the session's remembered tracks and source, stops
-     * the torrent and the session's jobs, then returns to Details or, after a finished
-     * playback with the queue on, opens the queue's next item.
+     * the torrent and the session's jobs, then returns to Details. Only an automatic
+     * completion can advance the queue; an explicit exit must not silently start the next
+     * title merely because the previous one reached the watched threshold.
      */
-    fun end(sessionResult: PlayerSessionResult, profile: ProfileEntity?) {
+    fun end(sessionResult: PlayerSessionResult, profile: ProfileEntity?, advanceQueue: Boolean = false) {
         cancelBackgroundWork()
         torrentProgress = null
         playbackStatus = null
@@ -979,7 +980,7 @@ class PlaybackSessionViewModel @Inject constructor(
         stopTorrent()
         if (selectedPlaybackId.startsWith("trailer_")) {
             navChannel.trySend(PlaybackNav.ReturnFromPlayer(trailerEnded = true))
-        } else if (sessionResult.isCompleted && queueManager.state.value.preferences.enabled) {
+        } else if (advanceQueue && sessionResult.isCompleted && queueManager.state.value.preferences.enabled) {
             val next = queueManager.advanceAfterPlayback(selectedPlaybackId)
             if (next != null) {
                 val movieType = if (next.type == "movie") "movie" else "series"
