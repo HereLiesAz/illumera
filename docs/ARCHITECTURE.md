@@ -153,6 +153,16 @@ manifest, from phone to TV), `HubBulkUploadServer` and `AvatarUploadServer`
 token, proving the phone actually scanned the QR code first.
 
 
+## Watch-history provenance and unplayed-bookmark protection (October 29, 2026)
+
+The single source of truth for whether a history row represents a real play is `WatchHistoryEntity.hasPlaybackEvidence()`: `watched=true` (explicitly marked watched or completed) or at least 5,000 ms of measured position. **A Stremio Library item is not a playback event.** `StremioLibrarySyncManager` now creates Watchlist bookmarks independently but cannot write watch-history rows for a zero-progress/zero-count state or use a newer bookmark modification time to overwrite legitimate local playback. It honors `timesWatched` and `flaggedWatched` for explicit completion. The Stremio outbound library view still syncs unplayed bookmarks, but takes only playback-confirmed history to prevent snapshot/sync feedback loops.
+
+`TraktSyncManager` no longer manufactures `WatchHistoryEntity(position=0, duration=0)` for percentage-only `/sync/playback` entries; without an actual duration those placeholders cannot support accurate resume or prove a local play. Trakt's explicit watched-history and local scrobble reconciliation remain supported. Wutch Up Next requires measured resume progress for an in-progress row or an actual last-watched timestamp for a Next Up series row. The player retains its independent 5-second persistence threshold.
+
+Continue Watching, `SimilarTitlesEngine` (More Like This / Because You Watched), history-only Watchlist Library entries, and history-based Queue suggestions all apply the same evidence rule. For existing installations, `AddonDao.pruneUnplayedHistory()` removes legacy unplayed rows on the Home load under the active-profile runtime lock; `replaceRuntimeState` filters both incoming snapshots and live same-profile merges, and `captureRuntimeSnapshot` saves only confirmed entries. No bookmark is removed, and explicitly watched entries with unknown duration remain valid. A future imported title can enter history normally once actual playback occurs.
+
+**Validation:** regression tests for unplayed Stremio bookmark import, newer metadata not overwriting measured playback, 0/0 cleanup without losing saved bookmarks or watched markers, snapshot non-resurrection, and Continue Watching rejection. Physical device and connected-account checks remain pending.
+
 ## Watchlist and Stremio Library
 
 The main Android Watchlist is a vertically scrolling viewing surface: Suggested Next with an adjacent refresh control is first, the manually managed Queue is beneath it, and the mixed Movies & Series Library is a responsive portrait-poster grid. `WatchlistEntity` bookmarks and active `WatchHistoryEntity` entries are merged and deduplicated by media type, canonical IMDb ID, or title/year when one side has a non-IMDb ID. Episode history collapses to the parent series ID, while different movie/series adaptations remain separate. Compact Library sorting chips are directly above the grid without dropdown menus; sort selection remains per-profile in `illumera_watchlist_ui`. All queue configuration toggles (enabled, movies, episodes, whole shows, suggestion sources, unseen-only) are under Settings → Watchlist; the refresh action stays beside Suggested Next.
