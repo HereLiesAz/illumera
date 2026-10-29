@@ -289,6 +289,8 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     // Apache-2.0 WireGuard GoBackend: merges its VpnService and native tunnel engine.
     implementation(libs.wireguard.tunnel)
+    implementation(project(":native-openvpn"))
+    implementation(project(":native-softether"))
     implementation(libs.acra.http)
     implementation(libs.acra.toast)
 }
