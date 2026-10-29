@@ -1007,6 +1007,11 @@ class PlaybackSessionViewModel @Inject constructor(
                 navChannel.trySend(PlaybackNav.ReturnFromPlayer())
             }
         } else {
+            // Exiting explicitly also retires this queue playback session. A later manual
+            // Play is a new session and must not inherit a stale queue autoplay flag.
+            queueStartPending = false
+            queuePlaybackActive = false
+            queueWholeShowActive = false
             navChannel.trySend(PlaybackNav.ReturnFromPlayer())
         }
     }
