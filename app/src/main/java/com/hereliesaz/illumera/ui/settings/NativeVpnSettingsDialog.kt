@@ -65,6 +65,8 @@ fun NativeVpnSettingsDialog(
     var savedIkev2Ca by remember { mutableStateOf(viewModel.hasIkev2Ca()) }
     val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(210.dp)
 
+    LaunchedEffect(Unit) { viewModel.refreshIkev2Status() }
+
     // The OS, not our button callback, decides whether a platform IKEv2 tunnel is
     // actually connected. On Android 13+ poll its real state while the dialog is open.
     LaunchedEffect(status.protocol, status.phase) {
