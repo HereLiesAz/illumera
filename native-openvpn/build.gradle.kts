@@ -17,12 +17,12 @@ android {
     // The sourceSets block overload uses the corrected DSL type (Issue #550220873).
     sourceSets {
         named("main").configure {
-        manifest.srcFile("../native-openvpn/AndroidManifest.xml")
-        java.srcDirs("../vendor/openvpn-android/src/main/java")
-        res.srcDirs("../vendor/openvpn-android/src/main/res")
-        assets.srcDirs("../vendor/openvpn-android/src/main/assets")
-        jniLibs.srcDirs("../vendor/openvpn-android/src/main/jniLibs")
-        aidl.srcDirs("../vendor/openvpn-android/src/main/aidl")
+            manifest.srcFile("../native-openvpn/AndroidManifest.xml")
+            java.srcDirs("../vendor/openvpn-android/src/main/java")
+            res.srcDirs("../vendor/openvpn-android/src/main/res")
+            assets.srcDirs("../vendor/openvpn-android/src/main/assets")
+            jniLibs.srcDirs("../vendor/openvpn-android/src/main/jniLibs")
+            aidl.srcDirs("../vendor/openvpn-android/src/main/aidl")
         }
     }
     compileOptions {
