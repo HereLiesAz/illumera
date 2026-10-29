@@ -29,7 +29,9 @@ data class TorrentioConfig(
         if (excludedQualities.isNotEmpty()) add("qualityfilter=" + QUALITY_FILTERS.map { it.first }.filter { it in excludedQualities }.joinToString(","))
         limit?.let { add("limit=$it") }
         val key = debridKey.trim()
-        if (debridProvider != null && key.isNotEmpty()) {
+        // Torrentio has no Torrin-specific config token. Never embed a Torrin key
+        // in an invented provider field or send it to an unrelated provider.
+        if (debridProvider != null && debridProvider != DebridProvider.TORRIN && key.isNotEmpty()) {
             val options = listOfNotNull(
                 "nodownloadlinks".takeIf { noDownloadLinks },
                 "nocatalog".takeIf { noDebridCatalog }
@@ -86,6 +88,7 @@ data class TorrentioConfig(
             DebridProvider.EASY_DEBRID -> "easydebrid"
             DebridProvider.OFFCLOUD -> "offcloud"
             DebridProvider.TORBOX -> "torbox"
+            DebridProvider.TORRIN -> "torrin" // Not supported by Torrentio; excluded by callers.
         }
 
         fun isTorrentio(url: String): Boolean =
