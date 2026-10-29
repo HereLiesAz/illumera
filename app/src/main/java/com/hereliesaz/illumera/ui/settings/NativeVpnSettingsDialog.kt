@@ -36,6 +36,7 @@ import com.hereliesaz.illumera.data.vpn.NativeVpnProtocol
 import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * One Settings surface for supported native VPN engines. Never advertises an unimplemented
