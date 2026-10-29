@@ -109,135 +109,135 @@ fun ThemeScreen(
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "theme_controls") {
             Column {
-        // Header
-        Text(
-            "Theme",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            "Choose a color scheme for your experience.",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
-            modifier = Modifier.padding(top = 4.dp)
-        )
+                // Header
+                Text(
+                    "Theme",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    "Choose a color scheme for your experience.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
 
-        Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-        // Block Up navigation when top nav is active
-        val upBlockModifier = Modifier.onPreviewKeyEvent {
-            if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
-                true // Consume the event to block focus escape
-            } else false
-        }
+                // Block Up navigation when top nav is active
+                val upBlockModifier = Modifier.onPreviewKeyEvent {
+                    if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
+                        true // Consume the event to block focus escape
+                    } else false
+                }
 
-        // --- TABS (Same style as Screen Editor) ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (isCompactTheme) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
-                .onFocusChanged { isAnyTabFocused = it.hasFocus },
-            horizontalArrangement = if (isCompactTheme) Arrangement.spacedBy(8.dp) else Arrangement.Center
-        ) {
-            VoidTabBtn(
-                label = "All Themes",
-                isSelected = selectedTab == "all",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "all" },
-                modifier = Modifier
-                    .width(110.dp)
-                    .focusRequester(allTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "all" }
-                    .then(goBackModifier) // Only first tab goes back
-                    .then(upBlockModifier)
-            )
+                // --- TABS (Same style as Screen Editor) ---
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (isCompactTheme) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                        .onFocusChanged { isAnyTabFocused = it.hasFocus },
+                    horizontalArrangement = if (isCompactTheme) Arrangement.spacedBy(8.dp) else Arrangement.Center
+                ) {
+                    VoidTabBtn(
+                        label = "All Themes",
+                        isSelected = selectedTab == "all",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "all" },
+                        modifier = Modifier
+                            .width(110.dp)
+                            .focusRequester(allTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "all" }
+                            .then(goBackModifier) // Only first tab goes back
+                            .then(upBlockModifier)
+                    )
 
-            VoidTabBtn(
-                label = "Dark",
-                isSelected = selectedTab == "dark",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "dark" },
-                modifier = Modifier
-                    .width(80.dp)
-                    .focusRequester(darkTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "dark" }
-                    .then(upBlockModifier)
-            )
+                    VoidTabBtn(
+                        label = "Dark",
+                        isSelected = selectedTab == "dark",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "dark" },
+                        modifier = Modifier
+                            .width(80.dp)
+                            .focusRequester(darkTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "dark" }
+                            .then(upBlockModifier)
+                    )
 
-            VoidTabBtn(
-                label = "Colorful",
-                isSelected = selectedTab == "colorful",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "colorful" },
-                modifier = Modifier
-                    .width(100.dp)
-                    .focusRequester(colorfulTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "colorful" }
-                    .then(upBlockModifier)
-            )
+                    VoidTabBtn(
+                        label = "Colorful",
+                        isSelected = selectedTab == "colorful",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "colorful" },
+                        modifier = Modifier
+                            .width(100.dp)
+                            .focusRequester(colorfulTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "colorful" }
+                            .then(upBlockModifier)
+                    )
 
-            VoidTabBtn(
-                label = "My Themes",
-                isSelected = selectedTab == "custom",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "custom" },
-                modifier = Modifier
-                    .width(110.dp)
-                    .focusRequester(customTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "custom" }
-                    .then(upBlockModifier)
-            )
-        }
+                    VoidTabBtn(
+                        label = "My Themes",
+                        isSelected = selectedTab == "custom",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "custom" },
+                        modifier = Modifier
+                            .width(110.dp)
+                            .focusRequester(customTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "custom" }
+                            .then(upBlockModifier)
+                    )
+                }
 
-        Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-        // --- ADD BUTTON ---
-        ThemeAddButton(
-            onClick = onCreateCustom,
-            modifier = Modifier.onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown) {
-                    when (it.key) {
-                        Key.DirectionLeft -> { onBack(); true }
-                        Key.DirectionUp -> {
-                            // Smart jump to active tab
-                            when (selectedTab) {
-                                "all" -> allTabReq.requestFocus()
-                                "dark" -> darkTabReq.requestFocus()
-                                "colorful" -> colorfulTabReq.requestFocus()
-                                "custom" -> customTabReq.requestFocus()
+                // --- ADD BUTTON ---
+                ThemeAddButton(
+                    onClick = onCreateCustom,
+                    modifier = Modifier.onPreviewKeyEvent {
+                        if (it.type == KeyEventType.KeyDown) {
+                            when (it.key) {
+                                Key.DirectionLeft -> { onBack(); true }
+                                Key.DirectionUp -> {
+                                    // Smart jump to active tab
+                                    when (selectedTab) {
+                                        "all" -> allTabReq.requestFocus()
+                                        "dark" -> darkTabReq.requestFocus()
+                                        "colorful" -> colorfulTabReq.requestFocus()
+                                        "custom" -> customTabReq.requestFocus()
+                                    }
+                                    true
+                                }
+                                else -> false
                             }
-                            true
-                        }
-                        else -> false
+                        } else false
                     }
-                } else false
-            }
-        )
+                )
 
-        Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-        // --- THEME GRID ---
-        // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
-        // gap) below its content width on a phone screen; drop to 2 columns there. The
-        // column count feeds the left-edge (D-pad back) check below so it stays correct.
+                // --- THEME GRID ---
+                // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
+                // gap) below its content width on a phone screen; drop to 2 columns there. The
+                // column count feeds the left-edge (D-pad back) check below so it stays correct.
             } // Header and toolbar are part of the same scroll container.
         }
         items(filteredThemes, key = { "theme:${it.id}" }) { theme ->
-                val isFirst = filteredThemes.indexOf(theme) == 0
-                // Only first column items should go back on Left
-                val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
+            val isFirst = filteredThemes.indexOf(theme) == 0
+            // Only first column items should go back on Left
+            val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
                 
-                ThemeCard(
-                    theme = theme,
-                    isSelected = currentTheme.id == theme.id,
-                    focusRequester = if (isFirst) firstCardReq else null,
-                    modifier = if (isLeftEdge) goBackModifier else Modifier,
-                    onClick = {
-                        themeManager.selectTheme(currentProfile.id, theme.id)
-                    },
-                    onPenClick = if (!theme.isBuiltIn) {{ themeToManage = theme }} else null
-                )
-            }
+            ThemeCard(
+                theme = theme,
+                isSelected = currentTheme.id == theme.id,
+                focusRequester = if (isFirst) firstCardReq else null,
+                modifier = if (isLeftEdge) goBackModifier else Modifier,
+                onClick = {
+                    themeManager.selectTheme(currentProfile.id, theme.id)
+                },
+                onPenClick = if (!theme.isBuiltIn) {{ themeToManage = theme }} else null
+            )
+        }
     }
 
     // --- MANAGE THEME DIALOG ---
