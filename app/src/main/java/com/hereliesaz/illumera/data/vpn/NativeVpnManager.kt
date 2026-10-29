@@ -213,7 +213,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             }.onFailure {
                 _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ERROR,
                     it.message ?: "WireGuard connection failed")
-        }
+            }
         }
     }
 
@@ -235,7 +235,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             }.onFailure {
                 _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
                     it.message ?: "IKEv2 connection failed")
-        }
+            }
         }
     }
 
@@ -273,7 +273,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             }.onFailure {
                 _status.value = NativeVpnStatus(_status.value.protocol, NativeVpnPhase.ERROR,
                     it.message ?: "VPN disconnect failed")
-        }
+            }
         }
     }
 
