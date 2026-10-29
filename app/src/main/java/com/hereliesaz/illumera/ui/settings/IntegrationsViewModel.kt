@@ -632,9 +632,9 @@ class IntegrationsViewModel @Inject constructor(
         debridManager.setPrimary(provider)
     }
 
-    // ── wutch.tv ──
+    // ── TorrentClaw ──
 
-    /** Signs in with email and password, or with [apiKey] when given, then imports. */
+    /** Re-read the active profile's TorrentClaw settings after a change or profile switch. */
     private fun refreshTorrentClaw() {
         _uiState.update {
             it.copy(
@@ -661,6 +661,9 @@ class IntegrationsViewModel @Inject constructor(
         refreshTorrentClaw()
     }
 
+    // ── wutch.tv ──
+
+    /** Signs in with email and password, or with [apiKey] when given, then imports. */
     fun connectWutch(email: String, password: String, apiKey: String?) {
         if (_uiState.value.wutchBusy) return
         viewModelScope.launch {
