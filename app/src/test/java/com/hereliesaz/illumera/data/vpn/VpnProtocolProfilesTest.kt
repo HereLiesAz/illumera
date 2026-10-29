@@ -45,6 +45,8 @@ class VpnProtocolProfilesTest {
     @Test
     fun refusesInvalidRemoteOrOversizedOpenVpnProfile() {
         assertTrue(inspectOpenVpnProfile(safeOpenVpn.replace("1194", "65536")).isFailure)
+        assertTrue(inspectOpenVpnProfile(safeOpenVpn.replace("1194", "not-a-port")).isFailure)
+        assertTrue(inspectOpenVpnProfile("$safeOpenVpn\nauth-user-pass /tmp/creds").isFailure)
         assertTrue(inspectOpenVpnProfile(safeOpenVpn.replace("vpn.example.org", "http://example.org")).isFailure)
         assertTrue(inspectOpenVpnProfile(safeOpenVpn + "\n" + "X".repeat(131072)).isFailure)
     }
