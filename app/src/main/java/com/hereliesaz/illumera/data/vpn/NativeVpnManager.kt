@@ -19,6 +19,10 @@ import com.wireguard.config.Config
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import java.security.PrivateKey
+import java.security.interfaces.RSAPrivateKey
+import java.security.interfaces.RSAPublicKey
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.inject.Inject
@@ -45,21 +49,31 @@ enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
 
+/** Native Android IKEv2 authentication modes (API 30+). */
+enum class Ikev2AuthMode(val label: String) {
+    EAP("Username / Password (EAP)"),
+    PSK("Pre-shared key (PSK)"),
+    CERTIFICATE("Client certificate (PKCS#12)")
+}
+
+internal fun validateIkev2Server(server: String, clientIdentity: String): String? {
+    if (server.isBlank() || clientIdentity.isBlank()) return "Server and local IKE identity are required"
+    if (server.contains("://") || server.any { it.isWhitespace() || it == '/' || it == '@' }) {
+        return "Enter a hostname or IP address, not a URL"
+    }
+    return null
+}
+
 data class NativeVpnStatus(
     val protocol: NativeVpnProtocol? = null,
     val phase: NativeVpnPhase = NativeVpnPhase.DISCONNECTED,
     val message: String = ""
 )
 
-/** Validate remote IKEv2 configuration before provisioning the device VPN profile. */
-internal fun validateIkev2Inputs(server: String, identity: String, username: String, password: String): String? {
-    if (server.isBlank() || identity.isBlank()) return "Server and remote identity are required"
-    if (server.contains("://") || server.any { it.isWhitespace() || it == '/' || it == '@' }) {
-        return "Enter a hostname or IP address, not a URL"
-    }
-    if (username.isBlank() || password.isBlank()) return "Username and password are required"
-    return null
-}
+/** EAP-MSCHAPv2 uses the provided *local* client IKE identity, not a remote server ID. */
+internal fun validateIkev2Inputs(server: String, identity: String, username: String, password: String): String? =
+    validateIkev2Server(server, identity)
+        ?: if (username.isBlank() || password.isBlank()) "Username and password are required" else null
 
 /**
  * Device-wide, user-initiated VPN connections. Config and credentials are encrypted at rest.
@@ -117,11 +131,46 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }
     }
 
+    /** Staging is intentionally separate from a connection; native engines are not shipped. */
+    fun hasOpenVpnProfile(): Boolean =
+        runCatching { !secrets.getString(OPENVPN_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun stageOpenVpnProfile(text: String): Result<OpenVpnProfileSummary> = runCatching {
+        val summary = inspectOpenVpnProfile(text).getOrThrow()
+        check(secrets.edit().putString(OPENVPN_PROFILE, text).commit()) {
+            "Could not encrypt staged OpenVPN profile"
+        }
+        summary
+    }
+
+    fun hasSoftEtherProfile(): Boolean =
+        runCatching { !secrets.getString(SOFTETHER_HOST, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun stageSoftEtherProfile(
+        host: String, port: Int, hub: String, username: String, password: String
+    ): Result<Unit> = runCatching {
+        validateSoftEtherProfile(host, port, hub, username, password)?.let { error(it) }
+        check(secrets.edit()
+            .putString(SOFTETHER_HOST, host.trim())
+            .putInt(SOFTETHER_PORT, port)
+            .putString(SOFTETHER_HUB, hub.trim())
+            .putString(SOFTETHER_USER, username)
+            .putString(SOFTETHER_PASSWORD, password)
+            .commit()) { "Could not encrypt staged SoftEther profile" }
+    }
+
     fun hasWireGuardProfile(): Boolean =
         runCatching { !secrets.getString(WG_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
 
     fun hasIkev2Profile(): Boolean =
         runCatching { !secrets.getString(IKEV2_SERVER, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun ikev2AuthMode(): Ikev2AuthMode =
+        runCatching {
+            Ikev2AuthMode.entries.firstOrNull {
+                it.name == secrets.getString(IKEV2_AUTH_MODE, Ikev2AuthMode.EAP.name)
+            } ?: Ikev2AuthMode.EAP
+        }.getOrDefault(Ikev2AuthMode.EAP)
 
     fun hasIkev2Ca(): Boolean =
         runCatching { !secrets.getString(IKEV2_CA, null).isNullOrBlank() }.getOrDefault(false)
@@ -147,6 +196,9 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     /** Config.parse checks WireGuard key formats, interface addresses and peers before saving. */
     fun saveWireGuardProfile(text: String): Result<Unit> = runCatching {
         require(text.isNotBlank()) { "Paste or import a WireGuard .conf first" }
+        require(text.toByteArray(StandardCharsets.UTF_8).size <= 131072) {
+            "WireGuard configuration exceeds 128 KiB"
+        }
         Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
         check(secrets.edit().putString(WG_PROFILE, text).commit()) { "Could not store encrypted VPN profile" }
     }
@@ -161,8 +213,65 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
                 .putString(IKEV2_IDENTITY, identity.trim())
                 .putString(IKEV2_USER, username.trim())
                 .putString(IKEV2_PASSWORD, password)
+                .putString(IKEV2_AUTH_MODE, Ikev2AuthMode.EAP.name)
+                .remove(IKEV2_PSK)
+                .remove(IKEV2_PKCS12)
+                .remove(IKEV2_PKCS12_PASSWORD)
                 .commit()) { "Could not store encrypted IKEv2 credentials" }
         }
+
+    /** PSK authenticates both IKE peers using the shared secret, not an X.509 server CA. */
+    fun saveIkev2PskProfile(server: String, clientIdentity: String, psk: String): Result<Unit> =
+        runCatching {
+            validateIkev2Server(server, clientIdentity)?.let { error(it) }
+            require(psk.length >= 12 && psk.toByteArray(StandardCharsets.UTF_8).size <= 4096) {
+                "Use a strong PSK of at least 12 characters (maximum 4 KiB)"
+            }
+            check(secrets.edit()
+                .putString(IKEV2_SERVER, server.trim())
+                .putString(IKEV2_IDENTITY, clientIdentity.trim())
+                .putString(IKEV2_AUTH_MODE, Ikev2AuthMode.PSK.name)
+                .putString(IKEV2_PSK, psk)
+                .remove(IKEV2_USER).remove(IKEV2_PASSWORD)
+                .remove(IKEV2_PKCS12).remove(IKEV2_PKCS12_PASSWORD)
+                .commit()) { "Could not store encrypted PSK profile" }
+        }
+
+    /** PKCS#12 client keys are parsed locally and encrypted; passwords never leave the device. */
+    fun saveIkev2CertificateProfile(
+        server: String, clientIdentity: String, pkcs12Bytes: ByteArray, password: String
+    ): Result<Unit> = runCatching {
+        validateIkev2Server(server, clientIdentity)?.let { error(it) }
+        require(pkcs12Bytes.size in 1..262144) { "PKCS#12 client identity must be 1–256 KiB" }
+        require(password.isNotBlank()) { "PKCS#12 export password is required" }
+        parseClientIdentity(pkcs12Bytes, password)
+        check(secrets.edit()
+            .putString(IKEV2_SERVER, server.trim())
+            .putString(IKEV2_IDENTITY, clientIdentity.trim())
+            .putString(IKEV2_AUTH_MODE, Ikev2AuthMode.CERTIFICATE.name)
+            .putString(IKEV2_PKCS12, Base64.encodeToString(pkcs12Bytes, Base64.NO_WRAP))
+            .putString(IKEV2_PKCS12_PASSWORD, password)
+            .remove(IKEV2_USER).remove(IKEV2_PASSWORD).remove(IKEV2_PSK)
+            .commit()) { "Could not store encrypted client certificate profile" }
+    }
+
+    private fun parseClientIdentity(bytes: ByteArray, password: String): Pair<X509Certificate, PrivateKey> {
+        val store = KeyStore.getInstance("PKCS12")
+        store.load(ByteArrayInputStream(bytes), password.toCharArray())
+        val alias = store.aliases().asSequence().firstOrNull { store.isKeyEntry(it) }
+            ?: error("No client private key in the PKCS#12 bundle")
+        val certificate = store.getCertificate(alias) as? X509Certificate
+            ?: error("No X.509 client certificate in the PKCS#12 bundle")
+        certificate.checkValidity()
+        val key = store.getKey(alias, password.toCharArray()) as? PrivateKey
+            ?: error("Could not unlock the client private key")
+        // Android's platform Ikev2VpnProfile.setAuthDigitalSignature requires RSA keys.
+        // Reject unsupported EC identities before replacing any previously saved profile.
+        require(key is RSAPrivateKey && certificate.publicKey is RSAPublicKey) {
+            "Android platform IKEv2 requires an RSA client certificate and private key"
+        }
+        return certificate to key
+    }
 
     /**
      * The caller must launch the returned consent Intent and call connectWireGuard()
@@ -179,10 +288,13 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         val prefs = secrets
         val server = prefs.getString(IKEV2_SERVER, null).orEmpty()
         val identity = prefs.getString(IKEV2_IDENTITY, null).orEmpty()
-        val user = prefs.getString(IKEV2_USER, null).orEmpty()
-        val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
-        validateIkev2Inputs(server, identity, user, password)?.let { error(it) }
-        val serverRootCa = prefs.getString(IKEV2_CA, null)?.let { encoded ->
+        validateIkev2Server(server, identity)?.let { error(it) }
+        val mode = ikev2AuthMode()
+        // PSK authentication does not use X.509 roots. Do not let an expired staged
+        // CA prevent a perfectly valid PSK profile from being provisioned.
+        val serverRootCa = prefs.getString(IKEV2_CA, null)
+            ?.takeIf { mode != Ikev2AuthMode.PSK }
+            ?.let { encoded ->
             val bytes = Base64.decode(encoded, Base64.DEFAULT)
             val cert = CertificateFactory.getInstance("X.509")
                 .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
@@ -190,9 +302,29 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             cert.checkValidity()
             cert
         }
-        val profile = Ikev2VpnProfile.Builder(server, identity)
-            .setAuthUsernamePassword(user, password, serverRootCa)
-            .build()
+        val builder = Ikev2VpnProfile.Builder(server, identity)
+        when (mode) {
+            Ikev2AuthMode.EAP -> {
+                val user = prefs.getString(IKEV2_USER, null).orEmpty()
+                val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
+                validateIkev2Inputs(server, identity, user, password)?.let { error(it) }
+                builder.setAuthUsernamePassword(user, password, serverRootCa)
+            }
+            Ikev2AuthMode.PSK -> {
+                val psk = prefs.getString(IKEV2_PSK, null)?.takeIf { it.isNotBlank() }
+                    ?: error("Save an IKEv2 pre-shared key before connecting")
+                builder.setAuthPsk(psk.toByteArray(StandardCharsets.UTF_8))
+            }
+            Ikev2AuthMode.CERTIFICATE -> {
+                val encoded = prefs.getString(IKEV2_PKCS12, null)
+                    ?: error("Import a PKCS#12 client certificate first")
+                val password = prefs.getString(IKEV2_PKCS12_PASSWORD, null)
+                    ?: error("PKCS#12 password is missing")
+                val (cert, privateKey) = parseClientIdentity(Base64.decode(encoded, Base64.DEFAULT), password)
+                builder.setAuthDigitalSignature(cert, privateKey, serverRootCa)
+            }
+        }
+        val profile = builder.build()
         return context.getSystemService(VpnManager::class.java).provisionVpnProfile(profile)
     }
 
@@ -288,10 +420,20 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     private companion object {
         const val WG_PROFILE = "wireguard_profile"
+        const val OPENVPN_PROFILE = "openvpn_profile_staged"
+        const val SOFTETHER_HOST = "softether_host_staged"
+        const val SOFTETHER_PORT = "softether_port_staged"
+        const val SOFTETHER_HUB = "softether_hub_staged"
+        const val SOFTETHER_USER = "softether_user_staged"
+        const val SOFTETHER_PASSWORD = "softether_password_staged"
         const val IKEV2_SERVER = "ikev2_server"
         const val IKEV2_IDENTITY = "ikev2_remote_identity"
         const val IKEV2_USER = "ikev2_username"
         const val IKEV2_PASSWORD = "ikev2_password"
         const val IKEV2_CA = "ikev2_root_ca"
+        const val IKEV2_AUTH_MODE = "ikev2_auth_mode"
+        const val IKEV2_PSK = "ikev2_psk"
+        const val IKEV2_PKCS12 = "ikev2_pkcs12"
+        const val IKEV2_PKCS12_PASSWORD = "ikev2_pkcs12_password"
     }
 }
