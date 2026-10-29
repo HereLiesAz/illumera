@@ -278,7 +278,7 @@ fun HomeScreen(
         } else {
             // DATA IS READY: Show Content
             val hasInProgressHistory = remember(state.history, state.seriesNextUp) {
-                state.history.any { !it.watched } || state.seriesNextUp.any { !it.isComplete }
+                state.history.any { !it.watched && it.hasPlaybackEvidence() } || state.seriesNextUp.any { !it.isComplete }
             }
             if (layoutMode == "cinematic") {
                 val heroConfig = currentProfile?.heroFor(tab) ?: HeroConfig(null, 10, 0)
@@ -1306,7 +1306,7 @@ internal fun buildContinueWatchingItems(
     val seriesIdsIncluded = mutableSetOf<String>()
 
     // 1. In-progress items (partially watched, not completed)
-    val inProgress = history.filter { !it.watched }
+    val inProgress = history.filter { !it.watched && it.hasPlaybackEvidence() }
 
     val seriesByCanonicalId = linkedMapOf<String, MutableList<WatchHistoryEntity>>()
     val movieById = linkedMapOf<String, WatchHistoryEntity>()
