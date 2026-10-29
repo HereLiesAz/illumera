@@ -194,6 +194,9 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     /** Config.parse checks WireGuard key formats, interface addresses and peers before saving. */
     fun saveWireGuardProfile(text: String): Result<Unit> = runCatching {
         require(text.isNotBlank()) { "Paste or import a WireGuard .conf first" }
+        require(text.toByteArray(StandardCharsets.UTF_8).size <= 131072) {
+            "WireGuard configuration exceeds 128 KiB"
+        }
         Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
         check(secrets.edit().putString(WG_PROFILE, text).commit()) { "Could not store encrypted VPN profile" }
     }
