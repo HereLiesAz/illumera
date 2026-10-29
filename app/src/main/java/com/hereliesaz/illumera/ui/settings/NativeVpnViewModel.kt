@@ -12,6 +12,9 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
 
     fun hasWireGuardProfile(): Boolean = manager.hasWireGuardProfile()
     fun hasIkev2Profile(): Boolean = manager.hasIkev2Profile()
+    fun hasIkev2Ca(): Boolean = manager.hasIkev2Ca()
+    fun saveIkev2Ca(bytes: ByteArray) = manager.saveIkev2Ca(bytes)
+    fun clearIkev2Ca() = manager.clearIkev2Ca()
     fun saveWireGuard(text: String) = manager.saveWireGuardProfile(text)
     fun saveIkev2(server: String, identity: String, username: String, password: String) =
         manager.saveIkev2Profile(server, identity, username, password)
