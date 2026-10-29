@@ -1,6 +1,8 @@
 package com.hereliesaz.illumera.ui.settings
 
 import android.app.Activity
+import android.content.Context
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +62,7 @@ fun NativeVpnSettingsDialog(
     var feedback by remember { mutableStateOf("") }
     var savedWireGuard by remember { mutableStateOf(viewModel.hasWireGuardProfile()) }
     var savedIkev2 by remember { mutableStateOf(viewModel.hasIkev2Profile()) }
+    var savedIkev2Ca by remember { mutableStateOf(viewModel.hasIkev2Ca()) }
     val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(210.dp)
 
     // The OS, not our button callback, decides whether a platform IKEv2 tunnel is
@@ -97,24 +100,23 @@ fun NativeVpnSettingsDialog(
         if (uri != null) {
             runCatching {
                 // A VPN profile is a small text config, not an arbitrary multi-megabyte upload.
-                val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
-                    val output = java.io.ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        require(output.size() + count <= 131072) {
-                            "WireGuard configuration exceeds 128 KiB"
-                        }
-                        output.write(buffer, 0, count)
-                    }
-                    output.toByteArray()
-                } ?: error("Unable to read configuration")
+                val bytes = readBoundedProfileBytes(context, uri, 131072)
                 val imported = bytes.toString(Charsets.UTF_8)
                 viewModel.saveWireGuard(imported).getOrThrow()
                 savedWireGuard = true
                 feedback = "WireGuard profile saved securely"
             }.onFailure { feedback = it.message ?: "Could not import profile" }
+        }
+    }
+
+    val importIkev2Ca = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                val bytes = readBoundedProfileBytes(context, uri, 65536)
+                viewModel.saveIkev2Ca(bytes).getOrThrow()
+                savedIkev2Ca = true
+                feedback = "Trusted server CA saved securely"
+            }.onFailure { feedback = it.message ?: "Could not import CA certificate" }
         }
     }
 
@@ -201,6 +203,22 @@ fun NativeVpnSettingsDialog(
                     color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.bodySmall
                 )
+                Text(
+                    if (savedIkev2Ca) "Custom server CA imported (encrypted)"
+                    else "Server CA: system-trusted roots by default",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                VoidButton(text = "Import server CA (PEM / DER)",
+                    onClick = { importIkev2Ca.launch(arrayOf("*/*")) }, compact = true)
+                if (savedIkev2Ca) VoidButton(
+                    text = "Use system CAs instead",
+                    onClick = {
+                        viewModel.clearIkev2Ca()
+                        savedIkev2Ca = false
+                        feedback = "Custom CA cleared"
+                    }, compact = true
+                )
                 OutlinedTextField(server, { server = it }, label = { Text("VPN server hostname") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(identity, { identity = it }, label = { Text("Remote ID / server identity") },
@@ -281,3 +299,17 @@ fun NativeVpnSettingsDialog(
         }
     }
 }
+
+/** Read selected VPN files without keeping large or unknown content in app memory. */
+private fun readBoundedProfileBytes(context: Context, uri: Uri, maxBytes: Int): ByteArray =
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            require(output.size() + count <= maxBytes) { "VPN profile file exceeds $maxBytes bytes" }
+            output.write(buffer, 0, count)
+        }
+        output.toByteArray()
+    } ?: error("Unable to read VPN profile")
