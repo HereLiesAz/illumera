@@ -576,10 +576,15 @@ fun NativeVpnSettingsDialog(
                         }
                     }, compact = true
                 )
-                VoidButton(
+                if (NativeVpnProtocol.SOFTETHER.ready) VoidButton(
                     text = "Connect SoftEther",
                     onClick = { requestEmbeddedConnection(NativeVpnProtocol.SOFTETHER, softEtherStaged) },
                     compact = true
+                ) else Text(
+                    "SoftEther connections are temporarily blocked until mandatory TLS " +
+                        "certificate pin verification is implemented. Profiles can still be saved.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
                 )
             }
             if (!protocol.ready) {
