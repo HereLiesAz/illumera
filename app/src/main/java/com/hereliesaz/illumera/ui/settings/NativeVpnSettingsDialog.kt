@@ -62,6 +62,19 @@ fun NativeVpnSettingsDialog(
     var savedIkev2 by remember { mutableStateOf(viewModel.hasIkev2Profile()) }
     val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(210.dp)
 
+    // The OS, not our button callback, decides whether a platform IKEv2 tunnel is
+    // actually connected. On Android 13+ poll its real state while the dialog is open.
+    LaunchedEffect(status.protocol, status.phase) {
+        if (status.protocol == NativeVpnProtocol.IKEV2 &&
+            status.phase in setOf(NativeVpnPhase.CONNECTING, NativeVpnPhase.ACTIVE)
+        ) {
+            while (true) {
+                delay(2000)
+                viewModel.refreshIkev2Status()
+            }
+        }
+    }
+
     val wireGuardConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == Activity.RESULT_OK) {
             scope.launch {
