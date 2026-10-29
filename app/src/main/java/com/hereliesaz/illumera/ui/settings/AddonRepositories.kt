@@ -105,7 +105,8 @@ internal fun AddonRepositoriesDialog(
     val addState by viewModel.addState.collectAsStateWithLifecycle()
     var url by remember { mutableStateOf("") }
     val context = LocalContext.current
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
+    // Leave room for the dialog title, padding, and TV overscan on short viewports.
+    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(200.dp)
 
     VoidDialog(onDismissRequest = onDismiss, title = "Add-on Repositories") {
         Column(
