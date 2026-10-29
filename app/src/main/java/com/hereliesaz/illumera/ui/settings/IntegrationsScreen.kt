@@ -173,7 +173,9 @@ fun IntegrationsScreen(
     val stremioEmail = (state.connectionState as? StremioConnectionState.Connected)?.email
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        // Keep all integrations reachable on TV and narrow/landscape screens. Previously
+        // the repository entry was the last child of an unscrollable overflowing column.
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Top
     ) {
         // Header
@@ -189,7 +191,18 @@ fun IntegrationsScreen(
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(20.dp))
+
+        // Repository management belongs in Integrations, not the Add-ons browser.
+        IntegrationItem(
+            title = "Third-party Add-on Repositories",
+            subtitle = addonRepositoriesSummary(addonRepositories),
+            isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.enabledCollections.isNotEmpty(),
+            onClick = { showRepositoriesDialog = true },
+            modifier = goBackModifier.then(upBlockModifier)
+        )
+
+        Spacer(Modifier.height(12.dp))
 
         // Stremio Integration Item
         IntegrationItem(
@@ -263,13 +276,6 @@ fun IntegrationsScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        IntegrationItem(
-            title = "Addon Repositories",
-            subtitle = addonRepositoriesSummary(addonRepositories),
-            isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.collections.isNotEmpty(),
-            onClick = { showRepositoriesDialog = true },
-            modifier = goBackModifier
-        )
     }
 
     if (showRepositoriesDialog) {
