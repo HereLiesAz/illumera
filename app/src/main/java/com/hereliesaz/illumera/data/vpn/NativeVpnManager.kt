@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Ikev2VpnProfile
 import android.net.VpnManager
+import android.net.VpnProfileState
 import android.net.VpnService
 import android.os.Build
 import androidx.security.crypto.EncryptedSharedPreferences
@@ -174,6 +175,28 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }.onFailure {
             _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
                 it.message ?: "IKEv2 connection failed")
+        }
+    }
+
+    /** Only Android 13+ reports actual platform IKEv2 state to an ordinary app. */
+    fun refreshIkev2Status() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (_status.value.protocol != NativeVpnProtocol.IKEV2) return
+        runCatching {
+            context.getSystemService(VpnManager::class.java).provisionedVpnProfileState
+        }.getOrNull()?.let { platformState ->
+            _status.value = when (platformState.state) {
+                VpnProfileState.STATE_CONNECTED ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ACTIVE,
+                        "Android reports an established IPsec tunnel")
+                VpnProfileState.STATE_CONNECTING ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
+                        "Android is negotiating the IKEv2 session")
+                VpnProfileState.STATE_FAILED ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
+                        "Android reports that IPsec negotiation failed")
+                else -> NativeVpnStatus()
+            }
         }
     }
 
