@@ -2,7 +2,6 @@
 // Keep the library separate to avoid coupling Illumera's app package to the upstream app UI.
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
 }
 android {
     namespace = "de.blinkt.openvpn"
