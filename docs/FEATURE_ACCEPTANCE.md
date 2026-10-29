@@ -227,7 +227,7 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 
 ## Add-ons, Hero, genre ordering and menu review follow-up (October 15, 2026) — device verification pending
 
-- The old header above **Browse Add-ons** is gone. The compact tabs beneath the heading start with All then Installed, followed by Official, Community, 3rd Party and collections; search is compact. All combines sources without making one failed provider fatal. Installed list, configured URL installation and remote paste remain available.
+- The old header above **Browse Add-ons** is gone. The compact tabs beneath the heading start with All then Installed, followed by enabled Official, Community, 3rd Party and named custom repository tabs; search is compact. All combines sources without making one failed provider fatal. Installed list, configured URL installation and remote paste remain available.
 - A catalog uninstall requires a normalized **exact configured transport** including query parameters, never a shared manifest ID. Back/All/Installed remain focusable and bookmarked in FocusMemory; switching to Installed from a catalog removal requests its persistent tab only when no newer target has focus.
 - From Hero, Down scrolls to the first genuinely focusable content row before requesting it; Up from that first row scrolls back to Hero and restores focus, including with empty genre shells. The drawer Profile boundary test checks the focused control both before and after the extra Up attempt.
 - Every enabled movie/series genre is kept as a stable row while remote content loads. Rows rank by watched and watchlisted titles per profile; Screen Editor allows an independent catalog/rating/date/title sort for the titles **within** each genre.
@@ -250,6 +250,15 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - D-pad held Left/Right/Up/Down must accept every Android `repeatCount > 0` event. Separate zero-repeat duplicate presses still respect the gate; exiting to the navigation rail remains subject to existing boundaries.
 - While any directional input is active, poster/hero art stays visible and trailer extraction is disabled/cancelled. Resume only after 750ms idle plus the trailer preview's startup delay. Scrolling never waits for the trailer resolver's long network timeout.
 - Run `testDebugUnitTest testReleaseUnitTest testPlayUnitTest --continue` and confirm on Android TV with slow/failing trailer providers, long-press D-pad movement, source pagination and a custom Hero selection.
+
+
+## Third-party repository management in Integrations (October 29, 2026) — TV and CI verification pending
+
+- On short-height Android TV and phone layouts, open **Settings → Integrations**: **Third-party Add-on Repositories** is the first integration, not clipped beneath other services. Up/Down traverses all integration entries; the section itself scrolls, preserving the existing Left/Back behavior.
+- In its dialog, built-in Official/Community/3rd Party sources and each saved custom URL have independent enable switches. Add supports validated HTTP(S)/Stremio repository URLs (including clipboard paste), visibly reports invalid/time-out responses, and does not save a failed source. Custom sources can be reordered and removed without changing installed addons.
+- An existing saved URL starts enabled. Disabling a saved URL persists across relaunch and still lists it in Integrations, but removes its named Add-ons browse tab and excludes it from **All** network requests. Re-enable restores its original order; re-adding a disabled URL also re-enables it. A disabled repository cannot be fetched directly.
+- Add-ons has **no Collections button**, **+ Collection**, or **Forget collection** action. Enabled custom sources are named browse tabs, not repository-management controls. Installed and manual Install URL behavior stays unchanged.
+- Robolectric regression: `AddonCatalogRepositoryTest` (legacy data, toggle persistence, enabled-only aggregation, direct rejection, re-add, order, removal). Verify Android TV focus/scroll, phone input and clipboard, online manifest validation, and build variants before claiming release verification.
 
 ## Player exit, queue history, and cinematic TV sizing (October 29, 2026) — device validation pending
 

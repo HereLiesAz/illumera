@@ -44,8 +44,8 @@ import javax.inject.Inject
 
 /**
  * Addon repositories, managed from Integrations: the built-in catalogs (Official, Community,
- * 3rd Party) can be switched off, and collection URLs added, ordered and removed. The Add-ons
- * browser shows only what is switched on here, and follows changes immediately.
+ * 3rd Party) and saved third-party repository URLs can each be switched on or off; custom
+ * repositories can be added, reordered and removed. Add-ons only browses enabled sources.
  */
 @HiltViewModel
 class AddonRepositoriesViewModel @Inject constructor(
@@ -60,6 +60,9 @@ class AddonRepositoriesViewModel @Inject constructor(
 
     fun setBuiltInEnabled(source: AddonCatalogSource, enabled: Boolean) =
         catalogRepository.setBuiltInEnabled(source, enabled)
+
+    fun setCollectionEnabled(collection: SavedAddonCollection, enabled: Boolean) =
+        catalogRepository.setCollectionEnabled(collection.url, enabled)
 
     fun move(collection: SavedAddonCollection, delta: Int) =
         catalogRepository.moveCollection(collection.url, delta)
@@ -88,8 +91,9 @@ class AddonRepositoriesViewModel @Inject constructor(
 
 /** One-line summary for the Integrations entry. */
 internal fun addonRepositoriesSummary(repos: AddonCatalogRepository.Repositories): String {
-    val names = repos.enabledBuiltIns.map { it.displayName } + repos.collections.map { it.name }
-    return if (names.isEmpty()) "None switched on" else names.joinToString(" · ")
+    val count = repos.enabledBuiltIns.size + repos.enabledCollections.size
+    return if (count == 0) "None enabled · Add or enable a repository"
+    else "$count enabled · Manage or add repositories"
 }
 
 @Composable
@@ -101,15 +105,16 @@ internal fun AddonRepositoriesDialog(
     val addState by viewModel.addState.collectAsStateWithLifecycle()
     var url by remember { mutableStateOf("") }
     val context = LocalContext.current
-    val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.85f).dp
+    // Leave room for the dialog title, padding, and TV overscan on short viewports.
+    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(200.dp)
 
-    VoidDialog(onDismissRequest = onDismiss, title = "Addon Repositories") {
+    VoidDialog(onDismissRequest = onDismiss, title = "Add-on Repositories") {
         Column(
             modifier = Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "The Add-ons browser shows addons from the repositories switched on here.",
+                "Enable repositories or add a URL. Only enabled repositories appear in Browse Add-ons.",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 style = MaterialTheme.typography.bodySmall
             )
@@ -122,16 +127,14 @@ internal fun AddonRepositoriesDialog(
                 )
             }
 
-            if (repos.collections.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text("Collections", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
-            }
+            Spacer(Modifier.height(8.dp))
+            Text("Custom third-party repositories", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
             repos.collections.forEachIndexed { index, collection ->
-                Text(
-                    collection.name,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                val enabled = collection.url !in repos.disabledCollectionUrls
+                VoidToggleRow(
+                    label = collection.name,
+                    isChecked = enabled,
+                    onToggle = { viewModel.setCollectionEnabled(collection, !enabled) }
                 )
                 Text(
                     collection.url,
@@ -166,11 +169,11 @@ internal fun AddonRepositoriesDialog(
             }
 
             Spacer(Modifier.height(8.dp))
-            Text("Add a repository", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
+            Text("Add a third-party repository", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f))
             VoidInput(
                 value = url,
                 onValueChange = { url = it },
-                placeholder = "Collection or repository URL",
+                placeholder = "Repository or addon-catalog URL",
                 onDone = { viewModel.add(url) { url = "" } },
                 modifier = Modifier.fillMaxWidth(),
                 compact = true
