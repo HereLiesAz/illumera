@@ -26,10 +26,10 @@ android {
     // The sourceSets block overload uses the corrected DSL type (Issue #550220873).
     sourceSets {
         named("main").configure {
-        manifest.srcFile("../vendor/softether-android/src/main/AndroidManifest.xml")
-        java.srcDirs("../vendor/softether-android/src/main/java")
-        res.srcDirs("../vendor/softether-android/src/main/res")
-        jniLibs.srcDirs("../vendor/softether-android/src/main/jniLibs")
+            manifest.srcFile("../vendor/softether-android/src/main/AndroidManifest.xml")
+            java.srcDirs("../vendor/softether-android/src/main/java")
+            res.srcDirs("../vendor/softether-android/src/main/res")
+            jniLibs.srcDirs("../vendor/softether-android/src/main/jniLibs")
         }
     }
     compileOptions {
