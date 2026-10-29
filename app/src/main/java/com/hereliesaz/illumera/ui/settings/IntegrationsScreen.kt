@@ -216,7 +216,7 @@ fun IntegrationsScreen(
                     showConnectDialog = true
                 }
             },
-            modifier = goBackModifier.then(upBlockModifier)
+            modifier = goBackModifier
         )
 
         Spacer(Modifier.height(12.dp))
