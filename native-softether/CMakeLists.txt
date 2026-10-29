@@ -7,11 +7,19 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # audited TLS implementation enforcing a user-provided certificate pin.
 set(UPSTREAM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../vendor/softether-android/src/main/cpp")
 set(OPENSSL_ARCHIVE_DIR "${UPSTREAM_DIR}/../jniLibs/${ANDROID_ABI}")
+set(OPENSSL_HEADER_DIR "${UPSTREAM_DIR}/openssl/include/openssl")
 if(NOT EXISTS "${OPENSSL_ARCHIVE_DIR}/libssl.a" OR
-   NOT EXISTS "${OPENSSL_ARCHIVE_DIR}/libcrypto.a" OR
-   NOT EXISTS "${UPSTREAM_DIR}/openssl/include/openssl/ssl.h")
-    message(FATAL_ERROR "Pinned native SoftEther OpenSSL archive/headers unavailable for ${ANDROID_ABI}")
+   NOT EXISTS "${OPENSSL_ARCHIVE_DIR}/libcrypto.a")
+    message(FATAL_ERROR "Pinned SoftEther OpenSSL static archives missing for ${ANDROID_ABI}")
 endif()
+# A clean OpenSSL source submodule has only *.h.in templates. The centralized
+# Android workflows must run the pinned SoftEther header-only generator before
+# CMake starts, without rebuilding/replacing ABI-specific libssl.a/libcrypto.a.
+foreach(header ssl.h configuration.h opensslv.h)
+    if(NOT EXISTS "${OPENSSL_HEADER_DIR}/${header}")
+        message(FATAL_ERROR "Generated OpenSSL ${header} missing. Run vendor/softether-android/src/main/cpp/build-openssl-android.sh --headers-only before Gradle.")
+    endif()
+endforeach()
 
 find_library(ANDROID_LOG_LIBRARY log REQUIRED)
 find_library(ANDROID_LIBRARY android REQUIRED)
