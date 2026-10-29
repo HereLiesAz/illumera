@@ -18,8 +18,13 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
     fun saveIkev2Ca(bytes: ByteArray) = manager.saveIkev2Ca(bytes)
     fun clearIkev2Ca() = manager.clearIkev2Ca()
     fun saveWireGuard(text: String) = manager.saveWireGuardProfile(text)
+    fun ikev2AuthMode() = manager.ikev2AuthMode()
     fun saveIkev2(server: String, identity: String, username: String, password: String) =
         manager.saveIkev2Profile(server, identity, username, password)
+    fun saveIkev2Psk(server: String, identity: String, psk: String) =
+        manager.saveIkev2PskProfile(server, identity, psk)
+    fun saveIkev2Certificate(server: String, identity: String, bytes: ByteArray, password: String) =
+        manager.saveIkev2CertificateProfile(server, identity, bytes, password)
 
     fun requestWireGuardConsent() = manager.wireGuardConsent()
     fun requestIkev2Consent() = manager.provisionIkev2()
