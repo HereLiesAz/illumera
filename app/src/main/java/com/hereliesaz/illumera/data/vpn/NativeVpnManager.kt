@@ -21,6 +21,8 @@ import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.security.PrivateKey
+import java.security.interfaces.RSAPrivateKey
+import java.security.interfaces.RSAPublicKey
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import javax.inject.Inject
