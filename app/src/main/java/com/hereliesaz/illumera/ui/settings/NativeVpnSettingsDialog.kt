@@ -69,6 +69,14 @@ fun NativeVpnSettingsDialog(
     var savedWireGuard by remember { mutableStateOf(viewModel.hasWireGuardProfile()) }
     var savedIkev2 by remember { mutableStateOf(viewModel.hasIkev2Profile()) }
     var savedIkev2Ca by remember { mutableStateOf(viewModel.hasIkev2Ca()) }
+    var openVpnText by remember { mutableStateOf("") }
+    var openVpnStaged by remember { mutableStateOf(viewModel.hasOpenVpnProfile()) }
+    var softEtherStaged by remember { mutableStateOf(viewModel.hasSoftEtherProfile()) }
+    var softEtherHost by remember { mutableStateOf("") }
+    var softEtherPort by remember { mutableStateOf("443") }
+    var softEtherHub by remember { mutableStateOf("DEFAULT") }
+    var softEtherUser by remember { mutableStateOf("") }
+    var softEtherPassword by remember { mutableStateOf("") }
     val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(210.dp)
 
     LaunchedEffect(Unit) { viewModel.refreshIkev2Status() }
@@ -156,6 +164,23 @@ fun NativeVpnSettingsDialog(
                     pkcs12Password = ""
                     feedback = "Client identity saved securely; VPN profile ready"
                 }.onFailure { feedback = it.message ?: "PKCS#12 client import failed" }
+            }
+        }
+    }
+
+    val importOpenVpn = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            importScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = readBoundedProfileBytes(context, uri, 131072)
+                        viewModel.stageOpenVpnProfile(bytes.toString(Charsets.UTF_8)).getOrThrow()
+                    }
+                }
+                result.onSuccess { summary ->
+                    openVpnStaged = true
+                    feedback = "Staged OpenVPN ${summary.transport.uppercase()} profile for ${summary.hostname}:${summary.port}; native engine is not bundled"
+                }.onFailure { feedback = it.message ?: "OpenVPN config rejected" }
             }
         }
     }
@@ -367,19 +392,96 @@ fun NativeVpnSettingsDialog(
                         }.onFailure { feedback = it.message ?: "IKEv2 provisioning failed" }
                     }, compact = true
                 )
-            } else {
+            } else if (protocol == NativeVpnProtocol.OPENVPN) {
                 Text(
-                    if (protocol == NativeVpnProtocol.OPENVPN)
-                        "OpenVPN 3 requires its native C++ core, JNI tunnel bridge, and protocol-specific certificate import. " +
-                            "That engine is not bundled in this build; a .ovpn file alone cannot create a tunnel."
-                    else
-                        "SoftEther SSL-VPN requires its native TLS and packet-tunnel engine. " +
-                            "That engine is not bundled in this build; Android's VpnService cannot negotiate SoftEther by itself.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "OpenVPN profiles can be imported for a future native engine. " +
+                        "A valid .ovpn file alone does not establish a tunnel. " +
+                        "No OpenVPN C++/JNI engine is bundled in this build.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground
                 )
+                if (openVpnStaged) Text(
+                    "OpenVPN configuration staged securely; connection not available",
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                VoidButton(
+                    text = "Import .ovpn file",
+                    onClick = { importOpenVpn.launch(arrayOf("*/*")) },
+                    compact = true
+                )
+                OutlinedTextField(
+                    value = openVpnText,
+                    onValueChange = { openVpnText = it },
+                    label = { Text("OpenVPN client configuration") },
+                    modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 7
+                )
+                VoidButton(
+                    text = "Stage OpenVPN profile",
+                    onClick = {
+                        val text = openVpnText
+                        importScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                viewModel.stageOpenVpnProfile(text)
+                            }
+                            result.onSuccess { summary ->
+                                openVpnStaged = true
+                                openVpnText = ""
+                                feedback = "Staged ${summary.transport.uppercase()} VPN profile for ${summary.hostname}; native engine is not bundled"
+                            }.onFailure { feedback = it.message ?: "OpenVPN profile rejected" }
+                        }
+                    }, compact = true
+                )
+            } else {
                 Text(
-                    "No connect button is offered until the actual protocol engine is integrated.",
+                    "SoftEther SSL-VPN requires its native TLS protocol and packet tunnel engine. " +
+                        "You can save server information, but the engine is not yet part of Illumera.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                if (softEtherStaged) Text(
+                    "SoftEther server staged securely; connection not available",
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                OutlinedTextField(softEtherHost, { softEtherHost = it },
+                    label = { Text("SoftEther server hostname") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(softEtherPort, { softEtherPort = it },
+                    label = { Text("Server TLS port") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(softEtherHub, { softEtherHub = it },
+                    label = { Text("Virtual hub") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(softEtherUser, { softEtherUser = it },
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(softEtherPassword, { softEtherPassword = it },
+                    label = { Text("Password") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                VoidButton(
+                    text = "Stage SoftEther server",
+                    onClick = {
+                        val host = softEtherHost
+                        val port = softEtherPort.toIntOrNull() ?: 0
+                        val hub = softEtherHub
+                        val user = softEtherUser
+                        val passwordValue = softEtherPassword
+                        importScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                viewModel.stageSoftEtherProfile(host, port, hub, user, passwordValue)
+                            }
+                            result.onSuccess {
+                                softEtherStaged = true
+                                softEtherPassword = ""
+                                feedback = "SoftEther profile encrypted and saved; native engine not bundled"
+                            }.onFailure { feedback = it.message ?: "Invalid SoftEther settings" }
+                        }
+                    }, compact = true
+                )
+            }
+            if (!protocol.ready) {
+                Text(
+                    "No Connect button: this protocol has no native packet engine yet.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                 )
