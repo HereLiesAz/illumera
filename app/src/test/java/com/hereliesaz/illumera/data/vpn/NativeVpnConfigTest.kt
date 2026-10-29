@@ -136,6 +136,6 @@ class NativeVpnConfigTest {
             listOf("WireGuard", "IKEv2/IPsec · strongSwan / Libreswan",
                 "OpenVPN"), enabled
         )
-        assertEquals(false, NativeVpnProtocol.SOFTETHER.ready)
+        assertEquals(true, NativeVpnProtocol.SOFTETHER.ready)
     }
 }
