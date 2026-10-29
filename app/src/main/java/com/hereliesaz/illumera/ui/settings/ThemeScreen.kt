@@ -6,10 +6,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -93,142 +96,144 @@ fun ThemeScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Header
-        Text(
-            "Theme",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Text(
-            "Choose a color scheme for your experience.",
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
-            modifier = Modifier.padding(top = 4.dp)
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Block Up navigation when top nav is active
-        val upBlockModifier = Modifier.onPreviewKeyEvent {
-            if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
-                true // Consume the event to block focus escape
-            } else false
-        }
-
-        // --- TABS (Same style as Screen Editor) ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { isAnyTabFocused = it.hasFocus },
-            horizontalArrangement = Arrangement.Center
-        ) {
-            VoidTabBtn(
-                label = "All Themes",
-                isSelected = selectedTab == "all",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "all" },
-                modifier = Modifier
-                    .width(110.dp)
-                    .focusRequester(allTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "all" }
-                    .then(goBackModifier) // Only first tab goes back
-                    .then(upBlockModifier)
-            )
-
-            VoidTabBtn(
-                label = "Dark",
-                isSelected = selectedTab == "dark",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "dark" },
-                modifier = Modifier
-                    .width(80.dp)
-                    .focusRequester(darkTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "dark" }
-                    .then(upBlockModifier)
-            )
-
-            VoidTabBtn(
-                label = "Colorful",
-                isSelected = selectedTab == "colorful",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "colorful" },
-                modifier = Modifier
-                    .width(100.dp)
-                    .focusRequester(colorfulTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "colorful" }
-                    .then(upBlockModifier)
-            )
-
-            VoidTabBtn(
-                label = "My Themes",
-                isSelected = selectedTab == "custom",
-                isTabRowFocused = isAnyTabFocused,
-                onClick = { selectedTab = "custom" },
-                modifier = Modifier
-                    .width(110.dp)
-                    .focusRequester(customTabReq)
-                    .onFocusChanged { if (it.isFocused) focusedTab = "custom" }
-                    .then(upBlockModifier)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // --- ADD BUTTON ---
-        ThemeAddButton(
-            onClick = onCreateCustom,
-            modifier = Modifier.onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown) {
-                    when (it.key) {
-                        Key.DirectionLeft -> { onBack(); true }
-                        Key.DirectionUp -> {
-                            // Smart jump to active tab
-                            when (selectedTab) {
-                                "all" -> allTabReq.requestFocus()
-                                "dark" -> darkTabReq.requestFocus()
-                                "colorful" -> colorfulTabReq.requestFocus()
-                                "custom" -> customTabReq.requestFocus()
-                            }
-                            true
-                        }
-                        else -> false
-                    }
-                } else false
-            }
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // --- THEME GRID ---
-        // 4 fixed columns crush each ThemeCard's color-preview row (two 24dp circles +
-        // gap) below its content width on a phone screen; drop to 2 columns there. The
-        // column count feeds the left-edge (D-pad back) check below so it stays correct.
-        val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
-        val themeColumnCount = if (isCompactTheme) 2 else 4
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(themeColumnCount),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 50.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            items(filteredThemes, key = { it.id }) { theme ->
-                val isFirst = filteredThemes.indexOf(theme) == 0
-                // Only first column items should go back on Left
-                val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
-                
-                ThemeCard(
-                    theme = theme,
-                    isSelected = currentTheme.id == theme.id,
-                    focusRequester = if (isFirst) firstCardReq else null,
-                    modifier = if (isLeftEdge) goBackModifier else Modifier,
-                    onClick = {
-                        themeManager.selectTheme(currentProfile.id, theme.id)
-                    },
-                    onPenClick = if (!theme.isBuiltIn) {{ themeToManage = theme }} else null
+    // One scrollable grid owns both the settings header and theme cards. A weighted grid
+    // below a fixed header could clip the controls on short TV viewports.
+    // Two columns on compact panes prevent the theme preview swatches from being crushed.
+    val isCompactTheme = LocalConfiguration.current.screenWidthDp < 600
+    val themeColumnCount = if (isCompactTheme) 2 else 4
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(themeColumnCount),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 50.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }, key = "theme_controls") {
+            Column {
+                // Header
+                Text(
+                    "Theme",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 20.sp),
+                    color = MaterialTheme.colorScheme.onBackground
                 )
-            }
+                Text(
+                    "Choose a color scheme for your experience.",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Block Up navigation when top nav is active
+                val upBlockModifier = Modifier.onPreviewKeyEvent {
+                    if (it.key == Key.DirectionUp && it.type == KeyEventType.KeyDown) {
+                        true // Consume the event to block focus escape
+                    } else false
+                }
+
+                // --- TABS (Same style as Screen Editor) ---
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(if (isCompactTheme) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                        .onFocusChanged { isAnyTabFocused = it.hasFocus },
+                    horizontalArrangement = if (isCompactTheme) Arrangement.spacedBy(8.dp) else Arrangement.Center
+                ) {
+                    VoidTabBtn(
+                        label = "All Themes",
+                        isSelected = selectedTab == "all",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "all" },
+                        modifier = Modifier
+                            .width(110.dp)
+                            .focusRequester(allTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "all" }
+                            .then(goBackModifier) // Only first tab goes back
+                            .then(upBlockModifier)
+                    )
+
+                    VoidTabBtn(
+                        label = "Dark",
+                        isSelected = selectedTab == "dark",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "dark" },
+                        modifier = Modifier
+                            .width(80.dp)
+                            .focusRequester(darkTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "dark" }
+                            .then(upBlockModifier)
+                    )
+
+                    VoidTabBtn(
+                        label = "Colorful",
+                        isSelected = selectedTab == "colorful",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "colorful" },
+                        modifier = Modifier
+                            .width(100.dp)
+                            .focusRequester(colorfulTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "colorful" }
+                            .then(upBlockModifier)
+                    )
+
+                    VoidTabBtn(
+                        label = "My Themes",
+                        isSelected = selectedTab == "custom",
+                        isTabRowFocused = isAnyTabFocused,
+                        onClick = { selectedTab = "custom" },
+                        modifier = Modifier
+                            .width(110.dp)
+                            .focusRequester(customTabReq)
+                            .onFocusChanged { if (it.isFocused) focusedTab = "custom" }
+                            .then(upBlockModifier)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // --- ADD BUTTON ---
+                ThemeAddButton(
+                    onClick = onCreateCustom,
+                    modifier = Modifier.onPreviewKeyEvent {
+                        if (it.type == KeyEventType.KeyDown) {
+                            when (it.key) {
+                                Key.DirectionLeft -> { onBack(); true }
+                                Key.DirectionUp -> {
+                                    // Smart jump to active tab
+                                    when (selectedTab) {
+                                        "all" -> allTabReq.requestFocus()
+                                        "dark" -> darkTabReq.requestFocus()
+                                        "colorful" -> colorfulTabReq.requestFocus()
+                                        "custom" -> customTabReq.requestFocus()
+                                    }
+                                    true
+                                }
+                                else -> false
+                            }
+                        } else false
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+            } // Header and toolbar are part of the same scroll container.
+        }
+        items(filteredThemes, key = { "theme:${it.id}" }) { theme ->
+            val isFirst = filteredThemes.indexOf(theme) == 0
+            // Only first column items should go back on Left
+            val isLeftEdge = filteredThemes.indexOf(theme) % themeColumnCount == 0
+                
+            ThemeCard(
+                theme = theme,
+                isSelected = currentTheme.id == theme.id,
+                focusRequester = if (isFirst) firstCardReq else null,
+                modifier = if (isLeftEdge) goBackModifier else Modifier,
+                onClick = {
+                    themeManager.selectTheme(currentProfile.id, theme.id)
+                },
+                onPenClick = if (!theme.isBuiltIn) {{ themeToManage = theme }} else null
+            )
         }
     }
 

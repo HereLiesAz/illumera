@@ -154,7 +154,7 @@ fun AddonCatalogContent(
                             text = source.displayName,
                             onClick = { onSourceSelected(source) },
                             isPrimary = !showingInstalled && state.catalogSource == source,
-                            modifier = Modifier.width(if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 98.dp else 90.dp).restorableFocus("addons:source:${source.name}", focusMemory),
+                            modifier = Modifier.width(if (source in listOf(AddonCatalogSource.AIOMETADATA, AddonCatalogSource.GITHUB_STREMIO_ADDONS)) 148.dp else if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 98.dp else 90.dp).restorableFocus("addons:source:${source.name}", focusMemory),
                             compact = true
                         )
                     }
@@ -349,7 +349,8 @@ private fun AddonCatalogRow(
     val modernTransport = item.isModernManifestTransport
     val installable = modernTransport && !localTransport
     val configurationRequired = manifest.behaviorHints?.configurationRequired == true
-    val configurable = item.configureUrl != null
+    val discoveryOnly = item.discoveryUrl != null
+    val configurable = item.configureUrl != null || discoveryOnly
 
     Row(
         modifier = Modifier
@@ -412,19 +413,20 @@ private fun AddonCatalogRow(
                 manifest.types.orEmpty().take(3).forEach { AddonBadge(it) }
                 if (manifest.behaviorHints?.p2p == true) AddonBadge("P2P")
                 if (manifest.behaviorHints?.adult == true) AddonBadge("Adult")
-                if (configurable) AddonBadge("Configurable")
+                if (discoveryOnly) AddonBadge("Setup / project link")
+                else if (configurable) AddonBadge("Configurable")
                 if (localTransport) AddonBadge("Local service")
-                else if (!modernTransport) AddonBadge("Legacy transport")
+                else if (!modernTransport && !discoveryOnly) AddonBadge("Legacy transport")
             }
         }
 
         Spacer(Modifier.width(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (configurable && installable) {
+            if (configurable && (installable || discoveryOnly)) {
                 AddonIconAction(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Configure ${manifest.name}") },
-                    label = "Configure ${manifest.name}",
+                    icon = { Icon(Icons.Default.Settings, contentDescription = if (discoveryOnly) "Open ${manifest.name}" else "Configure ${manifest.name}") },
+                    label = if (discoveryOnly) "Open ${manifest.name}" else "Configure ${manifest.name}",
                     onClick = onConfigure,
                     modifier = Modifier.restorableFocus("addons:configure:${item.transportUrl}", focusMemory)
                 )
@@ -443,7 +445,7 @@ private fun AddonCatalogRow(
                     onClick = onInstall,
                     modifier = Modifier.restorableFocus("addons:install:${item.transportUrl}", focusMemory)
                 )
-            } else if (!installable) {
+            } else if (!installable && !discoveryOnly) {
                 Text("Unavailable", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
             }
         }
@@ -491,6 +493,8 @@ private fun AddonBadge(label: String) {
 private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (state.catalogSource) {
     AddonCatalogSource.ALL -> AddonCatalogSource.ALL.displayName
     AddonCatalogSource.STREMIO_ADDONS_NET -> AddonCatalogSource.STREMIO_ADDONS_NET.displayName
+    AddonCatalogSource.AIOMETADATA -> AddonCatalogSource.AIOMETADATA.displayName
+    AddonCatalogSource.GITHUB_STREMIO_ADDONS -> AddonCatalogSource.GITHUB_STREMIO_ADDONS.displayName
     AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
     AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
     AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName

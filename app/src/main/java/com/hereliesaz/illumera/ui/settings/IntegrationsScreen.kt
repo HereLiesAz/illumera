@@ -173,8 +173,8 @@ fun IntegrationsScreen(
     val stremioEmail = (state.connectionState as? StremioConnectionState.Connected)?.email
 
     Column(
-        // Keep all integrations reachable on TV and narrow/landscape screens. Previously
-        // the repository entry was the last child of an unscrollable overflowing column.
+        // Keep the original integration order: a bounded scroll lets the final repository
+        // entry remain reachable on TV and short landscape viewports.
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.Top
     ) {
@@ -193,17 +193,6 @@ fun IntegrationsScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // Repository management belongs in Integrations, not the Add-ons browser.
-        IntegrationItem(
-            title = "Third-party Add-on Repositories",
-            subtitle = addonRepositoriesSummary(addonRepositories),
-            isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.enabledCollections.isNotEmpty(),
-            onClick = { showRepositoriesDialog = true },
-            modifier = goBackModifier.then(upBlockModifier)
-        )
-
-        Spacer(Modifier.height(12.dp))
-
         // Stremio Integration Item
         IntegrationItem(
             title = "Stremio",
@@ -216,7 +205,7 @@ fun IntegrationsScreen(
                     showConnectDialog = true
                 }
             },
-            modifier = goBackModifier
+            modifier = goBackModifier.then(upBlockModifier)
         )
 
         Spacer(Modifier.height(12.dp))
@@ -276,6 +265,14 @@ fun IntegrationsScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        // Repository settings follow the other integrations in their original order.
+        IntegrationItem(
+            title = "Third-party Add-on Repositories",
+            subtitle = addonRepositoriesSummary(addonRepositories),
+            isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.enabledCollections.isNotEmpty(),
+            onClick = { showRepositoriesDialog = true },
+            modifier = goBackModifier
+        )
     }
 
     if (showRepositoriesDialog) {

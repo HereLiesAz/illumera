@@ -5,6 +5,8 @@ enum class AddonCatalogSource(val displayName: String) {
     OFFICIAL("Official"),
     COMMUNITY("Community"),
     STREMIO_ADDONS_NET("3rd Party"),
+    AIOMETADATA("AIOMetadata"),
+    GITHUB_STREMIO_ADDONS("GitHub Add-ons"),
     COLLECTION("Collection")
 }
 
@@ -26,7 +28,9 @@ data class AddonCatalogItem(
     val transportUrl: String = "",
     val transportName: String = "http",
     val manifest: Manifest = Manifest(),
-    val flags: AddonCatalogFlags? = null
+    val flags: AddonCatalogFlags? = null,
+    // Source/project page for discovery entries without a verified installable manifest.
+    val discoveryUrl: String? = null
 ) {
     val configureUrl: String?
         get() = if (

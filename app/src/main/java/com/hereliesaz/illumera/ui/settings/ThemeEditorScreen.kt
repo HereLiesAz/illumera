@@ -219,7 +219,12 @@ fun ThemeEditorScreen(
         Column(
             modifier = Modifier
                 .then(if (isCompactThemeEditor) Modifier.fillMaxWidth() else Modifier.fillMaxWidth(0.6f))
-                .then(if (isCompactThemeEditor) Modifier else Modifier.fillMaxHeight())
+                // Compact editor already scrolls both panels together. In the wide
+                // split layout only the controls panel scrolls, keeping the preview visible.
+                .then(
+                    if (isCompactThemeEditor) Modifier
+                    else Modifier.fillMaxHeight().verticalScroll(rememberScrollState())
+                )
         ) {
             Text(
                 text = "Colors",

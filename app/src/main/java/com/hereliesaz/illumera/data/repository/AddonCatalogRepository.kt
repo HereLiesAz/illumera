@@ -39,6 +39,7 @@ class AddonCatalogRepository @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val savedCollectionListType = object : TypeToken<List<SavedAddonCollection>>() {}.type
     private val addonItemListType = object : TypeToken<List<AddonCatalogItem>>() {}.type
+    private var githubTopicCache: Pair<Long, List<AddonCatalogItem>>? = null
 
     /** The addon repositories the Add-ons browser reads, managed from Integrations. */
     data class Repositories(
@@ -140,6 +141,8 @@ class AddonCatalogRepository @Inject constructor(
             AddonCatalogSource.OFFICIAL -> fetchOfficial()
             AddonCatalogSource.COMMUNITY -> fetchCommunity()
             AddonCatalogSource.STREMIO_ADDONS_NET -> fetchStremioAddonsNet()
+            AddonCatalogSource.AIOMETADATA -> listOf(aiometadataDiscoveryEntry())
+            AddonCatalogSource.GITHUB_STREMIO_ADDONS -> fetchGithubTopic()
             AddonCatalogSource.COLLECTION -> {
                 requireNotNull(collection) { "Choose an addon repository first" }
                 check(_repositories.value.enabledCollections.any { it.url == collection.url }) {
@@ -339,6 +342,83 @@ class AddonCatalogRepository @Inject constructor(
     }
 
     /**
+     * AIOMetadata is an individual configurable addon, not a JSON repository. Discover it
+     * via the official configure page, where viewers generate their own private manifest
+     * URL. Never invent a shared/unconfigured install URL for their configuration.
+     */
+    private fun aiometadataDiscoveryEntry() = AddonCatalogItem(
+        transportUrl = AIOMETADATA_HOME,
+        manifest = Manifest(
+            id = "com.aio.metadata",
+            name = "AIOMetadata (ElfHosted)",
+            description = "Configurable metadata and catalogs. Open setup to generate your own Stremio manifest.",
+            types = listOf("movie", "series")
+        ),
+        discoveryUrl = "$AIOMETADATA_HOME/configure"
+    )
+
+    /**
+     * GitHub's stremio-addon topic is a directory of source projects, not a Stremio
+     * manifest repository. Expose project pages for browsing, rather than fabricating
+     * installable addon URLs from arbitrary repository homepages.
+     *
+     * The unauthenticated public search API is rate-limited. Keep the topic directory
+     * link available as a fallback when the API is unavailable.
+     */
+    private suspend fun fetchGithubTopic(): List<AddonCatalogItem> {
+        val now = System.currentTimeMillis()
+        // GitHub's unauthenticated API has a limited request budget. Cache successful
+        // discovery and fallback results instead of re-querying on every All tab entry.
+        synchronized(this) {
+            githubTopicCache?.takeIf { now - it.first in 0 until GITHUB_TOPIC_CACHE_MS }
+                ?.second
+        }?.let { return it }
+        val directory = AddonCatalogItem(
+            transportUrl = GITHUB_TOPIC_URL,
+            manifest = Manifest(
+                id = "github.topic.stremio-addon",
+                name = "Browse the Stremio Add-on GitHub topic",
+                description = "Browse source projects; each project documents its own setup and install process."
+            ),
+            discoveryUrl = GITHUB_TOPIC_URL
+        )
+        val json = try {
+            withTimeout(CATALOG_TIMEOUT_MS) { api.getJson(GITHUB_TOPIC_API) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return listOf(directory).also { synchronized(this) { githubTopicCache = now to it } }
+        }
+        val items = json.takeIf { it.isJsonObject }?.asJsonObject
+            ?.get("items")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: return listOf(directory).also { synchronized(this) { githubTopicCache = now to it } }
+        val projects = items.mapNotNull { element ->
+            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val name = obj.get("full_name")?.takeIf { it.isJsonPrimitive }?.asString
+                ?.takeIf { it.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")) }
+                ?: return@mapNotNull null
+            val url = obj.get("html_url")?.takeIf { it.isJsonPrimitive }?.asString
+                ?: return@mapNotNull null
+            if (url != "https://github.com/$name") return@mapNotNull null
+            if (obj.get("archived")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) return@mapNotNull null
+            val description = obj.get("description")?.takeUnless { it.isJsonNull }
+                ?.takeIf { it.isJsonPrimitive }?.asString?.take(300)
+            AddonCatalogItem(
+                transportUrl = url,
+                manifest = Manifest(
+                    id = "github.topic.${name.replace('/', '.')}",
+                    name = name,
+                    description = description ?: "GitHub project tagged stremio-addon"
+                ),
+                discoveryUrl = url
+            )
+        }
+        return (listOf(directory) + projects).also {
+            synchronized(this) { githubTopicCache = now to it }
+        }
+    }
+
+    /**
      * Pages through stremio-addons.net. A failure on a later page keeps the pages already
      * collected (only a failed first page is an error), and the whole walk is bounded by
      * [STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS] on top of the per-page timeout. Unexpected JSON
@@ -434,10 +514,19 @@ class AddonCatalogRepository @Inject constructor(
         private const val KEY_DISABLED_BUILT_INS = "disabled_built_in_sources"
         private const val KEY_DISABLED_COLLECTIONS = "disabled_collection_urls"
         val BUILT_IN_SOURCES = listOf(
-            AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET
+            AddonCatalogSource.OFFICIAL,
+            AddonCatalogSource.COMMUNITY,
+            AddonCatalogSource.STREMIO_ADDONS_NET,
+            AddonCatalogSource.AIOMETADATA,
+            AddonCatalogSource.GITHUB_STREMIO_ADDONS
         )
         private const val CATALOG_TIMEOUT_MS = 20_000L
         private const val STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS = 60_000L
+        private const val AIOMETADATA_HOME = "https://aiometadata.elfhosted.com"
+        private const val GITHUB_TOPIC_URL = "https://github.com/topics/stremio-addon"
+        private const val GITHUB_TOPIC_CACHE_MS = 15 * 60 * 1000L
+        private const val GITHUB_TOPIC_API =
+            "https://api.github.com/search/repositories?q=topic%3Astremio-addon&sort=stars&per_page=50"
         private const val LEGACY_MANIFEST_TIMEOUT_MS = 5_000L
         private const val MAX_LEGACY_ENDPOINTS = 100
 
