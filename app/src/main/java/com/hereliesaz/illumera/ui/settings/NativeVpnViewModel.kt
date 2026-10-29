@@ -41,6 +41,8 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
     }
     // Keep VPN operations alive when the Settings dialog closes. An activity-owned VM
     // outlives individual dialog compositions, so consent/connect isn't cancelled mid-tunnel.
+    fun connectOpenVpn() { viewModelScope.launch { manager.connectOpenVpn() } }
+    fun connectSoftEther() { viewModelScope.launch { manager.connectSoftEther() } }
     fun connectWireGuard() { viewModelScope.launch { manager.connectWireGuard() } }
     fun connectIkev2() { viewModelScope.launch { manager.connectIkev2() } }
     fun disconnect() { viewModelScope.launch { manager.disconnect() } }
