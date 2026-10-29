@@ -123,7 +123,13 @@ class SearchViewModel @Inject constructor(
             } catch (_: Exception) {
                 null
             }
-            val claw = torrentClaw.search(query)
+            val claw = try {
+                torrentClaw.search(query)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                DebridResult.Failure("TorrentClaw unavailable")
+            }
             val clawResults = (claw as? DebridResult.Success)?.value.orEmpty()
             if (addons == null && clawResults.isEmpty()) {
                 throw IllegalStateException("Search providers unavailable")
