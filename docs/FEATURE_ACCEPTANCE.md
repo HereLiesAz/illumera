@@ -115,6 +115,13 @@ Android compilation and TV D-pad/end-of-row focus require device verification be
 
 These are source-reviewed fixes, not proof of Android TV playback; Gradle and device validation remain required.
 
+## Grid focus and loading policy (October 29, 2026) — device verification pending
+
+- Netflix, other streaming services and ordinary sortable movie/series grids: while on first poster row, Up focuses the currently selected sort chip instead of skipping to Back; Up from sort reaches Back; Down from sort returns to the poster that led to it; left/right navigates the chip row; D-pad Select changes the ordering and the Originals filter when available. Non-sortable grids still go directly to Back.
+- GridView's extra poster prefetch radius is at most three forward and three backward, not twelve each way. The grid remains lazy and its on-demand pagination near the loaded tail remains active; scrolling and sort selection must not cause eager whole-catalog loading.
+- Watchlist Library remains a single lazy vertical grid with Queue/Cloud/Sort full-span cells. Metadata enrichment is **not** launched for all Library entries or for the first two rows unconditionally: it uses actual visible poster *keys*, excludes Queue/Cloud/Sort, allows at most four candidates per viewport key update and at most two concurrent network requests. Focused blank-artwork posters can still request enrichment; profile switch and previously failed requests remain isolated.
+- JVM regression tests: `GridFocusNavigationTest` and `WatchlistViewModelTest` cover focus destinations, bounded prefetch and metadata key/filter budgets. Test on a physical Android TV with large Watchlist, held D-pad directions and loading failures before considering it runtime-verified.
+
 ## Watchlist reorganization (October 15, 2026) — awaiting device verification
 
 - Suggested Next, with **Refresh** directly beside the heading, is the first screen element. It remains visible even when there are no suggestions; the refresh control still accepts focus when suggestions are disabled and explains where to enable them.

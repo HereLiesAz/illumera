@@ -35,7 +35,8 @@ class WatchlistViewModel @Inject constructor(
 
     // Touched from Main (resolvePosterIfNeeded) and IO (the launch's finally) — must be concurrent.
     private val resolveInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-    private val metadataResolveSlots = Semaphore(3)
+    // At most two remote lookups across all visible Library cells.
+    private val metadataResolveSlots = Semaphore(2)
     // Cools down retries for items that just failed to resolve, instead of retrying
     // every one of them on every watchlist mutation (the movieItems/seriesItems
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
@@ -50,7 +51,7 @@ class WatchlistViewModel @Inject constructor(
 
     val movieRowState = androidx.compose.foundation.lazy.LazyListState()
     val seriesRowState = androidx.compose.foundation.lazy.LazyListState()
-    // Parent LazyColumn holds the Queue + virtualized Library grid together.
+    // One LazyVerticalGrid holds Queue/Cloud/Sort full-span items plus virtualized posters.
     // Each Library poster is its own stable lazy item, even across grid rows.
     val watchlistGridState = androidx.compose.foundation.lazy.grid.LazyGridState()
 
@@ -149,7 +150,7 @@ class WatchlistViewModel @Inject constructor(
             var succeeded = false
             var cancelled = false
             try {
-                // Only three metadata lookups run at once even when a large Library
+                // Only two metadata lookups run at once even when a large Library
                 // contains several ambiguous cross-provider identities.
                 metadataResolveSlots.withPermit {
                 // Network resolution must not hold the profile runtime lock. A slow addon

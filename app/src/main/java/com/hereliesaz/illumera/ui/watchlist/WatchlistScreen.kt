@@ -91,6 +91,20 @@ internal fun watchlistGridColumnCount(
 internal fun watchlistGridMediaKey(item: MetaItem): String =
     "library_${item.type}_${item.id}"
 
+// The LazyGrid composes only near-viewport posters; metadata demand follows those actual
+// card keys (not raw item indexes shifted by Queue/Cloud/Sort headers).
+internal const val WATCHLIST_VISIBLE_METADATA_BUDGET = 4
+internal fun watchlistVisibleMetadataKeys(
+    visibleKeys: List<Any>,
+    eligibleKeys: Set<String>,
+    budget: Int = WATCHLIST_VISIBLE_METADATA_BUDGET
+): List<String> = visibleKeys.asSequence()
+    .filterIsInstance<String>()
+    .filter { it in eligibleKeys }
+    .distinct()
+    .take(budget.coerceAtLeast(0))
+    .toList()
+
 @Composable
 fun WatchlistScreen(
     currentProfile: ProfileEntity?,
@@ -231,19 +245,18 @@ fun WatchlistScreen(
         gridCardWidth.value.toInt(),
         gridGap.value.toInt()
     )
-    // Enrich only nearby visible posters, not an entire potentially huge library.
-    LaunchedEffect(libraryItems, ambiguousIds, gridColumnCount) {
-        libraryItems.take(gridColumnCount * 2).filter(::shouldEnrich)
-            .forEach(viewModel::resolvePosterIfNeeded)
+    // A single viewport can hold many poster cells. Enqueue no more than four metadata
+    // lookups per visible-key update, only for cards that are actually composed onscreen.
+    // Do not eagerly resolve the first two rows: Queue/Cloud may occupy the viewport.
+    val eligibleLibraryByKey = remember(libraryItems, ambiguousIds) {
+        libraryItems.filter(::shouldEnrich).associateBy(::watchlistGridMediaKey)
     }
-    LaunchedEffect(viewModel.watchlistGridState, libraryItems, ambiguousIds) {
+    LaunchedEffect(viewModel.watchlistGridState, eligibleLibraryByKey) {
         snapshotFlow {
-            viewModel.watchlistGridState.layoutInfo.visibleItemsInfo.map { it.index }
-        }.collect { visible ->
-            visible.flatMap { listIndex -> (listIndex - 3)..(listIndex - 1) }
-                .distinct()
-                .mapNotNull { libraryItems.getOrNull(it) }
-                .filter(::shouldEnrich)
+            viewModel.watchlistGridState.layoutInfo.visibleItemsInfo.map { it.key }
+        }.collect { visibleKeys ->
+            watchlistVisibleMetadataKeys(visibleKeys, eligibleLibraryByKey.keys)
+                .mapNotNull(eligibleLibraryByKey::get)
                 .forEach(viewModel::resolvePosterIfNeeded)
         }
     }

@@ -73,6 +73,12 @@ import com.hereliesaz.illumera.ui.util.touchClick
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 
 private const val COLUMNS = 6
+// Poster prefetch is lookahead, not a second eager full-grid image loader.
+internal const val GRID_POSTER_PREFETCH_RADIUS = 3
+
+internal enum class GridHeaderUpTarget { SORT, BACK }
+internal fun gridFirstRowUpTarget(hasSortControls: Boolean): GridHeaderUpTarget =
+    if (hasSortControls) GridHeaderUpTarget.SORT else GridHeaderUpTarget.BACK
 private const val ORIGINALS_OPTION = "ORIGINALS"
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 150L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 200L
@@ -137,8 +143,9 @@ fun GridViewScreen(
         externalEntryRequester = externalEntryRequester,
         focusMemory = focusMemory,
         headerExtra = if (sortable) {
-            {
+            { sortFocusRequester ->
                 GridSortChips(
+                    focusRequester = sortFocusRequester,
                     selected = if (originalsOnly) null else order,
                     showOriginals = originalKeys != null,
                     originalsSelected = originalsOnly,
@@ -152,6 +159,7 @@ fun GridViewScreen(
 
 @Composable
 private fun GridSortChips(
+    focusRequester: FocusRequester,
     selected: ScreenGenreRows.TitleOrder?,
     showOriginals: Boolean,
     originalsSelected: Boolean,
@@ -176,6 +184,8 @@ private fun GridSortChips(
                 color = if (active || focused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier
+                    // The selected chip is the D-pad UP target from the first poster row.
+                    .then(if (active) Modifier.focusRequester(focusRequester) else Modifier)
                     .onFocusChanged { focused = it.isFocused }
                     .onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown &&
@@ -215,7 +225,7 @@ private fun GridViewContent(
     // The grid's place in its back-stack entry: the focused card ("item:<index>"). The scroll
     // comes back with the saveable grid state.
     focusMemory: FocusMemory = rememberFocusMemory(),
-    headerExtra: (@Composable () -> Unit)? = null
+    headerExtra: (@Composable (FocusRequester) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -261,6 +271,7 @@ private fun GridViewContent(
     val internalEntryRequester = remember { FocusRequester() }
     val entryRequester = externalEntryRequester ?: internalEntryRequester
     val backIconRequester = remember { FocusRequester() }
+    val sortFocusRequester = remember { FocusRequester() }
     val cardRequesters = remember { mutableMapOf<Int, FocusRequester>() }
     var pendingDirectionalTargetIndex by remember { mutableStateOf<Int?>(null) }
     var isBackIconFocused by remember { mutableStateOf(false) }
@@ -371,14 +382,19 @@ private fun GridViewContent(
                                 if (dpadRepeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
                                 if (keyEvent.type == KeyEventType.KeyDown) {
                                     when (keyEvent.key) {
-                                        // Block UP navigation on first row
+                                        // Streaming-service grids have a focusable sort row
+                                        // between their posters and Back. Never skip it.
                                         Key.DirectionUp -> {
-                                            if (index < COLUMNS) {
+                                            val columns = gridState.layoutInfo.maxSpan.coerceAtLeast(1)
+                                            if (index < columns) {
                                                 pendingDirectionalTargetIndex = null
-                                                backIconRequester.requestFocus()
+                                                when (gridFirstRowUpTarget(headerExtra != null)) {
+                                                    GridHeaderUpTarget.SORT -> sortFocusRequester.requestFocus()
+                                                    GridHeaderUpTarget.BACK -> backIconRequester.requestFocus()
+                                                }
                                                 return@onPreviewKeyEvent true
                                             }
-                                            val targetIndex = index - COLUMNS
+                                            val targetIndex = index - columns
                                             val targetRequester = cardRequesters[targetIndex]
                                             if (targetRequester != null) {
                                                 pendingDirectionalTargetIndex = null
@@ -391,7 +407,7 @@ private fun GridViewContent(
                                             }
                                         }
                                         Key.DirectionDown -> {
-                                            val targetIndex = index + COLUMNS
+                                            val targetIndex = index + gridState.layoutInfo.maxSpan.coerceAtLeast(1)
                                             if (targetIndex >= items.size) {
                                                 pendingDirectionalTargetIndex = null
                                                 return@onPreviewKeyEvent true
@@ -410,7 +426,7 @@ private fun GridViewContent(
                                         // Block LEFT navigation on first column (no exit on left key)
                                         Key.DirectionLeft -> {
                                             pendingDirectionalTargetIndex = null
-                                            if (index % COLUMNS == 0) {
+                                            if (index % gridState.layoutInfo.maxSpan.coerceAtLeast(1) == 0) {
                                                 return@onPreviewKeyEvent true
                                             }
                                         }
@@ -423,7 +439,7 @@ private fun GridViewContent(
                             }
                             .onFocusChanged {
                                 if (it.isFocused) {
-                                    ImagePrefetcher.prefetchAround(context, imageUrls, index, count = 12)
+                                    ImagePrefetcher.prefetchAround(context, imageUrls, index, count = GRID_POSTER_PREFETCH_RADIUS)
                                     lastFocusedPosterIndex = index
                                     val pendingTarget = pendingDirectionalTargetIndex
                                     if (pendingTarget != null) {
@@ -552,8 +568,25 @@ private fun GridViewContent(
                         .fillMaxWidth()
                         .padding(start = startPadding, top = 8.dp, end = 50.dp)
                         .horizontalScroll(rememberScrollState())
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+                                // Return to the poster that led here, not the Back button.
+                                val requester = cardRequesters[lastFocusedPosterIndex]
+                                    ?: cardRequesters[0]
+                                if (requester != null) {
+                                    pendingDirectionalTargetIndex = null
+                                    requester.requestFocus()
+                                    true
+                                } else false
+                            } else if (event.type == KeyEventType.KeyDown &&
+                                event.key == Key.DirectionUp
+                            ) {
+                                backIconRequester.requestFocus()
+                                true
+                            } else false
+                        }
                 ) {
-                    headerExtra()
+                    headerExtra(sortFocusRequester)
                 }
             }
             }

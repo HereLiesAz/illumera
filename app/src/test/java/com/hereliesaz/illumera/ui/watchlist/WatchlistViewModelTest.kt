@@ -82,6 +82,48 @@ class WatchlistViewModelTest {
     }
 
     @Test
+    fun metadataRequestsOnlyMatchVisiblePosterKeysNotHeaderIndexes() {
+        val visible = listOf<Any>(
+            "watchlist_queue", "watchlist_cloud_storage", "library_sort",
+            "library_movie_tt1", "library_movie_tt2", "library_series_tt3"
+        )
+        val eligible = setOf(
+            "library_movie_tt1", "library_series_tt3",
+            "library_movie_unseen", "library_movie_tt99"
+        )
+
+        assertEquals(
+            listOf("library_movie_tt1", "library_series_tt3"),
+            watchlistVisibleMetadataKeys(visible, eligible)
+        )
+    }
+
+    @Test
+    fun metadataRequestsAreCappedPerViewportEvenForHugeLibrary() {
+        val visible = (1..200).map { "library_movie_tt$it" }
+        val eligible = visible.toSet()
+        assertEquals(
+            listOf("library_movie_tt1", "library_movie_tt2",
+                "library_movie_tt3", "library_movie_tt4"),
+            watchlistVisibleMetadataKeys(visible, eligible)
+        )
+        assertEquals(emptyList<String>(), watchlistVisibleMetadataKeys(visible, eligible, 0))
+    }
+
+    @Test
+    fun repeatedVisiblePosterAndUnrelatedKeysDoNotQueueExtraMetadata() {
+        assertEquals(
+            listOf("library_movie_tt1", "library_movie_tt2"),
+            watchlistVisibleMetadataKeys(
+                listOf("library_sort", "library_movie_tt1", "library_movie_tt1",
+                    1, "library_movie_tt2", "library_movie_tt3"),
+                setOf("library_movie_tt1", "library_movie_tt2"),
+                budget = 4
+            )
+        )
+    }
+
+    @Test
     fun watchlistGridFitsTwoPortraitPostersOnCompactScreens() {
         assertEquals(2, watchlistGridColumnCount(393, 96, 122))
         assertEquals(1, watchlistGridColumnCount(260, 96, 122))
