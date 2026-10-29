@@ -62,9 +62,7 @@ fun AddonCatalogContent(
     state: AddonsViewModel.UiState,
     onLoad: () -> Unit,
     onSourceSelected: (AddonCatalogSource) -> Unit,
-    onAddCollection: (String) -> Unit,
     onCollectionSelected: (SavedAddonCollection) -> Unit,
-    onCollectionRemoved: (SavedAddonCollection) -> Unit,
     onRetry: () -> Unit,
     onInstall: (AddonCatalogItem) -> Unit,
     onRemove: (AddonCatalogItem) -> Unit,
@@ -80,8 +78,6 @@ fun AddonCatalogContent(
     focusMemory: FocusMemory
 ) {
     var query by remember { mutableStateOf("") }
-    var addingCollection by remember { mutableStateOf(false) }
-    var collectionUrl by remember { mutableStateOf("") }
     val initialFocusRequester = remember { FocusRequester() }
 
     // A full-screen catalog must not steal focus from the Browse/Installed
@@ -124,7 +120,7 @@ fun AddonCatalogContent(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Official, Community, 3rd Party, and saved collections",
+                "Browse enabled repositories. Manage them in Settings → Integrations.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.58f),
                 modifier = Modifier.padding(top = 4.dp)
@@ -163,14 +159,21 @@ fun AddonCatalogContent(
                         )
                     }
                 }
-                item(key = "add_collection") {
-                    VoidButton(
-                        text = "+ Collection",
-                        onClick = { addingCollection = !addingCollection },
-                        isPrimary = addingCollection,
-                        modifier = Modifier.width(110.dp).restorableFocus("addons:collection-add", focusMemory),
-                        compact = true
-                    )
+                // Custom repositories can be browsed here; enable, add and remove them
+                // exclusively in Settings → Integrations.
+                state.savedCollections.forEach { repository ->
+                    item(key = "repository:${repository.url}") {
+                        VoidButton(
+                            text = repository.name.take(22),
+                            onClick = { onCollectionSelected(repository) },
+                            isPrimary = !showingInstalled &&
+                                state.catalogSource == AddonCatalogSource.COLLECTION &&
+                                state.activeCollection?.url == repository.url,
+                            modifier = Modifier.width(172.dp)
+                                .restorableFocus("addons:repository:${repository.url}", focusMemory),
+                            compact = true
+                        )
+                    }
                 }
                 item(key = "install_url") {
                     VoidButton(
@@ -189,76 +192,6 @@ fun AddonCatalogContent(
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(top = 10.dp)
                 )
-            }
-
-            if (addingCollection) {
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    VoidInput(
-                        value = collectionUrl,
-                        onValueChange = { collectionUrl = it },
-                        placeholder = "Addon collection URL",
-                        modifier = Modifier.weight(1f)
-                    )
-                    VoidButton(
-                        text = "Add",
-                        onClick = {
-                            if (collectionUrl.isNotBlank()) {
-                                onAddCollection(collectionUrl.trim())
-                                collectionUrl = ""
-                                addingCollection = false
-                            }
-                        },
-                        enabled = collectionUrl.isNotBlank() && !state.isCatalogLoading,
-                        isPrimary = collectionUrl.isNotBlank(),
-                        modifier = Modifier.width(110.dp)
-                    )
-                }
-                Text(
-                    "Supports Stremio addon-catalog manifests, modern collection JSON, and compatible legacy repositories.",
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.48f),
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-
-            if (!showingInstalled && state.savedCollections.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Collections",
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.62f),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(6.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.savedCollections, key = { it.url }) { collection ->
-                        VoidButton(
-                            text = collection.name.take(22),
-                            onClick = { onCollectionSelected(collection) },
-                            isPrimary = state.catalogSource == AddonCatalogSource.COLLECTION &&
-                                state.activeCollection?.url == collection.url,
-                            modifier = Modifier.width(190.dp).restorableFocus("addons:collection:${collection.url}", focusMemory)
-                        )
-                    }
-                }
-
-                if (state.catalogSource == AddonCatalogSource.COLLECTION && state.activeCollection != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        VoidButton(
-                            text = "Forget collection",
-                            onClick = { onCollectionRemoved(state.activeCollection) },
-                            modifier = Modifier.width(180.dp)
-                        )
-                    }
-                }
             }
 
             Spacer(Modifier.height(10.dp))
