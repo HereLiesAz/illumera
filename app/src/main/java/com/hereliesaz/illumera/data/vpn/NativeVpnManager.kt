@@ -44,8 +44,8 @@ import kotlinx.coroutines.withContext
 enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
     WIREGUARD("WireGuard", true),
     IKEV2("IKEv2/IPsec · strongSwan / Libreswan", true),
-    OPENVPN("OpenVPN", false),
-    SOFTETHER("SoftEther SSL-VPN", false)
+    OPENVPN("OpenVPN", true),
+    SOFTETHER("SoftEther SSL-VPN", true)
 }
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
@@ -116,6 +116,14 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     private val _status = MutableStateFlow(NativeVpnStatus())
     val status: StateFlow<NativeVpnStatus> = _status
+    private val embedded by lazy {
+        EmbeddedVpnController(context) { protocol, phase, message ->
+            // Ignore stale callbacks from a previously stopped engine.
+            if (_status.value.protocol == protocol) {
+                _status.value = NativeVpnStatus(protocol, phase, message)
+            }
+        }
+    }
 
     init {
         // The platform IPsec session survives the UI/activity process. Recover its real
@@ -348,6 +356,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
                     ?: error("Import a WireGuard configuration first")
                 val config = Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
                 stopIkev2IfRunning()
+                stopEmbeddedIfRunning()
                 _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.CONNECTING)
                 check(backend.setState(tunnel, Tunnel.State.UP, config) == Tunnel.State.UP) {
                     "WireGuard could not establish its VPN interface"
@@ -367,6 +376,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             runCatching {
                 check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
                 runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                stopEmbeddedIfRunning()
                 startIkev2Api30()
                 _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
                     "IKEv2 session requested; Android manages authentication and connection")
@@ -410,12 +420,66 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         }
     }
 
+    /** OpenVPN owns a real Android VpnService with native packet I/O. */
+    suspend fun connectOpenVpn(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
+            runCatching {
+                val profile = secrets.getString(OPENVPN_PROFILE, null)
+                    ?: error("Import and save an OpenVPN profile first")
+                check(VpnService.prepare(context) == null) { "Android VPN permission required" }
+                runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                stopIkev2IfRunning()
+                stopEmbeddedIfRunning()
+                _status.value = NativeVpnStatus(NativeVpnProtocol.OPENVPN, NativeVpnPhase.CONNECTING,
+                    "Starting embedded OpenVPN tunnel")
+                embedded.connectOpenVpn(profile)
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.OPENVPN, NativeVpnPhase.ERROR,
+                    it.message ?: "OpenVPN connection failed")
+            }
+        }
+    }
+
+    /** SoftEther uses its own foreground VpnService and native TLS/JNI TUN bridge. */
+    suspend fun connectSoftEther(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
+            runCatching {
+                val prefs = secrets
+                val host = prefs.getString(SOFTETHER_HOST, null)
+                    ?: error("Save a SoftEther server first")
+                val port = prefs.getInt(SOFTETHER_PORT, 0)
+                val hub = prefs.getString(SOFTETHER_HUB, null).orEmpty()
+                val user = prefs.getString(SOFTETHER_USER, null).orEmpty()
+                val password = prefs.getString(SOFTETHER_PASSWORD, null).orEmpty()
+                check(VpnService.prepare(context) == null) { "Android VPN permission required" }
+                runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                stopIkev2IfRunning()
+                stopEmbeddedIfRunning()
+                _status.value = NativeVpnStatus(NativeVpnProtocol.SOFTETHER, NativeVpnPhase.CONNECTING,
+                    "Starting native SoftEther TLS tunnel")
+                embedded.connectSoftEther(host, port, hub, user, password)
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.SOFTETHER, NativeVpnPhase.ERROR,
+                    it.message ?: "SoftEther connection failed")
+            }
+        }
+    }
+
+    private fun stopEmbeddedIfRunning() {
+        val protocol = _status.value.protocol
+        if (protocol == NativeVpnProtocol.OPENVPN || protocol == NativeVpnProtocol.SOFTETHER) {
+            embedded.disconnect(protocol)
+        }
+    }
+
     suspend fun disconnect(): Result<Unit> = withContext(Dispatchers.IO) {
         connectionMutex.withLock {
             runCatching {
                 when (_status.value.protocol) {
                     NativeVpnProtocol.WIREGUARD -> backend.setState(tunnel, Tunnel.State.DOWN, null)
                     NativeVpnProtocol.IKEV2 -> stopIkev2IfRunning()
+                    NativeVpnProtocol.OPENVPN, NativeVpnProtocol.SOFTETHER ->
+                        embedded.disconnect(_status.value.protocol!!)
                     else -> Unit
                 }
                 _status.value = NativeVpnStatus()
