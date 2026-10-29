@@ -58,6 +58,7 @@ fun PlayerScreen(
     mediaType: String,
     seriesId: String? = null,
     onBack: (PlayerSessionResult) -> Unit,
+    onPlaybackCompleted: (PlayerSessionResult) -> Unit = onBack,
     backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER,
     sources: List<PlayerSourceOption> = emptyList(),
     subtitles: List<PlayerSubtitleSource> = emptyList(),
@@ -348,7 +349,9 @@ fun PlayerScreen(
         }
     }
 
-    val persistAndBack = {
+    // Only the automatic end-of-media path may advance the queue. Back and the explicit
+    // exit button both preserve progress but return to the currently playing title.
+    val persistAndBack: (Boolean) -> Unit = { automaticCompletion ->
         val hasError = !uiState.errorMessage.isNullOrBlank()
         val position = uiState.positionMs.coerceAtLeast(0L)
         val duration = uiState.durationMs.takeIf { it > 0L }
@@ -383,8 +386,7 @@ fun PlayerScreen(
         )
         val selectedSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
             ?: videoUrl
-        onBack(
-            PlayerSessionResult(
+        val result = PlayerSessionResult(
                 positionMs = if (hasError) 0L else position,
                 durationMs = duration,
                 isCompleted = !hasError && completed,
@@ -393,7 +395,7 @@ fun PlayerScreen(
                 selectedSubtitleTrackId = uiState.subtitleChoiceToRemember ?: uiState.selectedSubtitleTrackId,
                 subtitleDelayMs = uiState.subtitleDelayMs
             )
-        )
+        if (automaticCompletion) onPlaybackCompleted(result) else onBack(result)
     }
 
     LaunchedEffect(
@@ -424,7 +426,7 @@ fun PlayerScreen(
         } else if (videoUrl.isBlank()) {
             // Preserve the old no-fallback behavior for an initial torrent failure:
             // leave the player and return to Details instead of hanging on an error overlay.
-            persistAndBack()
+            persistAndBack(false)
         }
     }
 
@@ -444,7 +446,8 @@ fun PlayerScreen(
             seriesTitle = seriesTitle,
             logoUrl = logoUrl,
             mediaType = mediaType,
-            onBack = persistAndBack,
+            onBack = { persistAndBack(false) },
+            onPlaybackCompleted = { persistAndBack(true) },
             skipSegmentInfo = skipSegmentInfo,
             nextEpisodeInfo = nextEpisodeInfo,
             onAutoplayNextEpisode = onAutoplayNextEpisode,
