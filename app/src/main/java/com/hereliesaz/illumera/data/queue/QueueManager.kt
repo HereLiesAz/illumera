@@ -636,7 +636,7 @@ class QueueManager @Inject constructor(
 
             if (QueueSuggestionSource.PLAY_HISTORY in current.preferences.suggestionSources) {
                 history.asSequence()
-                    .filter { !it.watched }
+                    .filter { !it.watched && it.hasPlaybackEvidence() }
                     .filter {
                         (it.type == "movie" && current.preferences.includeMovies) ||
                             (it.type == "series" && (current.preferences.includeEpisodes || current.preferences.includeWholeShows))
