@@ -88,6 +88,18 @@ class DebridAddonUrlHelperTest {
     }
 
     @Test
+    fun torrinIsNotMisrepresentedAsACompatibleTorrentioProvider() {
+        val plain = "https://torrentio.strem.fun/manifest.json"
+        val configured = "https://torrentio.strem.fun/sort=qualitysize/manifest.json"
+        assertEquals(plain,
+            DebridAddonUrlHelper.withDebridKeyIfKnown(plain, DebridProvider.TORRIN, "secret"))
+        assertEquals(configured,
+            DebridAddonUrlHelper.withDebridKeyIfKnown(configured, DebridProvider.TORRIN, "secret"))
+        assertEquals("", TorrentioConfig(debridProvider = DebridProvider.TORRIN, debridKey = "secret").configSegment())
+        assertEquals(null, TorrentioConfig.parse("https://torrentio.strem.fun/torrin=secret/manifest.json").debridProvider)
+    }
+
+    @Test
     fun doesNotOverwriteAnyExistingDebridConfiguration() {
         val url = "https://torrentio.strem.fun/sort=quality|alldebrid=existing/manifest.json"
 
