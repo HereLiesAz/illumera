@@ -15,7 +15,8 @@ enum class DebridProvider(
     TORBOX("torbox", "TorBox", "https://torbox.app/settings"),
     DEBRID_LINK("debrid_link", "Debrid-Link", "https://debrid-link.com/webapp/apikey"),
     OFFCLOUD("offcloud", "Offcloud", "https://offcloud.com/#/account"),
-    EASY_DEBRID("easy_debrid", "EasyDebrid", "https://easydebrid.com/");
+    EASY_DEBRID("easy_debrid", "EasyDebrid", "https://easydebrid.com/"),
+    TORRIN("torrin", "Torrin", "https://torrin.app/");
 
     companion object {
         fun fromId(id: String?): DebridProvider? = entries.firstOrNull { it.id == id }
