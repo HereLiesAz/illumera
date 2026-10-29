@@ -7,6 +7,7 @@ import com.hereliesaz.illumera.data.auth.StremioAuthManager
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.auth.pollSocialLogin
 import com.hereliesaz.illumera.data.debrid.DebridManager
+import com.hereliesaz.illumera.data.torrentclaw.TorrentClawIntegration
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
@@ -94,7 +95,9 @@ data class IntegrationsUiState(
     val debridConnections: List<DebridConnection> = emptyList(),
     val debridConnecting: Boolean = false,
     val wutchUsername: String? = null,
-    val wutchBusy: Boolean = false
+    val wutchBusy: Boolean = false,
+    val torrentClawEnabled: Boolean = false,
+    val torrentClawHasKey: Boolean = false
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -110,7 +113,8 @@ class IntegrationsViewModel @Inject constructor(
     private val traktSyncManager: TraktSyncManager,
     private val debridManager: DebridManager,
     private val stremioLibrarySyncManager: StremioLibrarySyncManager,
-    private val wutchManager: WutchManager
+    private val wutchManager: WutchManager,
+    private val torrentClaw: TorrentClawIntegration
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IntegrationsUiState())
@@ -156,6 +160,12 @@ class IntegrationsViewModel @Inject constructor(
         viewModelScope.launch {
             debridManager.connections.collect { connections ->
                 _uiState.update { it.copy(debridConnections = connections) }
+            }
+        }
+        // Both the enable flag and optional encrypted API key belong to the active profile.
+        viewModelScope.launch {
+            profileConfigurationManager.activeProfileId.collect {
+                refreshTorrentClaw()
             }
         }
         // Follow the active profile's TMDB settings (this VM outlives profile switches)
@@ -625,6 +635,32 @@ class IntegrationsViewModel @Inject constructor(
     // ── wutch.tv ──
 
     /** Signs in with email and password, or with [apiKey] when given, then imports. */
+    private fun refreshTorrentClaw() {
+        _uiState.update {
+            it.copy(
+                torrentClawEnabled = torrentClaw.isEnabled(),
+                torrentClawHasKey = torrentClaw.hasKey()
+            )
+        }
+    }
+
+    fun setTorrentClawEnabled(enabled: Boolean) {
+        torrentClaw.setEnabled(enabled)
+        refreshTorrentClaw()
+    }
+
+    /** The optional search key stays in encrypted storage and is never exposed to UI state. */
+    fun saveTorrentClawKey(key: String): Boolean {
+        val saved = torrentClaw.saveKey(key)
+        refreshTorrentClaw()
+        return saved
+    }
+
+    fun clearTorrentClawKey() {
+        torrentClaw.clearKey()
+        refreshTorrentClaw()
+    }
+
     fun connectWutch(email: String, password: String, apiKey: String?) {
         if (_uiState.value.wutchBusy) return
         viewModelScope.launch {
