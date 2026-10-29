@@ -265,6 +265,11 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         certificate.checkValidity()
         val key = store.getKey(alias, password.toCharArray()) as? PrivateKey
             ?: error("Could not unlock the client private key")
+        // Android's platform Ikev2VpnProfile.setAuthDigitalSignature requires RSA keys.
+        // Reject unsupported EC identities before replacing any previously saved profile.
+        require(key is RSAPrivateKey && certificate.publicKey is RSAPublicKey) {
+            "Android platform IKEv2 requires an RSA client certificate and private key"
+        }
         return certificate to key
     }
 
