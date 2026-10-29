@@ -20,6 +20,8 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -301,6 +303,8 @@ fun SettingsScreen(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
+                        // Bounded sidebar scroll; the content pane scrolls independently.
+                        .verticalScroll(rememberScrollState())
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
                 ) {
                     sidebarContent()
@@ -360,6 +364,8 @@ fun SettingsScreen(
                         .weight(0.28f)
                         .fillMaxHeight()
                         .padding(top = colTopPadding, start = colStartPadding, end = 16.dp)
+                        // Bounded sidebar scroll; the content pane scrolls independently.
+                        .verticalScroll(rememberScrollState())
                         .onFocusChanged { if (it.hasFocus) { isContentFocused = false } }
                 ) {
                     sidebarContent()
