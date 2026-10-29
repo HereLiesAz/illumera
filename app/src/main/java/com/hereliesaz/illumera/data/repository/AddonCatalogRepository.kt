@@ -341,12 +341,6 @@ class AddonCatalogRepository @Inject constructor(
     }
 
     /**
-     * Pages through stremio-addons.net. A failure on a later page keeps the pages already
-     * collected (only a failed first page is an error), and the whole walk is bounded by
-     * [STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS] on top of the per-page timeout. Unexpected JSON
-     * shapes end the walk instead of throwing.
-     */
-    /**
      * AIOMetadata is an individual configurable addon, not a JSON repository. Discover it
      * via the official configure page, where viewers generate their own private manifest
      * URL. Never invent a shared/unconfigured install URL for their configuration.
@@ -414,6 +408,12 @@ class AddonCatalogRepository @Inject constructor(
         return listOf(directory) + projects
     }
 
+    /**
+     * Pages through stremio-addons.net. A failure on a later page keeps the pages already
+     * collected (only a failed first page is an error), and the whole walk is bounded by
+     * [STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS] on top of the per-page timeout. Unexpected JSON
+     * shapes end the walk instead of throwing.
+     */
     private suspend fun fetchStremioAddonsNet(): List<AddonCatalogItem> {
         val items = mutableListOf<AddonCatalogItem>()
         var page = 1
