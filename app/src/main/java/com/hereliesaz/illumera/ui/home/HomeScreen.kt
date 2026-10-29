@@ -1105,14 +1105,15 @@ private fun InlineFocusedPosterPreview(
 }
 
 /**
- * Persistent layout preview height: the Hero's 420dp where the screen allows, otherwise
- * whatever leaves room for two full landscape rails below, never under 38% of the screen.
+ * Keep the entire cinematic stage on screen, up to the Hero's 420dp height. Only the
+ * first landscape rail needs to fit beneath it; subsequent rails may be partially visible
+ * until scrolled into focus. Compact TV viewports retain at least 38% for the stage.
  */
 internal fun persistentPreviewHeight(screenHeight: Dp): Dp =
     (screenHeight - PERSISTENT_ROWS_RESERVE).coerceIn(screenHeight * 0.38f, 420.dp)
 
-// Two compact rails: 116dp rail + ~26dp heading + 20dp row gap each, plus list top padding.
-private val PERSISTENT_ROWS_RESERVE = 330.dp
+// One landscape rail (116dp), its smaller heading, row gap and top focus clearance.
+private val PERSISTENT_ROWS_RESERVE = 180.dp
 
 // Space above a focused card in the persistent layout: row heading (~26dp) plus the
 // card's 1.05x focus scale and border.
