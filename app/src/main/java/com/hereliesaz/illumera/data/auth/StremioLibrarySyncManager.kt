@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
+import com.hereliesaz.illumera.data.model.MIN_CONFIRMED_PLAYBACK_MS
 import com.hereliesaz.illumera.data.model.WatchlistEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.remote.StremioAuthService
@@ -23,6 +24,15 @@ import java.security.MessageDigest
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Stremio's datastore represents BOTH library bookmarks and playback. A new
+ * bookmark has a valid mtime but no watch progress. Neither its creation time
+ * nor its presence in Library is a playback event.
+ */
+internal fun stremioStateHasPlaybackEvidence(state: StremioLibraryItemState): Boolean =
+    state.timesWatched > 0 || state.flaggedWatched > 0 ||
+        state.timeOffset >= MIN_CONFIRMED_PLAYBACK_MS
 
 @Singleton
 class StremioLibrarySyncManager @Inject constructor(
@@ -226,6 +236,7 @@ class StremioLibrarySyncManager @Inject constructor(
     private suspend fun buildLocalLibraryView(profileId: Int): Map<String, StremioLibraryItem> {
         val mostRecentHistory = LinkedHashMap<String, WatchHistoryEntity>()
         for (item in dao.getAllWatchHistoryOnce()) {
+            if (!item.hasPlaybackEvidence()) continue
             val libraryId = if (item.type == "series") {
                 item.seriesId ?: parseSeriesId(item.id) ?: continue
             } else item.id
@@ -339,6 +350,10 @@ class StremioLibrarySyncManager @Inject constructor(
                     .putLong(ownedModifiedAtKey, mtimeMs).apply()
             }
         }
+        // Bookmarks must not become Continue Watching or preference seeds. In
+        // particular, a newer bookmark mtime is not permission to overwrite a
+        // real local play with zero-progress remote state.
+        if (!stremioStateHasPlaybackEvidence(item.state)) return
         val localId = if (item.type == "series") item.state.videoId ?: return else item.id
         val existing = dao.getHistoryItem(localId)
         if (existing != null && existing.lastWatched >= mtimeMs) return
@@ -355,11 +370,11 @@ class StremioLibrarySyncManager @Inject constructor(
                 background = existing?.background,
                 logo = existing?.logo,
                 seriesId = if (item.type == "series") item.id else existing?.seriesId,
-                position = item.state.timeOffset,
+                position = item.state.timeOffset.coerceAtLeast(0L),
                 duration = duration,
                 lastWatched = mtimeMs,
                 type = item.type,
-                watched = item.state.timesWatched > 0,
+                watched = item.state.timesWatched > 0 || item.state.flaggedWatched > 0,
                 scrobbled = existing?.scrobbled ?: false
             )
         )
