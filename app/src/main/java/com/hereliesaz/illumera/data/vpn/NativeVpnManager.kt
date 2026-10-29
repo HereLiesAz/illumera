@@ -50,6 +50,12 @@ enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
 
+/** Reaffirm disclosure for each user-initiated VPN session, never implied by an import. */
+internal fun mayRequestNativeVpnConnection(
+    protocol: NativeVpnProtocol,
+    disclosureAccepted: Boolean
+): Boolean = protocol.ready && disclosureAccepted
+
 /** Native Android IKEv2 authentication modes (API 30+). */
 enum class Ikev2AuthMode(val label: String) {
     EAP("Username / Password (EAP)"),

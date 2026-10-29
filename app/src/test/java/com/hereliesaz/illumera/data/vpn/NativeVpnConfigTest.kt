@@ -104,6 +104,14 @@ class NativeVpnConfigTest {
     }
 
     @Test
+    fun vpnAuthorizationRequiresCurrentProtocolAndAffirmativeDisclosure() {
+        for (protocol in NativeVpnProtocol.entries) {
+            assertEquals(false, mayRequestNativeVpnConnection(protocol, false))
+            assertEquals(protocol.ready, mayRequestNativeVpnConnection(protocol, true))
+        }
+    }
+
+    @Test
     fun onlyActualTunnelEnginesAreConnectable() {
         val enabled = NativeVpnProtocol.entries.filter { it.ready }.map { it.label }
         assertEquals(listOf("WireGuard", "IKEv2/IPsec · strongSwan / Libreswan"), enabled)
