@@ -82,9 +82,19 @@ fun NativeVpnSettingsDialog(
         if (uri != null) {
             runCatching {
                 // A VPN profile is a small text config, not an arbitrary multi-megabyte upload.
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readNBytes(131073) }
-                    ?: error("Unable to read configuration")
-                require(bytes.size <= 131072) { "WireGuard configuration exceeds 128 KiB" }
+                val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 131072) {
+                            "WireGuard configuration exceeds 128 KiB"
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: error("Unable to read configuration")
                 val imported = bytes.toString(Charsets.UTF_8)
                 viewModel.saveWireGuard(imported).getOrThrow()
                 savedWireGuard = true
