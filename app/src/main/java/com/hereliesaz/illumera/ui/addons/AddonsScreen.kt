@@ -119,15 +119,10 @@ fun AddonsScreen(
                 removalGuidance = null
                 viewModel.selectCatalogSource(source)
             },
-            onAddCollection = { url ->
-                showingInstalled = false
-                viewModel.addCollection(url)
-            },
             onCollectionSelected = { collection ->
                 showingInstalled = false
                 viewModel.selectCollection(collection)
             },
-            onCollectionRemoved = viewModel::removeCollection,
             onRetry = viewModel::retryCatalog,
             onInstall = { viewModel.prepareInstall(it.transportUrl) },
             onRemove = { item: AddonCatalogItem ->
