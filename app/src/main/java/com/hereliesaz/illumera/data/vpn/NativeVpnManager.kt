@@ -131,7 +131,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
         val identity = prefs.getString(IKEV2_IDENTITY, null).orEmpty()
         val user = prefs.getString(IKEV2_USER, null).orEmpty()
         val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
-        validateIkev2Inputs(server, identity, user, password)?.let { error(error = it) }
+        validateIkev2Inputs(server, identity, user, password)?.let { error(it) }
         val profile = Ikev2VpnProfile.Builder(server, identity)
             .setAuthUsernamePassword(user, password, null)
             .build()
