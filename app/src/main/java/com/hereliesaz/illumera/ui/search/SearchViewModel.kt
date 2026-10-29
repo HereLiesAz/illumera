@@ -123,6 +123,17 @@ class SearchViewModel @Inject constructor(
             } catch (_: Exception) {
                 null
             }
+            // Do not block a successful installed-addon search on the optional provider.
+            // SearchScreen hides results while isLoading, so publish these immediately
+            // before TorrentClaw's separate network request finishes or times out.
+            if (!addons.isNullOrEmpty()) {
+                _state.value = _state.value.copy(
+                    results = addons,
+                    movies = addons.filter { it.type == "movie" },
+                    series = addons.filter { it.type == "series" },
+                    isLoading = false
+                )
+            }
             val claw = try {
                 torrentClaw.search(query)
             } catch (cancelled: CancellationException) {
