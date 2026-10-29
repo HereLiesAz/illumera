@@ -103,7 +103,10 @@ data class TorrentioConfig(
                 if (key.isEmpty()) null else key to part.substringAfter('=')
             }.toMap()
             fun list(key: String) = pairs[key]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
-            val debrid = DebridProvider.entries.firstOrNull { configKey(it) in pairs }
+            // Torrin has no Torrentio config token; treat any torrin= segment as unknown.
+            val debrid = DebridProvider.entries
+                .filterNot { it == DebridProvider.TORRIN }
+                .firstOrNull { configKey(it) in pairs }
             val options = list("debridoptions")
             return TorrentioConfig(
                 providers = list("providers").toSet(),
