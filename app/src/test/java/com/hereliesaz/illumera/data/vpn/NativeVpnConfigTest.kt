@@ -12,11 +12,11 @@ class NativeVpnConfigTest {
     @Test
     fun emptyServerAndIdentityFailBeforeProvisioning() {
         assertEquals(
-            "Server and remote identity are required",
+            "Server and local IKE identity are required",
             validateIkev2Inputs("", "vpn.example.net", "viewer", "secret")
         )
         assertEquals(
-            "Server and remote identity are required",
+            "Server and local IKE identity are required",
             validateIkev2Inputs("vpn.example.net", "", "viewer", "secret")
         )
     }
@@ -48,6 +48,27 @@ class NativeVpnConfigTest {
             validateIkev2Inputs("vpn.example.net", "vpn.example.net", "viewer", "")
         )
         assertNull(validateIkev2Inputs("vpn.example.net", "vpn.example.net", "viewer", "secret"))
+    }
+
+    @Test
+    fun pskAndCertificateUseTheSameValidatedLocalIkeIdentity() {
+        assertEquals(
+            "Server and local IKE identity are required",
+            validateIkev2Server("vpn.example.net", "")
+        )
+        assertNull(validateIkev2Server("vpn.example.net", "client@example.net"))
+        assertEquals(
+            "Enter a hostname or IP address, not a URL",
+            validateIkev2Server("https://vpn.example.net", "client@example.net")
+        )
+    }
+
+    @Test
+    fun allPlatformIkev2AuthenticationModesAreExplicit() {
+        assertEquals(
+            listOf(Ikev2AuthMode.EAP, Ikev2AuthMode.PSK, Ikev2AuthMode.CERTIFICATE),
+            Ikev2AuthMode.entries
+        )
     }
 
     @Test
