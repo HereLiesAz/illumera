@@ -92,8 +92,8 @@ fun isMainAreaKey(key: NavKey?): Boolean = key is MainRootKey || key is GridKey
  * A title's Details page. [title], [poster] and [logo] are what the opener already knew, shown
  * until the page resolves its own and handed to the player when playback starts here.
  * [queueAutoPlayId] is the episode or movie a queue advance asks the page to start; the page
- * starts it once (DetailsViewModel remembers that it did). [instance] keeps two pages for the
- * same title (a queue advance within one show, or a recommendation loop) apart on the stack.
+ * starts it once (DetailsViewModel remembers that it did). [instance] distinguishes
+ * separately opened pages, including a replacement queue page with fresh autoplay state.
  */
 @Serializable
 data class DetailsKey(
