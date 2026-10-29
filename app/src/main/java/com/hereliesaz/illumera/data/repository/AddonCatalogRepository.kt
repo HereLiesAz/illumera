@@ -45,8 +45,13 @@ class AddonCatalogRepository @Inject constructor(
         // Built-in catalog sources switched on, in display order.
         val enabledBuiltIns: List<AddonCatalogSource>,
         // Saved collection URLs, in the viewer's order.
-        val collections: List<SavedAddonCollection>
-    )
+        val collections: List<SavedAddonCollection>,
+        // Separate disabled URLs preserve legacy saved collections as enabled by default.
+        val disabledCollectionUrls: Set<String> = emptySet()
+    ) {
+        val enabledCollections: List<SavedAddonCollection>
+            get() = collections.filterNot { it.url in disabledCollectionUrls }
+    }
 
     private val _repositories = MutableStateFlow(readRepositories())
     /** Live: Integrations and the Add-ons browser both follow every change at once. */
@@ -54,7 +59,8 @@ class AddonCatalogRepository @Inject constructor(
 
     private fun readRepositories() = Repositories(
         enabledBuiltIns = BUILT_IN_SOURCES.filter { it.name !in disabledBuiltIns() },
-        collections = getSavedCollections()
+        collections = getSavedCollections(),
+        disabledCollectionUrls = prefs.getStringSet(KEY_DISABLED_COLLECTIONS, emptySet()).orEmpty()
     )
 
     private fun publish() { _repositories.value = readRepositories() }
@@ -66,6 +72,15 @@ class AddonCatalogRepository @Inject constructor(
         if (source !in BUILT_IN_SOURCES) return@synchronized
         val next = disabledBuiltIns().let { if (enabled) it - source.name else it + source.name }
         prefs.edit().putStringSet(KEY_DISABLED_BUILT_INS, next).apply()
+        publish()
+    }
+
+    /** Disabled custom repositories remain saved, and can be re-enabled from Integrations. */
+    fun setCollectionEnabled(url: String, enabled: Boolean) = synchronized(this) {
+        if (getSavedCollections().none { it.url == url }) return@synchronized
+        val disabled = _repositories.value.disabledCollectionUrls
+        val next = if (enabled) disabled - url else disabled + url
+        prefs.edit().putStringSet(KEY_DISABLED_COLLECTIONS, next).apply()
         publish()
     }
 
@@ -94,7 +109,10 @@ class AddonCatalogRepository @Inject constructor(
     fun removeCollection(url: String) = synchronized(this) {
         val normalized = normalizeExternalUrl(url) ?: url.trim()
         val next = getSavedCollections().filterNot { it.url == normalized }
-        prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
+        prefs.edit()
+            .putString(KEY_COLLECTIONS, gson.toJson(next))
+            .putStringSet(KEY_DISABLED_COLLECTIONS, _repositories.value.disabledCollectionUrls - normalized)
+            .apply()
         publish()
     }
 
@@ -106,7 +124,7 @@ class AddonCatalogRepository @Inject constructor(
             AddonCatalogSource.ALL -> supervisorScope {
                 // Only the repositories switched on in Integrations.
                 val sources = _repositories.value.enabledBuiltIns
-                val tasks = (sources.map { it to null } + getSavedCollections().map { AddonCatalogSource.COLLECTION to it })
+                val tasks = (sources.map { it to null } + _repositories.value.enabledCollections.map { AddonCatalogSource.COLLECTION to it })
                     .map { (catalogSource, saved) ->
                         async {
                             try { fetch(catalogSource, saved) } catch (cancelled: CancellationException) {
@@ -309,7 +327,11 @@ class AddonCatalogRepository @Inject constructor(
         // Kept in place when re-added; new ones go last. The viewer orders them in Integrations.
         val index = existing.indexOfFirst { it.url == collection.url }
         val next = if (index >= 0) existing.toMutableList().also { it[index] = collection } else existing + collection
-        prefs.edit().putString(KEY_COLLECTIONS, gson.toJson(next)).apply()
+        // Re-adding a previously disabled repository explicitly enables it again.
+        prefs.edit()
+            .putString(KEY_COLLECTIONS, gson.toJson(next))
+            .putStringSet(KEY_DISABLED_COLLECTIONS, _repositories.value.disabledCollectionUrls - collection.url)
+            .apply()
         publish()
     }
 
@@ -407,6 +429,7 @@ class AddonCatalogRepository @Inject constructor(
         private const val PREFS_FILE = "illumera_addon_catalogs"
         private const val KEY_COLLECTIONS = "saved_collections"
         private const val KEY_DISABLED_BUILT_INS = "disabled_built_in_sources"
+        private const val KEY_DISABLED_COLLECTIONS = "disabled_collection_urls"
         val BUILT_IN_SOURCES = listOf(
             AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET
         )
