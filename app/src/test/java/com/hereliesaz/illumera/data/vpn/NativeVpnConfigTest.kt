@@ -104,6 +104,24 @@ class NativeVpnConfigTest {
     }
 
     @Test
+    fun embeddedTunnelInitializationCannotBeHiddenByStaleDisconnectedReplay() {
+        for (protocol in listOf(NativeVpnProtocol.OPENVPN, NativeVpnProtocol.SOFTETHER)) {
+            val starting = NativeVpnStatus(protocol, NativeVpnPhase.CONNECTING)
+            assertEquals(false, shouldAcceptEmbeddedVpnStatus(
+                starting, protocol, NativeVpnPhase.DISCONNECTED))
+            assertEquals(true, shouldAcceptEmbeddedVpnStatus(
+                starting, protocol, NativeVpnPhase.ACTIVE))
+            assertEquals(true, shouldAcceptEmbeddedVpnStatus(
+                starting, protocol, NativeVpnPhase.ERROR))
+            assertEquals(false, shouldAcceptEmbeddedVpnStatus(
+                starting, NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ACTIVE))
+            assertEquals(true, shouldAcceptEmbeddedVpnStatus(
+                NativeVpnStatus(protocol, NativeVpnPhase.ACTIVE),
+                protocol, NativeVpnPhase.DISCONNECTED))
+        }
+    }
+
+    @Test
     fun vpnAuthorizationRequiresCurrentProtocolAndAffirmativeDisclosure() {
         for (protocol in NativeVpnProtocol.entries) {
             assertEquals(false, mayRequestNativeVpnConnection(protocol, false))
