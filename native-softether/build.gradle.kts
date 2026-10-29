@@ -21,11 +21,16 @@ android {
     externalNativeBuild {
         cmake { path = file("CMakeLists.txt") }
     }
-    sourceSets.getByName("main") {
+    // AGP 9.2–9.4: the getter exposes a legacy AndroidLibrarySourceSet type
+    // which the runtime DefaultAndroidLibrarySourceSet does not implement.
+    // The sourceSets block overload uses the corrected DSL type (Issue #550220873).
+    sourceSets {
+        named("main").configure {
         manifest.srcFile("../vendor/softether-android/src/main/AndroidManifest.xml")
         java.srcDirs("../vendor/softether-android/src/main/java")
         res.srcDirs("../vendor/softether-android/src/main/res")
         jniLibs.srcDirs("../vendor/softether-android/src/main/jniLibs")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
