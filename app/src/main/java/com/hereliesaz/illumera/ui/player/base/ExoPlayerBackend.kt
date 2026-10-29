@@ -474,6 +474,9 @@ class ExoPlayerBackend(
             // protected/expired URL and showing ERROR_CODE_IO_BAD_HTTP_STATUS again.
             if (tryNextSourceOnBadHttpStatus(error)) return
             if (attemptAutoRetryFromIoError(error)) return
+            // The same-source retries are spent (e.g. ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+            // again): this source's host is unreachable, so move on rather than stop.
+            if (tryNextSourceAfterIoFailure(error)) return
             // Parsing errors near the end of a stream are common with some sources.
             // Treat them as playback completion instead of showing an error.
             if (isParsingErrorNearEnd(error)) {
@@ -1923,6 +1926,28 @@ class ExoPlayerBackend(
             .firstOrNull { it.id !in excluded }
             ?: return false
 
+        val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
+            ?: exoPlayer?.currentPosition?.coerceAtLeast(0L)
+            ?: _uiState.value.positionMs.coerceAtLeast(0L)
+        pendingErrorFallbackPosition = nextSource.id to resumePosition
+        selectSource(nextSource.id)
+        return true
+    }
+
+    private fun tryNextSourceAfterIoFailure(error: PlaybackException): Boolean {
+        val codeName = error.errorCodeName.uppercase(Locale.US)
+        // Network/source I/O only: audio-track and decoder errors are not the source's fault.
+        if (!codeName.startsWith("ERROR_CODE_IO_") || !isRecoverableError(error)) return false
+        if (
+            _sourceListDisabled.value ||
+            loadRequest?.sourceAutoFallbackEnabled != true
+        ) return false
+        val sources = _sourceOptions.value
+        if (sources.size <= 1) return false
+        val currentIdx = sources.indexOfFirst { it.id == currentSourceId }
+        if (currentIdx < 0) return false
+        val excluded = _excludedSourceIds.value
+        val nextSource = sources.drop(currentIdx + 1).firstOrNull { it.id !in excluded } ?: return false
         val resumePosition = pendingStartPositionMs.takeIf { it > 0L }
             ?: exoPlayer?.currentPosition?.coerceAtLeast(0L)
             ?: _uiState.value.positionMs.coerceAtLeast(0L)

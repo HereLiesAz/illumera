@@ -54,6 +54,9 @@ import kotlinx.coroutines.launch
 
 // --- STATE & UTILS ---
 
+// Frames to keep asking for focus on the target episode while the panel animates in.
+private const val FOCUS_ATTEMPTS = 30
+
 sealed class SidebarState {
     data object Closed : SidebarState()
     /** [initialFocusEpisodeId] is a durably-remembered "last browsed" episode (a
@@ -174,7 +177,9 @@ fun GlassSidebar(
     // When sidebar opens with episodes, auto-navigate to the currently playing episode,
     // land on the last-browsed episode if freshly opened from details (Closed→Episodes),
     // or preserve position when returning from sources (Sources→Episodes).
-    LaunchedEffect(state, currentEpisodeId) {
+    // Resolved during composition, not in an effect: an effect ran after the list had
+    // already composed, scrolled and focused with the previous opening's season/index.
+    remember(state, currentEpisodeId) {
         if (state is SidebarState.Episodes) {
             val located = currentEpisodeId?.let { locateEpisode(state.videos, it) }
             if (located != null) {
@@ -189,13 +194,13 @@ fun GlassSidebar(
                     savedIndex = remembered.second
                 } else {
                     savedSeason = null
-                    savedIndex = 0
-                    runCatching { episodesListState.scrollToItem(0) }
+                    savedIndex = 0 // EpisodesContent scrolls to it.
                 }
             }
             // Sources→Episodes: keep savedSeason/savedIndex from the episode click
         }
         previousState = state
+        state
     }
 
     LaunchedEffect(state) {
@@ -340,9 +345,12 @@ fun EpisodesContent(
         if (episodes.isNotEmpty() && savedIndex in episodes.indices) {
             runCatching { listState.scrollToItem(savedIndex) }
             // Focus the target once it is laid out; the sidebar's own timed request can
-            // land before the scroll does and miss an episode far down the list.
-            withFrameNanos { }
-            runCatching { focusRequester.requestFocus() }
+            // land before the scroll does and miss an episode far down the list. While the
+            // panel is still sliding in the row may not be attached yet, so keep trying.
+            repeat(FOCUS_ATTEMPTS) {
+                withFrameNanos { }
+                if (runCatching { focusRequester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+            }
         }
     }
 
@@ -857,13 +865,18 @@ fun EpisodeItem(
                     onLongClick = mediaActionTarget?.let { { contextMenuExpanded = true } }
                 )
                 .onPreviewKeyEvent { event ->
-                    if (mediaActionTarget == null) return@onPreviewKeyEvent false
                     val native = event.nativeKeyEvent
                     val activation = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
                         native.keyCode == KeyEvent.KEYCODE_ENTER ||
                         native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
                         native.keyCode == KeyEvent.KEYCODE_BUTTON_A
                     if (!activation) return@onPreviewKeyEvent false
+                    // No long-press menu (the player's episode list): OK is a plain click.
+                    // touchClick only hears touch, so without this the remote did nothing.
+                    if (mediaActionTarget == null) {
+                        if (native.action == KeyEvent.ACTION_UP) onClick()
+                        return@onPreviewKeyEvent true
+                    }
                     when (native.action) {
                         KeyEvent.ACTION_DOWN -> {
                             dpadKeyHeld = true
