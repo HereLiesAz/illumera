@@ -66,8 +66,8 @@ class VpnProtocolProfilesTest {
 
     @Test
     fun protocolReadinessRequiresRealNativeEngine() {
-        assertFalse(NativeVpnProtocol.OPENVPN.ready)
-        assertFalse(NativeVpnProtocol.SOFTETHER.ready)
+        assertTrue(NativeVpnProtocol.OPENVPN.ready)
+        assertTrue(NativeVpnProtocol.SOFTETHER.ready)
         assertTrue(NativeVpnProtocol.WIREGUARD.ready)
         assertTrue(NativeVpnProtocol.IKEV2.ready)
     }
