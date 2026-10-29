@@ -12,6 +12,10 @@
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="vpn" />
         </service>
+        <activity android:name="de.blinkt.openvpn.LaunchVPN"
+            android:exported="false"/>
+        <activity android:name="de.blinkt.openvpn.api.ConfirmDialog"
+            android:exported="false"/>
         <service android:name="de.blinkt.openvpn.core.OpenVPNStatusService"
             android:exported="false"/>
         <service android:name="de.blinkt.openvpn.core.keepVPNAlive"
