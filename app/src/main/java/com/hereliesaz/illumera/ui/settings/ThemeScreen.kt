@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
@@ -133,8 +135,9 @@ fun ThemeScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (isCompactTheme) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
                 .onFocusChanged { isAnyTabFocused = it.hasFocus },
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = if (isCompactTheme) Arrangement.spacedBy(8.dp) else Arrangement.Center
         ) {
             VoidTabBtn(
                 label = "All Themes",
