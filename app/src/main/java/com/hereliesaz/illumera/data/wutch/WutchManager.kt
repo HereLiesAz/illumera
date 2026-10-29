@@ -174,7 +174,8 @@ class WutchManager @Inject constructor(
     private suspend fun importUpNext(apiKey: String, profile: Int) {
         for (item in api.upNext(apiKey)) {
             val imdb = imdbFor(if (item.isMovie) "movie" else "tv", item.slug, apiKey) ?: continue
-            val watchedAt = parseTime(item.lastWatched) ?: System.currentTimeMillis()
+            val recordedWatchTime = parseTime(item.lastWatched)
+            val watchedAt = recordedWatchTime ?: System.currentTimeMillis()
             val resumeMs = item.resumeSeconds?.takeIf { it > 0 }?.times(1000)
             if (item.isMovie) {
                 if (resumeMs != null) importProgress(imdb, imdb, null, "movie", item.name, item.poster, resumeMs, item.runtimeMinutes, watchedAt)
@@ -184,7 +185,9 @@ class WutchManager @Inject constructor(
             val episode = item.episode ?: continue
             if (resumeMs != null) {
                 importProgress("$imdb:$season:$episode", imdb, item.showName, "series", item.showName ?: item.name, item.poster, resumeMs, item.runtimeMinutes, watchedAt)
-            } else if (dao.getSeriesNextUp(profile, imdb) == null) {
+            } else if (recordedWatchTime != null && dao.getSeriesNextUp(profile, imdb) == null) {
+                // An Up Next catalog entry without resume progress OR a recorded
+                // last-watched timestamp is not proof the series was ever played.
                 dao.upsertSeriesNextUp(
                     SeriesNextUpEntity(
                         profileId = profile,
