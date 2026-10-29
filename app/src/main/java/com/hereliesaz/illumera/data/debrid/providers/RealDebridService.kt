@@ -19,9 +19,12 @@ import javax.inject.Singleton
 
 /** https://api.real-debrid.com/rest/1.0 — API docs at https://api.real-debrid.com */
 @Singleton
-class RealDebridService @Inject constructor(private val http: DebridHttp) : DebridService {
+open class RealDebridService @Inject constructor(private val http: DebridHttp) : DebridService {
 
-    private val base = "https://api.real-debrid.com/rest/1.0"
+    protected open val base = "https://api.real-debrid.com/rest/1.0"
+    protected open val provider = DebridProvider.REAL_DEBRID
+    // Torrin implements RD torrent endpoints but not RD's optional downloads list.
+    protected open val hasDownloadsEndpoint = true
     private fun auth(apiKey: String) = mapOf("Authorization" to "Bearer $apiKey")
 
     override suspend fun validateApiKey(apiKey: String): DebridResult<DebridAccountInfo> {
@@ -30,7 +33,7 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
                 val obj = result.value.asObjectOrNull()
                 val username = obj?.str("username") ?: obj?.str("email")
                 if (username == null) {
-                    DebridResult.Failure("Unexpected response from Real-Debrid")
+                    DebridResult.Failure("Unexpected response from ${provider.displayName}")
                 } else {
                     DebridResult.Success(
                         DebridAccountInfo(
@@ -51,7 +54,7 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
                 DebridItem(
                     id = o.str("id") ?: return@mapNotNull null,
                     name = o.str("filename") ?: "Unknown",
-                    provider = DebridProvider.REAL_DEBRID,
+                    provider = provider,
                     sizeBytes = o.long("bytes"),
                     status = o.str("status"),
                     progress = o.int("progress"),
@@ -63,14 +66,14 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
             is DebridResult.Failure -> return result
         }
 
-        val downloads = when (val result = http.get("$base/downloads", auth(apiKey))) {
+        val downloads = if (hasDownloadsEndpoint) when (val result = http.get("$base/downloads", auth(apiKey))) {
             is DebridResult.Success -> result.value.asArrayOrNull()?.mapNotNull { el ->
                 val o = el.asObjectOrNull() ?: return@mapNotNull null
                 val link = o.str("download")
                 DebridItem(
                     id = o.str("id") ?: return@mapNotNull null,
                     name = o.str("filename") ?: "Unknown",
-                    provider = DebridProvider.REAL_DEBRID,
+                    provider = provider,
                     sizeBytes = o.long("filesize"),
                     status = "downloaded",
                     addedAt = o.str("generated"),
@@ -79,7 +82,7 @@ class RealDebridService @Inject constructor(private val http: DebridHttp) : Debr
                 )
             } ?: emptyList()
             is DebridResult.Failure -> emptyList()
-        }
+        } else emptyList()
 
         return DebridResult.Success(torrents + downloads)
     }
