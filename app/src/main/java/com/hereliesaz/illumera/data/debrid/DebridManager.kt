@@ -16,6 +16,7 @@ import com.hereliesaz.illumera.data.debrid.providers.OffcloudService
 import com.hereliesaz.illumera.data.debrid.providers.PremiumizeService
 import com.hereliesaz.illumera.data.debrid.providers.RealDebridService
 import com.hereliesaz.illumera.data.debrid.providers.TorBoxService
+import com.hereliesaz.illumera.data.debrid.providers.TorrinService
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
 import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
@@ -46,7 +47,8 @@ class DebridManager @Inject constructor(
     private val torBox: TorBoxService,
     private val debridLink: DebridLinkService,
     private val offcloud: OffcloudService,
-    private val easyDebrid: EasyDebridService
+    private val easyDebrid: EasyDebridService,
+    private val torrin: TorrinService
 ) {
     companion object {
         private const val TAG = "DebridManager"
@@ -163,6 +165,7 @@ class DebridManager @Inject constructor(
         DebridProvider.DEBRID_LINK -> debridLink
         DebridProvider.OFFCLOUD -> offcloud
         DebridProvider.EASY_DEBRID -> easyDebrid
+        DebridProvider.TORRIN -> torrin
     }
 
     /**
