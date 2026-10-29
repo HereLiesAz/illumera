@@ -35,7 +35,10 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
         manager.saveIkev2CertificateProfile(server, identity, bytes, password)
 
     fun requestWireGuardConsent() = manager.wireGuardConsent()
-    fun requestIkev2Consent() = manager.provisionIkev2()
+    suspend fun requestIkev2Consent() = withContext(Dispatchers.IO) {
+        // PKCS#12 parsing and Android profile provisioning may be expensive.
+        manager.provisionIkev2()
+    }
     // Keep VPN operations alive when the Settings dialog closes. An activity-owned VM
     // outlives individual dialog compositions, so consent/connect isn't cancelled mid-tunnel.
     fun connectWireGuard() { viewModelScope.launch { manager.connectWireGuard() } }
