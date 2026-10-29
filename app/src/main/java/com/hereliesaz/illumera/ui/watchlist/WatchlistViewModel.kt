@@ -150,7 +150,7 @@ class WatchlistViewModel @Inject constructor(
             var succeeded = false
             var cancelled = false
             try {
-                // Only three metadata lookups run at once even when a large Library
+                // Only two metadata lookups run at once even when a large Library
                 // contains several ambiguous cross-provider identities.
                 metadataResolveSlots.withPermit {
                 // Network resolution must not hold the profile runtime lock. A slow addon
