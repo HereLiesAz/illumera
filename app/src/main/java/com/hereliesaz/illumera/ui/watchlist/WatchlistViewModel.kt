@@ -65,7 +65,6 @@ class WatchlistViewModel @Inject constructor(
     private val _metadataResolutionSignal = MutableStateFlow(0L)
     /** Advances when a metadata job finishes; drives the next bounded viewport batch. */
     val metadataResolutionSignal: StateFlow<Long> = _metadataResolutionSignal
-    private val resolveFailureCooldownMs = 5 * 60_000L
     private val enrichedLibraryMetas = MutableStateFlow<Map<String, MetaItem>>(emptyMap())
 
     var lastFocusedKey: String? = null
