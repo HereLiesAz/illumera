@@ -1547,7 +1547,8 @@ class HomeViewModel @Inject constructor(
                         ?: java.util.Locale.getDefault().toLanguageTag()
                     dao.getWatchHistory()
                         .distinctUntilChangedBy { history ->
-                            history.take(12).map { it.seriesId ?: it.id.substringBefore(':') }
+                            history.filter(WatchHistoryEntity::hasPlaybackEvidence)
+                                        .take(12).map { it.seriesId ?: it.id.substringBefore(':') }
                         }
                         .collectLatest { history ->
                             val rows = try {
