@@ -45,7 +45,8 @@ enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
     WIREGUARD("WireGuard", true),
     IKEV2("IKEv2/IPsec · strongSwan / Libreswan", true),
     OPENVPN("OpenVPN", true),
-    SOFTETHER("SoftEther SSL-VPN", true)
+    // Never expose a CONNECT action until the engine verifies the configured server.
+    SOFTETHER("SoftEther SSL-VPN", false)
 }
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
