@@ -1,6 +1,8 @@
 package com.hereliesaz.illumera.ui.settings
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 import com.hereliesaz.illumera.data.vpn.NativeVpnManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -21,8 +23,10 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
 
     fun requestWireGuardConsent() = manager.wireGuardConsent()
     fun requestIkev2Consent() = manager.provisionIkev2()
-    suspend fun connectWireGuard() = manager.connectWireGuard()
-    suspend fun connectIkev2() = manager.connectIkev2()
-    suspend fun disconnect() = manager.disconnect()
+    // Keep VPN operations alive when the Settings dialog closes. An activity-owned VM
+    // outlives individual dialog compositions, so consent/connect isn't cancelled mid-tunnel.
+    fun connectWireGuard() { viewModelScope.launch { manager.connectWireGuard() } }
+    fun connectIkev2() { viewModelScope.launch { manager.connectIkev2() } }
+    fun disconnect() { viewModelScope.launch { manager.disconnect() } }
     fun refreshIkev2Status() = manager.refreshIkev2Status()
 }
