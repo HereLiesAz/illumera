@@ -53,7 +53,7 @@ fun NativeVpnSettingsDialog(
     var protocol by remember { mutableStateOf(NativeVpnProtocol.WIREGUARD) }
     var configText by remember { mutableStateOf("") }
     var server by remember { mutableStateOf("") }
-    var identity by remember { mutableStateOf("") }
+    var localIdentity by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var feedback by remember { mutableStateOf("") }
@@ -210,7 +210,7 @@ fun NativeVpnSettingsDialog(
                 )
                 OutlinedTextField(server, { server = it }, label = { Text("VPN server hostname") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(identity, { identity = it }, label = { Text("Remote ID / server identity") },
+                OutlinedTextField(localIdentity, { localIdentity = it }, label = { Text("Local IKE identity / client ID") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
                 OutlinedTextField(username, { username = it }, label = { Text("Username") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -220,8 +220,8 @@ fun NativeVpnSettingsDialog(
                 VoidButton(
                     text = "Save IKEv2 profile",
                     onClick = {
-                        viewModel.saveIkev2(server, identity, username, password).onSuccess {
-                            server = ""; identity = ""; username = ""; password = ""
+                        viewModel.saveIkev2(server, localIdentity, username, password).onSuccess {
+                            server = ""; localIdentity = ""; username = ""; password = ""
                             savedIkev2 = true
                             feedback = "IKEv2 profile saved securely"
                         }.onFailure { feedback = it.message ?: "Invalid IKEv2 profile" }
