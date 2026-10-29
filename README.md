@@ -36,6 +36,7 @@ import your existing addon collection and sync Continue Watching progress.
 - **Native Torrentio setup:** Configure opens an in-app screen (debrid service and key pre-filled from your primary connected account, sorting, quality exclusions, providers, languages) — no web page or phone needed.
 - Fresh and existing profiles receive Cinemeta, YouTube Trailers, Streaming Catalogs, TMDB, SeedSphere, and Stremio Stats as stock addon entries. Configured Stremio Stats data requires personal account authorization; unavailable manifest endpoints are retained without invented capabilities.
 - **Add-ons is a top-level side-menu (and top-navigation) destination**, not a Settings section. Its full-screen native browser offers Official, Community, **3rd Party**, and collections, plus a searchable, vertically scrolling catalog. Configure/install/uninstall are compact focusable icons; installed addons and manual URL installation (typed, pasted from the device clipboard, or sent from a phone) remain available.
+- **Addon repositories in Settings → Integrations:** switch the built-in catalogs (Official, Community, 3rd Party / stremio-addons.net) on or off, and add, reorder or remove collection URLs (typed, pasted from the clipboard). The Add-ons browser shows only the repositories switched on, and follows changes immediately.
 - Addon developers: see [`docs/ADDONS.md`](docs/ADDONS.md) for what illumera reads beyond the Stremio protocol
 
 ### Custom Hub Rows

@@ -245,6 +245,21 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Saves subtitle style changed in the player as the active profile's setting. */
+    fun saveSubtitleStyle(size: Int, offset: Int, textColor: Int, backgroundColor: Int) {
+        val profileId = profileConfigurationManager.activeProfileId.value ?: return
+        viewModelScope.launch(ioDispatcher) {
+            val profile = dao.getProfileById(profileId) ?: return@launch
+            val updated = profile.copy(
+                subtitleSize = size,
+                subtitleOffset = offset,
+                subtitleTextColor = textColor.toLong() and 0xFFFFFFFFL, // ARGB as stored by Settings, not sign-extended
+                subtitleBackgroundColor = backgroundColor.toLong() and 0xFFFFFFFFL
+            )
+            if (updated != profile) dao.updateProfile(updated)
+        }
+    }
+
     suspend fun getResumePosition(id: String): Long {
         return withContext(Dispatchers.IO) {
             val item = dao.getHistoryItem(id)

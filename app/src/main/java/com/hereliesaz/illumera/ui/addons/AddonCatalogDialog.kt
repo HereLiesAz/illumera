@@ -151,7 +151,8 @@ fun AddonCatalogContent(
                         compact = true
                     )
                 }
-                listOf(AddonCatalogSource.OFFICIAL, AddonCatalogSource.COMMUNITY, AddonCatalogSource.STREMIO_ADDONS_NET).forEach { source ->
+                // Only the repositories switched on in Integrations.
+                state.enabledBuiltIns.forEach { source ->
                     item(key = source.name) {
                         VoidButton(
                             text = source.displayName,

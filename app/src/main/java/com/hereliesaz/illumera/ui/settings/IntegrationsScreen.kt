@@ -98,6 +98,9 @@ fun IntegrationsScreen(
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
     var showDebridDialog by remember { mutableStateOf(false) }
+    var showRepositoriesDialog by remember { mutableStateOf(false) }
+    val repositoriesViewModel: AddonRepositoriesViewModel = androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel()
+    val addonRepositories by repositoriesViewModel.repositories.collectAsStateWithLifecycle()
     var showWutchDialog by remember { mutableStateOf(false) }
 
     // Handle events
@@ -256,6 +259,23 @@ fun IntegrationsScreen(
             isConnected = state.debridConnections.isNotEmpty(),
             onClick = { showDebridDialog = true },
             modifier = goBackModifier
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        IntegrationItem(
+            title = "Addon Repositories",
+            subtitle = addonRepositoriesSummary(addonRepositories),
+            isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.collections.isNotEmpty(),
+            onClick = { showRepositoriesDialog = true },
+            modifier = goBackModifier
+        )
+    }
+
+    if (showRepositoriesDialog) {
+        AddonRepositoriesDialog(
+            viewModel = repositoriesViewModel,
+            onDismiss = { showRepositoriesDialog = false }
         )
     }
 

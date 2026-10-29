@@ -90,7 +90,12 @@ fun PlayerScreen(
     val context = LocalContext.current
     val hostView = LocalView.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val runtime = remember(movieId, backendType, playbackSettings) {
+    // Subtitle style is applied to the running player directly (and saved to the profile
+    // from the in-player bars), so it must not count as a reason to rebuild the player.
+    val runtimeSettingsKey = playbackSettings.copy(
+        subtitleSize = 0, subtitleOffset = 0, subtitleTextColor = 0, subtitleBackgroundColor = 0
+    )
+    val runtime = remember(movieId, backendType, runtimeSettingsKey) {
         PlayerBackendFactory.create(context, backendType, playbackSettings)
     }
     val playbackController = runtime.playbackController
@@ -191,6 +196,27 @@ fun PlayerScreen(
         } else if (uiState.isReady) {
             viewModel.scrobblePause(movieId, mediaType, uiState.positionMs, uiState.durationMs)
         }
+    }
+
+    // Subtitle size/offset/colours changed from the in-player bars become the profile's
+    // setting, so the next playback (and Settings) start from them, not the old values.
+    LaunchedEffect(
+        uiState.subtitleSizePercent, uiState.subtitleVerticalOffsetPercent,
+        uiState.subtitleTextColor, uiState.subtitleBackgroundColor
+    ) {
+        if (loadedUrl == null) return@LaunchedEffect // Not applied from settings yet.
+        if (uiState.subtitleSizePercent == playbackSettings.subtitleSize &&
+            uiState.subtitleVerticalOffsetPercent == playbackSettings.subtitleOffset &&
+            uiState.subtitleTextColor == playbackSettings.subtitleTextColor &&
+            uiState.subtitleBackgroundColor == playbackSettings.subtitleBackgroundColor
+        ) return@LaunchedEffect
+        delay(SUBTITLE_STYLE_SAVE_DELAY_MS) // Bars step in small increments: save once settled.
+        viewModel.saveSubtitleStyle(
+            size = uiState.subtitleSizePercent,
+            offset = uiState.subtitleVerticalOffsetPercent,
+            textColor = uiState.subtitleTextColor,
+            backgroundColor = uiState.subtitleBackgroundColor
+        )
     }
 
     DisposableEffect(playbackController) {
@@ -447,3 +473,5 @@ fun PlayerScreen(
         )
     }
 }
+
+private const val SUBTITLE_STYLE_SAVE_DELAY_MS = 800L
