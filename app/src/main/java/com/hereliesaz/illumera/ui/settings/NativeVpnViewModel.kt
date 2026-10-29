@@ -21,4 +21,5 @@ class NativeVpnViewModel @Inject constructor(private val manager: NativeVpnManag
     suspend fun connectWireGuard() = manager.connectWireGuard()
     suspend fun connectIkev2() = manager.connectIkev2()
     suspend fun disconnect() = manager.disconnect()
+    fun refreshIkev2Status() = manager.refreshIkev2Status()
 }
