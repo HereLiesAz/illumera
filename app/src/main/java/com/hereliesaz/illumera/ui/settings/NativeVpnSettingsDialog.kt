@@ -58,6 +58,7 @@ fun NativeVpnSettingsDialog(
     val importScope = rememberCoroutineScope()
     val status by viewModel.status.collectAsStateWithLifecycle()
     var protocol by remember { mutableStateOf(NativeVpnProtocol.WIREGUARD) }
+    var pendingEmbeddedConsent by remember { mutableStateOf<NativeVpnProtocol?>(null) }
     var configText by remember { mutableStateOf("") }
     var server by remember { mutableStateOf("") }
     var localIdentity by remember { mutableStateOf("") }
@@ -111,6 +112,42 @@ fun NativeVpnSettingsDialog(
             viewModel.connectIkev2()
         } else feedback = "VPN authorization or disclosure acknowledgement missing; no tunnel started"
     }
+    val embeddedConsent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val requested = pendingEmbeddedConsent
+        pendingEmbeddedConsent = null
+        if (it.resultCode == Activity.RESULT_OK && requested == protocol &&
+            requested != null && mayRequestNativeVpnConnection(requested, privacyAcknowledged)
+        ) {
+            when (requested) {
+                NativeVpnProtocol.OPENVPN -> viewModel.connectOpenVpn()
+                NativeVpnProtocol.SOFTETHER -> viewModel.connectSoftEther()
+                else -> Unit
+            }
+        } else feedback = "Android VPN authorization denied or disclosure reset"
+    }
+
+    val requestEmbeddedConnection: (NativeVpnProtocol, Boolean) -> Unit = { engine, saved ->
+        if (!saved) {
+            feedback = "Save the ${engine.label} profile first"
+        } else if (!mayRequestNativeVpnConnection(engine, privacyAcknowledged)) {
+            feedback = "Acknowledge VPN routing and third-party server visibility first"
+        } else {
+            runCatching { viewModel.requestWireGuardConsent() }
+                .onSuccess { consent ->
+                    if (consent == null) {
+                        when (engine) {
+                            NativeVpnProtocol.OPENVPN -> viewModel.connectOpenVpn()
+                            NativeVpnProtocol.SOFTETHER -> viewModel.connectSoftEther()
+                            else -> Unit
+                        }
+                    } else {
+                        pendingEmbeddedConsent = engine
+                        embeddedConsent.launch(consent)
+                    }
+                }.onFailure { feedback = it.message ?: "VPN permission request failed" }
+        }
+    }
+
     val importWireGuard = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             importScope.launch {
@@ -189,7 +226,7 @@ fun NativeVpnSettingsDialog(
                 }
                 result.onSuccess { summary ->
                     openVpnStaged = true
-                    feedback = "Staged OpenVPN ${summary.transport.uppercase()} profile for ${summary.hostname}:${summary.port}; native engine is not bundled"
+                    feedback = "Staged OpenVPN ${summary.transport.uppercase()} profile for ${summary.hostname}:${summary.port}; ready to connect"
                 }.onFailure { feedback = it.message ?: "OpenVPN config rejected" }
             }
         }
@@ -451,14 +488,13 @@ fun NativeVpnSettingsDialog(
                 )
             } else if (protocol == NativeVpnProtocol.OPENVPN) {
                 Text(
-                    "OpenVPN profiles can be imported for a future native engine. " +
-                        "A valid .ovpn file alone does not establish a tunnel. " +
-                        "No OpenVPN C++/JNI engine is bundled in this build.",
+                    "OpenVPN uses an embedded native client. Import a TLS-verified .ovpn profile; " +
+                        "the tunnel starts only after Android VPN permission and your acknowledgment.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 if (openVpnStaged) Text(
-                    "OpenVPN configuration staged securely; connection not available",
+                    "OpenVPN profile stored securely · ready to connect",
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 VoidButton(
@@ -483,20 +519,25 @@ fun NativeVpnSettingsDialog(
                             result.onSuccess { summary ->
                                 openVpnStaged = true
                                 openVpnText = ""
-                                feedback = "Staged ${summary.transport.uppercase()} VPN profile for ${summary.hostname}; native engine is not bundled"
+                                feedback = "Staged ${summary.transport.uppercase()} VPN profile for ${summary.hostname}; ready to connect"
                             }.onFailure { feedback = it.message ?: "OpenVPN profile rejected" }
                         }
                     }, compact = true
                 )
+                VoidButton(
+                    text = "Connect OpenVPN",
+                    onClick = { requestEmbeddedConnection(NativeVpnProtocol.OPENVPN, openVpnStaged) },
+                    compact = true
+                )
             } else {
                 Text(
-                    "SoftEther SSL-VPN requires its native TLS protocol and packet tunnel engine. " +
-                        "You can save server information, but the engine is not yet part of Illumera.",
+                    "SoftEther SSL-VPN uses an embedded native C/JNI TLS packet engine. " +
+                        "Save server, hub and credentials, then authorize Android's VPN permission.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 if (softEtherStaged) Text(
-                    "SoftEther server staged securely; connection not available",
+                    "SoftEther server saved securely · ready to connect",
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 OutlinedTextField(softEtherHost, { softEtherHost = it },
@@ -530,10 +571,15 @@ fun NativeVpnSettingsDialog(
                             result.onSuccess {
                                 softEtherStaged = true
                                 softEtherPassword = ""
-                                feedback = "SoftEther profile encrypted and saved; native engine not bundled"
+                                feedback = "SoftEther profile encrypted and saved · ready to connect"
                             }.onFailure { feedback = it.message ?: "Invalid SoftEther settings" }
                         }
                     }, compact = true
+                )
+                VoidButton(
+                    text = "Connect SoftEther",
+                    onClick = { requestEmbeddedConnection(NativeVpnProtocol.SOFTETHER, softEtherStaged) },
+                    compact = true
                 )
             }
             if (!protocol.ready) {

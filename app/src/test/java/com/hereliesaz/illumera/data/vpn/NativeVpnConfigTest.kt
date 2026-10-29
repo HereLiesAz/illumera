@@ -114,7 +114,10 @@ class NativeVpnConfigTest {
     @Test
     fun onlyActualTunnelEnginesAreConnectable() {
         val enabled = NativeVpnProtocol.entries.filter { it.ready }.map { it.label }
-        assertEquals(listOf("WireGuard", "IKEv2/IPsec · strongSwan / Libreswan"), enabled)
-        assertTrue(NativeVpnProtocol.entries.count { !it.ready } == 2)
+        assertEquals(
+            listOf("WireGuard", "IKEv2/IPsec · strongSwan / Libreswan",
+                "OpenVPN", "SoftEther SSL-VPN"), enabled
+        )
+        assertTrue(NativeVpnProtocol.entries.all { it.ready })
     }
 }
