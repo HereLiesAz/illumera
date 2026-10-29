@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.hereliesaz.illumera.data.auth.StremioLibrarySyncManager
 import com.hereliesaz.illumera.data.local.AddonDao
 import com.hereliesaz.illumera.data.model.WatchHistoryEntity
+import com.hereliesaz.illumera.data.model.MIN_CONFIRMED_PLAYBACK_MS
 import com.hereliesaz.illumera.data.wutch.WutchManager
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.repository.AddonEventDispatcher
@@ -184,7 +185,7 @@ class PlayerViewModel @Inject constructor(
         if (id.startsWith("trailer_") || id.startsWith("debrid_")) return false
         if (duration != null && classifyDuration(type, duration) != PlaybackDurationStatus.NORMAL) return false
         val safePosition = position.coerceAtLeast(0L)
-        if (safePosition < 5_000L) return false
+        if (safePosition < MIN_CONFIRMED_PLAYBACK_MS) return false
 
         return try {
             profileConfigurationManager.withActiveProfileRuntime(ownerProfileId) {
