@@ -3,6 +3,7 @@ package com.hereliesaz.illumera.data.repository
 import android.content.Context
 import com.google.gson.JsonParser
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogSource
+import com.hereliesaz.illumera.data.model.stremio.SavedAddonCollection
 import com.hereliesaz.illumera.data.remote.StremioApiService
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -87,6 +88,22 @@ class AddonCatalogRepositoryTest {
 
         assertEquals(listOf("https://addon-a.example/manifest.json"), items.map { it.transportUrl })
         coVerify(exactly = 1) { api.getJson(sourceA) }
+        coVerify(exactly = 0) { api.getJson(sourceB) }
+    }
+
+    @Test
+    fun disabledRepositoryCannotBeBrowsedDirectly() = runTest {
+        val catalog = repository()
+        catalog.setCollectionEnabled(sourceB, false)
+
+        var rejected = false
+        try {
+            catalog.fetch(AddonCatalogSource.COLLECTION, SavedAddonCollection("Beta", sourceB))
+        } catch (e: IllegalStateException) {
+            rejected = e.message.orEmpty().contains("disabled")
+        }
+
+        assertTrue(rejected)
         coVerify(exactly = 0) { api.getJson(sourceB) }
     }
 
