@@ -152,10 +152,13 @@ fun NativeVpnSettingsDialog(
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val bytes = readBoundedProfileBytes(context, uri, 262144)
-                        viewModel.saveIkev2Certificate(
-                            clientServer, clientLocalId, bytes, exportPassword
-                        ).getOrThrow()
-                        bytes.fill(0)
+                        try {
+                            viewModel.saveIkev2Certificate(
+                                clientServer, clientLocalId, bytes, exportPassword
+                            ).getOrThrow()
+                        } finally {
+                            bytes.fill(0)
+                        }
                     }
                 }
                 result.onSuccess {
@@ -232,11 +235,17 @@ fun NativeVpnSettingsDialog(
                 VoidButton(
                     text = "Save WireGuard profile",
                     onClick = {
-                        viewModel.saveWireGuard(configText).onSuccess {
-                            configText = ""
-                            savedWireGuard = true
-                            feedback = "WireGuard profile saved securely"
-                        }.onFailure { feedback = it.message ?: "Invalid WireGuard configuration" }
+                        val text = configText
+                        importScope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                viewModel.saveWireGuard(text)
+                            }
+                            result.onSuccess {
+                                configText = ""
+                                savedWireGuard = true
+                                feedback = "WireGuard profile saved securely"
+                            }.onFailure { feedback = it.message ?: "Invalid WireGuard configuration" }
+                        }
                     },
                     compact = true
                 )
@@ -361,19 +370,30 @@ fun NativeVpnSettingsDialog(
                     VoidButton(
                         text = "Save IKEv2 profile",
                         onClick = {
-                            val result = when (ikev2AuthMode) {
-                                Ikev2AuthMode.EAP ->
-                                    viewModel.saveIkev2(server, localIdentity, username, password)
-                                Ikev2AuthMode.PSK ->
-                                    viewModel.saveIkev2Psk(server, localIdentity, preSharedKey)
-                                Ikev2AuthMode.CERTIFICATE -> error("Client certificate import is required")
+                            val selectedMode = ikev2AuthMode
+                            val host = server
+                            val clientId = localIdentity
+                            val user = username
+                            val userPassword = password
+                            val psk = preSharedKey
+                            importScope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    when (selectedMode) {
+                                        Ikev2AuthMode.EAP ->
+                                            viewModel.saveIkev2(host, clientId, user, userPassword)
+                                        Ikev2AuthMode.PSK ->
+                                            viewModel.saveIkev2Psk(host, clientId, psk)
+                                        Ikev2AuthMode.CERTIFICATE ->
+                                            Result.failure(IllegalStateException("Import a client certificate"))
+                                    }
+                                }
+                                result.onSuccess {
+                                    server = ""; localIdentity = ""; username = ""; password = ""
+                                    preSharedKey = ""
+                                    savedIkev2 = true
+                                    feedback = "IKEv2 profile saved securely"
+                                }.onFailure { feedback = it.message ?: "Invalid IKEv2 profile" }
                             }
-                            result.onSuccess {
-                                server = ""; localIdentity = ""; username = ""; password = ""
-                                preSharedKey = ""
-                                savedIkev2 = true
-                                feedback = "IKEv2 profile saved securely"
-                            }.onFailure { feedback = it.message ?: "Invalid IKEv2 profile" }
                         }, compact = true
                     )
                 }
