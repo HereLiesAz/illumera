@@ -400,16 +400,23 @@ fun NativeVpnSettingsDialog(
                 VoidButton(
                     text = "Connect IKEv2",
                     onClick = {
-                        runCatching {
-                            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                "IKEv2 requires Android 11 or newer"
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                            feedback = "IKEv2 requires Android 11 or newer"
+                        } else if (!savedIkev2) {
+                            feedback = "Save your IKEv2 profile first"
+                        } else {
+                            importScope.launch {
+                                // CPU-heavy PKCS#12 decoding and provisioning run on IO;
+                                // only the resulting consent intent is launched on main.
+                                runCatching { viewModel.requestIkev2Consent() }
+                                    .onSuccess { consent ->
+                                        if (consent == null) viewModel.connectIkev2()
+                                        else ikev2Consent.launch(consent)
+                                    }.onFailure {
+                                        feedback = it.message ?: "IKEv2 provisioning failed"
+                                    }
                             }
-                            check(savedIkev2) { "Save your IKEv2 profile first" }
-                            val consent = viewModel.requestIkev2Consent()
-                            if (consent == null) {
-                                viewModel.connectIkev2()
-                            } else ikev2Consent.launch(consent)
-                        }.onFailure { feedback = it.message ?: "IKEv2 provisioning failed" }
+                        }
                     }, compact = true
                 )
             } else if (protocol == NativeVpnProtocol.OPENVPN) {
