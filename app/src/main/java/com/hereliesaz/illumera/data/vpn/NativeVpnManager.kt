@@ -50,6 +50,14 @@ enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
 
 enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
 
+/** Ignore stale, immediately replayed disconnect when attaching a VPN state listener. */
+internal fun shouldAcceptEmbeddedVpnStatus(
+    current: NativeVpnStatus,
+    protocol: NativeVpnProtocol,
+    incoming: NativeVpnPhase
+): Boolean = current.protocol == protocol &&
+    !(current.phase == NativeVpnPhase.CONNECTING && incoming == NativeVpnPhase.DISCONNECTED)
+
 /** Reaffirm disclosure for each user-initiated VPN session, never implied by an import. */
 internal fun mayRequestNativeVpnConnection(
     protocol: NativeVpnProtocol,
@@ -119,7 +127,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     private val embedded by lazy {
         EmbeddedVpnController(context) { protocol, phase, message ->
             // Ignore stale callbacks from a previously stopped engine.
-            if (_status.value.protocol == protocol) {
+            if (shouldAcceptEmbeddedVpnStatus(_status.value, protocol, phase)) {
                 _status.value = NativeVpnStatus(protocol, phase, message)
             }
         }
