@@ -35,7 +35,8 @@ class WatchlistViewModel @Inject constructor(
 
     // Touched from Main (resolvePosterIfNeeded) and IO (the launch's finally) — must be concurrent.
     private val resolveInFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
-    private val metadataResolveSlots = Semaphore(3)
+    // At most two remote lookups across all visible Library cells.
+    private val metadataResolveSlots = Semaphore(2)
     // Cools down retries for items that just failed to resolve, instead of retrying
     // every one of them on every watchlist mutation (the movieItems/seriesItems
     // flows re-emit the whole list on any add/remove, which otherwise re-triggers
