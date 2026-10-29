@@ -42,7 +42,7 @@ Continue Watching sync against the `datastoreMeta`/`Get`/`Put` library API;
 see `StremioAuthManager`/`StremioAuthService`/`StremioLibrarySyncManager`),
 `debrid` (a `DebridManager` fronting
 per-provider implementations: Real-Debrid, AllDebrid, Premiumize, TorBox,
-Offcloud, Debrid-Link, EasyDebrid; several can be connected per profile, the first being primary, and the library merges all of them), `tmdb` (metadata enrichment), `trakt`
+Offcloud, Debrid-Link, EasyDebrid, Torrin; several can be connected per profile, the first being primary, and the library merges all of them), `tmdb` (metadata enrichment), `trakt`
 (auth, library sync, scrobbling), `wutch` (wutch.tv: sign-in with a personal
 API key, watchlist and progress import, progress and watchlist write-back), `torrent` (a TorrServer client),
 `player` (persisted per-playback audio/subtitle/source selection),
