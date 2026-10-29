@@ -181,6 +181,7 @@ fun BasePlayerScaffold(
     seriesTitle: String? = null,
     logoUrl: String? = null,
     onBack: () -> Unit,
+    onPlaybackCompleted: () -> Unit = onBack,
     skipSegmentInfo: SkipSegmentInfo? = null,
     nextEpisodeInfo: NextEpisodeInfo? = null,
     onAutoplayNextEpisode: ((currentSourceUrl: String?) -> Unit)? = null,
@@ -471,7 +472,7 @@ fun BasePlayerScaffold(
             episodeSwitchTitle == null && !autoplayFired && !completionExitFired
         ) {
             completionExitFired = true
-            onBack()
+            onPlaybackCompleted()
         }
     }
 
@@ -1050,7 +1051,8 @@ fun BasePlayerScaffold(
                 onResetHideTimer = {
                     markInteraction()
                     scheduleHideControls()
-                }
+                },
+                onExitPlayer = onBack
             )
         }
 
@@ -1522,7 +1524,8 @@ private fun PlayerControlsOverlay(
     stereoLayout: StereoLayout = StereoLayout.OFF,
     onCycleStereo: () -> Unit = {},
     onShowSoundtrack: () -> Unit = {},
-    onResetHideTimer: () -> Unit
+    onResetHideTimer: () -> Unit,
+    onExitPlayer: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -1683,6 +1686,17 @@ private fun PlayerControlsOverlay(
                             iconSize = 18.dp
                         )
                     }
+
+                    // Exit directly to the current title's Details, never the sources
+                    // panel or the next queue item.
+                    ControlButton(
+                        icon = Icons.Default.Close,
+                        contentDescription = "Exit player",
+                        onClick = onExitPlayer,
+                        onFocused = onResetHideTimer,
+                        buttonSize = 44.dp,
+                        iconSize = 20.dp
+                    )
                 }
 
                 Text(
