@@ -39,6 +39,7 @@ class AddonCatalogRepository @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
     private val savedCollectionListType = object : TypeToken<List<SavedAddonCollection>>() {}.type
     private val addonItemListType = object : TypeToken<List<AddonCatalogItem>>() {}.type
+    private var githubTopicCache: Pair<Long, List<AddonCatalogItem>>? = null
 
     /** The addon repositories the Add-ons browser reads, managed from Integrations. */
     data class Repositories(
@@ -365,6 +366,13 @@ class AddonCatalogRepository @Inject constructor(
      * link available as a fallback when the API is unavailable.
      */
     private suspend fun fetchGithubTopic(): List<AddonCatalogItem> {
+        val now = System.currentTimeMillis()
+        // GitHub's unauthenticated API has a limited request budget. Cache successful
+        // discovery and fallback results instead of re-querying on every All tab entry.
+        synchronized(this) {
+            githubTopicCache?.takeIf { now - it.first in 0 until GITHUB_TOPIC_CACHE_MS }
+                ?.second
+        }?.let { return it }
         val directory = AddonCatalogItem(
             transportUrl = GITHUB_TOPIC_URL,
             manifest = Manifest(
@@ -379,11 +387,11 @@ class AddonCatalogRepository @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            return listOf(directory)
+            return listOf(directory).also { synchronized(this) { githubTopicCache = now to it } }
         }
         val items = json.takeIf { it.isJsonObject }?.asJsonObject
             ?.get("items")?.takeIf { it.isJsonArray }?.asJsonArray
-            ?: return listOf(directory)
+            ?: return listOf(directory).also { synchronized(this) { githubTopicCache = now to it } }
         val projects = items.mapNotNull { element ->
             val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
             val name = obj.get("full_name")?.takeIf { it.isJsonPrimitive }?.asString
@@ -405,7 +413,9 @@ class AddonCatalogRepository @Inject constructor(
                 discoveryUrl = url
             )
         }
-        return listOf(directory) + projects
+        return (listOf(directory) + projects).also {
+            synchronized(this) { githubTopicCache = now to it }
+        }
     }
 
     /**
@@ -514,6 +524,7 @@ class AddonCatalogRepository @Inject constructor(
         private const val STREMIO_ADDONS_NET_TOTAL_TIMEOUT_MS = 60_000L
         private const val AIOMETADATA_HOME = "https://aiometadata.elfhosted.com"
         private const val GITHUB_TOPIC_URL = "https://github.com/topics/stremio-addon"
+        private const val GITHUB_TOPIC_CACHE_MS = 15 * 60 * 1000L
         private const val GITHUB_TOPIC_API =
             "https://api.github.com/search/repositories?q=topic%3Astremio-addon&sort=stars&per_page=50"
         private const val LEGACY_MANIFEST_TIMEOUT_MS = 5_000L
