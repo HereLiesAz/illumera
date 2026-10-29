@@ -24,7 +24,8 @@ object DebridAddonUrlHelper {
         "realdebrid", "alldebrid", "premiumize", "debridlink", "easydebrid", "offcloud", "torbox", "putio"
     )
 
-    private fun torrentioConfigKey(provider: DebridProvider): String? = TorrentioConfig.configKey(provider)
+    private fun torrentioConfigKey(provider: DebridProvider): String? =
+        if (provider == DebridProvider.TORRIN) null else TorrentioConfig.configKey(provider)
 
     /**
      * Returns [url] with the connected provider's API key inserted, if [url] points at a known
