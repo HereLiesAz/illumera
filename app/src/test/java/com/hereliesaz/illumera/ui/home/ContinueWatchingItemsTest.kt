@@ -67,6 +67,23 @@ class ContinueWatchingItemsTest {
         assertEquals(listOf("tt2", "tt1"), items.map { it.id })
     }
 
+    @Test
+    fun unplayedBookmarkedMoviesAndSeriesNeverEnterContinueWatching() {
+        val bogusMovie = entry("tt7654321", "movie", lastWatched = 900L, position = 0)
+            .copy(duration = 0)
+        val bogusSeries = entry("tt1234567:1:1", "series", lastWatched = 800L,
+            position = 0, seriesId = "tt1234567").copy(duration = 0)
+        val barelyStarted = entry("tt1111111", "movie", lastWatched = 700L,
+            position = 1).copy(position = 999L)
+        val realMovie = entry("tt9999999", "movie", lastWatched = 500L, position = 12)
+
+        assertEquals(
+            listOf("tt9999999"),
+            buildContinueWatchingItems(listOf(bogusMovie, bogusSeries, barelyStarted, realMovie))
+                .map { it.id }
+        )
+    }
+
     private fun entry(
         id: String,
         type: String,
@@ -76,7 +93,7 @@ class ContinueWatchingItemsTest {
         watched: Boolean = false,
     ) = WatchHistoryEntity(
         id = id, title = id, poster = null, seriesId = seriesId,
-        position = position, duration = 100, lastWatched = lastWatched, type = type, watched = watched,
+        position = position * 1_000L, duration = 100_000L, lastWatched = lastWatched, type = type, watched = watched,
     )
 
     private fun nextUp(seriesId: String, updatedAt: Long) = SeriesNextUpEntity(
