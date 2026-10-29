@@ -11,12 +11,14 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -222,6 +224,29 @@ class SearchViewModelTest {
         assertEquals(listOf(existing, newShow), viewModel.state.value.results)
         assertEquals(listOf(existing), viewModel.state.value.movies)
         assertEquals(listOf(newShow), viewModel.state.value.series)
+    }
+
+    @Test
+    fun addonResultsAppearBeforeSlowTorrentClawCompletes() = runTest(dispatcher) {
+        val addonMovie = MetaItem(id = "tt1375666", type = "movie", name = "Inception")
+        val clawShow = MetaItem(id = "tt0903747", type = "series", name = "Breaking Bad")
+        val slowResponse = CompletableDeferred<DebridResult<List<MetaItem>>>()
+        coEvery { repository.searchMovies("in") } returns listOf(addonMovie)
+        coEvery { torrentClaw.search("in") } coAnswers { slowResponse.await() }
+        val viewModel = newViewModel()
+        runCurrent()
+
+        viewModel.onQueryChange("in")
+        advanceTimeBy(350)
+        runCurrent()
+
+        assertEquals(listOf(addonMovie), viewModel.state.value.results)
+        assertFalse("Addon results must be visible while TorrentClaw is pending", viewModel.state.value.isLoading)
+        slowResponse.complete(DebridResult.Success(listOf(clawShow)))
+        advanceUntilIdle()
+
+        assertEquals(listOf(addonMovie, clawShow), viewModel.state.value.results)
+        assertFalse(viewModel.state.value.isLoading)
     }
 
     @Test
