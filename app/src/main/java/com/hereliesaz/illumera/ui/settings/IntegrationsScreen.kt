@@ -72,6 +72,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import com.hereliesaz.illumera.data.auth.StremioConnectionState
 import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
+import com.hereliesaz.illumera.data.vpn.NativeVpnPhase
 import com.hereliesaz.illumera.data.trakt.DeviceAuthState
 import com.hereliesaz.illumera.remote_input.ServerInfo
 import kotlinx.coroutines.delay
@@ -103,6 +104,9 @@ fun IntegrationsScreen(
     val addonRepositories by repositoriesViewModel.repositories.collectAsStateWithLifecycle()
     var showWutchDialog by remember { mutableStateOf(false) }
     var showTorrentClawDialog by remember { mutableStateOf(false) }
+    var showNativeVpnDialog by remember { mutableStateOf(false) }
+    val nativeVpnViewModel: NativeVpnViewModel = hiltViewModel()
+    val nativeVpnStatus by nativeVpnViewModel.status.collectAsStateWithLifecycle()
 
     // Handle events
     LaunchedEffect(Unit) {
@@ -280,6 +284,21 @@ fun IntegrationsScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        IntegrationItem(
+            title = "Native VPN",
+            subtitle = when (nativeVpnStatus.phase) {
+                NativeVpnPhase.DISCONNECTED -> "WireGuard · IKEv2/IPsec · other protocol engines pending"
+                NativeVpnPhase.CONNECTING -> "VPN session requested"
+                NativeVpnPhase.ACTIVE -> nativeVpnStatus.protocol?.let { "${it.label} active" } ?: "VPN active"
+                NativeVpnPhase.ERROR -> "VPN error · open settings"
+            },
+            isConnected = nativeVpnStatus.phase == NativeVpnPhase.ACTIVE,
+            onClick = { showNativeVpnDialog = true },
+            modifier = goBackModifier
+        )
+
+        Spacer(Modifier.height(12.dp))
+
         // Repository settings follow the other integrations in their original order.
         IntegrationItem(
             title = "Third-party Add-on Repositories",
@@ -287,6 +306,13 @@ fun IntegrationsScreen(
             isConnected = addonRepositories.enabledBuiltIns.isNotEmpty() || addonRepositories.enabledCollections.isNotEmpty(),
             onClick = { showRepositoriesDialog = true },
             modifier = goBackModifier
+        )
+    }
+
+    if (showNativeVpnDialog) {
+        NativeVpnSettingsDialog(
+            onDismiss = { showNativeVpnDialog = false },
+            viewModel = nativeVpnViewModel
         )
     }
 

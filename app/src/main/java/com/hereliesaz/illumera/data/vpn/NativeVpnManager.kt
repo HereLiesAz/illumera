@@ -1,0 +1,297 @@
+@file:Suppress("DEPRECATION")
+
+package com.hereliesaz.illumera.data.vpn
+
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Ikev2VpnProfile
+import android.net.VpnManager
+import android.net.VpnProfileState
+import android.net.VpnService
+import android.os.Build
+import android.util.Base64
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import com.wireguard.android.backend.GoBackend
+import com.wireguard.android.backend.Tunnel
+import com.wireguard.config.Config
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.ByteArrayInputStream
+import java.nio.charset.StandardCharsets
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+/**
+ * The engine is intentionally explicit. strongSwan and Libreswan are IPsec implementations,
+ * not separate wire protocols; their IKEv2 servers use Android's built-in IKEv2/IPsec stack.
+ * OpenVPN and SoftEther require independently integrated native packet engines. A VpnService
+ * declaration or a parsed .ovpn file alone does NOT establish a secure tunnel.
+ */
+enum class NativeVpnProtocol(val label: String, val ready: Boolean) {
+    WIREGUARD("WireGuard", true),
+    IKEV2("IKEv2/IPsec · strongSwan / Libreswan", true),
+    OPENVPN("OpenVPN", false),
+    SOFTETHER("SoftEther SSL-VPN", false)
+}
+
+enum class NativeVpnPhase { DISCONNECTED, CONNECTING, ACTIVE, ERROR }
+
+data class NativeVpnStatus(
+    val protocol: NativeVpnProtocol? = null,
+    val phase: NativeVpnPhase = NativeVpnPhase.DISCONNECTED,
+    val message: String = ""
+)
+
+/** Validate remote IKEv2 configuration before provisioning the device VPN profile. */
+internal fun validateIkev2Inputs(server: String, identity: String, username: String, password: String): String? {
+    if (server.isBlank() || identity.isBlank()) return "Server and remote identity are required"
+    if (server.contains("://") || server.any { it.isWhitespace() || it == '/' || it == '@' }) {
+        return "Enter a hostname or IP address, not a URL"
+    }
+    if (username.isBlank() || password.isBlank()) return "Username and password are required"
+    return null
+}
+
+/**
+ * Device-wide, user-initiated VPN connections. Config and credentials are encrypted at rest.
+ * Never pretends to be connected after an API request: WireGuard reports the backend's state,
+ * while platform IKEv2 remains CONNECTING until the OS establishes the session.
+ *
+ * Only one VPN can own Android's VPN slot at a time. No background auto-connect or
+ * unconsented interception is performed.
+ */
+@Singleton
+class NativeVpnManager @Inject constructor(@ApplicationContext private val context: Context) {
+    private val secrets by lazy {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(
+            context, "illumera_native_vpn", masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private val backend by lazy { GoBackend(context) }
+    // Android owns a single VPN slot. Serialize user taps and protocol switches.
+    private val connectionMutex = Mutex()
+    private val tunnel = object : Tunnel {
+        override fun getName() = "Illumera"
+        override fun onStateChange(newState: Tunnel.State) {
+            if (newState == Tunnel.State.DOWN && _status.value.protocol == NativeVpnProtocol.WIREGUARD) {
+                _status.value = NativeVpnStatus()
+            }
+        }
+    }
+
+    private val _status = MutableStateFlow(NativeVpnStatus())
+    val status: StateFlow<NativeVpnStatus> = _status
+
+    init {
+        // The platform IPsec session survives the UI/activity process. Recover its real
+        // state so a reopened app can disconnect an already established device-wide VPN.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                context.getSystemService(VpnManager::class.java).provisionedVpnProfileState
+            }.getOrNull()?.let { platformState ->
+                if (platformState.state == VpnProfileState.STATE_CONNECTED ||
+                    platformState.state == VpnProfileState.STATE_CONNECTING
+                ) {
+                    _status.value = NativeVpnStatus(
+                        NativeVpnProtocol.IKEV2,
+                        if (platformState.state == VpnProfileState.STATE_CONNECTED)
+                            NativeVpnPhase.ACTIVE else NativeVpnPhase.CONNECTING,
+                        "Restored Android IKEv2 session state"
+                    )
+                }
+            }
+        }
+    }
+
+    fun hasWireGuardProfile(): Boolean =
+        runCatching { !secrets.getString(WG_PROFILE, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun hasIkev2Profile(): Boolean =
+        runCatching { !secrets.getString(IKEV2_SERVER, null).isNullOrBlank() }.getOrDefault(false)
+
+    fun hasIkev2Ca(): Boolean =
+        runCatching { !secrets.getString(IKEV2_CA, null).isNullOrBlank() }.getOrDefault(false)
+
+    /**
+     * Accept PEM or DER X.509 server CA certificates. A private CA is common on self-hosted
+     * strongSwan/Libreswan servers. Never disable server identity/certificate validation.
+     */
+    fun saveIkev2Ca(bytes: ByteArray): Result<Unit> = runCatching {
+        require(bytes.isNotEmpty() && bytes.size <= 65536) { "CA certificate must be 1–64 KiB" }
+        val cert = CertificateFactory.getInstance("X.509")
+            .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+        require(cert.basicConstraints >= 0) { "Expected an X.509 CA certificate" }
+        cert.checkValidity()
+        check(secrets.edit().putString(IKEV2_CA, Base64.encodeToString(bytes, Base64.NO_WRAP))
+            .commit()) { "Unable to store encrypted CA certificate" }
+    }
+
+    fun clearIkev2Ca() {
+        runCatching { secrets.edit().remove(IKEV2_CA).commit() }
+    }
+
+    /** Config.parse checks WireGuard key formats, interface addresses and peers before saving. */
+    fun saveWireGuardProfile(text: String): Result<Unit> = runCatching {
+        require(text.isNotBlank()) { "Paste or import a WireGuard .conf first" }
+        Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
+        check(secrets.edit().putString(WG_PROFILE, text).commit()) { "Could not store encrypted VPN profile" }
+    }
+
+    fun saveIkev2Profile(server: String, identity: String, username: String, password: String): Result<Unit> =
+        runCatching {
+            require(validateIkev2Inputs(server, identity, username, password) == null) {
+                validateIkev2Inputs(server, identity, username, password).orEmpty()
+            }
+            check(secrets.edit()
+                .putString(IKEV2_SERVER, server.trim())
+                .putString(IKEV2_IDENTITY, identity.trim())
+                .putString(IKEV2_USER, username.trim())
+                .putString(IKEV2_PASSWORD, password)
+                .commit()) { "Could not store encrypted IKEv2 credentials" }
+        }
+
+    /**
+     * The caller must launch the returned consent Intent and call connectWireGuard()
+     * only after RESULT_OK. A null Intent means the package already holds permission.
+     */
+    fun wireGuardConsent(): Intent? = VpnService.prepare(context)
+
+    /** Android 11+ provides native IKEv2 EAP-MSCHAPv2 with certificate-verified servers. */
+    fun provisionIkev2(): Intent? {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11 or newer" }
+        check(context.packageManager.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)) {
+            "This Android device does not support IPsec tunnels"
+        }
+        val prefs = secrets
+        val server = prefs.getString(IKEV2_SERVER, null).orEmpty()
+        val identity = prefs.getString(IKEV2_IDENTITY, null).orEmpty()
+        val user = prefs.getString(IKEV2_USER, null).orEmpty()
+        val password = prefs.getString(IKEV2_PASSWORD, null).orEmpty()
+        validateIkev2Inputs(server, identity, user, password)?.let { error(it) }
+        val serverRootCa = prefs.getString(IKEV2_CA, null)?.let { encoded ->
+            val bytes = Base64.decode(encoded, Base64.DEFAULT)
+            val cert = CertificateFactory.getInstance("X.509")
+                .generateCertificate(ByteArrayInputStream(bytes)) as X509Certificate
+            require(cert.basicConstraints >= 0) { "Stored server certificate is not a CA" }
+            cert.checkValidity()
+            cert
+        }
+        val profile = Ikev2VpnProfile.Builder(server, identity)
+            .setAuthUsernamePassword(user, password, serverRootCa)
+            .build()
+        return context.getSystemService(VpnManager::class.java).provisionVpnProfile(profile)
+    }
+
+    suspend fun connectWireGuard(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
+            runCatching {
+                check(VpnService.prepare(context) == null) { "VPN permission was not granted" }
+                val text = secrets.getString(WG_PROFILE, null)
+                    ?: error("Import a WireGuard configuration first")
+                val config = Config.parse(ByteArrayInputStream(text.toByteArray(StandardCharsets.UTF_8)))
+                stopIkev2IfRunning()
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.CONNECTING)
+                check(backend.setState(tunnel, Tunnel.State.UP, config) == Tunnel.State.UP) {
+                    "WireGuard could not establish its VPN interface"
+                }
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ACTIVE,
+                    "WireGuard tunnel interface active")
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.WIREGUARD, NativeVpnPhase.ERROR,
+                    it.message ?: "WireGuard connection failed")
+            }
+        }
+    }
+
+    /** Invoke only after provisionIkev2 consent has completed. */
+    suspend fun connectIkev2(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
+            runCatching {
+                check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
+                runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                val manager = context.getSystemService(VpnManager::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    manager.startProvisionedVpnProfileSession()
+                } else {
+                    @Suppress("DEPRECATION")
+                    manager.startProvisionedVpnProfile()
+                }
+                _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
+                    "IKEv2 session requested; Android manages authentication and connection")
+            }.onFailure {
+                _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
+                    it.message ?: "IKEv2 connection failed")
+            }
+        }
+    }
+
+    /** Only Android 13+ reports actual platform IKEv2 state to an ordinary app. */
+    fun refreshIkev2Status() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (_status.value.protocol != NativeVpnProtocol.IKEV2) return
+        runCatching {
+            context.getSystemService(VpnManager::class.java).provisionedVpnProfileState
+        }.getOrNull()?.let { platformState ->
+            _status.value = when (platformState.state) {
+                VpnProfileState.STATE_CONNECTED ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ACTIVE,
+                        "Android reports an established IPsec tunnel")
+                VpnProfileState.STATE_CONNECTING ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
+                        "Android is negotiating the IKEv2 session")
+                VpnProfileState.STATE_FAILED ->
+                    NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
+                        "Android reports that IPsec negotiation failed")
+                else -> NativeVpnStatus()
+            }
+        }
+    }
+
+    suspend fun disconnect(): Result<Unit> = withContext(Dispatchers.IO) {
+        connectionMutex.withLock {
+            runCatching {
+                when (_status.value.protocol) {
+                    NativeVpnProtocol.WIREGUARD -> backend.setState(tunnel, Tunnel.State.DOWN, null)
+                    NativeVpnProtocol.IKEV2 -> stopIkev2IfRunning()
+                    else -> Unit
+                }
+                _status.value = NativeVpnStatus()
+            }.onFailure {
+                _status.value = NativeVpnStatus(_status.value.protocol, NativeVpnPhase.ERROR,
+                    it.message ?: "VPN disconnect failed")
+            }
+        }
+    }
+
+    private fun stopIkev2IfRunning() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            _status.value.protocol == NativeVpnProtocol.IKEV2
+        ) {
+            // Do not report a successful disconnect when Android rejected the request.
+            context.getSystemService(VpnManager::class.java).stopProvisionedVpnProfile()
+        }
+    }
+
+    private companion object {
+        const val WG_PROFILE = "wireguard_profile"
+        const val IKEV2_SERVER = "ikev2_server"
+        const val IKEV2_IDENTITY = "ikev2_remote_identity"
+        const val IKEV2_USER = "ikev2_username"
+        const val IKEV2_PASSWORD = "ikev2_password"
+        const val IKEV2_CA = "ikev2_root_ca"
+    }
+}

@@ -287,6 +287,8 @@ dependencies {
     implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
     implementation(libs.androidx.security.crypto)
+    // Apache-2.0 WireGuard GoBackend: merges its VpnService and native tunnel engine.
+    implementation(libs.wireguard.tunnel)
     implementation(libs.acra.http)
     implementation(libs.acra.toast)
 }
