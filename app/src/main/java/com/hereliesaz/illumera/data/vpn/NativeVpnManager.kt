@@ -11,6 +11,7 @@ import android.net.VpnProfileState
 import android.net.VpnService
 import android.os.Build
 import android.util.Base64
+import androidx.annotation.RequiresApi
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.wireguard.android.backend.GoBackend
@@ -279,9 +280,14 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
      */
     fun wireGuardConsent(): Intent? = VpnService.prepare(context)
 
-    /** Android 11+ provides native IKEv2 EAP-MSCHAPv2 with certificate-verified servers. */
+    /** Guard Android 11's platform VPN APIs on devices with minSdk 26. */
     fun provisionIkev2(): Intent? {
         check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11 or newer" }
+        return provisionIkev2Api30()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun provisionIkev2Api30(): Intent? {
         check(context.packageManager.hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)) {
             "This Android device does not support IPsec tunnels"
         }
@@ -355,19 +361,24 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
             runCatching {
                 check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
                 runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
-                val manager = context.getSystemService(VpnManager::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    manager.startProvisionedVpnProfileSession()
-                } else {
-                    @Suppress("DEPRECATION")
-                    manager.startProvisionedVpnProfile()
-                }
+                startIkev2Api30()
                 _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.CONNECTING,
                     "IKEv2 session requested; Android manages authentication and connection")
             }.onFailure {
                 _status.value = NativeVpnStatus(NativeVpnProtocol.IKEV2, NativeVpnPhase.ERROR,
                     it.message ?: "IKEv2 connection failed")
             }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun startIkev2Api30() {
+        val manager = context.getSystemService(VpnManager::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            manager.startProvisionedVpnProfileSession()
+        } else {
+            @Suppress("DEPRECATION")
+            manager.startProvisionedVpnProfile()
         }
     }
 
