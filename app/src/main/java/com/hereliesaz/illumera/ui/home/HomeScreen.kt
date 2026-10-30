@@ -1118,8 +1118,9 @@ private fun InlineFocusedPosterPreview(
 internal fun persistentPreviewHeight(screenHeight: Dp): Dp =
     (screenHeight - PERSISTENT_ROWS_RESERVE).coerceIn(screenHeight * 0.38f, 420.dp)
 
-// One landscape rail (116dp), its smaller heading, row gap and top focus clearance.
-private val PERSISTENT_ROWS_RESERVE = 180.dp
+// One landscape rail (116dp), its smaller heading, row gap and top focus clearance (180dp),
+// plus the next row's heading and the top of its cards, so there is visibly more below.
+private val PERSISTENT_ROWS_RESERVE = 250.dp
 
 // Space above a focused card in the persistent layout: row heading (~26dp) plus the
 // card's 1.05x focus scale and border.
@@ -1227,7 +1228,7 @@ private fun PersistentCinematicPreview(
                     current.description?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = it,
-                            maxLines = if (height < 300.dp) 2 else 4,
+                            maxLines = if (height < 280.dp) 2 else 4,
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 14.sp, lineHeight = 1.3.em
