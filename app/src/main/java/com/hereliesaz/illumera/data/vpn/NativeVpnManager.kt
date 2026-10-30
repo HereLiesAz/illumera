@@ -312,7 +312,8 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
 
     /** Guard Android 11's platform VPN APIs on devices with minSdk 26. */
     fun provisionIkev2(): Intent? {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11 or newer" }
+        // An explicit if (not check()) so lint's NewApi sees the version guard.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) error("IKEv2 requires Android 11 or newer")
         return provisionIkev2Api30()
     }
 
@@ -390,7 +391,7 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     suspend fun connectIkev2(): Result<Unit> = withContext(Dispatchers.IO) {
         connectionMutex.withLock {
             runCatching {
-                check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "IKEv2 requires Android 11+" }
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) error("IKEv2 requires Android 11+")
                 runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
                 stopEmbeddedIfRunning()
                 startIkev2Api30()
