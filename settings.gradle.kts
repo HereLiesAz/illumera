@@ -15,8 +15,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "illumera"
 include(":app")
-include(":native-openvpn")
-include(":native-softether")
 include(":playbackcore")
 include(":assrender")
 // The module is now located directly in the assrender/ folder

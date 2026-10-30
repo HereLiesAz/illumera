@@ -25,7 +25,6 @@ material3 = "1.4.0"
 nanohttpd = "2.3.1"
 zxing = "3.5.4"
 securityCrypto = "1.1.0"
-wireguardTunnel = "1.0.20260102"
 acra = "5.13.1"
 annotation = "1.9.1"
 gson = "2.14.0"
@@ -105,7 +104,6 @@ media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "medi
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
-wireguard-tunnel = { group = "com.wireguard.android", name = "tunnel", version.ref = "wireguardTunnel" }
 acra-http = { group = "ch.acra", name = "acra-http", version.ref = "acra" }
 acra-toast = { group = "ch.acra", name = "acra-toast", version.ref = "acra" }
 
