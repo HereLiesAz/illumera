@@ -2,6 +2,10 @@
 plugins {
     alias(libs.plugins.android.library)
 }
+// The VPN runs only while the app is in the foreground: no foreground service.
+extra["vendorPatch"] = listOf("vendor/softether-android", "vendor/patches/softether-android-no-foreground-service.patch")
+apply(from = rootProject.file("gradle/vendor-patches.gradle.kts"))
+
 android {
     namespace = "vn.unlimit.softether"
     compileSdk = 37

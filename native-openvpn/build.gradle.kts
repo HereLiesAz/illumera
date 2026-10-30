@@ -3,6 +3,10 @@
 plugins {
     alias(libs.plugins.android.library)
 }
+// The VPN runs only while the app is in the foreground: no foreground service.
+extra["vendorPatch"] = listOf("vendor/openvpn-android", "vendor/patches/openvpn-android-no-foreground-service.patch")
+apply(from = rootProject.file("gradle/vendor-patches.gradle.kts"))
+
 android {
     namespace = "de.blinkt.openvpn"
     compileSdk = 37

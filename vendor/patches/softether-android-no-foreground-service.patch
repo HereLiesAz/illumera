@@ -1,0 +1,50 @@
+diff --git a/src/main/AndroidManifest.xml b/src/main/AndroidManifest.xml
+index 61ad941..5512efe 100644
+--- a/src/main/AndroidManifest.xml
++++ b/src/main/AndroidManifest.xml
+@@ -5,11 +5,6 @@
+     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+     <uses-permission android:name="android.permission.INTERNET" />
+     
+-    <!-- Foreground service permission for Android 9+ -->
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+-    
+-    <!-- For Android 14+ -->
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+     <uses-permission android:name="android.permission.VIBRATE" />
+ 
+     <application>
+@@ -17,14 +12,10 @@
+         <service
+             android:name=".SoftEtherVpnService"
+             android:permission="android.permission.BIND_VPN_SERVICE"
+-            android:exported="false"
+-            android:foregroundServiceType="specialUse">
++            android:exported="false">
+             <intent-filter>
+                 <action android:name="android.net.VpnService" />
+             </intent-filter>
+-            <property
+-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+-                android:value="vpn" />
+         </service>
+     </application>
+ 
+diff --git a/src/main/java/vn/unlimit/softether/SoftEtherVpnService.kt b/src/main/java/vn/unlimit/softether/SoftEtherVpnService.kt
+index dfa14ca..7175998 100644
+--- a/src/main/java/vn/unlimit/softether/SoftEtherVpnService.kt
++++ b/src/main/java/vn/unlimit/softether/SoftEtherVpnService.kt
+@@ -245,10 +245,10 @@ class SoftEtherVpnService : VpnService() {
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+         Log.d(TAG, "onStartCommand: action=${intent?.action}")
+ 
+-        // Android requires startForeground() within ~5s of startForegroundService().
+-        // Use the correct text and omit the disconnect action when disconnecting.
++        // Illumera: status notification only; the service is never promoted to the
++        // foreground (the app stops the VPN when it leaves the foreground).
+         val isDisconnectAction = intent?.action == ACTION_DISCONNECT
+-        startForeground(
++        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(
+             NOTIFICATION_ID,
+             createNotification(
+                 if (isDisconnectAction) getString(R.string.softether_disconnecting) else getString(R.string.softether_connecting),
