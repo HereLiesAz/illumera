@@ -1,16 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <application>
-        <!-- OpenVPN VpnService is kept private to this APK and only started after consent. -->
+        <!-- OpenVPN VpnService is kept private to this APK and only started after consent.
+             Not a foreground service: Illumera runs the VPN only while the app is in the
+             foreground (vendor/patches/openvpn-android-no-foreground-service.patch). -->
         <service android:name="de.blinkt.openvpn.core.OpenVPNService"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="specialUse"
             android:exported="false">
             <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="vpn" />
         </service>
         <activity android:name="de.blinkt.openvpn.LaunchVPN"
             android:exported="false"/>

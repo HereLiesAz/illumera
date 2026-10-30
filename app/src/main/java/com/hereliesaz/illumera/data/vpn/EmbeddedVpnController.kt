@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.system.Os
-import androidx.core.content.ContextCompat
 import de.blinkt.openvpn.core.ConfigParser
 import de.blinkt.openvpn.core.ConnectionStatus
 import de.blinkt.openvpn.core.ProfileManager
@@ -111,7 +110,8 @@ internal class EmbeddedVpnController(
             clientProductName = "Illumera", authMethod = AuthMethod.PASSWORD,
             useTcp = true, useUdp = false
         )
-        ContextCompat.startForegroundService(context, Intent(context, SoftEtherVpnService::class.java).apply {
+        // A plain started service: the VPN only runs while Illumera is in the foreground.
+        context.startService(Intent(context, SoftEtherVpnService::class.java).apply {
             action = SoftEtherVpnService.ACTION_CONNECT
             putExtra(SoftEtherVpnService.EXTRA_CONFIG, config)
         })

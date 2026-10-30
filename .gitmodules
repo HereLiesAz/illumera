@@ -1,6 +1,8 @@
 [submodule "vendor/openvpn-android"]
 	path = vendor/openvpn-android
 	url = https://github.com/hoang-rio/vpnLib.git
+	ignore = dirty
 [submodule "vendor/softether-android"]
 	path = vendor/softether-android
 	url = https://github.com/hoang-rio/SoftEther-Android-Module.git
+	ignore = dirty

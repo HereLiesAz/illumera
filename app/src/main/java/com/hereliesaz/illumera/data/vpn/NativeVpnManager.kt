@@ -10,8 +10,13 @@ import android.net.VpnManager
 import android.net.VpnProfileState
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import androidx.annotation.RequiresApi
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.wireguard.android.backend.GoBackend
@@ -135,6 +140,14 @@ class NativeVpnManager @Inject constructor(@ApplicationContext private val conte
     }
 
     init {
+        // OpenVPN and SoftEther run inside this app's process as ordinary (not foreground)
+        // services, so they live only while Illumera is in the foreground: leaving the app
+        // stops them cleanly instead of letting Android kill the tunnel mid-use.
+        Handler(Looper.getMainLooper()).post {
+            ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+                override fun onStop(owner: LifecycleOwner) = stopEmbeddedIfRunning()
+            })
+        }
         // The platform IPsec session survives the UI/activity process. Recover its real
         // state so a reopened app can disconnect an already established device-wide VPN.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
