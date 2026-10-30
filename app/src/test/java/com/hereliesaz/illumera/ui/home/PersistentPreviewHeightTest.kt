@@ -4,7 +4,7 @@ import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Fixed viewport expectations: the stage takes precedence over a fully visible final row. */
+/** Fixed viewport expectations: one full rail plus the next row's heading and card tops. */
 class PersistentPreviewHeightTest {
     @Test
     fun fullSizedTvKeepsTheEntireHeroHeight() {
@@ -12,12 +12,17 @@ class PersistentPreviewHeightTest {
     }
 
     @Test
-    fun smallerTvReservesOneRailWithoutTruncatingTheStage() {
-        assertEquals(300.dp, persistentPreviewHeight(480.dp))
+    fun tv1080pShowsTheNextRowBelowTheFirst() {
+        assertEquals(290.dp, persistentPreviewHeight(540.dp))
+    }
+
+    @Test
+    fun smallerTvReservesTheRowsBelowTheStage() {
+        assertEquals(230.dp, persistentPreviewHeight(480.dp))
     }
 
     @Test
     fun compactViewportRemainsWithinTheVisibleScreen() {
-        assertEquals(140.dp, persistentPreviewHeight(320.dp))
+        assertEquals(320.dp * 0.38f, persistentPreviewHeight(320.dp))
     }
 }
