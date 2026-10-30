@@ -729,7 +729,12 @@ class ProfileConfigurationManager @Inject constructor(
         )
     }
 
-    private fun writeSnapshot(profileId: Int, snapshot: ProfileRuntimeSnapshot) {
+    // Writers share one .tmp path per profile, and a read deletes a leftover .tmp. Without
+    // this lock, a second write (or a read) could take that file away mid-write, failing the
+    // rename and then the copy fallback: "The source file doesn't exist."
+    private val snapshotFileLock = Any()
+
+    private fun writeSnapshot(profileId: Int, snapshot: ProfileRuntimeSnapshot) = synchronized(snapshotFileLock) {
         val file = snapshotFile(profileId)
         file.parentFile?.mkdirs()
         val tmpFile = File(file.parentFile, "${file.name}.tmp")
@@ -755,7 +760,7 @@ class ProfileConfigurationManager @Inject constructor(
     private fun readSnapshot(profileId: Int): SnapshotRead {
         val file = snapshotFile(profileId)
         // Clean up any leftover temp file from a previous interrupted write
-        File(file.parentFile, "${file.name}.tmp").takeIf { it.exists() }?.delete()
+        synchronized(snapshotFileLock) { File(file.parentFile, "${file.name}.tmp").takeIf { it.exists() }?.delete() }
         if (!file.exists()) return SnapshotRead.Missing
         val parsed = try {
             gson.fromJson(file.readText(), ProfileRuntimeSnapshot::class.java)
