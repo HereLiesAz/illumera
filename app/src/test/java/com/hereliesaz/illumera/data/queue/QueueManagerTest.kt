@@ -299,9 +299,9 @@ class QueueManagerTest {
         coEvery { addonDao.getAllWatchHistoryOnce() } coAnswers {
             if (++calls == 1) {
                 firstGate.await()
-                listOf(WatchHistoryEntity(id = "tt-old", title = "Old", poster = null, position = 1, duration = 100, lastWatched = 1, type = "movie"))
+                listOf(WatchHistoryEntity(id = "tt-old", title = "Old", poster = null, position = 6000, duration = 600000, lastWatched = 1, type = "movie"))
             } else {
-                listOf(WatchHistoryEntity(id = "tt-new", title = "New", poster = null, position = 1, duration = 100, lastWatched = 1, type = "movie"))
+                listOf(WatchHistoryEntity(id = "tt-new", title = "New", poster = null, position = 6000, duration = 600000, lastWatched = 1, type = "movie"))
             }
         }
         val queue = newManager(addonDao = addonDao)
@@ -325,9 +325,9 @@ class QueueManagerTest {
     fun onlyUnseenSuggestionsDropsFinishedTitlesButKeepsUnfinishedOnes() = runTest {
         val addonDao = mockk<AddonDao>(relaxed = true)
         coEvery { addonDao.getAllWatchHistoryOnce() } returns listOf(
-            WatchHistoryEntity(id = "tt-finished", title = "Finished", poster = null, position = 100, duration = 100, lastWatched = 3, type = "movie", watched = true),
-            WatchHistoryEntity(id = "tt-started", title = "Started", poster = null, position = 10, duration = 100, lastWatched = 2, type = "movie"),
-            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, position = 10, duration = 100, lastWatched = 1, type = "series"),
+            WatchHistoryEntity(id = "tt-finished", title = "Finished", poster = null, position = 600000, duration = 600000, lastWatched = 3, type = "movie", watched = true),
+            WatchHistoryEntity(id = "tt-started", title = "Started", poster = null, position = 60000, duration = 600000, lastWatched = 2, type = "movie"),
+            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, position = 60000, duration = 600000, lastWatched = 1, type = "series"),
         )
         val queue = newManager(addonDao = addonDao)
         queue.setEnabled(true)
@@ -342,8 +342,8 @@ class QueueManagerTest {
     fun finishedEpisodeDoesNotExcludeAShowWithAnUnfinishedEpisode() = runTest {
         val addonDao = mockk<AddonDao>(relaxed = true)
         coEvery { addonDao.getAllWatchHistoryOnce() } returns listOf(
-            WatchHistoryEntity(id = "tt-show:1:1", title = "Show", poster = null, seriesId = "tt-show", position = 100, duration = 100, lastWatched = 2, type = "series", watched = true),
-            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, seriesId = "tt-show", position = 10, duration = 100, lastWatched = 1, type = "series"),
+            WatchHistoryEntity(id = "tt-show:1:1", title = "Show", poster = null, seriesId = "tt-show", position = 600000, duration = 600000, lastWatched = 2, type = "series", watched = true),
+            WatchHistoryEntity(id = "tt-show:1:2", title = "Show", poster = null, seriesId = "tt-show", position = 60000, duration = 600000, lastWatched = 1, type = "series"),
         )
         val queue = newManager(addonDao = addonDao)
         queue.setEnabled(true)
@@ -354,7 +354,7 @@ class QueueManagerTest {
     }
 
     private fun historyOf(vararg ids: String): List<WatchHistoryEntity> = ids.mapIndexed { index, id ->
-        WatchHistoryEntity(id = id, title = id, poster = null, position = 1, duration = 100, lastWatched = index.toLong(), type = "movie")
+        WatchHistoryEntity(id = id, title = id, poster = null, position = 6000, duration = 600000, lastWatched = index.toLong(), type = "movie")
     }
 
     @Test

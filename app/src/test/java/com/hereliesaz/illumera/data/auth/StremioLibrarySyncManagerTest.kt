@@ -91,6 +91,8 @@ class StremioLibrarySyncManagerTest {
                 mtime = time, state = StremioLibraryItemState()
             )
         )
+        // Not yet saved locally: the relaxed mock would otherwise return a bookmark.
+        coEvery { dao.getWatchlistItem(1, "tt0000001") } returns null
         val manager = newManager()
         assertTrue(manager.syncLibrary().isSuccess)
         coVerify(exactly = 1) {
