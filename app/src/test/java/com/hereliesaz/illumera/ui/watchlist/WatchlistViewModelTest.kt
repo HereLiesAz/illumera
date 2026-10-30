@@ -272,17 +272,17 @@ class WatchlistViewModelTest {
         every { dao.getWatchHistory() } returns flowOf(listOf(
             WatchHistoryEntity(
                 id = "tt123:1:1", title = "Series Title", poster = "poster",
-                seriesId = "tt123", position = 10L, duration = 100L,
+                seriesId = "tt123", position = 10000L, duration = 100000L,
                 lastWatched = 3000L, type = "series", watched = false
             ),
             WatchHistoryEntity(
                 id = "tt123:1:2", title = "Series Title", poster = "poster",
-                seriesId = "tt123", position = 100L, duration = 100L,
+                seriesId = "tt123", position = 100000L, duration = 100000L,
                 lastWatched = 4000L, type = "series", watched = true
             ),
             WatchHistoryEntity(
                 id = "tt789", title = "Remote Only", poster = "remote",
-                position = 15L, duration = 100L, lastWatched = 5000L,
+                position = 15000L, duration = 100000L, lastWatched = 5000L,
                 type = "movie", watched = false
             )
         ))
