@@ -28,6 +28,9 @@ android {
         named("main").configure {
             manifest.srcFile("../vendor/softether-android/src/main/AndroidManifest.xml")
             java.srcDirs("../vendor/softether-android/src/main/java")
+            // The library is Kotlin (SoftEtherVpnService, model/*). AGP's built-in Kotlin
+            // compiles only its own kotlin dirs, so without this the app can't resolve them.
+            kotlin.srcDirs("../vendor/softether-android/src/main/java")
             res.srcDirs("../vendor/softether-android/src/main/res")
             jniLibs.srcDirs("../vendor/softether-android/src/main/jniLibs")
         }
