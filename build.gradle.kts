@@ -12,6 +12,20 @@ buildscript {
             "org.bouncycastle:bcpkix-jdk18on:1.86",
             "org.bouncycastle:bcutil-jdk18on:1.86"
         )
+        // Same Guava rule as patchGuava() below: buildscript can't call script functions.
+        resolutionStrategy.eachDependency {
+            if (requested.group == "com.google.guava" && requested.name == "guava") {
+                val version = requested.version ?: return@eachDependency
+                val flavor = version.substringAfter('-', "jre")
+                val parts = version.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+                val (major, minor, patch) = (parts + listOf(0, 0, 0)).take(3)
+                val old = major < 33 || (major == 33 && (minor < 7 || (minor == 7 && patch < 2)))
+                if (old) {
+                    useVersion("33.7.2-$flavor")
+                    because("CVE-2026-102554")
+                }
+            }
+        }
     }
 }
 
@@ -35,6 +49,23 @@ plugins {
     alias(libs.plugins.ksp) apply false
 }
 
+// Guava < 33.7.2 allocates unbounded memory when deserializing CompactHashMap/
+// CompactHashSet/MapMakerInternalMap (CVE-2026-102554). Raise any older Guava, keeping
+// its -android/-jre flavor so app code keeps the Android build.
+fun ResolutionStrategy.patchGuava() = eachDependency {
+    if (requested.group == "com.google.guava" && requested.name == "guava") {
+        val version = requested.version ?: return@eachDependency
+        val flavor = version.substringAfter('-', "jre")
+        val parts = version.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        val (major, minor, patch) = (parts + listOf(0, 0, 0)).take(3)
+        val old = major < 33 || (major == 33 && (minor < 7 || (minor == 7 && patch < 2)))
+        if (old) {
+            useVersion("33.7.2-$flavor")
+            because("CVE-2026-102554")
+        }
+    }
+}
+
 allprojects {
     configurations.configureEach {
         resolutionStrategy.force(
@@ -49,5 +80,6 @@ allprojects {
             "org.bouncycastle:bcpkix-jdk18on:1.86",
             "org.bouncycastle:bcutil-jdk18on:1.86"
         )
+        resolutionStrategy.patchGuava()
     }
 }
