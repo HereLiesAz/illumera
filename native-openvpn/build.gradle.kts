@@ -19,6 +19,10 @@ android {
         named("main").configure {
             manifest.srcFile("../native-openvpn/AndroidManifest.xml")
             java.srcDirs("../vendor/openvpn-android/src/main/java")
+            // vpnLib keeps Kotlin (AppCustomControl.kt: AccMessage, DPC1Protocol) beside its Java.
+            // AGP's built-in Kotlin compiles only its own kotlin dirs, not a custom java dir, so
+            // without this javac can't see those classes and the release build fails.
+            kotlin.srcDirs("../vendor/openvpn-android/src/main/java")
             res.srcDirs("../vendor/openvpn-android/src/main/res")
             assets.srcDirs("../vendor/openvpn-android/src/main/assets")
             jniLibs.srcDirs("../vendor/openvpn-android/src/main/jniLibs")
