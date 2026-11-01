@@ -119,7 +119,8 @@ class PlaybackSessionViewModel @Inject constructor(
     private val playbackTrackSelectionStore: PlaybackTrackSelectionStore,
     private val queueManager: QueueManager,
     private val debridManager: DebridManager,
-    private val youTubeExtractor: Provider<YouTubeExtractor>
+    private val youTubeExtractor: Provider<YouTubeExtractor>,
+    private val autoPlayedStore: com.hereliesaz.illumera.data.recommend.AutoPlayedStore
 ) : ViewModel() {
 
     private val navChannel = Channel<PlaybackNav>(Channel.BUFFERED)
@@ -331,6 +332,8 @@ class PlaybackSessionViewModel @Inject constructor(
         queuePlaybackActive = queueStartPending
         if (!queuePlaybackActive) queueWholeShowActive = false
         queueStartPending = false
+        // Queue advances keep the title out of the personal rows' seeds; a manual play restores it.
+        autoPlayedStore.record(playbackId, automatic = queuePlaybackActive)
         episodeListRecoveryJob?.cancel()
         recoveredEpisodeAddonBaseUrl = null
         currentEpisodeList = episodes

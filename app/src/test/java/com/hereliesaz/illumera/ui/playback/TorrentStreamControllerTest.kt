@@ -56,7 +56,8 @@ class TorrentStreamControllerTest {
             playbackTrackSelectionStore = mockk(relaxed = true),
             queueManager = mockk(relaxed = true),
             debridManager = mockk(relaxed = true),
-            youTubeExtractor = mockk(relaxed = true)
+            youTubeExtractor = mockk(relaxed = true),
+            autoPlayedStore = mockk(relaxed = true)
         )
 
     @Test

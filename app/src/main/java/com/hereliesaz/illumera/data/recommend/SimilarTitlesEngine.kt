@@ -32,13 +32,15 @@ import kotlin.math.abs
  * Candidates are ranked by how many sources agree on them, genre overlap with the
  * seed, closeness of rating to the seed, and overlap with the genres of titles the
  * viewer Loved (strong) or Liked (mild). Disliked, watched and seed titles never appear.
+ * Titles the queue started on its own (AutoPlayedStore) are never seeds.
  */
 @Singleton
 class SimilarTitlesEngine @Inject constructor(
     private val tmdbApi: TmdbApiService,
     private val traktApi: TraktSyncApiService,
     private val tmdbService: TmdbService,
-    private val tasteStore: TasteStore
+    private val tasteStore: TasteStore,
+    private val autoPlayedStore: AutoPlayedStore
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
     private val detailsCache = Collections.synchronizedMap(
@@ -70,6 +72,8 @@ class SimilarTitlesEngine @Inject constructor(
             .mapNotNull(::seedOf)
             .distinctBy { it.id }
             .filter { tasteStore.tasteOf(it.id) != Taste.DISLIKE }
+            // Queue / suggested-list auto-plays say nothing about the viewer's taste.
+            .filterNot { autoPlayedStore.contains(it.id) }
             .take(12)
         if (seeds.isEmpty()) return@withContext emptyList()
         val tastes = tasteStore.entries.value.values
