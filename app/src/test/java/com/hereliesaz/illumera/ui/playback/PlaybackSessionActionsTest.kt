@@ -127,7 +127,8 @@ class PlaybackSessionActionsTest {
             trackStore,
             queueManager,
             debridManager,
-            youTubeExtractor = mockk(relaxed = true)
+            youTubeExtractor = mockk(relaxed = true),
+            autoPlayedStore = mockk(relaxed = true)
         ).apply {
             playbackSeriesId = "tt1"
             selectedPlaybackId = "tt1:1:1"

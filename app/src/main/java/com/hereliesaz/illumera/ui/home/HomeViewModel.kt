@@ -146,8 +146,28 @@ class HomeViewModel @Inject constructor(
     private val trailerApi: StremioApiService,
     private val youtubeExtractor: YouTubeExtractor,
     private val similarTitlesEngine: com.hereliesaz.illumera.data.recommend.SimilarTitlesEngine,
-    private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore
+    private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore,
+    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs
 ) : ViewModel() {
+
+    /** Thumbs up on a personal row's header: favor its seed title. */
+    fun approveSeed(seedId: String) = personalRowPrefs.approve(seedId)
+
+    /**
+     * Thumbs down: never seed from this title again. The row leaves at once; the rebuild
+     * (from cached seed results) fills its place.
+     */
+    fun rejectSeed(seedId: String) {
+        _state.update { s ->
+            s.copy(personalRows = s.personalRows.filterNot {
+                com.hereliesaz.illumera.data.recommend.PersonalRowPrefs.seedOf(it.id) == seedId
+            })
+        }
+        personalRowPrefs.reject(seedId)
+    }
+
+    /** Row counts and thumbs votes, for the personal rows' header controls. */
+    val personalRowSettings = personalRowPrefs.settings
 
     /**
      * Resolve an autoplay trailer independently of the user's addon selection:
@@ -354,7 +374,7 @@ class HomeViewModel @Inject constructor(
         val tmdbEnabled: Boolean = false,
         val tmdbEnrichedIds: Set<String> = emptySet(),
         val dislikedIds: Set<String> = emptySet(), // "Don't like" verdicts; hidden everywhere
-        // Home only: "More like …" / "Because you watched …" (0–2 rows), shown above catalogs
+        // Home only: "More like …" / "Because you watched …" rows (counts set in Settings), shown above catalogs
         val personalRows: List<CategoryRow> = emptyList()
     )
 
@@ -1545,20 +1565,23 @@ class HomeViewModel @Inject constructor(
                         _state.update { it.copy(history = history) }
                     }
                 }
-                // Rebuilt only when the most recently watched title changes, not on every
-                // progress tick.
+                // Rebuilt when the recent played titles, the row counts or a thumbs vote
+                // change, not on every progress tick. Seed results are cached in the
+                // engine, so a settings or thumbs change re-lays the rows at once.
                 launch {
                     val language = currentProfile.tmdbLanguage.ifBlank { null }
                         ?: java.util.Locale.getDefault().toLanguageTag()
-                    dao.getWatchHistory()
-                        .distinctUntilChangedBy { history ->
+                    combine(
+                        dao.getWatchHistory().distinctUntilChangedBy { history ->
                             history.filter(WatchHistoryEntity::hasPlaybackEvidence)
-                                        .take(12).map { it.seriesId ?: it.id.substringBefore(':') }
-                        }
-                        .collectLatest { history ->
+                                .map { it.seriesId ?: it.id.substringBefore(':') }.distinct()
+                        },
+                        personalRowPrefs.settings
+                    ) { history, settings -> history to settings }
+                        .collectLatest { (history, settings) ->
                             val rows = try {
                                 similarTitlesEngine.personalRows(
-                                    history, _state.value.watchedIds, language
+                                    history, _state.value.watchedIds, language, settings
                                 )
                             } catch (cancelled: CancellationException) {
                                 throw cancelled

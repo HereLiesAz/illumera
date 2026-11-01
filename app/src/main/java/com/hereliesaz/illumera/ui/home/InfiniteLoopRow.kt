@@ -261,7 +261,9 @@ fun InfiniteLoopRow(
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
     isInlineRowActive: Boolean = false,
     onRowFocusExited: (() -> Unit)? = null,
-    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null
+    verticalFocusCoordinator: CinematicVerticalFocusCoordinator? = null,
+    // Controls shown after the title (personal rows' thumbs up / down).
+    titleActions: (@Composable () -> Unit)? = null
 ) {
     // Only the focused cinematic row can use portraits. This rule is enforced
     // inside the renderer, independently of stale caller landscape flags.
@@ -383,15 +385,20 @@ fun InfiniteLoopRow(
                 }
             }
     ) {
-        Text(
-            text = title,
-            color = Color.White.copy(0.9f),
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             modifier = Modifier.padding(
                 start = startPadding,
                 bottom = if (renderLandscapeCards) 4.dp else 12.dp
             )
-        )
+        ) {
+            Text(
+                text = title,
+                color = Color.White.copy(0.9f),
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+            )
+            titleActions?.invoke()
+        }
 
         // Stable reference to avoid recomposition from lambda re-allocation
         val wrappedOnFocused: (MetaItem?, String) -> Unit = { item, key ->

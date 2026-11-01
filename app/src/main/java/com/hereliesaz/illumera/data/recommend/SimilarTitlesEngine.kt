@@ -25,25 +25,38 @@ import javax.inject.Singleton
 import kotlin.math.abs
 
 /**
- * Builds the Home screen's personal rows — "More like <last watched>" and
- * "Because you watched <another title>" — from TMDB recommendations, TMDB similar
+ * Builds the Home screen's personal rows — "More like <title>" and
+ * "Because you watched <title>", as many of each as PersonalRowPrefs asks — from TMDB recommendations, TMDB similar
  * titles and Trakt related titles.
  *
  * Candidates are ranked by how many sources agree on them, genre overlap with the
  * seed, closeness of rating to the seed, and overlap with the genres of titles the
  * viewer Loved (strong) or Liked (mild). Disliked, watched and seed titles never appear.
+ * Titles the queue started on its own (AutoPlayedStore) and thumbs-down seeds
+ * (PersonalRowPrefs) are never seeds.
  */
 @Singleton
 class SimilarTitlesEngine @Inject constructor(
     private val tmdbApi: TmdbApiService,
     private val traktApi: TraktSyncApiService,
     private val tmdbService: TmdbService,
-    private val tasteStore: TasteStore
+    private val tasteStore: TasteStore,
+    private val autoPlayedStore: AutoPlayedStore
 ) {
     private val apiKey get() = BuildConfig.TMDB_API_KEY
     private val detailsCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, TmdbDetailsResponse>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: Map.Entry<String, TmdbDetailsResponse>) = size > 300
+        }
+    )
+
+    /** Fixed per app session so random seed picks don't reshuffle on every rebuild. */
+    private val sessionSeed = System.nanoTime()
+
+    /** Seed → ranked candidates, so a settings or thumbs change rebuilds rows without refetching. */
+    private val rowCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, Pair<String, List<MetaItem>>>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, Pair<String, List<MetaItem>>>) = size > 40
         }
     )
 
@@ -57,48 +70,79 @@ class SimilarTitlesEngine @Inject constructor(
         var votes: Int = 0
     )
 
-    /** Up to two personal rows; a row with too few good titles is left out. */
+    /**
+     * Seeds are distinct played titles, newest first, minus disliked, queue auto-plays and
+     * thumbs-down seeds. No seed is used twice across rows.
+     *
+     * - "More like" #1: the last title watched; further ones: random from the last ten.
+     * - "Because you watched" #1: random from the 3rd–10th most recent (any of the last ten
+     *   when there are fewer); further ones: random from the whole history.
+     *
+     * Random picks are stable for the app session (so a thumbs-down replaces only the rows
+     * from that one on), and thumbs-up seeds are picked before others in the same pool.
+     * A row with too few good titles is left out.
+     */
     suspend fun personalRows(
         history: List<WatchHistoryEntity>,
         hiddenIds: Set<String>,
-        language: String
+        language: String,
+        settings: PersonalRowSettings
     ): List<CategoryRow> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext emptyList()
-        val seeds = history
+        val played = history
             .filter(WatchHistoryEntity::hasPlaybackEvidence)
             .sortedByDescending { it.lastWatched }
             .mapNotNull(::seedOf)
             .distinctBy { it.id }
+        val seeds = played
             .filter { tasteStore.tasteOf(it.id) != Taste.DISLIKE }
-            .take(12)
+            // Queue / suggested-list auto-plays say nothing about the viewer's taste.
+            .filterNot { autoPlayedStore.contains(it.id) }
+            .filterNot { it.id in settings.rejected }
         if (seeds.isEmpty()) return@withContext emptyList()
         val tastes = tasteStore.entries.value.values
         val lovedGenres = genreWeights(tastes.filter { it.taste != Taste.DISLIKE }
             .map { Seed(it.id, it.type) to it.taste.weight }, language)
         val disliked = tastes.filter { it.taste == Taste.DISLIKE }.mapTo(mutableSetOf()) { it.id }
-        val exclude = hiddenIds + disliked + seeds.map { it.id }
+        val exclude = hiddenIds + disliked + played.map { it.id }
 
-        val rows = mutableListOf<CategoryRow>()
-        val used = mutableSetOf<String>()
-        val first = seeds.first()
-        similarTo(first, language, lovedGenres, exclude)?.let { (name, items) ->
-            items.takeIf { it.size >= MIN_ROW }?.let {
-                rows += row("personal:more_like", "More like $name", it)
-                used += it.map(MetaItem::id)
+        val random = kotlin.random.Random(sessionSeed)
+        val recent = seeds.take(10)
+        val usedSeeds = mutableSetOf<String>()
+        fun pick(pool: List<Seed>): Seed? {
+            val open = pool.filter { it.id !in usedSeeds }
+            val chosen = open.filter { it.id in settings.approved }.shuffled(random).firstOrNull()
+                ?: open.shuffled(random).firstOrNull()
+            return chosen?.also { usedSeeds += it.id }
+        }
+        val plan = buildList {
+            repeat(settings.moreLikeCount) { i ->
+                val seed = if (i == 0) seeds.first().also { usedSeeds += it.id } else pick(recent)
+                seed?.let { add(Triple(PersonalRowPrefs.MORE_LIKE_PREFIX, "More like", it)) }
+            }
+            repeat(settings.becauseCount) { i ->
+                // The first one reaches past the last two titles watched when it can.
+                (if (i == 0) pick(recent.drop(2)) ?: pick(recent) else pick(seeds))
+                    ?.let { add(Triple(PersonalRowPrefs.BECAUSE_PREFIX, "Because you watched", it)) }
             }
         }
-        // A different title each visit: a Loved one when there is one, else any recent one.
-        val others = seeds.drop(1)
-        val second = others.firstOrNull { tasteStore.tasteOf(it.id) == Taste.LOVE }
-            ?: others.take(8).randomOrNull()
-        if (second != null) {
-            similarTo(second, language, lovedGenres, exclude + used)?.let { (name, items) ->
-                items.takeIf { it.size >= MIN_ROW }?.let {
-                    rows += row("personal:because", "Because you watched $name", it)
-                }
-            }
+
+        val built = coroutineScope {
+            plan.map { (prefix, label, seed) ->
+                async { Triple(prefix, label, seed) to similarTo(seed, language, lovedGenres) }
+            }.awaitAll()
         }
-        rows
+        val usedItems = mutableSetOf<String>()
+        built.mapNotNull { (spec, result) ->
+            val (prefix, label, seed) = spec
+            val (name, ranked) = result ?: return@mapNotNull null
+            val items = ranked
+                .filter { it.id !in exclude && it.id !in usedItems && tasteStore.tasteOf(it.id) != Taste.DISLIKE }
+                .take(MAX_ROW)
+            if (items.size < MIN_ROW) return@mapNotNull null
+            usedItems += items.map(MetaItem::id)
+            row(prefix + seed.id, "$label $name", items)
+        }
     }
 
     private fun row(id: String, title: String, items: List<MetaItem>) =
@@ -136,8 +180,18 @@ class SimilarTitlesEngine @Inject constructor(
     private suspend fun similarTo(
         seed: Seed,
         language: String,
-        lovedGenres: Map<Int, Int>,
-        exclude: Set<String>
+        lovedGenres: Map<Int, Int>
+    ): Pair<String, List<MetaItem>>? {
+        val key = "${seed.id}|$language|${lovedGenres.hashCode()}"
+        rowCache[key]?.let { return it }
+        return buildSimilar(seed, language, lovedGenres)?.also { rowCache[key] = it }
+    }
+
+    /** Ranked candidates for [seed], unfiltered: callers drop watched, hidden and disliked ones. */
+    private suspend fun buildSimilar(
+        seed: Seed,
+        language: String,
+        lovedGenres: Map<Int, Int>
     ): Pair<String, List<MetaItem>>? = coroutineScope {
         val mediaType = tmdbService.normalizeMediaType(seed.type)
         val tmdbId = tmdbService.ensureTmdbId(seed.id, mediaType)?.toIntOrNull() ?: return@coroutineScope null
@@ -186,7 +240,7 @@ class SimilarTitlesEngine @Inject constructor(
             .filter { it.result?.posterPath != null }
             .filter { (it.result?.voteCount ?: 0) >= MIN_VOTES || it.votes > 1 }
             .sortedByDescending { score(it, sourceGenres, sourceRating, lovedGenres) }
-            .take(MAX_ROW + 8)
+            .take(MAX_ROW * 2 + 10)
 
         // Stremio addons and Details resolve IMDb ids best; map before hiding watched titles.
         val gate = Semaphore(6)
@@ -198,9 +252,7 @@ class SimilarTitlesEngine @Inject constructor(
         val items = ranked.mapNotNull { candidate ->
             val result = candidate.result ?: return@mapNotNull null
             val id = candidate.imdbId ?: "tmdb:${candidate.tmdbId}"
-            if (id in exclude || tasteStore.tasteOf(id, "tmdb:${candidate.tmdbId}") == Taste.DISLIKE) {
-                return@mapNotNull null
-            }
+            if (tasteStore.tasteOf("tmdb:${candidate.tmdbId}") == Taste.DISLIKE) return@mapNotNull null
             MetaItem(
                 id = id,
                 type = stremioType,
@@ -211,7 +263,7 @@ class SimilarTitlesEngine @Inject constructor(
                 releaseInfo = (result.releaseDate ?: result.firstAirDate)?.take(4),
                 imdbRating = result.voteAverage?.takeIf { it > 0 }?.let { String.format(java.util.Locale.US, "%.1f", it) }
             )
-        }.distinctBy { it.id }.take(MAX_ROW)
+        }.distinctBy { it.id }
         name to items
     }
 

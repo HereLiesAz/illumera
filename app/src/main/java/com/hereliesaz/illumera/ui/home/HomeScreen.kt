@@ -176,6 +176,11 @@ fun HomeScreen(
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val personalRowSettings by viewModel.personalRowSettings.collectAsStateWithLifecycle()
+    val seedVotes = remember(tab, personalRowSettings.approved, viewModel) {
+        if (tab != DashboardTab.HOME) null
+        else SeedVotes(personalRowSettings.approved, viewModel::approveSeed, viewModel::rejectSeed)
+    }
     val genreContext = LocalContext.current
     // One buffered trailer, for the title after the one now playing.
     val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
@@ -257,7 +262,9 @@ fun HomeScreen(
             // The rows tag their cards with their focus keys, so a refresh that re-keys or drops
             // the focused card can put focus back on it (or its neighbour).
             LocalFocusMemory provides focusMemory,
-            LocalTrailerPreloader provides trailerPreloader
+            LocalTrailerPreloader provides trailerPreloader,
+            // Thumbs up / down on the personal rows' seed titles (Home tab only).
+            LocalSeedVotes provides seedVotes
         ) {
         // LOGIC: If we are just starting OR the ViewModel is loading, show the Loading Box.
         // This box accepts focus immediately, which forces the NavDrawer to collapse.
@@ -1003,6 +1010,8 @@ fun CinematicLayout(
                                                     activeCinematicRow = "__navigation__"
                                                 }
                                             }
+                                        ,
+                                            titleActions = seedVoteActions(item.id)
                                         )
                                         Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
                                     }
@@ -1758,7 +1767,8 @@ fun SimpleLayout(
                             rowHeight = rowHeight,
                             upKeyDebouncer = upKeyDebouncer,
                             repeatGate = dpadRepeatGate,
-                            pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && rowIndex == 0) firstRowPivotRequester else null
+                            pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && rowIndex == 0) firstRowPivotRequester else null,
+                            titleActions = seedVoteActions(item.id)
                         )
                     }
                 }
