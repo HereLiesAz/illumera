@@ -1537,6 +1537,14 @@ class ExoPlayerBackend(
                 buildUponParameters()
                     .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true)
                     .setTunnelingEnabled(playbackSettings.tunnelingEnabled)
+                    // Start in the preferred language before applyAudioLanguagePolicy overrides,
+                    // so the first audible frames aren't ExoPlayer's default-flagged dub.
+                    .setPreferredAudioLanguages(
+                        *listOf(
+                            playbackSettings.preferredAudioLanguage,
+                            playbackSettings.preferredAudioLanguageSecondary
+                        ).map { it.trim() }.filter { it.isNotEmpty() && it != "#off" }.toTypedArray()
+                    )
             )
         }
 
@@ -2400,11 +2408,25 @@ class ExoPlayerBackend(
         resolveForcedTrack(tracks, forcedAudioLanguages(), remembered) { t, language ->
             findTrackByLanguage(t, language)
         }?.let { return use(it, final = true) }
-        if (remembered != null) return use(remembered, final = true)
         val primary = playbackSettings.preferredAudioLanguage.trim()
-        if (primary.isNotEmpty() && primary != "#off") {
-            findTrackByLanguage(tracks, primary)?.let { return use(it.id, final = true) }
+        val primaryMatch = primary.takeIf { it.isNotEmpty() && it != "#off" }
+            ?.let { findTrackByLanguage(tracks, it) }
+        // Remembered ids are positional ("audio:g1:t0") and can point at a different language
+        // in a different file. Trust one only when it is in a preferred language or no
+        // primary-language track is on offer; settle only when it is in a preferred language,
+        // so a primary track parsed later can still replace it.
+        if (remembered != null) {
+            val rememberedTrack = tracks.first { it.id == remembered }
+            val preferred = listOf(primary, playbackSettings.preferredAudioLanguageSecondary.trim())
+                .filter { it.isNotEmpty() && it != "#off" }
+            val inPreferred = preferred.any {
+                normalizeLanguageToIso2(rememberedTrack.language) == normalizeLanguageToIso2(it) ||
+                    languagePrimarySubtagsMatch(rememberedTrack.language, it)
+            }
+            if (inPreferred || preferred.isEmpty()) return use(remembered, final = true)
+            if (primaryMatch == null) return use(remembered, final = false)
         }
+        primaryMatch?.let { return use(it.id, final = true) }
         resolvePreferredAudioTrack()?.let { use(it, final = false) }
     }
 
