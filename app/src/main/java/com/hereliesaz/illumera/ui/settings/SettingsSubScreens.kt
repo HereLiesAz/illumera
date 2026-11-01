@@ -232,6 +232,33 @@ fun PersonalizationSettings(
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
         Spacer(Modifier.height(15.dp))
 
+        // PERSONAL ROWS: how many Home rows are built from the viewer's history.
+        val personalRows by viewModel.personalRowSettings.collectAsState()
+        val rowCounts = (0..com.hereliesaz.illumera.data.recommend.PersonalRowPrefs.MAX_ROWS)
+            .map { it.toString() to it }
+        SettingRow("\"More like\" rows") {
+            VoidSegmentedControl(
+                options = rowCounts,
+                selectedOption = personalRows.moreLikeCount,
+                onOptionSelected = { viewModel.setMoreLikeCount(it) },
+                onBack = onGoBack,
+                blockUp = false
+            )
+        }
+        Spacer(Modifier.height(15.dp))
+        SettingRow("\"Because you watched\" rows") {
+            VoidSegmentedControl(
+                options = rowCounts,
+                selectedOption = personalRows.becauseCount,
+                onOptionSelected = { viewModel.setBecauseCount(it) },
+                onBack = onGoBack,
+                blockUp = false
+            )
+        }
+        Spacer(Modifier.height(15.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
+        Spacer(Modifier.height(15.dp))
+
         Text(
             "Cinematic previews",
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),

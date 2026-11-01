@@ -11,8 +11,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val profileMutationCoordinator: ProfileMutationCoordinator
+    private val profileMutationCoordinator: ProfileMutationCoordinator,
+    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs
 ) : ViewModel() {
+
+    /** How many "More like" / "Because you watched" rows Home shows (active profile). */
+    val personalRowSettings = personalRowPrefs.settings
+    fun setMoreLikeCount(count: Int) = personalRowPrefs.setMoreLikeCount(count)
+    fun setBecauseCount(count: Int) = personalRowPrefs.setBecauseCount(count)
 
     private fun updateProfile(
         profileId: Int,
