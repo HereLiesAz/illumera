@@ -74,11 +74,11 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                                 ?.mapNotNull { it.asObjectOrNull() }
                                 ?: emptyList()
                             // Prefer video file IDs; fall back to all IDs so nothing disappears from the library UI.
-                            val videoFileIds = files.filter {
-                                isVideoFilename(it.str("name") ?: "")
-                            }.mapNotNull { it.str("id") }
-                            val allFileIds = files.mapNotNull { it.str("id") }
-                            val fileIds = videoFileIds.ifEmpty { allFileIds }
+                            val videoFiles = files.filter { isVideoFilename(it.str("name") ?: "") }
+                                .filter { it.str("id") != null }
+                            val chosenFiles = videoFiles.ifEmpty { files.filter { it.str("id") != null } }
+                            val fileIds = chosenFiles.mapNotNull { it.str("id") }
+                            val fileNames = chosenFiles.map { it.str("name").orEmpty() }
                             DebridItem(
                                 id = o.str("id") ?: return@mapNotNull null,
                                 name = o.str("name") ?: "Unknown",
@@ -88,7 +88,8 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
                                 status = o.str("download_state"),
                                 progress = o.double("progress")?.let { (it * 100).toInt() },
                                 addedAt = o.str("created_at"),
-                                directLinks = fileIds
+                                directLinks = fileIds,
+                                linkNames = fileNames
                             )
                         }
                     )

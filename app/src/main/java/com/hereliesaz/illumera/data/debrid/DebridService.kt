@@ -32,7 +32,11 @@ interface DebridService {
     suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
         DebridResult.Failure("Adding magnets is not supported")
 
-    /** Like [getStreamUrl], preferring the file named [preferredFileName] in a multi-file item. */
-    suspend fun getStreamUrl(apiKey: String, item: DebridItem, preferredFileName: String?): DebridResult<String> =
+    /**
+     * Like [getStreamUrl] for a pack: returns the [wanted] file, and a failure with
+     * [NO_WANTED_FILE] when there are several videos and none is it. The default suits services
+     * whose item already lists file names ([DebridItem.linkNames], narrowed by the manager).
+     */
+    suspend fun getStreamUrl(apiKey: String, item: DebridItem, wanted: WantedFile?): DebridResult<String> =
         getStreamUrl(apiKey, item)
 }

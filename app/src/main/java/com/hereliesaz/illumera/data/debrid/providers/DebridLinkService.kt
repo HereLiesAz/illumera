@@ -83,7 +83,12 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
                                 sizeBytes = o.long("size"),
                                 status = if (o.int("downloadPercent") == 100) "downloaded" else "downloading",
                                 progress = o.int("downloadPercent"),
-                                directLinks = files
+                                directLinks = files,
+                                linkNames = files.map { url ->
+                                    runCatching {
+                                        java.net.URLDecoder.decode(url.substringBefore('?').substringAfterLast('/'), "UTF-8")
+                                    }.getOrDefault("")
+                                }
                             )
                         }
                     )

@@ -296,12 +296,15 @@ class DebridManager @Inject constructor(
         return guarded { serviceFor(item.provider).deleteItem(apiKey, item) }
     }
 
-    /** [getStreamUrl], preferring the file named [preferredFileName] when the item holds several. */
-    private suspend fun streamUrlFor(item: DebridItem, preferredFileName: String?): DebridResult<String> {
+    /** [getStreamUrl] for the [wanted] file of a pack (never just the first or largest video). */
+    private suspend fun streamUrlFor(item: DebridItem, wanted: WantedFile?): DebridResult<String> {
         val apiKey = getApiKey(item.provider)
             ?: return DebridResult.Failure("${item.provider.displayName} is not connected")
-        val wanted = preferredFileName?.takeIf { it.isNotBlank() }
-        return guarded { serviceFor(item.provider).getStreamUrl(apiKey, withWantedLinkFirst(item, wanted), wanted) }
+        val narrowed = when (val r = item.withWantedFile(wanted)) {
+            is DebridResult.Success -> r.value
+            is DebridResult.Failure -> return r
+        }
+        return guarded { serviceFor(item.provider).getStreamUrl(apiKey, narrowed, wanted) }
     }
 
     /**
@@ -315,14 +318,13 @@ class DebridManager @Inject constructor(
      */
     suspend fun resolveMagnet(
         magnet: String,
-        fileName: String?,
+        wanted: WantedFile,
         maxWaitSeconds: Int,
         onStatus: (status: String, percent: Int?) -> Unit = { _, _ -> }
     ): String? {
         val keys = connectedKeys()
         if (keys.isEmpty()) return null
         val infoHash = HASH_IN_MAGNET.find(magnet)?.groupValues?.get(1)?.lowercase()
-        val wanted = fileName?.takeIf { it.isNotBlank() }
 
         onStatus("Checking ${keys.first().first.displayName}", null)
         // Already in the account (a repeat watch, or a transfer finished earlier): no re-add.
@@ -339,7 +341,7 @@ class DebridManager @Inject constructor(
                 Log.w(TAG, "${provider.displayName} did not take the magnet: ${added.message}")
                 continue
             }
-            return awaitPlayableSource(infoHash, wanted, maxWaitSeconds) { percent ->
+            return awaitPlayableSource(infoHash, wanted.fileName, maxWaitSeconds, wanted) { percent ->
                 onStatus("${provider.displayName} is downloading this · $percent%", percent)
             }
         }
@@ -361,8 +363,10 @@ class DebridManager @Inject constructor(
         infoHash: String?,
         fileName: String?,
         maxWaitSeconds: Int,
+        wanted: WantedFile? = null,
         onProgress: (percent: Int) -> Unit = {}
     ): String? {
+        val want = wanted ?: WantedFile(fileName?.takeIf { it.isNotBlank() })
         if (maxWaitSeconds <= 0) return null
         if (connectedKeys().isEmpty()) return null
         val wantedHash = infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
@@ -390,9 +394,10 @@ class DebridManager @Inject constructor(
                 val status = item.status?.lowercase().orEmpty()
                 val ready = progress == 100 || status in READY_STATUSES
                 if (ready) {
-                    when (val stream = streamUrlFor(item, fileName)) {
+                    when (val stream = streamUrlFor(item, want)) {
                         is DebridResult.Success -> return stream.value
-                        is DebridResult.Failure -> Unit
+                        // A pack without the wanted file won't gain it by waiting.
+                        is DebridResult.Failure -> if (stream.message == NO_WANTED_FILE) return null
                     }
                 }
 
@@ -443,9 +448,11 @@ internal fun fileNamesMatch(wanted: String?, candidate: String?): Boolean {
 }
 
 private val EPISODE_TOKEN = Regex("""s(\d{1,2})[ ._-]?e(\d{1,3})""")
+private val EPISODE_TOKEN_X = Regex("""(?<![a-z0-9])(\d{1,2})x(\d{2,3})(?![a-z0-9])""")
 
-private fun episodeToken(name: String?): Pair<Int, Int>? {
-    val match = EPISODE_TOKEN.find(name?.lowercase() ?: return null) ?: return null
+internal fun episodeToken(name: String?): Pair<Int, Int>? {
+    val lower = name?.lowercase() ?: return null
+    val match = EPISODE_TOKEN.find(lower) ?: EPISODE_TOKEN_X.find(lower) ?: return null
     return match.groupValues[1].toInt() to match.groupValues[2].toInt()
 }
 
@@ -454,20 +461,4 @@ internal fun normalizeFileName(name: String?): String? {
     return value.substringAfterLast('/').substringBeforeLast('.', value.substringAfterLast('/'))
         .replace(Regex("[^a-z0-9]+"), "")
         .takeIf { it.length >= 6 }
-}
-
-/**
- * [item] with the link that names [wanted] moved first, for services whose links carry the
- * file name. Leaves the item as is when nothing matches or there is only one link.
- */
-internal fun withWantedLinkFirst(item: DebridItem, wanted: String?): DebridItem {
-    if (wanted == null || item.directLinks.size < 2) return item
-    val index = item.directLinks.indexOfFirst { link ->
-        val name = runCatching {
-            java.net.URLDecoder.decode(link.substringBefore('?').substringAfterLast('/'), "UTF-8")
-        }.getOrNull()
-        fileNamesMatch(wanted, name)
-    }
-    if (index <= 0) return item
-    return item.copy(directLinks = listOf(item.directLinks[index]) + item.directLinks.filterIndexed { i, _ -> i != index })
 }

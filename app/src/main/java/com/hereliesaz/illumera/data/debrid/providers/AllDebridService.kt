@@ -75,9 +75,12 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
                     DebridResult.Success(
                         magnets.mapNotNull { el ->
                             val o = el.asObjectOrNull() ?: return@mapNotNull null
-                            val links = o.get("links")?.asArrayOrNull()?.mapNotNull {
-                                it.asObjectOrNull()?.str("link")
-                            } ?: emptyList()
+                            val linkObjects = o.get("links")?.asArrayOrNull()
+                                ?.mapNotNull { it.asObjectOrNull() }
+                                ?.filter { it.str("link") != null }
+                                ?: emptyList()
+                            val links = linkObjects.mapNotNull { it.str("link") }
+                            val linkNames = linkObjects.map { it.str("filename").orEmpty() }
                             DebridItem(
                                 id = o.str("id") ?: return@mapNotNull null,
                                 name = o.str("filename") ?: "Unknown",
@@ -86,7 +89,8 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
                                 sizeBytes = o.long("size"),
                                 status = o.str("status"),
                                 addedAt = o.str("uploadDate"),
-                                directLinks = links
+                                directLinks = links,
+                                linkNames = linkNames
                             )
                         }
                     )
