@@ -61,6 +61,10 @@ class DebridManager @Inject constructor(
         private const val KEY_PROVIDERS = "providers"
         private const val POLL_MS = 5_000L
         private const val STALL_BAIL_MS = 60_000L
+        private val READY_STATUSES = setOf(
+            "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
+        )
+        private val HASH_IN_MAGNET = Regex("btih:([0-9a-fA-F]{40})")
     }
 
     private val prefs: SharedPreferences? by lazy {
@@ -292,6 +296,59 @@ class DebridManager @Inject constructor(
         return guarded { serviceFor(item.provider).deleteItem(apiKey, item) }
     }
 
+    /** [getStreamUrl], preferring the file named [preferredFileName] when the item holds several. */
+    private suspend fun streamUrlFor(item: DebridItem, preferredFileName: String?): DebridResult<String> {
+        val apiKey = getApiKey(item.provider)
+            ?: return DebridResult.Failure("${item.provider.displayName} is not connected")
+        val wanted = preferredFileName?.takeIf { it.isNotBlank() }
+        return guarded { serviceFor(item.provider).getStreamUrl(apiKey, withWantedLinkFirst(item, wanted), wanted) }
+    }
+
+    /**
+     * Routes a torrent through the connected debrid service, the way a debrid-aware addon does:
+     * a title already in the account (or cached by the service) plays at once, any other is added
+     * and waited for up to [maxWaitSeconds]. Returns a direct link, or null when no connected
+     * service could deliver it, so the caller can fall back to a local torrent.
+     *
+     * The first service that accepts the magnet is the one used; services with no known
+     * add-magnet call are skipped.
+     */
+    suspend fun resolveMagnet(
+        magnet: String,
+        fileName: String?,
+        maxWaitSeconds: Int,
+        onStatus: (status: String, percent: Int?) -> Unit = { _, _ -> }
+    ): String? {
+        val keys = connectedKeys()
+        if (keys.isEmpty()) return null
+        val infoHash = HASH_IN_MAGNET.find(magnet)?.groupValues?.get(1)?.lowercase()
+        val wanted = fileName?.takeIf { it.isNotBlank() }
+
+        onStatus("Checking ${keys.first().first.displayName}", null)
+        // Already in the account (a repeat watch, or a transfer finished earlier): no re-add.
+        (listLibrary() as? DebridResult.Success)?.value
+            ?.firstOrNull { item ->
+                infoHash != null && item.infoHash?.lowercase()?.contains(infoHash) == true && isReady(item)
+            }
+            ?.let { item -> (streamUrlFor(item, wanted) as? DebridResult.Success)?.let { return it.value } }
+
+        for ((provider, key) in keys) {
+            onStatus("Sending the torrent to ${provider.displayName}", null)
+            val added = guarded { serviceFor(provider).addMagnet(key, magnet) }
+            if (added is DebridResult.Failure) {
+                Log.w(TAG, "${provider.displayName} did not take the magnet: ${added.message}")
+                continue
+            }
+            return awaitPlayableSource(infoHash, wanted, maxWaitSeconds) { percent ->
+                onStatus("${provider.displayName} is downloading this · $percent%", percent)
+            }
+        }
+        return null
+    }
+
+    private fun isReady(item: DebridItem): Boolean =
+        item.progress?.coerceIn(0, 100) == 100 || item.status?.lowercase() in READY_STATUSES
+
     /**
      * Polls the connected debrid service for the torrent/file represented by a placeholder
      * clip. We wait only while the observed progress rate says completion is plausible
@@ -321,18 +378,16 @@ class DebridManager @Inject constructor(
                 is DebridResult.Failure -> return null
             }
             val item = library.firstOrNull { candidate ->
-                val hashMatches = wantedHash != null && candidate.infoHash?.lowercase() == wantedHash
+                val hashMatches = wantedHash != null && candidate.infoHash?.lowercase()?.contains(wantedHash) == true
                 hashMatches || fileNamesMatch(fileName, candidate.name)
             }
 
             if (item != null) {
                 val progress = item.progress?.coerceIn(0, 100)
                 val status = item.status?.lowercase().orEmpty()
-                val ready = progress == 100 || status in setOf(
-                    "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
-                )
+                val ready = progress == 100 || status in READY_STATUSES
                 if (ready) {
-                    when (val stream = getStreamUrl(item)) {
+                    when (val stream = streamUrlFor(item, fileName)) {
                         is DebridResult.Success -> return stream.value
                         is DebridResult.Failure -> Unit
                     }
@@ -396,4 +451,20 @@ internal fun normalizeFileName(name: String?): String? {
     return value.substringAfterLast('/').substringBeforeLast('.', value.substringAfterLast('/'))
         .replace(Regex("[^a-z0-9]+"), "")
         .takeIf { it.length >= 6 }
+}
+
+/**
+ * [item] with the link that names [wanted] moved first, for services whose links carry the
+ * file name. Leaves the item as is when nothing matches or there is only one link.
+ */
+internal fun withWantedLinkFirst(item: DebridItem, wanted: String?): DebridItem {
+    if (wanted == null || item.directLinks.size < 2) return item
+    val index = item.directLinks.indexOfFirst { link ->
+        val name = runCatching {
+            java.net.URLDecoder.decode(link.substringBefore('?').substringAfterLast('/'), "UTF-8")
+        }.getOrNull()
+        fileNamesMatch(wanted, name)
+    }
+    if (index <= 0) return item
+    return item.copy(directLinks = listOf(item.directLinks[index]) + item.directLinks.filterIndexed { i, _ -> i != index })
 }

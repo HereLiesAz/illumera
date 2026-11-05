@@ -53,6 +53,15 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
         }
     }
 
+    override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
+        when (val result = http.post("$base/seedbox/add", auth(apiKey), form = mapOf("url" to magnet, "async" to "true"))) {
+            is DebridResult.Success -> when (val data = result.value.unwrap()) {
+                is DebridResult.Success -> DebridResult.Success(Unit)
+                is DebridResult.Failure -> data
+            }
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun listLibrary(apiKey: String): DebridResult<List<DebridItem>> {
         return when (val result = http.get("$base/seedbox/list", auth(apiKey))) {
             is DebridResult.Success -> when (val data = result.value.unwrap()) {

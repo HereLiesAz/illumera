@@ -87,6 +87,54 @@ open class RealDebridService @Inject constructor(private val http: DebridHttp) :
         return DebridResult.Success(torrents + downloads)
     }
 
+    override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> {
+        val added = when (val result = http.post("$base/torrents/addMagnet", auth(apiKey), form = mapOf("magnet" to magnet))) {
+            is DebridResult.Success -> result.value.asObjectOrNull()?.str("id")
+                ?: return DebridResult.Failure("Unexpected response from ${provider.displayName}")
+            is DebridResult.Failure -> return result
+        }
+        // A new magnet converts first; the file choice opens once it is "waiting_files_selection".
+        repeat(10) {
+            val info = (http.get("$base/torrents/info/$added", auth(apiKey)) as? DebridResult.Success)
+                ?.value?.asObjectOrNull()
+            when (info?.str("status")) {
+                "waiting_files_selection" -> {
+                    return when (val r = http.post(
+                        "$base/torrents/selectFiles/$added", auth(apiKey), form = mapOf("files" to "all")
+                    )) {
+                        is DebridResult.Success -> DebridResult.Success(Unit)
+                        is DebridResult.Failure -> r
+                    }
+                }
+                // Already past file selection (cached, or the account had it): nothing to do.
+                "downloading", "downloaded", "queued", "uploading", "compressing" -> return DebridResult.Success(Unit)
+                "magnet_error", "error", "virus", "dead" -> return DebridResult.Failure("${provider.displayName} could not fetch this torrent")
+            }
+            kotlinx.coroutines.delay(1_000)
+        }
+        return DebridResult.Failure("${provider.displayName} took too long to read this torrent")
+    }
+
+    override suspend fun getStreamUrl(
+        apiKey: String,
+        item: DebridItem,
+        preferredFileName: String?
+    ): DebridResult<String> {
+        if (preferredFileName.isNullOrBlank() || item.origin == DebridItemOrigin.DOWNLOAD || item.directLinks.size < 2) {
+            return getStreamUrl(apiKey, item)
+        }
+        // A pack: unrestrict links one by one and stop at the file that is the wanted release.
+        for (link in item.directLinks) {
+            val obj = (http.post("$base/unrestrict/link", auth(apiKey), form = mapOf("link" to link))
+                as? DebridResult.Success)?.value?.asObjectOrNull() ?: continue
+            val url = obj.str("download") ?: continue
+            if (com.hereliesaz.illumera.data.debrid.fileNamesMatch(preferredFileName, obj.str("filename"))) {
+                return DebridResult.Success(url)
+            }
+        }
+        return getStreamUrl(apiKey, item)
+    }
+
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
         if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
 

@@ -22,4 +22,15 @@ interface DebridService {
 
     /** Removes an item from the account's cloud storage. */
     suspend fun deleteItem(apiKey: String, item: DebridItem): DebridResult<Unit>
+
+    /**
+     * Asks the service to fetch [magnet] into the account (instant when it is cached there).
+     * Services without a known add-magnet call report a failure and are skipped.
+     */
+    suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
+        DebridResult.Failure("Adding magnets is not supported")
+
+    /** Like [getStreamUrl], preferring the file named [preferredFileName] in a multi-file item. */
+    suspend fun getStreamUrl(apiKey: String, item: DebridItem, preferredFileName: String?): DebridResult<String> =
+        getStreamUrl(apiKey, item)
 }

@@ -51,6 +51,15 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
         }
     }
 
+    override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
+        when (val result = http.post("$base/torrents/createtorrent", auth(apiKey), form = mapOf("magnet" to magnet))) {
+            is DebridResult.Success -> when (val data = result.value.unwrap()) {
+                is DebridResult.Success -> DebridResult.Success(Unit)
+                is DebridResult.Failure -> data
+            }
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun listLibrary(apiKey: String): DebridResult<List<DebridItem>> {
         return when (val result = http.get("$base/torrents/mylist", auth(apiKey))) {
             is DebridResult.Success -> when (val data = result.value.unwrap()) {

@@ -52,6 +52,19 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
         }
     }
 
+    override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
+        when (val result = http.post("$base/magnet/upload", form = mapOf("magnets[]" to magnet), query = key(apiKey))) {
+            is DebridResult.Success -> when (val data = result.value.unwrap()) {
+                is DebridResult.Success -> {
+                    val error = data.value.get("magnets")?.asArrayOrNull()?.firstOrNull()?.asObjectOrNull()
+                        ?.get("error")?.asObjectOrNull()?.str("message")
+                    if (error != null) DebridResult.Failure(error) else DebridResult.Success(Unit)
+                }
+                is DebridResult.Failure -> data
+            }
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun listLibrary(apiKey: String): DebridResult<List<DebridItem>> {
         return when (val result = http.get("$base/magnet/status", query = key(apiKey))) {
             is DebridResult.Success -> when (val data = result.value.unwrap()) {

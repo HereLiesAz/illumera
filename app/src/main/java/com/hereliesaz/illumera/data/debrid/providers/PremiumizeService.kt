@@ -42,6 +42,16 @@ class PremiumizeService @Inject constructor(private val http: DebridHttp) : Debr
         }
     }
 
+    override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
+        when (val result = http.post("$base/transfer/create", form = mapOf("src" to magnet), query = key(apiKey))) {
+            is DebridResult.Success -> {
+                val obj = result.value.asObjectOrNull()
+                if (obj?.str("status") == "success") DebridResult.Success(Unit)
+                else DebridResult.Failure(obj?.str("message") ?: "Premiumize could not add this torrent")
+            }
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun listLibrary(apiKey: String): DebridResult<List<DebridItem>> {
         return when (val result = http.get("$base/transfer/list", query = key(apiKey))) {
             is DebridResult.Success -> {

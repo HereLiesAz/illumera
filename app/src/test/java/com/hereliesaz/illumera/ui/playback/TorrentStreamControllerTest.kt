@@ -9,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.mockk.every
 import io.mockk.mockk
 import com.hereliesaz.illumera.ui.player.PlayerSessionResult
 
@@ -56,7 +57,7 @@ class TorrentStreamControllerTest {
             sourceSelectionStore = mockk(relaxed = true),
             playbackTrackSelectionStore = mockk(relaxed = true),
             queueManager = mockk(relaxed = true),
-            debridManager = mockk(relaxed = true),
+            debridManager = mockk(relaxed = true) { every { connectedKeys() } returns emptyList() },
             youTubeExtractor = mockk(relaxed = true),
             autoPlayedStore = mockk(relaxed = true)
         )
