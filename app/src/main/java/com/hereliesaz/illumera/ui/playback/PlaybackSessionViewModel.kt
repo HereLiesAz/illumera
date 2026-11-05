@@ -52,6 +52,9 @@ internal const val AUTOPLAY_STALL_MS = 45_000L
 // Once the next episode is opened: time allowed for its first frame (torrents start slowly).
 internal const val AUTOPLAY_FIRST_FRAME_MS = 60_000L
 
+/** How long a magnet sent to the debrid service may take to become playable before the local torrent takes over. */
+internal const val DEBRID_RESOLVE_WAIT_SECONDS = 120
+
 /** True for a saved stream URL that can't outlive the process (local torrent server, YouTube CDN). */
 internal fun isUnresumableAfterRestore(url: String): Boolean {
     if (url.isBlank()) return false
@@ -295,7 +298,9 @@ class PlaybackSessionViewModel @Inject constructor(
         onError: (String) -> Unit = {},
         onReady: (String) -> Unit = { localUrl -> selectedVideoUrl = localUrl }
     ) {
-        torrent.start(
+        debridJob?.cancel()
+        debridJob = null
+        fun local() = torrent.start(
             magnet = magnet,
             fileIdx = fileIdx,
             fileName = fileName,
@@ -304,9 +309,43 @@ class PlaybackSessionViewModel @Inject constructor(
             onError = onError,
             onReady = onReady
         )
+        if (!debridManager.canRouteTorrents()) return local()
+
+        // With a debrid service connected, every torrent goes through it, whatever the addon
+        // does: no peers, no local download, no VPN needed. If it can't deliver, the source
+        // fails (ranked fallback moves on); the local engine is not used behind its back.
+        torrent.stop()
+        torrent.progress = TorrentProgress("Checking your debrid service")
+        debridJob = viewModelScope.launch {
+            val url = try {
+                debridManager.resolveMagnet(magnet, fileName, DEBRID_RESOLVE_WAIT_SECONDS) { status, percent ->
+                    torrent.progress = TorrentProgress(status, progress = percent?.div(100f))
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                AppErrors.e("LumeraTorrent", "$errorContext: debrid routing failed", e)
+                null
+            }
+            if (url != null) {
+                torrent.progress = null
+                onReady(url)
+            } else {
+                // Debrid is the only way torrents play, so a source it can't deliver always
+                // moves on to the next source, even with auto-fallback off.
+                torrent.fail(
+                    "Your debrid service couldn't deliver this torrent", errorContext, onError,
+                    forceFallback = true
+                )
+            }
+        }
     }
 
+    private var debridJob: Job? = null
+
     fun stopTorrent() {
+        debridJob?.cancel()
+        debridJob = null
         torrent.stop()
     }
 

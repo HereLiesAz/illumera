@@ -107,6 +107,7 @@ class PlaybackSessionActionsTest {
         coEvery { subtitleRepository.getSubtitles(any(), any(), any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { subtitleRepository.getSubtitlesForStream(any(), any(), any(), any()) } returns emptyList()
         every { sourceSelectionStore.findPreferredStream(any(), any()) } returns null
+        every { debridManager.canRouteTorrents() } returns false
         coEvery { addonRepository.getStreams(any(), any(), any(), any(), any(), any()) } returns emptyList()
     }
 
@@ -680,5 +681,43 @@ class PlaybackSessionActionsTest {
         assertEquals("debrid_42", vm.selectedPlaybackId)
         assertNotNull(vm.currentStream)
         assertEquals(listOf<PlaybackNav>(PlaybackNav.LaunchExternal("https://debrid/file.mkv")), events)
+    }
+
+    // ---- Debrid-first torrents ----
+
+    @Test
+    fun `a connected debrid service takes the torrent before the local engine`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns "https://debrid/e1.mkv"
+        val vm = session()
+        val ready = mutableListOf<String>()
+        vm.startTorrent("magnet:?xt=urn:btih:${"a".repeat(40)}", 0, "e1.mkv", onReady = { ready += it })
+        runCurrent()
+        assertEquals(listOf("https://debrid/e1.mkv"), ready)
+        assertTrue(launcher.starts.isEmpty())
+    }
+
+    @Test
+    fun `a torrent the debrid service cannot deliver fails instead of running locally`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns null
+        val vm = session()
+        val errors = mutableListOf<String>()
+        vm.startTorrent("magnet:?xt=urn:btih:${"b".repeat(40)}", 0, "e1.mkv", onError = { errors += it })
+        runCurrent()
+        assertTrue(launcher.starts.isEmpty())
+        assertEquals(1, errors.size)
+        assertTrue(vm.torrentProgress?.sourceError == true)
+        // The player must move on to the next source even with auto-fallback off.
+        assertTrue(vm.torrentProgress?.forceFallback == true)
+    }
+
+    @Test
+    fun `without a debrid service that can take magnets the torrent runs locally`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns false
+        val vm = session()
+        vm.startTorrent("magnet:?xt=urn:btih:${"c".repeat(40)}", 0, "e1.mkv")
+        runCurrent()
+        assertEquals(1, launcher.starts.size)
     }
 }

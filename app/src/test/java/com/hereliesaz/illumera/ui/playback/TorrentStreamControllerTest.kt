@@ -2,12 +2,14 @@ package com.hereliesaz.illumera.ui.playback
 
 import androidx.lifecycle.SavedStateHandle
 import com.hereliesaz.illumera.data.model.stremio.Stream
+import com.hereliesaz.illumera.data.torrent.TorrentGate
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import io.mockk.every
 import io.mockk.mockk
 import com.hereliesaz.illumera.ui.player.PlayerSessionResult
 
@@ -55,7 +57,7 @@ class TorrentStreamControllerTest {
             sourceSelectionStore = mockk(relaxed = true),
             playbackTrackSelectionStore = mockk(relaxed = true),
             queueManager = mockk(relaxed = true),
-            debridManager = mockk(relaxed = true),
+            debridManager = mockk(relaxed = true) { every { canRouteTorrents() } returns false },
             youTubeExtractor = mockk(relaxed = true),
             autoPlayedStore = mockk(relaxed = true)
         )
@@ -214,5 +216,51 @@ class TorrentStreamControllerTest {
         vm.pendingEpisodeSwitch = listed
         vm.end(result, profile = null)
         assertEquals(listed, vm.pendingEpisodeSwitch)
+    }
+
+    private class FakeGate(var reason: String? = null) : TorrentGate {
+        var onBlocked: ((String) -> Unit)? = null
+        var watchEnded = false
+        override fun blockReason() = reason
+        override fun watch(onBlocked: (String) -> Unit): () -> Unit {
+            this.onBlocked = onBlocked
+            return { watchEnded = true }
+        }
+    }
+
+    @Test
+    fun `a blocked gate never starts the service and reports a failed source`() {
+        val gate = FakeGate("no vpn")
+        val notified = mutableListOf<String>()
+        val blocked = TorrentStreamController(launcher, callbacks, gate) { notified += it }
+        val errors = mutableListOf<String>()
+        blocked.start("magnet:?xt=urn:btih:abc", 0, "a.mkv", onError = { errors += it }, onReady = {})
+        assertTrue(launcher.starts.isEmpty())
+        assertEquals(listOf("no vpn"), errors)
+        assertEquals(listOf("no vpn"), notified)
+        assertTrue(blocked.progress?.sourceError == true)
+    }
+
+    @Test
+    fun `losing the vpn mid-stream stops the torrent`() {
+        val gate = FakeGate()
+        val guarded = TorrentStreamController(launcher, callbacks, gate)
+        val errors = mutableListOf<String>()
+        guarded.start("magnet:?xt=urn:btih:abc", 0, "a.mkv", onError = { errors += it }, onReady = {})
+        assertEquals(1, launcher.starts.size)
+        val stopsBefore = launcher.stops
+        gate.onBlocked!!("vpn lost")
+        assertEquals(stopsBefore + 1, launcher.stops)
+        assertEquals(listOf("vpn lost"), errors)
+        assertTrue(guarded.progress?.sourceError == true)
+    }
+
+    @Test
+    fun `stopping ends the vpn watch`() {
+        val gate = FakeGate()
+        val guarded = TorrentStreamController(launcher, callbacks, gate)
+        guarded.start("magnet:?xt=urn:btih:abc", 0, "a.mkv", onReady = {})
+        guarded.stop()
+        assertTrue(gate.watchEnded)
     }
 }

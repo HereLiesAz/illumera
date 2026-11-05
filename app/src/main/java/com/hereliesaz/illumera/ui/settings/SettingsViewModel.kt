@@ -12,8 +12,13 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val profileMutationCoordinator: ProfileMutationCoordinator,
-    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs
+    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs,
+    private val torrentVpnGuard: com.hereliesaz.illumera.data.torrent.TorrentVpnGuard
 ) : ViewModel() {
+
+    /** "Require VPN for torrents": off by default, persists until the viewer turns it off. */
+    val torrentVpnRequired = torrentVpnGuard.required
+    fun setTorrentVpnRequired(value: Boolean) = torrentVpnGuard.setRequired(value)
 
     /** How many "More like" / "Because you watched" rows Home shows (active profile). */
     val personalRowSettings = personalRowPrefs.settings

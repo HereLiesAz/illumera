@@ -420,7 +420,7 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
-        if (autoFallbackEnabled && onSuspectSource != null) {
+        if ((autoFallbackEnabled || progress.forceFallback) && onSuspectSource != null) {
             playbackController.pause()
             onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR)
         } else if (videoUrl.isBlank()) {
