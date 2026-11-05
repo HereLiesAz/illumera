@@ -17,6 +17,7 @@ import com.hereliesaz.illumera.data.queue.QueueManager
 import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.repository.SubtitleRepository
 import com.hereliesaz.illumera.data.stream.StreamSortingService
+import com.hereliesaz.illumera.data.debrid.WantedFile
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.domain.AddonSubtitle
@@ -318,7 +319,7 @@ class PlaybackSessionViewModel @Inject constructor(
         torrent.progress = TorrentProgress("Checking your debrid service")
         debridJob = viewModelScope.launch {
             val url = try {
-                debridManager.resolveMagnet(magnet, fileName, DEBRID_RESOLVE_WAIT_SECONDS) { status, percent ->
+                debridManager.resolveMagnet(magnet, wantedFileFor(fileName), DEBRID_RESOLVE_WAIT_SECONDS) { status, percent ->
                     torrent.progress = TorrentProgress(status, progress = percent?.div(100f))
                 }
             } catch (cancelled: CancellationException) {
@@ -342,6 +343,17 @@ class PlaybackSessionViewModel @Inject constructor(
     }
 
     private var debridJob: Job? = null
+
+    /**
+     * The file this playback wants from a torrent: the addon's file name, and the season and
+     * episode when the playing id is an episode ("tt1:1:6"). A pack must yield that episode.
+     */
+    private fun wantedFileFor(fileName: String): WantedFile {
+        val parts = selectedPlaybackId.split(":")
+        val season = parts.getOrNull(parts.lastIndex - 1)?.toIntOrNull()?.takeIf { parts.size >= 3 && it > 0 }
+        val episode = parts.lastOrNull()?.toIntOrNull()?.takeIf { parts.size >= 3 && it > 0 }
+        return WantedFile(fileName.takeIf { it.isNotBlank() }, season, episode)
+    }
 
     fun stopTorrent() {
         debridJob?.cancel()
@@ -933,7 +945,8 @@ class PlaybackSessionViewModel @Inject constructor(
                 val readyUrl = debridManager.awaitPlayableSource(
                     infoHash = stream.infoHash,
                     fileName = stream.behaviorHints?.filename,
-                    maxWaitSeconds = maxWait
+                    maxWaitSeconds = maxWait,
+                    wanted = wantedFileFor(stream.behaviorHints?.filename.orEmpty())
                 ) { percent ->
                     playbackStatus = "Your debrid service is downloading this · $percent% · waiting up to ${maxWait}s"
                 }

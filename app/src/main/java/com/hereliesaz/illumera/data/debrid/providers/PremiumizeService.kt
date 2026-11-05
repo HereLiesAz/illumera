@@ -6,6 +6,10 @@ import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
 import com.hereliesaz.illumera.data.debrid.double
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.FilePick
+import com.hereliesaz.illumera.data.debrid.NO_WANTED_FILE
+import com.hereliesaz.illumera.data.debrid.WantedFile
+import com.hereliesaz.illumera.data.debrid.chooseWantedFile
 import com.hereliesaz.illumera.data.debrid.long
 import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
@@ -108,6 +112,29 @@ class PremiumizeService @Inject constructor(private val http: DebridHttp) : Debr
                 if (url != null) DebridResult.Success(url) else DebridResult.Failure("No direct link returned")
             }
             is DebridResult.Failure -> result
+        }
+    }
+
+    override suspend fun getStreamUrl(
+        apiKey: String,
+        item: DebridItem,
+        wanted: WantedFile?
+    ): DebridResult<String> {
+        val src = item.directLinks.firstOrNull() ?: return DebridResult.Failure("No link available for this item")
+        val obj = when (val result = http.get("$base/transfer/directdl", query = key(apiKey) + ("src" to src))) {
+            is DebridResult.Success -> result.value.asObjectOrNull()
+            is DebridResult.Failure -> return result
+        }
+        if (obj?.str("status") != "success") {
+            return DebridResult.Failure(obj?.str("message") ?: "Failed to resolve link")
+        }
+        val content = obj.get("content")?.asArrayOrNull()?.mapNotNull { it.asObjectOrNull() }.orEmpty()
+        val names = content.map { it.str("path") }
+        return when (val pick = chooseWantedFile(names, wanted)) {
+            is FilePick.Index -> content[pick.index].str("link")
+                ?.let { DebridResult.Success(it) } ?: DebridResult.Failure("No direct link returned")
+            FilePick.NoMatch -> DebridResult.Failure(NO_WANTED_FILE)
+            FilePick.NoPreference -> getStreamUrl(apiKey, item)
         }
     }
 

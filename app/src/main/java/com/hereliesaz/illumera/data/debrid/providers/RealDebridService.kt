@@ -6,7 +6,10 @@ import com.hereliesaz.illumera.data.debrid.asArrayOrNull
 import com.hereliesaz.illumera.data.debrid.asObjectOrNull
 import com.hereliesaz.illumera.data.debrid.int
 import com.hereliesaz.illumera.data.debrid.isVideoFilename
+import com.hereliesaz.illumera.data.debrid.NO_WANTED_FILE
+import com.hereliesaz.illumera.data.debrid.WantedFile
 import com.hereliesaz.illumera.data.debrid.long
+import com.hereliesaz.illumera.data.debrid.nameMatchesWanted
 import com.hereliesaz.illumera.data.debrid.str
 import com.hereliesaz.illumera.data.debrid.strOrNull
 import com.hereliesaz.illumera.data.model.debrid.DebridAccountInfo
@@ -120,21 +123,26 @@ open class RealDebridService @Inject constructor(private val http: DebridHttp) :
     override suspend fun getStreamUrl(
         apiKey: String,
         item: DebridItem,
-        preferredFileName: String?
+        wanted: WantedFile?
     ): DebridResult<String> {
-        if (preferredFileName.isNullOrBlank() || item.origin == DebridItemOrigin.DOWNLOAD || item.directLinks.size < 2) {
-            return getStreamUrl(apiKey, item)
-        }
-        // A pack: unrestrict links one by one and stop at the file that is the wanted release.
+        if (wanted == null || !wanted.hasPreference ||
+            item.origin == DebridItemOrigin.DOWNLOAD || item.directLinks.size < 2
+        ) return getStreamUrl(apiKey, item)
+
+        // A pack: hoster links carry no names, so unrestrict one by one until the wanted file
+        // shows up. Never settle for the first video: that is the wrong episode.
+        val seen = mutableListOf<Pair<String, String>>()
         for (link in item.directLinks) {
             val obj = (http.post("$base/unrestrict/link", auth(apiKey), form = mapOf("link" to link))
                 as? DebridResult.Success)?.value?.asObjectOrNull() ?: continue
             val url = obj.str("download") ?: continue
-            if (com.hereliesaz.illumera.data.debrid.fileNamesMatch(preferredFileName, obj.str("filename"))) {
-                return DebridResult.Success(url)
-            }
+            val name = obj.str("filename") ?: ""
+            if (isVideoFilename(name) && nameMatchesWanted(name, wanted)) return DebridResult.Success(url)
+            if (isVideoFilename(name)) seen += url to name
         }
-        return getStreamUrl(apiKey, item)
+        // Several videos and none is it: fail. A single video can only be the one wanted.
+        return if (seen.size == 1) DebridResult.Success(seen.first().first)
+        else DebridResult.Failure(NO_WANTED_FILE)
     }
 
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {

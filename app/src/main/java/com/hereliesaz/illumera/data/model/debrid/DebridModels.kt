@@ -35,6 +35,8 @@ data class DebridItem(
     val infoHash: String? = null,
     /** Direct file links already known for this item, if the provider returns them up front. */
     val directLinks: List<String> = emptyList(),
+    /** File name for each of [directLinks] (same order) when the provider lists them; else empty. */
+    val linkNames: List<String> = emptyList(),
     /** Which provider collection the item came from; decides how it is resolved and deleted. */
     val origin: DebridItemOrigin = DebridItemOrigin.TORRENT
 )
