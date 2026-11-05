@@ -601,6 +601,26 @@ fun PlaybackSettings(
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
             Spacer(Modifier.height(12.dp))
 
+            // TORRENTS: stream only over a VPN. App-wide; stays on until turned off.
+            val vpnRequired by viewModel.torrentVpnRequired.collectAsState()
+            Text(
+                "Torrents",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
+                color = MaterialTheme.colorScheme.onBackground.copy(0.7f),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            SettingToggleRow(
+                label = "Require VPN for torrents",
+                subtitle = "Only stream torrents while a VPN is active, and stop if it drops. Direct and debrid sources are unaffected",
+                isChecked = vpnRequired,
+                onCheckedChange = { viewModel.setTorrentVpnRequired(it) },
+                onBack = onGoBack
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))
+            Spacer(Modifier.height(12.dp))
+
             Text(
                 "Watched Completion",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
