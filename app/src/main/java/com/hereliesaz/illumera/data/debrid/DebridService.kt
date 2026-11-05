@@ -37,6 +37,15 @@ interface DebridService {
      * [NO_WANTED_FILE] when there are several videos and none is it. The default suits services
      * whose item already lists file names ([DebridItem.linkNames], narrowed by the manager).
      */
+    /**
+     * Fetches a direct (hoster) link through the service, so the viewer never connects to its
+     * host. Only services with a known unrestrict call report [supportsUnrestrict] true.
+     */
+    val supportsUnrestrict: Boolean get() = false
+
+    suspend fun unrestrictLink(apiKey: String, link: String): DebridResult<String> =
+        DebridResult.Failure("Unrestricting links is not supported")
+
     suspend fun getStreamUrl(apiKey: String, item: DebridItem, wanted: WantedFile?): DebridResult<String> =
         getStreamUrl(apiKey, item)
 }

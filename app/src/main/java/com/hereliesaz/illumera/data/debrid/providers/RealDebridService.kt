@@ -145,6 +145,15 @@ open class RealDebridService @Inject constructor(private val http: DebridHttp) :
         else DebridResult.Failure(NO_WANTED_FILE)
     }
 
+    override val supportsUnrestrict: Boolean get() = true
+
+    override suspend fun unrestrictLink(apiKey: String, link: String): DebridResult<String> =
+        when (val result = http.post("$base/unrestrict/link", auth(apiKey), form = mapOf("link" to link))) {
+            is DebridResult.Success -> result.value.asObjectOrNull()?.str("download")
+                ?.let { DebridResult.Success(it) } ?: DebridResult.Failure("No direct link returned")
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
         if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
 

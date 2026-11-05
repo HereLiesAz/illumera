@@ -162,6 +162,8 @@ class ExoPlayerBackend(
     activity: Activity? = null
 ) : PlayerPlaybackController, PlayerRenderSurface {
 
+    private val directLinkRouter = com.hereliesaz.illumera.data.torrent.DirectLinkRouter.from(appContext)
+
     private val frameRateManager: FrameRateManager? =
         if (playbackSettings.frameRateMatching && activity != null) FrameRateManager(activity) else null
 
@@ -1674,10 +1676,17 @@ class ExoPlayerBackend(
             streamHeaders["Authorization"] = authorization
         }
 
-        val okHttpFactory = createHttpDataSourceFactory(
+        val httpFactory = createHttpDataSourceFactory(
             isLocalhost = isLocalhost,
             requestHeaders = streamHeaders
         )
+        // "Require VPN" with no VPN up: the stream itself (not HLS/DASH segments, not the
+        // torrent loopback) is fetched through debrid when it can be. Resolved on the loader thread.
+        val router = if (isLocalhost) null else directLinkRouter
+        val okHttpFactory: androidx.media3.datasource.DataSource.Factory = if (router == null) httpFactory
+        else androidx.media3.datasource.ResolvingDataSource.Factory(httpFactory) { spec ->
+            if (spec.uri.toString() == sourceUrl) spec.withUri(Uri.parse(router.route(sourceUrl))) else spec
+        }
 
         val streamKind = detectAdaptiveStreamKind(
             sourceUri.path,

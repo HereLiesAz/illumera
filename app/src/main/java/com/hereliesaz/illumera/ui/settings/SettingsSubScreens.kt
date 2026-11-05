@@ -611,7 +611,7 @@ fun PlaybackSettings(
             )
             SettingToggleRow(
                 label = "Require VPN for torrents",
-                subtitle = "Only stream torrents while a VPN is active, and stop if it drops. Direct and debrid sources are unaffected",
+                subtitle = "Only stream torrents while a VPN is active, and stop if it drops. Without a VPN, direct links go through your debrid service when it can take them",
                 isChecked = vpnRequired,
                 onCheckedChange = { viewModel.setTorrentVpnRequired(it) },
                 onBack = onGoBack
