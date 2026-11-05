@@ -101,6 +101,18 @@ class AllDebridService @Inject constructor(private val http: DebridHttp) : Debri
         }
     }
 
+    override val supportsUnrestrict: Boolean get() = true
+
+    override suspend fun unrestrictLink(apiKey: String, link: String): DebridResult<String> =
+        when (val result = http.get("$base/link/unlock", query = key(apiKey) + ("link" to link))) {
+            is DebridResult.Success -> when (val data = result.value.unwrap()) {
+                is DebridResult.Success -> data.value.str("link")
+                    ?.let { DebridResult.Success(it) } ?: DebridResult.Failure("No direct link returned")
+                is DebridResult.Failure -> data
+            }
+            is DebridResult.Failure -> result
+        }
+
     override suspend fun getStreamUrl(apiKey: String, item: DebridItem): DebridResult<String> {
         if (item.directLinks.isEmpty()) return DebridResult.Failure("No link available for this item")
 

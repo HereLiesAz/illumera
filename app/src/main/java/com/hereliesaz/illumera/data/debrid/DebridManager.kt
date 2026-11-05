@@ -348,6 +348,20 @@ class DebridManager @Inject constructor(
         return null
     }
 
+    /**
+     * Routes a direct [link] through the first connected service that can unrestrict it.
+     * Null when none is connected or none would take it.
+     */
+    suspend fun unrestrictLink(link: String): String? {
+        for ((provider, key) in connectedKeys().filter { serviceFor(it.first).supportsUnrestrict }) {
+            when (val result = guarded { serviceFor(provider).unrestrictLink(key, link) }) {
+                is DebridResult.Success -> return result.value
+                is DebridResult.Failure -> Log.w(TAG, "${provider.displayName} did not unrestrict the link: ${result.message}")
+            }
+        }
+        return null
+    }
+
     /** True when a connected service can take a magnet: torrents then go through debrid only. */
     fun canRouteTorrents(): Boolean = connectedKeys().any { (provider, _) -> serviceFor(provider).supportsAddMagnet }
 
