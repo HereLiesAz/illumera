@@ -72,14 +72,13 @@ class TorrentVpnGuard @Inject constructor(
                 check(caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
             override fun onLost(network: Network) = check(false)
         }
-        return try {
-            connectivity.registerDefaultNetworkCallback(callback)
-            { runCatching { connectivity.unregisterNetworkCallback(callback) } }
-        } catch (_: Exception) {
+        val registered = runCatching { connectivity.registerDefaultNetworkCallback(callback) }.isSuccess
+        if (!registered) {
             // Can't watch: the next start still checks, so fail closed rather than stream unwatched.
             main.post { onBlocked(DROPPED_MESSAGE) }
-            {}
+            return {}
         }
+        return { runCatching { connectivity.unregisterNetworkCallback(callback) } }
     }
 
     companion object {
