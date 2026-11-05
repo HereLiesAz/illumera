@@ -57,7 +57,7 @@ class TorrentStreamControllerTest {
             sourceSelectionStore = mockk(relaxed = true),
             playbackTrackSelectionStore = mockk(relaxed = true),
             queueManager = mockk(relaxed = true),
-            debridManager = mockk(relaxed = true) { every { connectedKeys() } returns emptyList() },
+            debridManager = mockk(relaxed = true) { every { canRouteTorrents() } returns false },
             youTubeExtractor = mockk(relaxed = true),
             autoPlayedStore = mockk(relaxed = true)
         )

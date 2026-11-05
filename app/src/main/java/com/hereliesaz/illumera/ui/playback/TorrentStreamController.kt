@@ -96,10 +96,10 @@ class TorrentStreamController internal constructor(
     private var endWatch: (() -> Unit)? = null
 
     /**
-     * Refuses the torrent: stops whatever was running, and reports a failed source the same
+     * Fails the torrent (a refusal, or a debrid service that couldn't deliver): stops whatever was running, and reports a failed source the same
      * way the service does, so the player's ranked fallback can move on to a direct source.
      */
-    private fun block(reason: String, errorContext: String, onError: (String) -> Unit) {
+    fun fail(reason: String, errorContext: String, onError: (String) -> Unit) {
         endWatch?.invoke()
         endWatch = null
         generation++
@@ -125,7 +125,7 @@ class TorrentStreamController internal constructor(
         onError: (String) -> Unit = {},
         onReady: (String) -> Unit
     ) {
-        gate.blockReason()?.let { return block(it, errorContext, onError) }
+        gate.blockReason()?.let { return fail(it, errorContext, onError) }
         val startGeneration = ++generation
         progress = TorrentProgress("Starting torrent")
         val ready: (String) -> Unit = { localUrl ->
@@ -149,7 +149,7 @@ class TorrentStreamController internal constructor(
         launcher.start(magnet, fileIdx, fileName)
         // The VPN dropping mid-stream stops the torrent too.
         endWatch?.invoke()
-        endWatch = gate.watch { reason -> block(reason, errorContext, onError) }
+        endWatch = gate.watch { reason -> fail(reason, errorContext, onError) }
     }
 
     /**

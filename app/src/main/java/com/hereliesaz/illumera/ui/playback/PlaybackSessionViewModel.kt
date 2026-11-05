@@ -309,11 +309,11 @@ class PlaybackSessionViewModel @Inject constructor(
             onError = onError,
             onReady = onReady
         )
-        if (debridManager.connectedKeys().isEmpty()) return local()
+        if (!debridManager.canRouteTorrents()) return local()
 
-        // A connected debrid service takes the torrent first, as a debrid-aware addon would:
-        // no peers, no local download, no VPN needed. Only when it can't deliver does the
-        // torrent run locally (where the VPN requirement, if set, applies).
+        // With a debrid service connected, every torrent goes through it, whatever the addon
+        // does: no peers, no local download, no VPN needed. If it can't deliver, the source
+        // fails (ranked fallback moves on); the local engine is not used behind its back.
         torrent.stop()
         torrent.progress = TorrentProgress("Checking your debrid service")
         debridJob = viewModelScope.launch {
@@ -331,7 +331,7 @@ class PlaybackSessionViewModel @Inject constructor(
                 torrent.progress = null
                 onReady(url)
             } else {
-                local()
+                torrent.fail("Your debrid service couldn't deliver this torrent", errorContext, onError)
             }
         }
     }

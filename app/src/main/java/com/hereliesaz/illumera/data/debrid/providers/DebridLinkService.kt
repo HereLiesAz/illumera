@@ -53,6 +53,8 @@ class DebridLinkService @Inject constructor(private val http: DebridHttp) : Debr
         }
     }
 
+    override val supportsAddMagnet = true
+
     override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
         when (val result = http.post("$base/seedbox/add", auth(apiKey), form = mapOf("url" to magnet, "async" to "true"))) {
             is DebridResult.Success -> when (val data = result.value.unwrap()) {

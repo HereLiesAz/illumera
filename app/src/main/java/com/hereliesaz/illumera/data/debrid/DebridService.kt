@@ -25,8 +25,10 @@ interface DebridService {
 
     /**
      * Asks the service to fetch [magnet] into the account (instant when it is cached there).
-     * Services without a known add-magnet call report a failure and are skipped.
+     * Services without a known add-magnet call report [supportsAddMagnet] false and are skipped.
      */
+    val supportsAddMagnet: Boolean get() = false
+
     suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
         DebridResult.Failure("Adding magnets is not supported")
 

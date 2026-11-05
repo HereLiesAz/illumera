@@ -42,6 +42,8 @@ class PremiumizeService @Inject constructor(private val http: DebridHttp) : Debr
         }
     }
 
+    override val supportsAddMagnet = true
+
     override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
         when (val result = http.post("$base/transfer/create", form = mapOf("src" to magnet), query = key(apiKey))) {
             is DebridResult.Success -> {

@@ -310,8 +310,8 @@ class DebridManager @Inject constructor(
      * and waited for up to [maxWaitSeconds]. Returns a direct link, or null when no connected
      * service could deliver it, so the caller can fall back to a local torrent.
      *
-     * The first service that accepts the magnet is the one used; services with no known
-     * add-magnet call are skipped.
+     * The first service that accepts the magnet is the one used; services that can't add
+     * magnets are skipped.
      */
     suspend fun resolveMagnet(
         magnet: String,
@@ -332,7 +332,7 @@ class DebridManager @Inject constructor(
             }
             ?.let { item -> (streamUrlFor(item, wanted) as? DebridResult.Success)?.let { return it.value } }
 
-        for ((provider, key) in keys) {
+        for ((provider, key) in keys.filter { serviceFor(it.first).supportsAddMagnet }) {
             onStatus("Sending the torrent to ${provider.displayName}", null)
             val added = guarded { serviceFor(provider).addMagnet(key, magnet) }
             if (added is DebridResult.Failure) {
@@ -345,6 +345,9 @@ class DebridManager @Inject constructor(
         }
         return null
     }
+
+    /** True when a connected service can take a magnet: torrents then go through debrid only. */
+    fun canRouteTorrents(): Boolean = connectedKeys().any { (provider, _) -> serviceFor(provider).supportsAddMagnet }
 
     private fun isReady(item: DebridItem): Boolean =
         item.progress?.coerceIn(0, 100) == 100 || item.status?.lowercase() in READY_STATUSES

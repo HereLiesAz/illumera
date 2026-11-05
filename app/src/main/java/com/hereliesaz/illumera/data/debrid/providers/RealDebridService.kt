@@ -87,6 +87,8 @@ open class RealDebridService @Inject constructor(private val http: DebridHttp) :
         return DebridResult.Success(torrents + downloads)
     }
 
+    override val supportsAddMagnet = true
+
     override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> {
         val added = when (val result = http.post("$base/torrents/addMagnet", auth(apiKey), form = mapOf("magnet" to magnet))) {
             is DebridResult.Success -> result.value.asObjectOrNull()?.str("id")

@@ -51,6 +51,8 @@ class TorBoxService @Inject constructor(private val http: DebridHttp) : DebridSe
         }
     }
 
+    override val supportsAddMagnet = true
+
     override suspend fun addMagnet(apiKey: String, magnet: String): DebridResult<Unit> =
         when (val result = http.post("$base/torrents/createtorrent", auth(apiKey), form = mapOf("magnet" to magnet))) {
             is DebridResult.Success -> when (val data = result.value.unwrap()) {
