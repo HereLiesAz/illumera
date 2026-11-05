@@ -20,6 +20,15 @@ class SettingsViewModel @Inject constructor(
     val torrentVpnRequired = torrentVpnGuard.required
     fun setTorrentVpnRequired(value: Boolean) = torrentVpnGuard.setRequired(value)
 
+    /** "Test VPN" result line; null until run, "Testing…" while running. */
+    private val _vpnTestResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val vpnTestResult: kotlinx.coroutines.flow.StateFlow<String?> = _vpnTestResult
+    fun testVpn() {
+        if (_vpnTestResult.value == VPN_TESTING) return
+        _vpnTestResult.value = VPN_TESTING
+        viewModelScope.launch { _vpnTestResult.value = torrentVpnGuard.test() }
+    }
+
     /** How many "More like" / "Because you watched" rows Home shows (active profile). */
     val personalRowSettings = personalRowPrefs.settings
     fun setMoreLikeCount(count: Int) = personalRowPrefs.setMoreLikeCount(count)
@@ -225,6 +234,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateMenuWatchlistEnabled(profileId: Int, enabled: Boolean) {
         updateProfile(profileId) { it.copy(menuWatchlistEnabled = enabled) }
+    }
+
+    private companion object {
+        const val VPN_TESTING = "Testing…"
     }
 }
 
