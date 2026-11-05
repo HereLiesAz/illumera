@@ -99,7 +99,12 @@ class TorrentStreamController internal constructor(
      * Fails the torrent (a refusal, or a debrid service that couldn't deliver): stops whatever was running, and reports a failed source the same
      * way the service does, so the player's ranked fallback can move on to a direct source.
      */
-    fun fail(reason: String, errorContext: String, onError: (String) -> Unit) {
+    fun fail(
+        reason: String,
+        errorContext: String,
+        onError: (String) -> Unit,
+        forceFallback: Boolean = false
+    ) {
         endWatch?.invoke()
         endWatch = null
         generation++
@@ -107,7 +112,9 @@ class TorrentStreamController internal constructor(
         installedReady = null
         launcher.stop()
         AppErrors.e("LumeraTorrent", "$errorContext: $reason")
-        progress = TorrentProgress(status = reason, sourceError = true, attemptId = System.nanoTime())
+        progress = TorrentProgress(
+            status = reason, sourceError = true, attemptId = System.nanoTime(), forceFallback = forceFallback
+        )
         notify(reason)
         onError(reason)
     }

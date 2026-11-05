@@ -331,7 +331,12 @@ class PlaybackSessionViewModel @Inject constructor(
                 torrent.progress = null
                 onReady(url)
             } else {
-                torrent.fail("Your debrid service couldn't deliver this torrent", errorContext, onError)
+                // Debrid is the only way torrents play, so a source it can't deliver always
+                // moves on to the next source, even with auto-fallback off.
+                torrent.fail(
+                    "Your debrid service couldn't deliver this torrent", errorContext, onError,
+                    forceFallback = true
+                )
             }
         }
     }

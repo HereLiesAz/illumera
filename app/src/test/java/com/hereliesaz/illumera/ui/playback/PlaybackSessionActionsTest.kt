@@ -708,6 +708,8 @@ class PlaybackSessionActionsTest {
         assertTrue(launcher.starts.isEmpty())
         assertEquals(1, errors.size)
         assertTrue(vm.torrentProgress?.sourceError == true)
+        // The player must move on to the next source even with auto-fallback off.
+        assertTrue(vm.torrentProgress?.forceFallback == true)
     }
 
     @Test

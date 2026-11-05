@@ -7,5 +7,7 @@ data class TorrentProgress(
     val seeds: Int = 0,
     val progress: Float? = null,  // null = indeterminate, 0.0-1.0 = determinate
     val sourceError: Boolean = false,
-    val attemptId: Long = 0L
+    val attemptId: Long = 0L,
+    /** The source failed in a way that must move on to the next source, whatever auto-fallback says. */
+    val forceFallback: Boolean = false
 )
