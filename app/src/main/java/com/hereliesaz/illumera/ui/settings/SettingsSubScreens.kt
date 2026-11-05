@@ -616,6 +616,14 @@ fun PlaybackSettings(
                 onCheckedChange = { viewModel.setTorrentVpnRequired(it) },
                 onBack = onGoBack
             )
+            val vpnTest by viewModel.vpnTestResult.collectAsState()
+            SettingLanguageRow(
+                label = "Test VPN",
+                currentDisplayName = vpnTest ?: "Run",
+                isSet = vpnTest?.startsWith("VPN active") == true,
+                onClick = { viewModel.testVpn() },
+                onBack = onGoBack
+            )
 
             Spacer(Modifier.height(12.dp))
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.onBackground.copy(0.1f)))

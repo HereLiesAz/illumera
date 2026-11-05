@@ -24,7 +24,27 @@ interface TorrentGate {
 
     companion object {
         val Open = object : TorrentGate {
-            override fun blockReason(): String? = null
+            /**
+     * "Test VPN": reports whether this app's traffic rides a VPN, and the public exit
+     * address the internet sees (ipinfo.io). Never throws; a failed lookup is reported inline.
+     */
+    suspend fun test(): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val vpn = if (isVpnActive()) "VPN active" else "No VPN"
+        val exit = runCatching {
+            val conn = java.net.URL(IP_LOOKUP_URL).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            try {
+                val json = org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                val place = listOf(json.optString("city"), json.optString("country"))
+                    .filter { it.isNotBlank() }.joinToString(", ")
+                json.optString("ip").ifBlank { "?" } + if (place.isNotEmpty()) " ($place)" else ""
+            } finally { conn.disconnect() }
+        }.getOrElse { "exit IP unknown" }
+        "$vpn · $exit"
+    }
+
+    override fun blockReason(): String? = null
             override fun watch(onBlocked: (reason: String) -> Unit): () -> Unit = {}
         }
     }
@@ -58,6 +78,26 @@ class TorrentVpnGuard @Inject constructor(
         connectivity.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
     }.getOrDefault(false)
 
+    /**
+     * "Test VPN": reports whether this app's traffic rides a VPN, and the public exit
+     * address the internet sees (ipinfo.io). Never throws; a failed lookup is reported inline.
+     */
+    suspend fun test(): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val vpn = if (isVpnActive()) "VPN active" else "No VPN"
+        val exit = runCatching {
+            val conn = java.net.URL(IP_LOOKUP_URL).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            try {
+                val json = org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                val place = listOf(json.optString("city"), json.optString("country"))
+                    .filter { it.isNotBlank() }.joinToString(", ")
+                json.optString("ip").ifBlank { "?" } + if (place.isNotEmpty()) " ($place)" else ""
+            } finally { conn.disconnect() }
+        }.getOrElse { "exit IP unknown" }
+        "$vpn · $exit"
+    }
+
     override fun blockReason(): String? =
         if (_required.value && !isVpnActive()) BLOCKED_MESSAGE else null
 
@@ -82,6 +122,7 @@ class TorrentVpnGuard @Inject constructor(
     }
 
     companion object {
+        private const val IP_LOOKUP_URL = "https://ipinfo.io/json"
         private const val KEY_REQUIRED = "torrent_requires_vpn"
         const val BLOCKED_MESSAGE = "Torrent blocked: connect to a VPN first"
         const val DROPPED_MESSAGE = "Torrent stopped: VPN connection lost"
