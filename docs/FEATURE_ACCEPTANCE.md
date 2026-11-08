@@ -295,3 +295,11 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - Next-episode autoplay within a series should continue inside Player without adding Details to navigation history. Manual episode selection, trailer return, and non-queue debrid-library playback retain existing behavior.
 - On Android TV in persistent cinematic mode, the preview stays fully visible (up to the normal 420dp stage), the row headings are smaller, and the final visible row may be clipped at the bottom of the viewport. Focus/scrolling can still bring that row fully into view. Verify a small viewport, landscape Hubs and genres, and both top/side navigation layouts.
 - Regression sources: `AppBackStackTest` and `PersistentPreviewHeightTest`; compile and Android TV D-pad/real-source playback confirmation are still required before marking release validated.
+
+## Torrents: debrid routing by VPN state (November 8, 2026) — compile and device validation pending
+
+- Settings → Playback → Torrents has **Require VPN for torrents** (existing) and **Prefer debrid while on a VPN** (off by default, app-wide).
+- With a debrid service that can take magnets linked and **no VPN**: every torrent goes through debrid with the full wait (`DEBRID_RESOLVE_WAIT_SECONDS`, 120 s). If debrid can't deliver, the source fails and ranked fallback moves on; the local engine is never used.
+- With a linked debrid service and a **VPN up**: **Prefer debrid off** runs the torrent locally. **Prefer debrid on** tries debrid first for `DEBRID_PREFERRED_WAIT_SECONDS` (15 s); a cached or already-added title plays at once, any other switches to the local torrent ("Debrid didn't deliver in time, starting the torrent").
+- With no debrid service linked, torrents run locally; Require VPN still gates them.
+- Regression sources: `PlaybackSessionActionsTest` ("Debrid and the VPN") and the existing debrid-first tests. Run on a device with and without a VPN to confirm; not compiled in the authoring environment (no Android SDK).
