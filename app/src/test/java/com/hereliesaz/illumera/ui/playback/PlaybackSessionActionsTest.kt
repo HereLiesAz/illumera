@@ -83,6 +83,11 @@ class PlaybackSessionActionsTest {
     private val trackStore: PlaybackTrackSelectionStore = mockk(relaxed = true)
     private val queueManager: QueueManager = mockk(relaxed = true)
     private val debridManager: DebridManager = mockk()
+    private val preferDebridFlow = MutableStateFlow(false)
+    private val vpnGuard: com.hereliesaz.illumera.data.torrent.TorrentVpnGuard = mockk {
+        every { isVpnActive() } returns false
+        every { preferDebrid } returns preferDebridFlow
+    }
 
     private val watching = Stream(
         name = "Watching", url = "https://cdn/e1.mkv", addonTransportUrl = "https://addon1",
@@ -128,6 +133,7 @@ class PlaybackSessionActionsTest {
             trackStore,
             queueManager,
             debridManager,
+            vpnGuard,
             youTubeExtractor = mockk(relaxed = true),
             autoPlayedStore = mockk(relaxed = true)
         ).apply {
@@ -719,5 +725,66 @@ class PlaybackSessionActionsTest {
         vm.startTorrent("magnet:?xt=urn:btih:${"c".repeat(40)}", 0, "e1.mkv")
         runCurrent()
         assertEquals(1, launcher.starts.size)
+    }
+
+    // ---- Debrid and the VPN ----
+
+    private val vpnMagnet = "magnet:?xt=urn:btih:${"d".repeat(40)}"
+
+    @Test
+    fun `with a VPN and prefer-debrid off the torrent runs locally`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        every { vpnGuard.isVpnActive() } returns true
+        preferDebridFlow.value = false
+        val vm = session()
+        vm.startTorrent(vpnMagnet, 0, "e1.mkv")
+        runCurrent()
+        assertEquals(1, launcher.starts.size)
+        coVerify(exactly = 0) { debridManager.resolveMagnet(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `with a VPN and prefer-debrid on debrid goes first with a short wait`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        every { vpnGuard.isVpnActive() } returns true
+        preferDebridFlow.value = true
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns "https://debrid/e1.mkv"
+        val vm = session()
+        val ready = mutableListOf<String>()
+        vm.startTorrent(vpnMagnet, 0, "e1.mkv", onReady = { ready += it })
+        runCurrent()
+        assertEquals(listOf("https://debrid/e1.mkv"), ready)
+        assertTrue(launcher.starts.isEmpty())
+        coVerify { debridManager.resolveMagnet(any(), any(), DEBRID_PREFERRED_WAIT_SECONDS, any()) }
+        assertTrue(DEBRID_PREFERRED_WAIT_SECONDS < DEBRID_RESOLVE_WAIT_SECONDS)
+    }
+
+    @Test
+    fun `with a VPN and prefer-debrid on a debrid miss switches to the torrent`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        every { vpnGuard.isVpnActive() } returns true
+        preferDebridFlow.value = true
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns null
+        val vm = session()
+        val errors = mutableListOf<String>()
+        vm.startTorrent(vpnMagnet, 0, "e1.mkv", onError = { errors += it })
+        runCurrent()
+        assertEquals(1, launcher.starts.size)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test
+    fun `without a VPN debrid is forced even when prefer-debrid is off`() = runTest(dispatcher) {
+        every { debridManager.canRouteTorrents() } returns true
+        every { vpnGuard.isVpnActive() } returns false
+        preferDebridFlow.value = false
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns null
+        val vm = session()
+        val errors = mutableListOf<String>()
+        vm.startTorrent(vpnMagnet, 0, "e1.mkv", onError = { errors += it })
+        runCurrent()
+        assertTrue(launcher.starts.isEmpty())
+        assertEquals(1, errors.size)
+        coVerify { debridManager.resolveMagnet(any(), any(), DEBRID_RESOLVE_WAIT_SECONDS, any()) }
     }
 }

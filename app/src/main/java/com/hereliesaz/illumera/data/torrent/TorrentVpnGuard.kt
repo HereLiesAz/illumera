@@ -53,6 +53,20 @@ class TorrentVpnGuard @Inject constructor(
         prefs.edit().putBoolean(KEY_REQUIRED, value).apply()
     }
 
+    private val _preferDebrid = MutableStateFlow(prefs.getBoolean(KEY_PREFER_DEBRID, false))
+
+    /**
+     * "Prefer debrid while on a VPN": with a VPN up and a debrid service linked, a torrent tries
+     * debrid first (briefly) and falls back to the local engine. Off by default. Without a VPN
+     * this has no effect: a linked debrid service is then the only way a torrent plays.
+     */
+    val preferDebrid: StateFlow<Boolean> = _preferDebrid.asStateFlow()
+
+    fun setPreferDebrid(value: Boolean) {
+        _preferDebrid.value = value
+        prefs.edit().putBoolean(KEY_PREFER_DEBRID, value).apply()
+    }
+
     fun isVpnActive(): Boolean = runCatching {
         val network = connectivity.activeNetwork ?: return false
         connectivity.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
@@ -104,6 +118,7 @@ class TorrentVpnGuard @Inject constructor(
     companion object {
         private const val IP_LOOKUP_URL = "https://ipinfo.io/json"
         private const val KEY_REQUIRED = "torrent_requires_vpn"
+        private const val KEY_PREFER_DEBRID = "torrent_prefer_debrid_on_vpn"
         const val BLOCKED_MESSAGE = "Torrent blocked: connect to a VPN first"
         const val DROPPED_MESSAGE = "Torrent stopped: VPN connection lost"
     }

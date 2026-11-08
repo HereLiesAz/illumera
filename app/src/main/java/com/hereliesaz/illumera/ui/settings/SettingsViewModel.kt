@@ -20,6 +20,10 @@ class SettingsViewModel @Inject constructor(
     val torrentVpnRequired = torrentVpnGuard.required
     fun setTorrentVpnRequired(value: Boolean) = torrentVpnGuard.setRequired(value)
 
+    /** "Prefer debrid while on a VPN": off by default; only matters while a VPN is active. */
+    val torrentPreferDebrid = torrentVpnGuard.preferDebrid
+    fun setTorrentPreferDebrid(value: Boolean) = torrentVpnGuard.setPreferDebrid(value)
+
     /** "Test VPN" result line; null until run, "Testing…" while running. */
     private val _vpnTestResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     val vpnTestResult: kotlinx.coroutines.flow.StateFlow<String?> = _vpnTestResult

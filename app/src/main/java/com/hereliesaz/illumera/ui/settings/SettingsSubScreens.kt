@@ -616,6 +616,14 @@ fun PlaybackSettings(
                 onCheckedChange = { viewModel.setTorrentVpnRequired(it) },
                 onBack = onGoBack
             )
+            val preferDebrid by viewModel.torrentPreferDebrid.collectAsState()
+            SettingToggleRow(
+                label = "Prefer debrid while on a VPN",
+                subtitle = "With a VPN and a linked debrid service, try debrid first for a few seconds, then switch to the torrent. Without a VPN, a linked debrid service is always used",
+                isChecked = preferDebrid,
+                onCheckedChange = { viewModel.setTorrentPreferDebrid(it) },
+                onBack = onGoBack
+            )
             val vpnTest by viewModel.vpnTestResult.collectAsState()
             SettingLanguageRow(
                 label = "Test VPN",
