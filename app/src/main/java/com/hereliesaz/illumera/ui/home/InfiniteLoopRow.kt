@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -191,6 +193,12 @@ class CinematicVerticalFocusCoordinator {
     }
 }
 
+/**
+ * The focus target of the row's header controls ([InfiniteLoopRow]'s `titleActions`), or null
+ * when the row has none. Up from a card stops there first, so the controls can be reached.
+ */
+private val LocalRowHeaderRequester = compositionLocalOf<FocusRequester?> { null }
+
 /** Register the actual card bounds and preserve normal navigation as fallback. */
 @Composable
 private fun rememberCinematicVerticalFocusModifier(
@@ -202,17 +210,25 @@ private fun rememberCinematicVerticalFocusModifier(
     DisposableEffect(coordinator, rowIndex, itemKey, requester) {
         onDispose { coordinator?.unregister(rowIndex, itemKey, requester) }
     }
-    if (coordinator == null) return Modifier
+    val header = LocalRowHeaderRequester.current
+    if (coordinator == null && header == null) return Modifier
     return Modifier
-        .focusRequester(requester)
-        .onGloballyPositioned { coordinates ->
-            coordinator.record(rowIndex, itemKey, coordinates.positionInWindow().x, requester)
-        }
+        .then(
+            if (coordinator == null) Modifier else Modifier
+                .focusRequester(requester)
+                .onGloballyPositioned { coordinates ->
+                    coordinator.record(rowIndex, itemKey, coordinates.positionInWindow().x, requester)
+                }
+        )
         .onPreviewKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when (event.key) {
-                Key.DirectionUp -> coordinator.move(rowIndex, itemKey, down = false)
-                Key.DirectionDown -> coordinator.move(rowIndex, itemKey, down = true)
+                // The row's header controls (sort chips, votes) sit between this row's cards
+                // and the row above: Up stops on them first.
+                Key.DirectionUp ->
+                    (header != null && runCatching { header.requestFocus() }.getOrDefault(false)) ||
+                        coordinator?.move(rowIndex, itemKey, down = false) == true
+                Key.DirectionDown -> coordinator?.move(rowIndex, itemKey, down = true) == true
                 else -> false
             }
         }
@@ -350,6 +366,7 @@ fun InfiniteLoopRow(
     var focusHandoffPending by remember(rowIndex, title) { mutableStateOf(false) }
     val inlineTransitionRequester = remember(rowIndex, title) { FocusRequester() }
     val focusedPreviewKey = activeCardKey.takeIf { isInlineRowActive }
+    val headerRequester = if (titleActions != null) remember(rowIndex, title) { FocusRequester() } else null
 
     LaunchedEffect(isInlineRowActive, activeCardKey) {
         if (isInlineRowActive && focusHandoffPending && activeCardKey != null) {
@@ -397,7 +414,13 @@ fun InfiniteLoopRow(
                 color = Color.White.copy(0.9f),
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
             )
-            titleActions?.invoke()
+            if (titleActions != null && headerRequester != null) {
+                // One focus group, so Up from the cards can enter the controls as a unit.
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    modifier = Modifier.focusRequester(headerRequester).focusGroup()
+                ) { titleActions() }
+            }
         }
 
         // Stable reference to avoid recomposition from lambda re-allocation
@@ -409,114 +432,116 @@ fun InfiniteLoopRow(
             onFocused(item, key)
         }
         
-        when {
-            // CASE A: Grid View OFF - Standard linear list
-            // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
-            // Cinematic landscape rails must not revert to portrait when a
-            // catalog is configured as an infinite or finite grid.
-            // A standard LazyRow also supports per-genre incremental paging.
-            !isInfiniteLoopEnabled -> {
-                CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
-                    LinearContent(
-                        listState = listState,
-                        startPadding = startPadding,
-                        endPadding = endPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = rowIndex,
-                        items = items,
-                        onMovieClick = onMovieClick,
-                        onFocused = wrappedOnFocused,
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = locallyFocusedItemId,
-                        isGlobalFocusPresent = isGlobalFocusPresent,
-                        isFirstRow = isFirstRow,
-                        rowHeight = rowHeight,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = renderLandscapeCards,
-                        enrichedItems = enrichedItems,
-                        effectiveItemWidth = effectiveItemWidth,
-                        inlineCinematicPreview = inlineCinematicPreview,
-                        activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth,
-                        isInlineRowActive = isInlineRowActive,
-                        inlineTransitionRequester = inlineTransitionRequester,
-                        verticalFocusCoordinator = verticalFocusCoordinator
-                    )
+        CompositionLocalProvider(LocalRowHeaderRequester provides headerRequester) {
+            when {
+                // CASE A: Grid View OFF - Standard linear list
+                // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
+                // Cinematic landscape rails must not revert to portrait when a
+                // catalog is configured as an infinite or finite grid.
+                // A standard LazyRow also supports per-genre incremental paging.
+                !isInfiniteLoopEnabled -> {
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
+                        LinearContent(
+                            listState = listState,
+                            startPadding = startPadding,
+                            endPadding = endPadding,
+                            isTopNav = isTopNav,
+                            rowIndex = rowIndex,
+                            items = items,
+                            onMovieClick = onMovieClick,
+                            onFocused = wrappedOnFocused,
+                            entryRequester = entryRequester,
+                            drawerRequester = drawerRequester,
+                            locallyFocusedItemId = locallyFocusedItemId,
+                            isGlobalFocusPresent = isGlobalFocusPresent,
+                            isFirstRow = isFirstRow,
+                            rowHeight = rowHeight,
+                            upKeyDebouncer = upKeyDebouncer,
+                            repeatGate = repeatGate,
+                            pivotFocusRequester = pivotFocusRequester,
+                            isLandscapeCards = renderLandscapeCards,
+                            enrichedItems = enrichedItems,
+                            effectiveItemWidth = effectiveItemWidth,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            activeCardKey = focusedPreviewKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
+                            isInlineRowActive = isInlineRowActive,
+                            inlineTransitionRequester = inlineTransitionRequester,
+                            verticalFocusCoordinator = verticalFocusCoordinator
+                        )
+                    }
                 }
-            }
-            // CASE B: Grid View ON + Infinite Loop ON
-            // BringIntoViewSpec handles alignment when returning from navbar
-            // SmoothScrollEffect handles spring animation during normal navigation
-            isInfiniteScrollingEnabled -> {
-                CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
-                    InfiniteGridContent(
-                        listState = listState,
-                        startPadding = startPadding,
-                        endPadding = endPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = rowIndex,
-                        items = items,
-                        visibleItemCount = visibleItemCount,
-                        onMovieClick = onMovieClick,
-                        onViewMore = onViewMore,
-                        onFocused = wrappedOnFocused,
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = locallyFocusedItemId,
-                        isGlobalFocusPresent = isGlobalFocusPresent,
-                        isFirstRow = isFirstRow,
-                        isRestoredState = externalListState != null,
-                        rowHeight = rowHeight,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = renderLandscapeCards,
-                        enrichedItems = enrichedItems,
-                        inlineCinematicPreview = inlineCinematicPreview,
-                        activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth,
-                        isInlineRowActive = isInlineRowActive,
-                        inlineTransitionRequester = inlineTransitionRequester,
-                        verticalFocusCoordinator = verticalFocusCoordinator
-                    )
+                // CASE B: Grid View ON + Infinite Loop ON
+                // BringIntoViewSpec handles alignment when returning from navbar
+                // SmoothScrollEffect handles spring animation during normal navigation
+                isInfiniteScrollingEnabled -> {
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
+                        InfiniteGridContent(
+                            listState = listState,
+                            startPadding = startPadding,
+                            endPadding = endPadding,
+                            isTopNav = isTopNav,
+                            rowIndex = rowIndex,
+                            items = items,
+                            visibleItemCount = visibleItemCount,
+                            onMovieClick = onMovieClick,
+                            onViewMore = onViewMore,
+                            onFocused = wrappedOnFocused,
+                            entryRequester = entryRequester,
+                            drawerRequester = drawerRequester,
+                            locallyFocusedItemId = locallyFocusedItemId,
+                            isGlobalFocusPresent = isGlobalFocusPresent,
+                            isFirstRow = isFirstRow,
+                            isRestoredState = externalListState != null,
+                            rowHeight = rowHeight,
+                            upKeyDebouncer = upKeyDebouncer,
+                            repeatGate = repeatGate,
+                            pivotFocusRequester = pivotFocusRequester,
+                            isLandscapeCards = renderLandscapeCards,
+                            enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            activeCardKey = focusedPreviewKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
+                            isInlineRowActive = isInlineRowActive,
+                            inlineTransitionRequester = inlineTransitionRequester,
+                            verticalFocusCoordinator = verticalFocusCoordinator
+                        )
+                    }
                 }
-            }
-            // CASE C: Grid View ON + Infinite Loop OFF
-            // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
-            else -> {
-                CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
-                    FiniteGridContent(
-                        listState = listState,
-                        startPadding = startPadding,
-                        endPadding = endPadding,
-                        isTopNav = isTopNav,
-                        rowIndex = rowIndex,
-                        items = items,
-                        visibleItemCount = visibleItemCount,
-                        onMovieClick = onMovieClick,
-                        onViewMore = onViewMore,
-                        onFocused = wrappedOnFocused,
-                        entryRequester = entryRequester,
-                        drawerRequester = drawerRequester,
-                        locallyFocusedItemId = locallyFocusedItemId,
-                        isGlobalFocusPresent = isGlobalFocusPresent,
-                        isFirstRow = isFirstRow,
-                        rowHeight = rowHeight,
-                        upKeyDebouncer = upKeyDebouncer,
-                        repeatGate = repeatGate,
-                        pivotFocusRequester = pivotFocusRequester,
-                        isLandscapeCards = renderLandscapeCards,
-                        enrichedItems = enrichedItems,
-                        inlineCinematicPreview = inlineCinematicPreview,
-                        activeCardKey = focusedPreviewKey,
-                        inlineCinematicWidth = inlineCinematicWidth,
-                        isInlineRowActive = isInlineRowActive,
-                        inlineTransitionRequester = inlineTransitionRequester,
-                        verticalFocusCoordinator = verticalFocusCoordinator
-                    )
+                // CASE C: Grid View ON + Infinite Loop OFF
+                // Uses BringIntoViewSpec for automatic pivot-aligned scrolling
+                else -> {
+                    CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
+                        FiniteGridContent(
+                            listState = listState,
+                            startPadding = startPadding,
+                            endPadding = endPadding,
+                            isTopNav = isTopNav,
+                            rowIndex = rowIndex,
+                            items = items,
+                            visibleItemCount = visibleItemCount,
+                            onMovieClick = onMovieClick,
+                            onViewMore = onViewMore,
+                            onFocused = wrappedOnFocused,
+                            entryRequester = entryRequester,
+                            drawerRequester = drawerRequester,
+                            locallyFocusedItemId = locallyFocusedItemId,
+                            isGlobalFocusPresent = isGlobalFocusPresent,
+                            isFirstRow = isFirstRow,
+                            rowHeight = rowHeight,
+                            upKeyDebouncer = upKeyDebouncer,
+                            repeatGate = repeatGate,
+                            pivotFocusRequester = pivotFocusRequester,
+                            isLandscapeCards = renderLandscapeCards,
+                            enrichedItems = enrichedItems,
+                            inlineCinematicPreview = inlineCinematicPreview,
+                            activeCardKey = focusedPreviewKey,
+                            inlineCinematicWidth = inlineCinematicWidth,
+                            isInlineRowActive = isInlineRowActive,
+                            inlineTransitionRequester = inlineTransitionRequester,
+                            verticalFocusCoordinator = verticalFocusCoordinator
+                        )
+                    }
                 }
             }
         }

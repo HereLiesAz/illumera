@@ -181,12 +181,18 @@ fun HomeScreen(
         if (tab != DashboardTab.HOME) null
         else SeedVotes(personalRowSettings.approved, viewModel::approveSeed, viewModel::rejectSeed)
     }
+    // Sort chosen on a streaming-service row's header, by row id.
+    val rowSortOrders by viewModel.rowSortOrders.collectAsStateWithLifecycle()
+    val rowSorts = remember(rowSortOrders, viewModel) { RowSorts(rowSortOrders, viewModel::setRowSortOrder) }
     val genreContext = LocalContext.current
     // One buffered trailer, for the title after the one now playing.
     val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
     DisposableEffect(trailerPreloader) { onDispose { trailerPreloader.release() } }
-    val displayState = remember(tab, state, currentProfile?.id) {
-        displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext)
+    val displayState = remember(tab, state, currentProfile?.id, rowSortOrders) {
+        withRowSorts(
+            displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext),
+            rowSortOrders
+        )
     }
     // All discovery tabs share the non-configurable cinematic row hierarchy:
     // inactive landscape rails and portrait cards only in the focused row.
@@ -264,7 +270,9 @@ fun HomeScreen(
             LocalFocusMemory provides focusMemory,
             LocalTrailerPreloader provides trailerPreloader,
             // Thumbs up / down on the personal rows' seed titles (Home tab only).
-            LocalSeedVotes provides seedVotes
+            LocalSeedVotes provides seedVotes,
+            // Sort chips on the streaming-service rows' headers.
+            LocalRowSorts provides rowSorts
         ) {
         // LOGIC: If we are just starting OR the ViewModel is loading, show the Loading Box.
         // This box accepts focus immediately, which forces the NavDrawer to collapse.
@@ -1011,7 +1019,7 @@ fun CinematicLayout(
                                                 }
                                             }
                                         ,
-                                            titleActions = seedVoteActions(item.id)
+                                            titleActions = seedVoteActions(item.id) ?: rowSortActions(item)
                                         )
                                         Spacer(Modifier.height(cinematicRailTrailingSpace(categoryRowActive)))
                                     }
@@ -1768,7 +1776,7 @@ fun SimpleLayout(
                             upKeyDebouncer = upKeyDebouncer,
                             repeatGate = dpadRepeatGate,
                             pivotFocusRequester = if (heroItems.isNotEmpty() && historyItems.isEmpty() && rowIndex == 0) firstRowPivotRequester else null,
-                            titleActions = seedVoteActions(item.id)
+                            titleActions = seedVoteActions(item.id) ?: rowSortActions(item)
                         )
                     }
                 }

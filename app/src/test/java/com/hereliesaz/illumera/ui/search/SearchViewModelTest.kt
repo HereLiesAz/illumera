@@ -263,5 +263,51 @@ class SearchViewModelTest {
         assertFalse(viewModel.state.value.searchFailed)
     }
 
+    @Test
+    fun searchNowRunsTheTypedQueryWithoutWaitingForTheDebounce() = runTest(dispatcher) {
+        val movie = MetaItem(id = "m", type = "movie", name = "Movie")
+        coEvery { repository.searchMovies("alien") } returns listOf(movie)
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+        viewModel.onQueryChange("alien")
+
+        viewModel.searchNow()
+        runCurrent() // well inside the 350 ms debounce
+
+        coVerify(exactly = 1) { repository.searchMovies("alien") }
+        assertEquals("alien", viewModel.state.value.completedQuery)
+        assertEquals(listOf(movie), viewModel.state.value.movies)
+        // the debounced run it replaced does not search a second time
+        advanceUntilIdle()
+        coVerify(exactly = 1) { repository.searchMovies("alien") }
+    }
+
+    @Test
+    fun searchNowWithNothingTypedDoesNothing() = runTest(dispatcher) {
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+
+        viewModel.searchNow()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.searchMovies(any()) }
+        assertEquals("", viewModel.state.value.completedQuery)
+    }
+
+    @Test
+    fun completedQueryNamesTheQueryTheShownResultsBelongTo() = runTest(dispatcher) {
+        coEvery { repository.searchMovies(any()) } returns emptyList()
+        val viewModel = newViewModel()
+        advanceUntilIdle()
+
+        viewModel.onQueryChange("ali")
+        assertEquals("", viewModel.state.value.completedQuery) // typed, not yet searched
+        advanceUntilIdle()
+        assertEquals("ali", viewModel.state.value.completedQuery)
+
+        viewModel.onQueryChange("")
+        assertEquals("", viewModel.state.value.completedQuery)
+    }
+
     private fun newViewModel() = SearchViewModel(repository, dao, profileManager, torrentClaw)
 }

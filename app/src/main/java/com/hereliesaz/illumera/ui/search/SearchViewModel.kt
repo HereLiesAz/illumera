@@ -40,7 +40,9 @@ class SearchViewModel @Inject constructor(
         val series: List<MetaItem> = emptyList(),
         val isLoading: Boolean = false,
         val searchFailed: Boolean = false,
-        val recentSearches: List<String> = emptyList()
+        val recentSearches: List<String> = emptyList(),
+        // The query the shown results (or failure) belong to; "" when none have run.
+        val completedQuery: String = ""
     )
 
     private val _state = MutableStateFlow(SearchState())
@@ -58,7 +60,8 @@ class SearchViewModel @Inject constructor(
                     searchJob?.cancel()
                     _state.value = _state.value.copy(
                         query = "", results = emptyList(), movies = emptyList(),
-                        series = emptyList(), isLoading = false, searchFailed = false
+                        series = emptyList(), isLoading = false, searchFailed = false,
+                        completedQuery = ""
                     )
                 }
                 first = false
@@ -96,7 +99,8 @@ class SearchViewModel @Inject constructor(
         if (newQuery.isBlank()) {
             _state.value = _state.value.copy(
                 results = emptyList(), movies = emptyList(),
-                series = emptyList(), isLoading = false, searchFailed = false
+                series = emptyList(), isLoading = false, searchFailed = false,
+                completedQuery = ""
             )
             return
         }
@@ -131,7 +135,8 @@ class SearchViewModel @Inject constructor(
                     results = addons,
                     movies = addons.filter { it.type == "movie" },
                     series = addons.filter { it.type == "series" },
-                    isLoading = false
+                    isLoading = false,
+                    completedQuery = query
                 )
             }
             val claw = try {
@@ -150,7 +155,8 @@ class SearchViewModel @Inject constructor(
             val series = results.filter { it.type == "series" }
             _state.value = _state.value.copy(
                 results = results, movies = movies,
-                series = series, isLoading = false
+                series = series, isLoading = false,
+                completedQuery = query
             )
             if (
                 ownerProfileId != null &&
@@ -162,7 +168,7 @@ class SearchViewModel @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
-            _state.value = _state.value.copy(isLoading = false, searchFailed = true)
+            _state.value = _state.value.copy(isLoading = false, searchFailed = true, completedQuery = query)
         }
     }
 
@@ -185,6 +191,14 @@ class SearchViewModel @Inject constructor(
     /** Re-runs a past search immediately, bypassing the debounce. */
     fun selectRecentSearch(query: String) {
         _state.value = _state.value.copy(query = query)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch { performSearch(query) }
+    }
+
+    /** Runs the typed query immediately, bypassing the typing debounce (the Search key). */
+    fun searchNow() {
+        val query = _state.value.query
+        if (query.isBlank()) return
         searchJob?.cancel()
         searchJob = viewModelScope.launch { performSearch(query) }
     }
