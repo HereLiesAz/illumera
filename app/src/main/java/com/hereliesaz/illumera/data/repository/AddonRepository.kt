@@ -397,10 +397,7 @@ class AddonRepository @Inject constructor(
     /** A streaming service offered by an enabled "Streaming Catalogs"-style addon. */
     data class StreamingService(val catalogId: String, val name: String)
 
-    private val streamingServiceNames = linkedMapOf(
-        "nfx" to "Netflix", "hbm" to "HBO Max", "dnp" to "Disney+", "amp" to "Prime Video",
-        "atp" to "Apple TV+", "pmp" to "Paramount+", "hlu" to "Hulu", "pcp" to "Peacock"
-    )
+    private val streamingServiceNames = com.hereliesaz.illumera.domain.StreamingServices.names
 
     private suspend fun streamingSources(type: String, catalogId: String? = null):
         List<Pair<AddonEntity, CatalogManifest>> {

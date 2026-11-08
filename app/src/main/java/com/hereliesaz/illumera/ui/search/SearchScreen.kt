@@ -10,6 +10,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -108,11 +109,41 @@ fun SearchScreen(
     // Whether focus is in the results pane (right of the keyboard) — TV layout only.
     var isResultsFocused by remember { mutableStateOf(false) }
 
-    // BACK: Search is a main screen, so Back first unwinds the search itself —
-    // dismiss the system keyboard, leave the results for the keyboard, clear the
-    // query. Once there is nothing left to back out of, this handler stands down and
-    // the main-root Back (MainRootBackHandler) opens the menu.
-    BackHandler(enabled = keepFocused || isResultsFocused || state.query.isNotEmpty()) {
+    // Whether focus is on the on-screen keyboard — TV layout only.
+    var isKeyboardFocused by remember { mutableStateOf(false) }
+
+    // The results pane (recent searches or results), entered as a group.
+    val resultsPaneRequester = remember { FocusRequester() }
+
+    // The rail: the top bar on a top-nav profile, the side menu otherwise.
+    fun goToRail() {
+        if (isTopNav) runCatching { drawerRequester.requestFocus() } else drawerRequester.openNavDrawer()
+    }
+
+    // Into the recent searches while nothing is typed, into the results otherwise.
+    fun enterContent() {
+        val target = if (state.query.isEmpty() && state.recentSearches.isNotEmpty()) {
+            recentSearchesEntryRequester
+        } else resultsPaneRequester
+        runCatching { target.requestFocus() }
+    }
+
+    // SEARCH: with nothing typed it goes to the recent searches; with a query it runs it now
+    // (no waiting for the typing debounce) and goes to the results as soon as they are in.
+    var awaitedQuery by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(awaitedQuery, state.completedQuery, state.isLoading) {
+        val awaited = awaitedQuery ?: return@LaunchedEffect
+        // Only the results of the query that was asked for; an older query's are not them.
+        if (state.isLoading || state.completedQuery != awaited) return@LaunchedEffect
+        awaitedQuery = null
+        if (state.results.isNotEmpty()) runCatching { resultsPaneRequester.requestFocus() }
+    }
+
+    // BACK: Search is a main screen, so Back first unwinds the search itself — dismiss the
+    // system keyboard, leave the results for the keyboard, leave the keyboard for the rail.
+    // Once focus is on the rail, this handler stands down and the main-root Back
+    // (MainRootBackHandler) opens the menu.
+    BackHandler(enabled = keepFocused || isResultsFocused || isKeyboardFocused) {
         when {
             keepFocused -> {
                 keepFocused = false
@@ -120,7 +151,7 @@ fun SearchScreen(
                 runCatching { entryRequester.requestFocus() }
             }
             isResultsFocused -> runCatching { entryRequester.requestFocus() }
-            state.query.isNotEmpty() -> viewModel.onQueryChange("")
+            else -> goToRail()
         }
     }
 
@@ -200,13 +231,19 @@ fun SearchScreen(
                         runCatching { searchInputFocusRequester.requestFocus() }
                         try { keyboardController?.show() } catch (_: Exception) { }
                     },
+                    onSearch = {
+                        keepFocused = false
+                        if (state.query.isBlank()) {
+                            if (state.recentSearches.isNotEmpty()) enterContent()
+                        } else {
+                            awaitedQuery = state.query
+                            viewModel.searchNow()
+                        }
+                    },
                     entryRequester = entryRequester,
-                    drawerRequester = drawerRequester,
-                    isTopNav = isTopNav,
-                    hasResults = state.results.isNotEmpty() || state.recentSearches.isNotEmpty(),
-                    contentEntryRequester = if (state.query.isEmpty() && state.recentSearches.isNotEmpty()) {
-                        recentSearchesEntryRequester
-                    } else null
+                    onGoToRail = ::goToRail,
+                    onEnterContent = ::enterContent,
+                    onFocusWithinChanged = { isKeyboardFocused = it }
                 )
             }
 
@@ -220,6 +257,8 @@ fun SearchScreen(
                     .fillMaxHeight()
                     .padding(top = 20.dp + topPadding)
                     .onFocusChanged { isResultsFocused = it.hasFocus }
+                    .focusRequester(resultsPaneRequester)
+                    .focusGroup()
             ) {
                 // CONTENT AREA (behind header)
                 if (state.isLoading) {
@@ -721,21 +760,43 @@ private fun RecentSearchRow(
     }
 }
 
+/** One key on the TV keyboard: what it shows and what pressing it does. */
+private class KeySpec(
+    val text: String? = null,
+    val icon: ImageVector? = null,
+    val label: String? = null,
+    val onClick: () -> Unit
+)
+
+/**
+ * The TV keyboard: the voice key on top, six rows of letters and digits, a row of Space,
+ * backspace and the system keyboard, then Search.
+ *
+ * D-pad rules live in [KeyGrid] and [HoldGesture]:
+ * - Left/Right step along a row. At a row's end a tap wraps to the other end, and holding for
+ *   [SEARCH_LONG_PRESS_MS] leaves the keyboard: Left to the rail ([onGoToRail]), Right to the
+ *   recent searches or results ([onEnterContent]).
+ * - Up/Down move between rows and wrap top to bottom and back; holding does nothing more.
+ *
+ * Focus entering the keyboard through [entryRequester] (or by moving into it) lands on the key
+ * that last held it. [onFocusWithinChanged] reports whether any key holds focus.
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun TvKeyboard(
     onKeyPress: (String) -> Unit,
     onBackspace: () -> Unit,
     onSpace: () -> Unit,
     onOpenSystemKeyboard: () -> Unit,
+    onSearch: () -> Unit,
     // Null when the device has no speech recognizer: the key is not shown.
     onVoiceSearch: (() -> Unit)? = null,
     entryRequester: FocusRequester,
-    drawerRequester: FocusRequester,
-    isTopNav: Boolean,
-    hasResults: Boolean,
-    contentEntryRequester: FocusRequester? = null
+    onGoToRail: () -> Unit,
+    onEnterContent: () -> Unit,
+    onFocusWithinChanged: (Boolean) -> Unit = {}
 ) {
-    val keys = remember {
+    val letters = remember {
         listOf(
             "a", "b", "c", "d", "e", "f",
             "g", "h", "i", "j", "k", "l",
@@ -745,148 +806,113 @@ fun TvKeyboard(
             "5", "6", "7", "8", "9", "0"
         )
     }
+    val hasVoice = onVoiceSearch != null
+    val grid = remember(hasVoice) {
+        KeyGrid(
+            buildList {
+                if (hasVoice) add(listOf(KEYBOARD_COLUMNS))
+                repeat(letters.size / KEYBOARD_COLUMNS) { add(List(KEYBOARD_COLUMNS) { 1 }) }
+                add(listOf(2, 2, 2))
+                add(listOf(KEYBOARD_COLUMNS))
+            }
+        )
+    }
+    val specs = buildList {
+        if (onVoiceSearch != null) add(KeySpec(icon = Icons.Default.Mic, label = "Voice", onClick = onVoiceSearch))
+        letters.forEach { letter -> add(KeySpec(text = letter, onClick = { onKeyPress(letter) })) }
+        add(KeySpec(icon = Icons.Default.SpaceBar, label = "Space", onClick = onSpace))
+        add(KeySpec(icon = Icons.AutoMirrored.Filled.Backspace, label = "Back", onClick = onBackspace))
+        add(KeySpec(icon = Icons.Default.Keyboard, label = "Keyboard", onClick = onOpenSystemKeyboard))
+        add(KeySpec(icon = Icons.Default.Search, label = "Search", onClick = onSearch))
+    }
+    val requesters = remember(grid) { List(grid.slots.size) { FocusRequester() } }
 
-    // MEMORY STATE: KEYBOARD
-    var lastFocusedIndex by remember { mutableIntStateOf(0) }
+    // MEMORY STATE: the key that last held focus (entry lands there), and the column Up/Down
+    // keep as they cross the full-width and wide keys. Starts on "a", not the voice key.
+    var lastFocusedId by remember(grid) { mutableIntStateOf(if (hasVoice) 1 else 0) }
+    var anchorCol by remember(grid) { mutableIntStateOf(0) }
+    fun focusKey(slot: KeySlot) {
+        runCatching { requesters[slot.id].requestFocus() }
+    }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(6),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(top = 11.dp, start = 6.dp, end = 6.dp, bottom = 10.dp)
+    val gap = 4.dp
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 11.dp, start = 6.dp, end = 6.dp, bottom = 10.dp)
+            .onFocusChanged { onFocusWithinChanged(it.hasFocus) }
+            .focusRequester(entryRequester)
+            .focusProperties { enter = { requesters[lastFocusedId] } }
+            .focusGroup()
     ) {
-        itemsIndexed(keys) { index, key ->
-            val isLeftEdge = index % 6 == 0
-            val isRightEdge = (index + 1) % 6 == 0
-            val isTopRow = index < 6
-
-            // MAGNET LOGIC: KEYBOARD
-            val isRemembered = index == lastFocusedIndex
-
-            KeyButton(
-                text = key,
-                onClick = { onKeyPress(key) },
-                // Attach 'entryRequester' ONLY to the remembered item
-                modifier = Modifier
-                    .onFocusChanged { if (it.isFocused) lastFocusedIndex = index }
-                    .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
-                    .onPreviewKeyEvent {
-                        if (it.type == KeyEventType.KeyDown) {
-                            when {
-                                // Left arrow on left edge -> go to drawer/topnav
-                                isLeftEdge && it.key == Key.DirectionLeft -> {
-                                    if (!isTopNav) drawerRequester.openNavDrawer()
-                                    true
-                                }
-                                // Right arrow on right edge -> focus first visible poster or block
-                                isRightEdge && it.key == Key.DirectionRight -> {
-                                    if (!hasResults) return@onPreviewKeyEvent true
-                                    if (contentEntryRequester != null) {
-                                        runCatching { contentEntryRequester.requestFocus() }
-                                        return@onPreviewKeyEvent true
+        val columnWidth = (maxWidth - gap * (KEYBOARD_COLUMNS - 1)) / KEYBOARD_COLUMNS
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+            grid.rows.forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { slot ->
+                        val spec = specs[slot.id]
+                        val leftHold = remember { HoldGesture() }
+                        val rightHold = remember { HoldGesture() }
+                        Box(modifier = Modifier.width(columnWidth * slot.span + gap * (slot.span - 1))) {
+                            KeyButton(
+                                text = spec.text,
+                                icon = spec.icon,
+                                label = spec.label,
+                                onClick = spec.onClick,
+                                modifier = Modifier
+                                    .focusRequester(requesters[slot.id])
+                                    .onFocusChanged {
+                                        if (it.isFocused) {
+                                            lastFocusedId = slot.id
+                                            if (slot.span == 1) anchorCol = slot.startCol
+                                        }
                                     }
-                                    false
-                                }
-                                // Up arrow on top row -> go to drawer/topnav
-                                isTopRow && it.key == Key.DirectionUp -> {
-                                    if (isTopNav) {
-                                        runCatching { drawerRequester.requestFocus() }
+                                    .onPreviewKeyEvent { event ->
+                                        val native = event.nativeKeyEvent
+                                        when (event.key) {
+                                            Key.DirectionLeft, Key.DirectionRight -> {
+                                                val toLeft = event.key == Key.DirectionLeft
+                                                val neighbour = if (toLeft) grid.left(slot) else grid.right(slot)
+                                                if (neighbour != null) {
+                                                    if (event.type == KeyEventType.KeyDown) {
+                                                        anchorCol = neighbour.startCol
+                                                        focusKey(neighbour)
+                                                    }
+                                                } else {
+                                                    // A row's end: tap wraps round, a long hold leaves.
+                                                    val hold = if (toLeft) leftHold else rightHold
+                                                    when (event.type) {
+                                                        KeyEventType.KeyDown ->
+                                                            if (hold.down(native.downTime, native.eventTime, native.repeatCount) == HoldResult.LONG) {
+                                                                if (toLeft) onGoToRail() else onEnterContent()
+                                                            }
+                                                        KeyEventType.KeyUp ->
+                                                            if (hold.up(native.downTime) == HoldResult.TAP) {
+                                                                val across = if (toLeft) grid.wrapLeft(slot) else grid.wrapRight(slot)
+                                                                anchorCol = across.startCol
+                                                                focusKey(across)
+                                                            }
+                                                        else -> Unit
+                                                    }
+                                                }
+                                                true
+                                            }
+                                            Key.DirectionUp, Key.DirectionDown -> {
+                                                if (event.type == KeyEventType.KeyDown) {
+                                                    focusKey(
+                                                        if (event.key == Key.DirectionUp) grid.up(slot, anchorCol)
+                                                        else grid.down(slot, anchorCol)
+                                                    )
+                                                }
+                                                true
+                                            }
+                                            else -> false
+                                        }
                                     }
-                                    true // Always consume to prevent default focus search finding sidebar
-                                }
-                                else -> false
-                            }
-                        } else false
-                    }
-            )
-        }
-
-        val spaceIndex = keys.size
-        item(span = { GridItemSpan(2) }) {
-            val isRemembered = spaceIndex == lastFocusedIndex
-            KeyButton(
-                icon = Icons.Default.SpaceBar,
-                onClick = onSpace,
-                label = "Space",
-                modifier = Modifier
-                    .onFocusChanged { if (it.isFocused) lastFocusedIndex = spaceIndex }
-                    .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
-                    .onPreviewKeyEvent {
-                        if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
-                            if (!isTopNav) drawerRequester.openNavDrawer()
-                            true
-                        } else false
-                    }
-            )
-        }
-
-        val backIndex = keys.size + 1
-        item(span = { GridItemSpan(2) }) {
-            val isRemembered = backIndex == lastFocusedIndex
-            KeyButton(
-                icon = Icons.AutoMirrored.Filled.Backspace,
-                onClick = onBackspace,
-                label = "Back",
-                modifier = Modifier
-                    .onFocusChanged { if (it.isFocused) lastFocusedIndex = backIndex }
-                    .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
-            )
-        }
-
-        val hideIndex = keys.size + 2
-        item(span = { GridItemSpan(2) }) {
-            val isRemembered = hideIndex == lastFocusedIndex
-            KeyButton(
-                icon = Icons.Default.Keyboard,
-                onClick = onOpenSystemKeyboard,
-                label = "Keyboard",
-                modifier = Modifier
-                    .onFocusChanged { if (it.isFocused) lastFocusedIndex = hideIndex }
-                    .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
-                    .onPreviewKeyEvent {
-                        if (it.key == Key.DirectionRight && it.type == KeyEventType.KeyDown) {
-                            if (!hasResults) return@onPreviewKeyEvent true
-                            if (contentEntryRequester != null) {
-                                runCatching { contentEntryRequester.requestFocus() }
-                                return@onPreviewKeyEvent true
-                            }
-                            false
-                        } else false
-                    }
-            )
-        }
-
-        if (onVoiceSearch != null) {
-            val voiceIndex = keys.size + 3
-            item(span = { GridItemSpan(6) }) {
-                val isRemembered = voiceIndex == lastFocusedIndex
-                KeyButton(
-                    icon = Icons.Default.Mic,
-                    onClick = onVoiceSearch,
-                    label = "Voice",
-                    modifier = Modifier
-                        .onFocusChanged { if (it.isFocused) lastFocusedIndex = voiceIndex }
-                        .then(if (isRemembered) Modifier.focusRequester(entryRequester) else Modifier)
-                        .onPreviewKeyEvent {
-                            if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            when (it.key) {
-                                Key.DirectionLeft -> {
-                                    if (!isTopNav) drawerRequester.openNavDrawer()
-                                    true
-                                }
-                                Key.DirectionRight -> {
-                                    if (!hasResults) return@onPreviewKeyEvent true
-                                    if (contentEntryRequester != null) {
-                                        runCatching { contentEntryRequester.requestFocus() }
-                                        return@onPreviewKeyEvent true
-                                    }
-                                    false
-                                }
-                                else -> false
-                            }
+                            )
                         }
-                )
+                    }
+                }
             }
         }
     }

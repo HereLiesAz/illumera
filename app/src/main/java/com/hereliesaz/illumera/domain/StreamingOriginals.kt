@@ -3,6 +3,25 @@ package com.hereliesaz.illumera.domain
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import java.util.Locale
 
+/** The streaming services the Streaming Catalogs addon lists, by catalog id. */
+object StreamingServices {
+    val names: Map<String, String> = linkedMapOf(
+        "nfx" to "Netflix", "hbm" to "HBO Max", "dnp" to "Disney+", "amp" to "Prime Video",
+        "atp" to "Apple TV+", "pmp" to "Paramount+", "hlu" to "Hulu", "pcp" to "Peacock"
+    )
+
+    private fun normalized(title: String) = title.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
+
+    private val normalizedNames: Set<String> = names.values.mapTo(mutableSetOf(), ::normalized)
+
+    /**
+     * True when a Home row [title] names one of the services ("Netflix", "Prime  Video",
+     * "Disney+"). Home rows merge a service's movie and series catalogs under one title and
+     * carry no catalog id, so the title is what identifies them.
+     */
+    fun isServiceRowTitle(title: String): Boolean = normalized(title) in normalizedNames
+}
+
 /**
  * Which titles are a streaming service's own productions, judged from TMDB's network/company
  * discover results. Titles are matched by name and release year, since the addon catalogs and

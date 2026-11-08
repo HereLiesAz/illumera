@@ -303,3 +303,15 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 - With a linked debrid service and a **VPN up**: **Prefer debrid off** runs the torrent locally. **Prefer debrid on** tries debrid first for `DEBRID_PREFERRED_WAIT_SECONDS` (15 s); a cached or already-added title plays at once, any other switches to the local torrent ("Debrid didn't deliver in time, starting the torrent").
 - With no debrid service linked, torrents run locally; Require VPN still gates them.
 - Regression sources: `PlaybackSessionActionsTest` ("Debrid and the VPN") and the existing debrid-first tests. Run on a device with and without a VPN to confirm; not compiled in the authoring environment (no Android SDK).
+
+## Home streaming-service sort chips and Search keyboard (November 8, 2026) — device validation pending
+
+- **Home → Netflix / HBO Max / Disney+ / Prime Video / Apple TV+ / Paramount+ / Hulu / Peacock rows:** the row title is followed by sort chips (Default, Rating, Newest, Oldest, A–Z, Z–A). Selecting one re-orders that row only; the choice is kept for the session. Rows with any other title have no chips.
+- **Reaching header controls:** D-pad Up from a card in such a row stops on its chips first (Left/Right move between them, Enter selects, Down returns to the cards, another Up goes to the row above). The same stop now exists for the thumbs up / down on the "More like …" / "Because you watched …" rows, which Up used to skip past.
+- **Search keyboard (TV):**
+  - Layout: mic key on top, then letters and digits, then Space / Backspace / System keyboard, then a full-width **Search** key (it replaces the mic key at the bottom).
+  - Left/Right: a tap at a row's end wraps to the other end. Holding for 0.8 s (`SEARCH_LONG_PRESS_MS`, a guess to tune on a device) leaves the keyboard: Left to the rail, Right to the recent searches or results. Holding Left to run along a row and arriving at its end does not leave until held there.
+  - Up/Down: move between rows and wrap top to bottom and back; holding does nothing more than keep wrapping (Up on the top row no longer goes to the top nav).
+  - Back (remote) on the keyboard goes to the rail; from the results it returns to the keyboard first. It no longer clears the query.
+  - Search with nothing typed goes to the recent searches. With a query it runs the search at once (no typing delay) and goes to the results when they arrive; if there are none, focus stays on the key.
+- Regression sources: `SearchKeyboardNavTest`, `RowSortChipsTest`, `SearchViewModelTest` (`searchNow`, `completedQuery`). Focus behaviour needs a D-pad check on Android TV.

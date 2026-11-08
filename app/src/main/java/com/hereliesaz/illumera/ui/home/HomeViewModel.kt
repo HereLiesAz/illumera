@@ -169,6 +169,14 @@ class HomeViewModel @Inject constructor(
     /** Row counts and thumbs votes, for the personal rows' header controls. */
     val personalRowSettings = personalRowPrefs.settings
 
+    private val _rowSortOrders = MutableStateFlow<Map<String, ScreenGenreRows.TitleOrder>>(emptyMap())
+
+    /** Sort chosen on a streaming-service row's header, by row id. Kept for the session. */
+    val rowSortOrders: StateFlow<Map<String, ScreenGenreRows.TitleOrder>> = _rowSortOrders
+
+    fun setRowSortOrder(rowId: String, order: ScreenGenreRows.TitleOrder) =
+        _rowSortOrders.update { it + (rowId to order) }
+
     /**
      * Resolve an autoplay trailer independently of the user's addon selection:
      * configured trailer addon first, TMDB when a key is available, then public
