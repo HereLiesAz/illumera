@@ -700,6 +700,7 @@ fun DetailsScreen(
                                     else -> episodeDisplayTitle(ep)
                                 }
                                 pendingPlaybackId = trackId
+                                pendingReplayFromBeginning = false
                                 pendingPlaybackType = type
                                 pendingPlaybackTitle = epTitle
                                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, forceSourcePicker = true)
