@@ -722,6 +722,8 @@ class PlaybackSessionViewModel @Inject constructor(
         // regardless of which episode the user actually intended last.
         if (isEpisodeSwitchLoading) return
         val epPlaybackId = episodePlaybackId(playbackSeriesId, episode, currentEpisodeList)
+        // An explicit selection is a replay even when source selection happens later.
+        replayFromBeginningId = epPlaybackId
         val epStreamId = canonicalEpisodeRequestId(episode)
         val epTitle = episodeDisplayTitle(episode)
 
