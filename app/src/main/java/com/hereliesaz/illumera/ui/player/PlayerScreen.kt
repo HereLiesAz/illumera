@@ -67,6 +67,7 @@ fun PlayerScreen(
     initialSubtitleDelayMs: Long = 0L,
     playbackSettings: PlaybackSettings = PlaybackSettings(),
     skipSegmentInfo: SkipSegmentInfo? = null,
+    replayFromBeginning: Boolean = false,
     nextEpisodeInfo: NextEpisodeInfo? = null,
     onAutoplayNextEpisode: ((currentSourceUrl: String?) -> Unit)? = null,
     episodes: List<MetaVideo> = emptyList(),
@@ -321,7 +322,13 @@ fun PlayerScreen(
 
     LaunchedEffect(movieId, videoUrl, backendType, autoFallbackEnabled) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
-        val resumePosition = viewModel.getResumePosition(movieId)
+        val savedPosition = viewModel.getResumePosition(movieId)
+        // A saved outro position is not a useful resume point. Explicit replay also
+        // starts from zero, without erasing the episode's existing watch history.
+        val outroStart = skipSegmentInfo?.outroStartMs
+        val resumePosition = if (replayFromBeginning ||
+            (outroStart != null && outroStart > 0L && savedPosition >= outroStart)
+        ) 0L else savedPosition
         (playbackController as? ExoPlayerBackend)?.setVolume(
             if (movieId.startsWith("trailer_")) 0.6f else 1f
         )
