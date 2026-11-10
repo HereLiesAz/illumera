@@ -1287,10 +1287,15 @@ class MainActivity : ComponentActivity() {
                                     assRendererEnabled = currentProfile?.assRendererEnabled ?: false
                                 ),
                                 skipSegmentInfo = skipSegmentInfo,
+                                replayFromBeginning = session.replayFromBeginningId == session.selectedPlaybackId,
                                 nextEpisodeInfo = if (nextEpisode != null) nextEpisodeInfo else null,
                                 onAutoplayNextEpisode = if (nextEpisode != null) {
                                     { playerCurrentSourceUrl ->
-                                        session.autoplayNextEpisode(nextEpisode, playerCurrentSourceUrl, currentProfile)
+                                        // Resolve at click time: a callback from the previous episode must
+                                        // never advance from stale playback state.
+                                        session.nextEpisode()?.let { currentNext ->
+                                            session.autoplayNextEpisode(currentNext, playerCurrentSourceUrl, currentProfile)
+                                        }
                                     }
                                 } else null,
                                 episodes = session.currentEpisodeList,
