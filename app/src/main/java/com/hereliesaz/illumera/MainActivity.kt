@@ -1099,7 +1099,7 @@ class MainActivity : ComponentActivity() {
                                 autoSelectSource = currentProfile?.autoSelectSource ?: false,
                                 rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true,
                                 onPosterResolved = { resolvedPoster = it },
-                                onPlayClick = { url, playbackId, playbackType, playbackTitle, seriesTitle, logo, stream, addonSubtitles, availableStreams, episodes ->
+                                onPlayClick = { url, playbackId, playbackType, playbackTitle, seriesTitle, logo, stream, addonSubtitles, availableStreams, episodes, replayFromBeginning ->
                                     session.startFromDetails(
                                         origin = origin(seriesTitle, logo),
                                         url = url,
@@ -1110,6 +1110,7 @@ class MainActivity : ComponentActivity() {
                                         addonSubtitles = addonSubtitles,
                                         availableStreams = availableStreams,
                                         episodes = episodes,
+                                        replayFromBeginning = replayFromBeginning,
                                         playerPreference = currentProfile?.playerPreference,
                                         persistProfileState = mainViewModel::persistActiveProfileState
                                     )

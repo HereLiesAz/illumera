@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -132,6 +133,9 @@ fun PlayerScreen(
     // The URL the player was last told to load. Until it matches videoUrl the player still
     // holds the previous source's state (a torrent resolving, or a load not yet issued).
     var loadedUrl by remember { mutableStateOf<String?>(null) }
+    var initialResumePosition by remember(movieId, videoUrl) { mutableLongStateOf(0L) }
+    var resumeLoadedAtMs by remember(movieId, videoUrl) { mutableLongStateOf(0L) }
+    var lateOutroCorrectionApplied by remember(movieId, videoUrl) { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isReady, uiState.durationMs, videoUrl, loadedUrl, autoFallbackEnabled) {
         if (!autoFallbackEnabled || suspectHandledForUrl || videoUrl.isBlank() || loadedUrl != videoUrl) return@LaunchedEffect
@@ -329,6 +333,9 @@ fun PlayerScreen(
         val resumePosition = if (replayFromBeginning ||
             (outroStart != null && outroStart > 0L && savedPosition >= outroStart)
         ) 0L else savedPosition
+        initialResumePosition = resumePosition
+        resumeLoadedAtMs = android.os.SystemClock.elapsedRealtime()
+        lateOutroCorrectionApplied = false
         (playbackController as? ExoPlayerBackend)?.setVolume(
             if (movieId.startsWith("trailer_")) 0.6f else 1f
         )
@@ -353,6 +360,24 @@ fun PlayerScreen(
         playbackController.setSubtitleBackgroundColor(playbackSettings.subtitleBackgroundColor)
         if (initialSubtitleDelayMs != 0L) {
             playbackController.setSubtitleDelay(initialSubtitleDelayMs)
+        }
+    }
+
+    // IntroDB can respond after the saved resume point has already been loaded. Correct
+    // an outro resume only while the player is still close to its initial position;
+    // never pull a viewer back after they have watched or sought elsewhere.
+    LaunchedEffect(skipSegmentInfo?.outroStartMs, uiState.isReady, uiState.positionMs, loadedUrl) {
+        val outro = skipSegmentInfo?.outroStartMs ?: return@LaunchedEffect
+        if (loadedUrl != videoUrl || lateOutroCorrectionApplied ||
+            initialResumePosition <= 0L || outro <= 0L ||
+            initialResumePosition < outro || !uiState.isReady
+        ) return@LaunchedEffect
+        val elapsedMs = android.os.SystemClock.elapsedRealtime() - resumeLoadedAtMs
+        if (elapsedMs !in 0L..20_000L) return@LaunchedEffect
+        val driftMs = kotlin.math.abs(uiState.positionMs - initialResumePosition)
+        if (driftMs <= elapsedMs + 2_000L) {
+            lateOutroCorrectionApplied = true
+            playbackController.seekTo(0L)
         }
     }
 

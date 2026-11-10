@@ -587,6 +587,38 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `Details replay starts over but Resume and autoplay do not inherit replay intent`() = runTest(dispatcher) {
+        val vm = session()
+        val stream = Stream(url = "https://cdn/one.mkv")
+        val origin = PlaybackOrigin("show", "tt1", "Show", "poster", "")
+        val episodes = listOf(
+            MetaVideo(title = "One", season = 1, episode = 1),
+            MetaVideo(title = "Two", season = 1, episode = 2)
+        )
+
+        fun start(replay: Boolean) = vm.startFromDetails(
+            origin = origin, url = stream.url!!, playbackId = "tt1:1:1",
+            playbackType = "series", playbackTitle = "One", stream = stream,
+            addonSubtitles = emptyList(), availableStreams = emptyList(),
+            episodes = episodes, replayFromBeginning = replay,
+            playerPreference = null, persistProfileState = {}
+        )
+
+        start(true)
+        runCurrent()
+        assertEquals("tt1:1:1", vm.replayFromBeginningId)
+
+        start(false)
+        runCurrent()
+        assertEquals("", vm.replayFromBeginningId)
+
+        start(true)
+        runCurrent()
+        vm.autoplayNextEpisode(episodes[1], null, manualProfile)
+        assertEquals("", vm.replayFromBeginningId)
+    }
+
+    @Test
     fun `episode ids come from the Details page that started playback, not an earlier title`() = runTest(dispatcher) {
         val vm = session()
         val showA = listOf(MetaVideo(title = "A1", season = 1, episode = 1), MetaVideo(title = "A2", season = 1, episode = 2))
