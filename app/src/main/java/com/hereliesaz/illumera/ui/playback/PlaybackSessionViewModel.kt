@@ -138,6 +138,7 @@ class PlaybackSessionViewModel @Inject constructor(
     var selectedVideoUrl by saved("selectedVideoUrl", "")
     var selectedTrailerAudioUrl by saved("selectedTrailerAudioUrl", "")
     var selectedPlaybackId by saved("selectedPlaybackId", "")
+    var replayFromBeginningId by saved("replayFromBeginningId", "")
     var selectedPlaybackType by saved("selectedPlaybackType", "movie")
     var selectedPlaybackTitle by saved("selectedPlaybackTitle", "")
     var selectedPlaybackPoster by saved("selectedPlaybackPoster", "")
@@ -420,6 +421,7 @@ class PlaybackSessionViewModel @Inject constructor(
         fun select(videoUrl: String) {
             adoptOrigin(origin)
             selectedPlaybackId = playbackId
+            replayFromBeginningId = ""
             selectedPlaybackType = playbackType
             selectedPlaybackTitle = playbackTitle
             selectedPlaybackPoster = origin.poster
@@ -535,7 +537,8 @@ class PlaybackSessionViewModel @Inject constructor(
             profile
         )
 
-        val nextPlaybackId = episodePlaybackId(playbackSeriesId, nextEpisode)
+        val nextPlaybackId = episodePlaybackId(playbackSeriesId, nextEpisode, currentEpisodeList)
+        replayFromBeginningId = ""
         val nextStreamId = canonicalEpisodeRequestId(nextEpisode)
         val nextPlaybackTitle = episodeDisplayTitle(nextEpisode)
 
@@ -718,7 +721,7 @@ class PlaybackSessionViewModel @Inject constructor(
         // network call happened to finish last would otherwise win,
         // regardless of which episode the user actually intended last.
         if (isEpisodeSwitchLoading) return
-        val epPlaybackId = episodePlaybackId(playbackSeriesId, episode)
+        val epPlaybackId = episodePlaybackId(playbackSeriesId, episode, currentEpisodeList)
         val epStreamId = canonicalEpisodeRequestId(episode)
         val epTitle = episodeDisplayTitle(episode)
 
@@ -810,6 +813,7 @@ class PlaybackSessionViewModel @Inject constructor(
                     profile
                 )
 
+                replayFromBeginningId = epPlaybackId
                 openEpisode(
                     playbackId = epPlaybackId,
                     title = epTitle,
