@@ -145,7 +145,7 @@ fun DetailsScreen(
     resumePlaybackHint: String? = null,
     autoSelectSource: Boolean = false,
     rememberSourceSelection: Boolean = true,
-    onPlayClick: (String, String, String, String, String, String, Stream, List<AddonSubtitle>, List<Stream>, List<MetaVideo>) -> Unit,
+    onPlayClick: (String, String, String, String, String, String, Stream, List<AddonSubtitle>, List<Stream>, List<MetaVideo>, Boolean) -> Unit,
     onAddToQueue: (QueueItem) -> Unit = {},
     queueAutoPlayId: String? = null,
     onNavigateToDetails: (type: String, id: String) -> Unit = { _, _ -> },
@@ -197,6 +197,7 @@ fun DetailsScreen(
     var pendingPlaybackId by remember(type, id) { mutableStateOf(id) }
     var pendingPlaybackType by remember(type, id) { mutableStateOf(type) }
     var pendingPlaybackTitle by remember(type, id) { mutableStateOf("") }
+    var pendingReplayFromBeginning by remember(type, id) { mutableStateOf(false) }
     val autoPlayStream = state.autoPlayStream
     val addonSubtitles = state.addonSubtitles
     val availableStreams = state.availableStreams
@@ -221,7 +222,8 @@ fun DetailsScreen(
                 stream,
                 addonSubtitles,
                 availableStreams,
-                movie?.videos ?: emptyList()
+                movie?.videos ?: emptyList(),
+                pendingReplayFromBeginning
             )
         }
         viewModel.consumeAutoPlayStream()
@@ -624,6 +626,7 @@ fun DetailsScreen(
                                     else -> episodeDisplayTitle(ep)
                                 }
                                 pendingPlaybackId = trackId
+                                pendingReplayFromBeginning = false
                                 pendingPlaybackType = type
                                 pendingPlaybackTitle = epTitle
                                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
@@ -1067,6 +1070,7 @@ fun DetailsScreen(
                 val epStreamId = episodeStreamId(streamId, episode)
                 val epTitle = episodeDisplayTitle(episode)
                 pendingPlaybackId = trackId
+                pendingReplayFromBeginning = true
                 pendingPlaybackType = type
                 pendingPlaybackTitle = epTitle
                 viewModel.loadStreams(type, epStreamId, epTitle, sourceSelectionId = trackId, autoSelectSource = autoSelectSource, rememberSourceSelection = rememberSourceSelection)
