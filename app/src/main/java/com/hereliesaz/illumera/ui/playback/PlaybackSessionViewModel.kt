@@ -398,6 +398,7 @@ class PlaybackSessionViewModel @Inject constructor(
         addonSubtitles: List<AddonSubtitle>,
         availableStreams: List<Stream>,
         episodes: List<MetaVideo>,
+        replayFromBeginning: Boolean = false,
         playerPreference: String?,
         persistProfileState: suspend () -> Unit
     ) {
@@ -421,7 +422,7 @@ class PlaybackSessionViewModel @Inject constructor(
         fun select(videoUrl: String) {
             adoptOrigin(origin)
             selectedPlaybackId = playbackId
-            replayFromBeginningId = ""
+            replayFromBeginningId = if (replayFromBeginning) playbackId else ""
             selectedPlaybackType = playbackType
             selectedPlaybackTitle = playbackTitle
             selectedPlaybackPoster = origin.poster
