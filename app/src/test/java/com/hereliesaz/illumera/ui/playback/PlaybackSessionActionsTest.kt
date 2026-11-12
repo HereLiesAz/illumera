@@ -323,6 +323,67 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `a first frame timeout retries another source instead of interrupting autoplay`() = runTest(dispatcher) {
+        val first = Stream(name = "First", url = "https://cdn/first.mkv")
+        val second = Stream(name = "Second", url = "https://cdn/second.mkv")
+        nextStreams(first, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        assertEquals(first, vm.currentStream)
+
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+
+        assertEquals(second, vm.currentStream)
+        assertEquals(second.url, vm.selectedVideoUrl)
+        assertEquals(nextId, vm.awaitingFirstFrameId)
+        assertNull(vm.pendingEpisodeSwitch)
+
+        vm.onFirstFrame()
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
+    fun `autoplay opens the picker only after all distinct sources time out`() = runTest(dispatcher) {
+        val first = Stream(name = "First", url = "https://cdn/first.mkv")
+        val duplicate = Stream(name = "Duplicate", url = "https://cdn/first.mkv")
+        val second = Stream(name = "Second", url = "https://cdn/second.mkv")
+        nextStreams(first, duplicate, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertEquals(second, vm.currentStream)
+        assertNull(vm.pendingEpisodeSwitch)
+
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertNull(vm.awaitingFirstFrameId)
+        assertEquals(listOf(first, duplicate, second), vm.pendingEpisodeSwitch!!.streams)
+    }
+
+    @Test
+    fun `a remembered unplayable source cannot block autoplay`() = runTest(dispatcher) {
+        val broken = Stream(name = "Broken", url = "   ")
+        val playable = Stream(name = "Playable", url = "https://cdn/working.mkv")
+        nextStreams(broken, playable)
+        every { sourceSelectionStore.findPreferredStream(nextId, any()) } returns broken
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+
+        assertEquals(playable, vm.currentStream)
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
     fun `the first frame clears the wait`() = runTest(dispatcher) {
         nextStreams(Stream(name = "A", url = "https://cdn/a.mkv"))
         val vm = session()

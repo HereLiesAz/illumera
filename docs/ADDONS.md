@@ -74,7 +74,7 @@ A group is one episode, or the whole movie when `season` is null. Songs are in o
 
 ### Episode switching with `bingeGroup`
 
-When moving to the next episode with autoplay or auto-select on, illumera prefers a stream with the **same `bingeGroup` from the same addon**. Then it tries the source the user picked last time, then the first playable stream. Keep `bingeGroup` stable across a season: same release group, same quality, same debrid service.
+When moving to the next episode with autoplay or auto-select on, illumera prefers a playable stream with the **same `bingeGroup` from the same addon**. Then it tries the source the user picked last time, then the first playable stream. If the chosen source does not draw a frame within 60 seconds, autoplay tries each remaining distinct playable source before showing the manual picker. A source referring to the file just watched is excluded. Keep `bingeGroup` stable across a season: same release group, same quality, same debrid service.
 
 ## Writing stream titles illumera can parse
 

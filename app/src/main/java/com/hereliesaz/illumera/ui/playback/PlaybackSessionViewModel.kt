@@ -606,12 +606,13 @@ class PlaybackSessionViewModel @Inject constructor(
 
                 // Off the main thread: ranking a long list froze the UI on TV boxes.
                 val ranked = rankStreams(rawStreams, profile, offMainThread = true)
-                fetchedStreams = ranked
                 // The next episode never plays from the file just watched: a stream that
                 // resolves to it (same link, or same torrent file) would only replay it.
                 val watchedUrl = playerCurrentSourceUrl ?: selectedVideoUrl
                 val watched = currentStream
                 val streams = ranked.filterNot { isSameFile(it, watched, watchedUrl) }
+                // Never offer the just-watched file again, even after an autoplay timeout.
+                fetchedStreams = streams
                 if (streams.size < ranked.size) {
                     // Expected behavior, not a fault: logged, never filed.
                     android.util.Log.i("Autoplay", "Skipped ${ranked.size - streams.size} source(s) for $nextPlaybackTitle that point at the episode just watched")
@@ -639,9 +640,11 @@ class PlaybackSessionViewModel @Inject constructor(
                 val rememberSource = profile?.rememberSourceSelection ?: true
                 val preferred = if (rememberSource) sourceSelectionStore.findPreferredStream(nextPlaybackId, streams) else null
                 // Priority 3: First playable (autoplay or autoSelectSource)
-                val streamToPlay = bingeMatch
-                    ?: preferred
-                    ?: if (autoplay || autoSelect) streams.firstOrNull(::isPlayable) else null
+                val streamToPlay = bingeMatch?.takeIf { resolvePlayableSourceUrl(it) != null }
+                    ?: preferred?.takeIf { resolvePlayableSourceUrl(it) != null }
+                    ?: if (autoplay || autoSelect) {
+                        streams.firstOrNull { resolvePlayableSourceUrl(it) != null }
+                    } else null
                 val nextUrl = streamToPlay?.let(::resolvePlayableSourceUrl)
 
                 if (streamToPlay == null || nextUrl == null) {
@@ -662,24 +665,60 @@ class PlaybackSessionViewModel @Inject constructor(
                 pendingEpisodeSwitch = null
                 switchStep = "opening the source"
                 playbackStatus = "Next episode · opening $nextPlaybackTitle"
-                // Opening can stall after the switch itself is done: the new
-                // episode never draws. Wait for its first frame, not the switch.
+                // A slow or dead stream must not hand an autoplay viewer a source picker
+                // while alternatives remain. Try the preferred source first, then each
+                // distinct playable URL in ranked order, waiting for a frame after each.
                 awaitingFirstFrameId = nextPlaybackId
-                val openedKind = if (nextUrl.startsWith("magnet:")) "torrent" else "direct link"
-                val openedFrom = streamToPlay.addonDisplayName ?: "unknown addon"
+                val sourceAttempts = listOf(streamToPlay) + streams.filterNot { it === streamToPlay }
+                val attemptedUrls = mutableSetOf(nextUrl)
                 firstFrameWatchdog = viewModelScope.launch {
-                    delay(AUTOPLAY_FIRST_FRAME_MS)
-                    if (episodeSwitchGeneration == switchGeneration &&
-                        awaitingFirstFrameId == nextPlaybackId
-                    ) {
+                    var watchedUrl = nextUrl
+                    while (true) {
+                        delay(AUTOPLAY_FIRST_FRAME_MS)
+                        if (episodeSwitchGeneration != switchGeneration ||
+                            awaitingFirstFrameId != nextPlaybackId ||
+                            selectedPlaybackId != nextPlaybackId
+                        ) break
+
+                        // The player's own source fallback may have started another stream.
+                        // Give that stream a full timeout rather than immediately skipping it.
+                        val currentUrl = currentStream?.let(::resolvePlayableSourceUrl)
+                        if (currentUrl != null && currentUrl != watchedUrl) {
+                            watchedUrl = currentUrl
+                            attemptedUrls += currentUrl
+                            continue
+                        }
+                        val openedKind = if (watchedUrl.startsWith("magnet:")) "torrent" else "direct link"
+                        val openedFrom = currentStream?.addonDisplayName ?: "unknown addon"
                         AppErrors.e(
                             "Autoplay",
                             "Next episode opened ($openedKind from $openedFrom) but drew no frame in " +
                                 "${AUTOPLAY_FIRST_FRAME_MS / 1000}s; url set: ${selectedVideoUrl.isNotBlank()}, " +
                                 "torrent: ${torrentProgress?.status ?: "none"}"
                         )
-                        awaitingFirstFrameId = null
-                        showSourceList()
+                        val nextAttempt = sourceAttempts.firstNotNullOfOrNull { candidate ->
+                            val url = resolvePlayableSourceUrl(candidate) ?: return@firstNotNullOfOrNull null
+                            if (url in attemptedUrls) null else candidate to url
+                        }
+                        if (nextAttempt == null) {
+                            awaitingFirstFrameId = null
+                            showSourceList()
+                            break
+                        }
+
+                        val (retryStream, retryUrl) = nextAttempt
+                        attemptedUrls += retryUrl
+                        watchedUrl = retryUrl
+                        playbackStatus = "Next episode · trying another source for $nextPlaybackTitle"
+                        openEpisode(
+                            playbackId = nextPlaybackId,
+                            title = nextPlaybackTitle,
+                            url = retryUrl,
+                            stream = retryStream,
+                            candidates = streams,
+                            subtitles = addonSubs,
+                            subtitleRequestId = nextStreamId
+                        )
                     }
                 }
                 openEpisode(
