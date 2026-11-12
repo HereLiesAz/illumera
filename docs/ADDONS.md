@@ -76,6 +76,8 @@ A group is one episode, or the whole movie when `season` is null. Songs are in o
 
 When moving to the next episode with autoplay or auto-select on, illumera prefers a playable stream with the **same `bingeGroup` from the same addon**. Then it tries the source the user picked last time, then the first playable stream. If the chosen source does not draw a frame within 60 seconds, autoplay tries each remaining distinct playable source before showing the manual picker. A source referring to the file just watched is excluded, but a different file index in the same season-pack magnet counts as a different episode. Keep `bingeGroup` stable across a season: same release group, same quality, same debrid service.
 
+Torrent peer-metadata timeouts are ordinary source failures: the player can try another source. They are logged locally but are not filed as application crashes; failed-source callbacks and ranked fallback remain active.
+
 ## Writing stream titles illumera can parse
 
 illumera reads quality, size, seeders and formats out of stream text. The fields it reads are `name`, `title`, `description` and `behaviorHints.filename`.

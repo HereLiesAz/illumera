@@ -45,6 +45,15 @@ class AppErrorsTest {
     }
 
     @Test
+    fun peerMetadataTimeoutIsHandledAsASourceFailureNotAnAppCrash() {
+        val timeout = "Timed out waiting for torrent metadata from peers"
+        assertTrue(isExpectedTorrentMetadataTimeout("LumeraTorrent", "Error in download: $timeout"))
+        assertTrue(isExpectedTorrentMetadataTimeout("LumeraTorrent", "Stream error: Torrent error: $timeout"))
+        assertFalse(isExpectedTorrentMetadataTimeout("LumeraTorrent", "Error in download: null pointer"))
+        assertFalse(isExpectedTorrentMetadataTimeout("AnotherSubsystem", "Error in download: $timeout"))
+    }
+
+    @Test
     fun uncaughtHandlerReceivesRedactedError() {
         var seen: Throwable? = null
         val handler = redactingHandler { _, e -> seen = e }
