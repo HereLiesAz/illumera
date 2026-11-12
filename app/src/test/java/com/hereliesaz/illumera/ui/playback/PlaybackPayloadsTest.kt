@@ -2,6 +2,7 @@ package com.hereliesaz.illumera.ui.playback
 
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
+import com.hereliesaz.illumera.data.model.stremio.StreamProxyHeaders
 import com.hereliesaz.illumera.data.player.PlaybackTrackSelectionStore
 import com.hereliesaz.illumera.data.player.SourceSelectionStore
 import com.hereliesaz.illumera.ui.player.PlayerSessionResult
@@ -63,6 +64,20 @@ class PlaybackPayloadsTest {
             listOf(direct2.url, resolvePlayableSourceUrl(torrent), direct1.url),
             payload.map { it.url }
         )
+    }
+
+    @Test
+    fun `selected source with the same URL but different headers stays first`() {
+        val first = direct1.copy(behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "old"))
+        ))
+        val second = direct1.copy(behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "new"))
+        ))
+        val payload = buildSourcePayload(listOf(first, second), selectedStream = second)
+        assertEquals(playerSourceId(second), payload.first().id)
+        assertEquals(listOf(second.behaviorHints?.proxyHeaders?.request, first.behaviorHints?.proxyHeaders?.request),
+            payload.map { it.requestHeaders })
     }
 
     @Test
@@ -188,6 +203,18 @@ class PlaybackPayloadsTest {
     fun `another file of the same torrent is not the file just watched`() {
         assertTrue(isSameFile(torrent.copy(infoHash = "ABC123"), torrent, null))
         assertFalse(isSameFile(torrent.copy(fileIdx = 3), torrent, null))
+    }
+
+    @Test
+    fun `a direct URL with different headers need not be the same file`() {
+        val watched = direct1.copy(behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "old"))
+        ))
+        val next = watched.copy(behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "new"))
+        ))
+        assertFalse(isSameFile(next, watched, watched.url))
+        assertTrue(isSameFile(watched, watched, watched.url))
     }
 
     @Test

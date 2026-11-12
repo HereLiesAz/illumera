@@ -180,7 +180,7 @@ internal fun buildSourcePayload(
     streams: List<Stream>,
     selectedStream: Stream
 ): List<PlayerSourceOption> {
-    val selectedUrl = resolvePlayableSourceUrl(selectedStream)
+    val selectedSourceId = playerSourceId(selectedStream)
     val options = streams
         .mapNotNull(::buildPlayerSourceOption)
         .distinctBy { it.id }
@@ -189,7 +189,7 @@ internal fun buildSourcePayload(
     // ones before it. The player's own fallback walks forward from the selection, so it tries
     // every later-ranked source before returning to earlier ones, which are kept last so the
     // viewer can still pick them by hand.
-    val selectedIndex = options.indexOfFirst { it.url == selectedUrl }
+    val selectedIndex = options.indexOfFirst { it.id == selectedSourceId }
     return if (selectedIndex <= 0) options
     else options.drop(selectedIndex) + options.take(selectedIndex)
 }
@@ -377,12 +377,16 @@ internal fun handlePlayerSessionEnd(
 internal fun isSameFile(stream: Stream, watched: Stream?, watchedUrl: String?): Boolean {
     val sameResolvedUrl = !watchedUrl.isNullOrBlank() && resolvePlayableSourceUrl(stream) == watchedUrl
     val magnetUrl = watchedUrl?.startsWith("magnet:", ignoreCase = true) == true
-    // A season pack has one magnet for many episode files. The URL alone is
-    // insufficient; compare file indices, filenames or episode tags below.
-    if (sameResolvedUrl && (!magnetUrl || watched == null)) return true
+    val sameHeaders = watched == null ||
+        stream.behaviorHints?.proxyHeaders?.request.orEmpty() ==
+        watched.behaviorHints?.proxyHeaders?.request.orEmpty()
+    // A season pack has one magnet for many files; a direct URL can likewise
+    // serve different media under different request headers.
+    if (sameResolvedUrl && !magnetUrl && sameHeaders) return true
+    if (sameResolvedUrl && watched == null) return true
     if (watched == null) return false
     if (!stream.url.isNullOrBlank() && stream.url == watched.url &&
-        !stream.url.startsWith("magnet:", ignoreCase = true)
+        !stream.url.startsWith("magnet:", ignoreCase = true) && sameHeaders
     ) return true
     val sameHash = !stream.infoHash.isNullOrBlank() &&
         stream.infoHash?.equals(watched.infoHash, ignoreCase = true) == true
