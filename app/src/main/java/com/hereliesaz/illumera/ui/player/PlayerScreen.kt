@@ -156,8 +156,8 @@ fun PlayerScreen(
     // Keyed on the id alone: a new source list arrives before the player opens its source.
     LaunchedEffect(uiState.currentSourceId) {
         if (videoUrl.isBlank()) return@LaunchedEffect
-        val url = sources.firstOrNull { it.id == uiState.currentSourceId }?.url ?: return@LaunchedEffect
-        onSourceChanged?.invoke(url)
+        val sourceId = uiState.currentSourceId ?: return@LaunchedEffect
+        if (sources.any { it.id == sourceId }) onSourceChanged?.invoke(sourceId)
     }
 
     LaunchedEffect(uiState.hasRenderedFirstFrame) {
@@ -324,7 +324,10 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(movieId, videoUrl, backendType, autoFallbackEnabled) {
+    // Same URL can represent a different file index or a different set of headers.
+    // Reload on source identity changes, not only URL or episode changes.
+    val initialSourceId = sources.firstOrNull()?.id
+    LaunchedEffect(movieId, videoUrl, initialSourceId, backendType, autoFallbackEnabled) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
         val savedPosition = viewModel.getResumePosition(movieId)
         // A saved outro position is not a useful resume point. Explicit replay also

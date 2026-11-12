@@ -8,6 +8,7 @@ import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.data.model.stremio.MetaVideo
 import com.hereliesaz.illumera.data.model.stremio.Stream
 import com.hereliesaz.illumera.data.model.stremio.StreamBehaviorHints
+import com.hereliesaz.illumera.data.model.stremio.StreamProxyHeaders
 import com.hereliesaz.illumera.data.player.PlaybackTrackSelectionStore
 import com.hereliesaz.illumera.data.player.SourceSelectionStore
 import com.hereliesaz.illumera.data.queue.QueueItem
@@ -323,6 +324,107 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `a first frame timeout retries another source instead of interrupting autoplay`() = runTest(dispatcher) {
+        val first = Stream(name = "First", url = "https://cdn/first.mkv")
+        val second = Stream(name = "Second", url = "https://cdn/second.mkv")
+        nextStreams(first, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        assertEquals(first, vm.currentStream)
+
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+
+        assertEquals(second, vm.currentStream)
+        assertEquals(second.url, vm.selectedVideoUrl)
+        assertEquals(nextId, vm.awaitingFirstFrameId)
+        assertNull(vm.pendingEpisodeSwitch)
+
+        vm.onFirstFrame()
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
+    fun `autoplay opens the picker only after all distinct sources time out`() = runTest(dispatcher) {
+        val first = Stream(name = "First", url = "https://cdn/first.mkv")
+        val duplicate = Stream(name = "Duplicate", url = "https://cdn/first.mkv")
+        val second = Stream(name = "Second", url = "https://cdn/second.mkv")
+        nextStreams(first, duplicate, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertEquals(second, vm.currentStream)
+        assertNull(vm.pendingEpisodeSwitch)
+
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+        assertNull(vm.awaitingFirstFrameId)
+        assertEquals(listOf(first, duplicate, second), vm.pendingEpisodeSwitch!!.streams)
+    }
+
+    @Test
+    fun `autoplay retries another header identity at the same URL`() = runTest(dispatcher) {
+        val first = Stream(url = "https://cdn/shared.mkv", behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "first"))
+        ))
+        val second = Stream(url = first.url, behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "second"))
+        ))
+        nextStreams(first, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+
+        assertEquals(second, vm.currentStream)
+        assertEquals(first.url, vm.selectedVideoUrl)
+        assertEquals(mapOf("Authorization" to "second"), vm.selectedPlayerSources.first().requestHeaders)
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
+    fun `autoplay tries another file index of the same season-pack torrent`() = runTest(dispatcher) {
+        val first = Stream(infoHash = "abc123", fileIdx = 2)
+        val second = Stream(infoHash = "abc123", fileIdx = 3)
+        nextStreams(first, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        assertEquals(first, vm.currentStream)
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+
+        assertEquals(second, vm.currentStream)
+        assertEquals(nextId, vm.awaitingFirstFrameId)
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
+    fun `a remembered unplayable source cannot block autoplay`() = runTest(dispatcher) {
+        val broken = Stream(name = "Broken", url = "   ")
+        val playable = Stream(name = "Playable", url = "https://cdn/working.mkv")
+        nextStreams(broken, playable)
+        every { sourceSelectionStore.findPreferredStream(nextId, any()) } returns broken
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+
+        assertEquals(playable, vm.currentStream)
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
     fun `the first frame clears the wait`() = runTest(dispatcher) {
         nextStreams(Stream(name = "A", url = "https://cdn/a.mkv"))
         val vm = session()
@@ -410,6 +512,23 @@ class PlaybackSessionActionsTest {
         assertEquals(nextId, vm.selectedPlaybackId)
         assertNull(vm.pendingEpisodeSwitch)
         assertEquals(PendingSourceSelection(nextId, b, listOf(a, b)), vm.pendingSourceSelection)
+    }
+
+    @Test
+    fun `player source selection tracks different headers at one URL`() = runTest(dispatcher) {
+        val first = Stream(url = "https://cdn/shared.mkv", behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "first"))
+        ))
+        val second = Stream(url = first.url, behaviorHints = StreamBehaviorHints(
+            proxyHeaders = StreamProxyHeaders(request = mapOf("Authorization" to "second"))
+        ))
+        val vm = session()
+        vm.pendingSourceSelection = PendingSourceSelection("tt1:1:1", first, listOf(first, second))
+        vm.currentStream = first
+
+        vm.onPlayerSourceChanged(playerSourceId(second)!!)
+
+        assertEquals(second, vm.currentStream)
     }
 
     // ---- Ranked fallback ----
