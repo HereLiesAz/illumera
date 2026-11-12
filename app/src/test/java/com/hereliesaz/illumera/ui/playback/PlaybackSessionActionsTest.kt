@@ -369,6 +369,24 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `autoplay tries another file index of the same season-pack torrent`() = runTest(dispatcher) {
+        val first = Stream(infoHash = "abc123", fileIdx = 2)
+        val second = Stream(infoHash = "abc123", fileIdx = 3)
+        nextStreams(first, second)
+        val vm = session()
+
+        vm.autoplayNextEpisode(nextEpisode, null, autoplayProfile)
+        runCurrent()
+        assertEquals(first, vm.currentStream)
+        advanceTimeBy(AUTOPLAY_FIRST_FRAME_MS + 1)
+        runCurrent()
+
+        assertEquals(second, vm.currentStream)
+        assertEquals(nextId, vm.awaitingFirstFrameId)
+        assertNull(vm.pendingEpisodeSwitch)
+    }
+
+    @Test
     fun `a remembered unplayable source cannot block autoplay`() = runTest(dispatcher) {
         val broken = Stream(name = "Broken", url = "   ")
         val playable = Stream(name = "Playable", url = "https://cdn/working.mkv")

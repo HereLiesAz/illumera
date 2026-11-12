@@ -191,6 +191,23 @@ class PlaybackPayloadsTest {
     }
 
     @Test
+    fun `a season-pack magnet with different file indices is a different episode`() {
+        val watched = torrent.copy(fileIdx = 2)
+        val next = torrent.copy(fileIdx = 3)
+        val magnet = resolvePlayableSourceUrl(watched)
+        assertFalse(isSameFile(next, watched, magnet))
+        assertTrue(isSameFile(watched, watched, magnet))
+    }
+
+    @Test
+    fun `a magnet supplied as a stream url still compares file indices`() {
+        val watched = Stream(url = "magnet:?xt=urn:btih:abc123", fileIdx = 2)
+        val next = watched.copy(fileIdx = 3)
+        assertFalse(isSameFile(next, watched, watched.url))
+        assertTrue(isSameFile(watched, watched, watched.url))
+    }
+
+    @Test
     fun `a torrent without file index is told apart by file name`() {
         fun named(name: String?) = Stream(infoHash = "abc123", behaviorHints = StreamBehaviorHints(filename = name))
         assertFalse(isSameFile(named("S01E08.mkv"), named("S01E07.mkv"), null))

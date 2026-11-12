@@ -375,11 +375,18 @@ internal fun handlePlayerSessionEnd(
 
 /** Whether [stream] plays the same file as [watched] (playing from [watchedUrl]). */
 internal fun isSameFile(stream: Stream, watched: Stream?, watchedUrl: String?): Boolean {
-    if (!watchedUrl.isNullOrBlank() && resolvePlayableSourceUrl(stream) == watchedUrl) return true
+    val sameResolvedUrl = !watchedUrl.isNullOrBlank() && resolvePlayableSourceUrl(stream) == watchedUrl
+    val magnetUrl = watchedUrl?.startsWith("magnet:", ignoreCase = true) == true
+    // A season pack has one magnet for many episode files. The URL alone is
+    // insufficient; compare file indices, filenames or episode tags below.
+    if (sameResolvedUrl && (!magnetUrl || watched == null)) return true
     if (watched == null) return false
-    if (!stream.url.isNullOrBlank() && stream.url == watched.url) return true
-    val hash = stream.infoHash?.lowercase() ?: return false
-    if (hash != watched.infoHash?.lowercase()) return false
+    if (!stream.url.isNullOrBlank() && stream.url == watched.url &&
+        !stream.url.startsWith("magnet:", ignoreCase = true)
+    ) return true
+    val sameHash = !stream.infoHash.isNullOrBlank() &&
+        stream.infoHash?.equals(watched.infoHash, ignoreCase = true) == true
+    if (!sameHash && !(sameResolvedUrl && magnetUrl)) return false
     // Same torrent: the same file unless the index or file name says otherwise.
     if (stream.fileIdx != null && watched.fileIdx != null) return stream.fileIdx == watched.fileIdx
     val name = stream.behaviorHints?.filename

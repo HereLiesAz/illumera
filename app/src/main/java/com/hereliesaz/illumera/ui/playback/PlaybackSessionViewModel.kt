@@ -670,9 +670,13 @@ class PlaybackSessionViewModel @Inject constructor(
                 // distinct playable URL in ranked order, waiting for a frame after each.
                 awaitingFirstFrameId = nextPlaybackId
                 val sourceAttempts = listOf(streamToPlay) + streams.filterNot { it === streamToPlay }
-                val attemptedUrls = mutableSetOf(nextUrl)
+                // A season-pack magnet can be the same URL for different episode files.
+                val attemptedSources = mutableSetOf(
+                    nextUrl to streamToPlay.fileIdx.takeIf { nextUrl.startsWith("magnet:") }
+                )
                 firstFrameWatchdog = viewModelScope.launch {
                     var watchedUrl = nextUrl
+                    var watchedFileIndex = streamToPlay.fileIdx.takeIf { nextUrl.startsWith("magnet:") }
                     while (true) {
                         delay(AUTOPLAY_FIRST_FRAME_MS)
                         if (episodeSwitchGeneration != switchGeneration ||
@@ -683,9 +687,15 @@ class PlaybackSessionViewModel @Inject constructor(
                         // The player's own source fallback may have started another stream.
                         // Give that stream a full timeout rather than immediately skipping it.
                         val currentUrl = currentStream?.let(::resolvePlayableSourceUrl)
-                        if (currentUrl != null && currentUrl != watchedUrl) {
+                        val currentFileIndex = currentStream?.fileIdx?.takeIf {
+                            currentUrl?.startsWith("magnet:") == true
+                        }
+                        if (currentUrl != null &&
+                            (currentUrl != watchedUrl || currentFileIndex != watchedFileIndex)
+                        ) {
                             watchedUrl = currentUrl
-                            attemptedUrls += currentUrl
+                            watchedFileIndex = currentFileIndex
+                            attemptedSources += currentUrl to currentFileIndex
                             continue
                         }
                         val openedKind = if (watchedUrl.startsWith("magnet:")) "torrent" else "direct link"
@@ -698,7 +708,8 @@ class PlaybackSessionViewModel @Inject constructor(
                         )
                         val nextAttempt = sourceAttempts.firstNotNullOfOrNull { candidate ->
                             val url = resolvePlayableSourceUrl(candidate) ?: return@firstNotNullOfOrNull null
-                            if (url in attemptedUrls) null else candidate to url
+                            val fileIndex = candidate.fileIdx.takeIf { url.startsWith("magnet:") }
+                            if ((url to fileIndex) in attemptedSources) null else candidate to url
                         }
                         if (nextAttempt == null) {
                             awaitingFirstFrameId = null
@@ -707,8 +718,9 @@ class PlaybackSessionViewModel @Inject constructor(
                         }
 
                         val (retryStream, retryUrl) = nextAttempt
-                        attemptedUrls += retryUrl
                         watchedUrl = retryUrl
+                        watchedFileIndex = retryStream.fileIdx.takeIf { retryUrl.startsWith("magnet:") }
+                        attemptedSources += retryUrl to watchedFileIndex
                         playbackStatus = "Next episode · trying another source for $nextPlaybackTitle"
                         openEpisode(
                             playbackId = nextPlaybackId,
