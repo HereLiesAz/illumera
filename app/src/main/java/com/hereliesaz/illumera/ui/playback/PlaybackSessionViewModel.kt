@@ -605,7 +605,7 @@ class PlaybackSessionViewModel @Inject constructor(
                 switchStep = "ranking ${rawStreams.size} sources"
 
                 // Off the main thread: ranking a long list froze the UI on TV boxes.
-                val ranked = rankStreams(rawStreams, profile, offMainThread = true)
+                val ranked = rankStreams(rawStreams, profile)
                 // The next episode never plays from the file just watched: a stream that
                 // resolves to it (same link, or same torrent file) would only replay it.
                 val watchedUrl = playerCurrentSourceUrl ?: selectedVideoUrl
@@ -810,7 +810,7 @@ class PlaybackSessionViewModel @Inject constructor(
                 val rawStreams = streamsDeferred.await()
                 val addonSubs = subtitlesDeferred.await()
 
-                val streams = rankStreams(rawStreams, profile, offMainThread = false)
+                val streams = rankStreams(rawStreams, profile)
                 fetchedStreams = streams
 
                 if (streams.isEmpty()) {
@@ -1166,11 +1166,12 @@ class PlaybackSessionViewModel @Inject constructor(
 
     private suspend fun rankStreams(
         rawStreams: List<Stream>,
-        profile: ProfileEntity?,
-        offMainThread: Boolean
+        profile: ProfileEntity?
     ): List<Stream> {
         if (profile?.sourceSortingEnabled != true) return rawStreams
-        val rank: suspend () -> List<Stream> = {
+        // Both autoplay and manually selected episodes can return hundreds of streams.
+        // Parse and rank on Default; never compile language regexes on the UI thread.
+        return withContext(Dispatchers.Default) {
             val enabledQ = StreamSortingService.parseEnabledQualities(profile.sourceEnabledQualities)
             val excludeP = StreamSortingService.parseExcludePhrases(profile.sourceExcludePhrases)
             val addonOrders = addonRepository.getAddonSortOrders()
@@ -1181,7 +1182,6 @@ class PlaybackSessionViewModel @Inject constructor(
                 profile.sourceMinimumSeeds, profile
             )
         }
-        return if (offMainThread) withContext(Dispatchers.Default) { rank() } else rank()
     }
 
     /**
