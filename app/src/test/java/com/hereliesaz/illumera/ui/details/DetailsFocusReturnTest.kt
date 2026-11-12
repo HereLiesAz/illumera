@@ -121,7 +121,7 @@ class DetailsFocusReturnTest {
                         DetailsScreen(
                             type = key.type,
                             id = key.id,
-                            onPlayClick = { _, _, _, _, _, _, _, _, _, _ -> },
+                            onPlayClick = { _, _, _, _, _, _, _, _, _, _, _ -> },
                             viewModel = vm,
                             tasteActions = actions
                         )
