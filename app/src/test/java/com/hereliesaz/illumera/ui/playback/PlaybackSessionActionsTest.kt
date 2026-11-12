@@ -123,13 +123,13 @@ class PlaybackSessionActionsTest {
         Dispatchers.resetMain()
     }
 
-    private fun session(): PlaybackSessionViewModel =
+    private fun session(sorter: StreamSortingService = StreamSortingService()): PlaybackSessionViewModel =
         PlaybackSessionViewModel(
             SavedStateHandle(),
             TorrentStreamController(launcher, FakeCallbacks()),
             addonRepository,
             subtitleRepository,
-            StreamSortingService(),
+            sorter,
             sourceSelectionStore,
             trackStore,
             queueManager,
@@ -474,6 +474,30 @@ class PlaybackSessionActionsTest {
     }
 
     // ---- Episode switch ----
+
+    @Test
+    fun `manual episode source ranking runs away from the UI thread`() = runTest(dispatcher) {
+        val called = java.util.concurrent.CountDownLatch(1)
+        val rankThread = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val sorter: StreamSortingService = mockk()
+        every {
+            sorter.sortAndFilter(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } answers {
+            rankThread.set(Thread.currentThread())
+            called.countDown()
+            firstArg<List<Stream>>()
+        }
+        coEvery { addonRepository.getAddonSortOrders() } returns emptyMap()
+        nextStreams(Stream(name = "Next", url = "https://cdn/next.mkv"))
+        val vm = session(sorter)
+        val uiThread = Thread.currentThread()
+
+        vm.selectEpisode(nextEpisode, null, manualProfile.copy(autoSelectSource = true, sourceSortingEnabled = true))
+        runCurrent()
+
+        assertTrue("sorting was never invoked", called.await(5, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue("sorting ran on the UI dispatcher", rankThread.get() !== uiThread)
+    }
 
     @Test
     fun `dismiss bumps the generation so a late result is ignored`() = runTest(dispatcher) {
