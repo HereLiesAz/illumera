@@ -692,7 +692,7 @@ class PlaybackSessionViewModel @Inject constructor(
                             attemptedSourceIds += currentSourceId
                             continue
                         }
-                        val openedKind = if (watchedUrl.startsWith("magnet:")) "torrent" else "direct link"
+                        val openedKind = if (watchedUrl?.startsWith("magnet:") == true) "torrent" else "direct link"
                         val openedFrom = currentStream?.addonDisplayName ?: "unknown addon"
                         AppErrors.e(
                             "Autoplay",
