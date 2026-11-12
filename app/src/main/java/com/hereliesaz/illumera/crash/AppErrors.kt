@@ -32,6 +32,9 @@ object AppErrors {
 
     private fun report(tag: String, message: String, error: Throwable?) {
         if (error is CancellationException) return
+        // Missing torrent peers is a source failure, not an application crash.
+        // TorrentService has already signalled sourceError for ranked fallback.
+        if (isExpectedTorrentMetadataTimeout(tag, message)) return
         if (isOffline(error)) return
         if (!CrashReporting.isAvailable() || !ACRA.isInitialised) return
 
@@ -51,6 +54,9 @@ object AppErrors {
  * The device couldn't reach the network (no DNS, no route, connection or call timed out).
  * Logged, never filed: it says nothing about the app, and one outage filed a dozen issues.
  */
+internal fun isExpectedTorrentMetadataTimeout(tag: String, message: String): Boolean =
+    tag == "LumeraTorrent" && message.contains("Timed out waiting for torrent metadata from peers")
+
 internal fun isOffline(error: Throwable?): Boolean =
     generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
         .take(10)
