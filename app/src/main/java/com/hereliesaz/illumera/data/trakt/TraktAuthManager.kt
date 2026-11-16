@@ -112,13 +112,18 @@ class TraktAuthManager @Inject constructor(
 
     private fun profileKey(key: String, profileId: Int) = "${key}_$profileId"
 
+    // The tokens are decrypted through the Android Keystore, which can stall for seconds, and
+    // this is built on the caller's thread (often main, during composition). The first read
+    // therefore runs on IO (ANR report #379); isConnected turns true once it finishes.
     init {
-        try {
-            migrateGlobalTokensToProfile()
-            _isConnected.value = getAccessToken() != null
-        } catch (e: Exception) {
-            com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Couldn't read Trakt credentials", e)
-            _isConnected.value = false
+        managerScope.launch {
+            try {
+                migrateGlobalTokensToProfile()
+                _isConnected.value = getAccessToken() != null
+            } catch (e: Exception) {
+                com.hereliesaz.illumera.crash.AppErrors.e(TAG, "Couldn't read Trakt tokens", e)
+                _isConnected.value = false
+            }
         }
     }
 

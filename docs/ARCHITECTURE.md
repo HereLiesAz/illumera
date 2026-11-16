@@ -330,7 +330,7 @@ The Add-ons tab row has a **Not installed** toggle after **Installed**. It hides
 
 ## Two button highlights only (November 16, 2026)
 
-A button has two highlights: **active** (the cursor: accent border, tinted fill, accent label) and **selected** (a tab, choice or toggle that is on: a brighter neutral fill and border, deliberately not the accent). Only the cursor uses the accent, so nothing at rest can be mistaken for it, and nothing else is lit at rest. The old "main action" glow (`isPrimary = true` on Update, Save, Confirm, Connect, Retry, Install and the like) is gone, because it read as a selection nobody had made. `VoidButton` takes `isSelected`; `ButtonEmphasis` is `Normal`, `Selected` and `Destructive`. `IntegrationButton` and the Theme editor's `EditorButton` no longer take an emphasis flag. Destructive buttons are ordinary at rest and turn red only under the cursor.
+A button has two highlights: **active** (the cursor: accent border and tinted fill, with the label in the normal text color so it stays readable on the tint) and **selected** (a tab, choice or toggle that is on: a brighter neutral fill and border, deliberately not the accent). Only the cursor uses the accent, so nothing at rest can be mistaken for it, and nothing else is lit at rest. The old "main action" glow (`isPrimary = true` on Update, Save, Confirm, Connect, Retry, Install and the like) is gone, because it read as a selection nobody had made. `VoidButton` takes `isSelected`; `ButtonEmphasis` is `Normal`, `Selected` and `Destructive`. `IntegrationButton` and the Theme editor's `EditorButton` no longer take an emphasis flag. Destructive buttons are ordinary at rest and turn red only under the cursor.
 
 The same rule holds outside buttons: nav drawer and top bar current-page markers, season and episode tabs, the player's audio and subtitle choice chips, settings segment and swatch choices, sort lists, the theme card title, and switch tracks and checkboxes show "on" with a neutral tint (`onBackground` at about 0.2 to 0.6 alpha), never the accent. Status colors (a connected integration, the reorder banner) are not interactive highlights and keep the accent.
 
@@ -347,3 +347,30 @@ Source lists (the player's **Select Source** panel and a Details page's source s
 
 While a source loads, the overlay lists **every torrent source this playback sent to debrid** immediately under the loading text, in the same type (`bodyMedium`): one row per source, `label · N%` (or `adding`, `downloading`, `100%`, `not added`) with its own progress bar. Rows are kept in `PlaybackSessionViewModel.debridSources` in the order sent and cleared with the playback; unlike the earlier-debrid-sources memory they keep the sources the viewer moved on from, since they are a record, not sources that may be loaded. Each row's state comes from `DebridManager.sourceStatuses` by info hash. Every library read the manager makes (the wait loop polls every 5 seconds) refreshes all sources, and the overlay reads again every 5 seconds while any row is listed. The overlay shows the 8 most recent rows and folds older ones into "+N more". The single "Debrid · N%" readout remains only as a fallback for a magnet with no info hash.
 
+
+## About → Check for Update (November 16, 2026)
+
+About has one **Check for Update** button for both builds. It runs `ManualUpdateCheck`, which calls the build's own check (`AppUpdateManager.checkForUpdate(force = true)` for a GitHub build; `PlayStoreUpdateManager.checkForUpdate` for a Play build, waiting up to 20 seconds for Play Core, or on TV the store listing, to finish) and emits a `ManualUpdateResult`. `MainActivity` collects it. **Available** clears any earlier "Later" and the popup opt-out for this prompt and shows the existing update dialog (GitHub: Update / Later / Don't show again; Play: Update / Later). **NoUpdate** shows a **No new updates** dialog with **Close** and **Play Store** (opens the Play listing), plus the failure message when the check itself could not finish. A download or install already under way reports nothing, because its own dialog is showing. Launch and foreground checks are unchanged and stay quiet when there is nothing to say.
+
+## About: Change Log, User Guide and README text
+
+About (Settings -> About) shows, top to bottom: Version, Check for Update, **Change Log**, then
+**User Guide** and the text under it.
+
+- Content is never duplicated in code. `syncAboutAssets` (app/build.gradle.kts) copies
+  `README.md`, `docs/USER_GUIDE.md` and `distribution/whatsnew/whatsnew-en-US` into the app's
+  `assets/about/` on every `merge*Assets`; `AboutContent` reads them.
+- The text block shows the README intro (title to first image, `AboutContent.introOf`). The User
+  Guide button swaps it for `USER_GUIDE.md` and back (Selected highlight while on).
+- Change Log opens a dialog with the bundled what's-new text, the same file Play shows.
+- Each paragraph is focusable so D-pad Down walks (and scrolls) the page on a TV.
+- To change the text, edit the repo documents; there is nothing else to update.
+
+## Crash reports: what is filed and what is not
+
+- `AppErrors` skips expected source failures: peer-metadata timeouts, offline errors, and
+  "Your debrid service couldn't deliver this torrent" (the session moves to the next source).
+- Managers that keep tokens in `EncryptedSharedPreferences` (`DebridManager`, `TraktAuthManager`,
+  `WutchManager`) do their first read on IO, never in the constructor: Hilt builds them on the
+  caller's thread, often main during composition, and decryption through the Android Keystore
+  can stall long enough for an ANR. Their state flows start empty and fill in a moment later.

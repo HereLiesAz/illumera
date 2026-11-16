@@ -28,6 +28,10 @@ import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -119,7 +123,11 @@ class DebridManager @Inject constructor(
     private val _connectedUsername = MutableStateFlow<String?>(null)
     val connectedUsername: StateFlow<String?> = _connectedUsername
 
-    init { refreshConnectionState() }
+    // Reading the keys decrypts them through the Android Keystore, which can stall for seconds.
+    // This object is built on whatever thread first asks for it (often main, inside
+    // composition), so the first read happens on IO instead (ANR report #379).
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    init { initScope.launch { refreshConnectionState() } }
 
     // Where each torrent source (by lowercase info hash) stands: what the accounts' libraries
     // hold, overlaid with what this app is sending right now. Lists show it next to each source.
