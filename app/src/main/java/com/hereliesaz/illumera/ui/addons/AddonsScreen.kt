@@ -41,6 +41,7 @@ import com.hereliesaz.illumera.ui.navigation.focus.focusMemoryRoot
 import com.hereliesaz.illumera.ui.navigation.focus.rememberFocusMemory
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.data.model.stremio.AddonCatalogItem
+import com.hereliesaz.illumera.ui.browser.openInAppBrowser
 
 internal const val STREMIO_ADDONS_URL = "https://web.stremio.com/#/addons"
 internal const val THIRD_PARTY_ADDONS_URL = "https://stremio-addons.net/"
@@ -145,7 +146,9 @@ fun AddonsScreen(
                 if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(item.transportUrl)) {
                     showTorrentioConfig = true
                 } else (item.discoveryUrl ?: item.configureUrl)?.let { url ->
-                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    // The page's Install button comes back as an addon link, which goes straight
+                    // to the install confirmation.
+                    context.openInAppBrowser(url) { link -> viewModel.prepareInstall(link) }
                 }
             },
             onConfigureInstalled = { showTorrentioConfig = true },

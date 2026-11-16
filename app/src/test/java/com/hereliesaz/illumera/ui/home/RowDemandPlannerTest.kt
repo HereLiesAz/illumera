@@ -84,4 +84,42 @@ class RowDemandPlannerTest {
         assertNull(RowDemandPlanner.victim(demands, 2, listOf("focused", "a")))
         assertNull(RowDemandPlanner.victim(demands, 1, emptyList()))
     }
+
+    @Test fun reachingTheEndOfLoadedRowsAsksForTheNextUnloadedOnes() {
+        // The screen reports no loaded rows below the viewer: the unloaded ones fill the gap.
+        assertEquals(
+            listOf("r7", "r8", "r9"),
+            RowDemandPlanner.padLookahead(emptyList(), listOf("r5", "r6"), listOf("r7", "r8", "r9", "r10"), 3)
+        )
+    }
+
+    @Test fun loadedRowsBelowComeFirstAndOnlyTheShortfallIsPadded() {
+        assertEquals(
+            listOf("r4", "r7", "r8"),
+            RowDemandPlanner.padLookahead(listOf("r4"), listOf("r2", "r3"), listOf("r7", "r8", "r9"), 3)
+        )
+        // Three loaded rows below already: nothing is added, so loading follows the viewer.
+        assertEquals(
+            listOf("a", "b", "c"),
+            RowDemandPlanner.padLookahead(listOf("a", "b", "c"), listOf("v"), listOf("r7"), 3)
+        )
+    }
+
+    @Test fun padLookaheadSkipsRowsAlreadyOnScreenOrListed() {
+        assertEquals(
+            listOf("a", "r7"),
+            RowDemandPlanner.padLookahead(listOf("a"), listOf("r7x"), listOf("a", "r7x", "r7"), 2)
+        )
+    }
+
+    @Test fun farRowsAreTrimmedFarthestFirstAndNearOnesKept() {
+        val order = listOf("a", "b", "c", "d", "e", "f", "g")
+        val shown = mapOf("a" to 40, "b" to 40, "c" to 40, "d" to 40, "e" to 5, "f" to 40, "g" to 40)
+        // The viewer is at "c" (index 2): g is 4 rows away, f 3, a 2. "e" shows five titles,
+        // nothing to cut; b, c and d are near and never touched.
+        val result = RowDemandPlanner.farRowsToTrim(
+            order, { shown.getValue(it) }, near = setOf("b", "c", "d"), anchorIndex = 2, keep = 10
+        )
+        assertEquals(listOf("g", "f", "a"), result)
+    }
 }

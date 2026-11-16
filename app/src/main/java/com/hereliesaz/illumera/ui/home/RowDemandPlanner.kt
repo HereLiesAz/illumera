@@ -48,6 +48,42 @@ internal object RowDemandPlanner {
         visible.forEach { add(it to REVEAL_STEP * 2) }
     }
 
+    /**
+     * The rows just below the viewer, topped up with rows that have not loaded anything yet.
+     *
+     * The screen only reports rows it has composed, and a row that has never had a title is not
+     * composed, so on its own the report ends at the last loaded row and nothing past it is ever
+     * asked for: the Home screen stopped where the first batch ended. When fewer than [count]
+     * loaded rows are left below the viewer, the next [unloaded] rows (in screen order) make up
+     * the difference, so reaching the end of what is loaded loads what comes next.
+     */
+    fun padLookahead(
+        lookahead: List<String>,
+        visible: List<String>,
+        unloaded: List<String>,
+        count: Int
+    ): List<String> {
+        val room = count - lookahead.size
+        if (room <= 0) return lookahead
+        return lookahead + unloaded.filter { it !in lookahead && it !in visible }.take(room)
+    }
+
+    /**
+     * Rows whose tail can go when memory is short: not near the viewer and showing more than
+     * [keep] titles. Farthest from [anchorIndex] (the row the viewer is at) first, because the
+     * row they are furthest from is the one they will reach last.
+     */
+    fun farRowsToTrim(
+        order: List<String>,
+        shown: (String) -> Int,
+        near: Set<String>,
+        anchorIndex: Int,
+        keep: Int
+    ): List<String> = order.withIndex()
+        .filter { (_, id) -> id !in near && shown(id) > keep }
+        .sortedByDescending { (index, _) -> kotlin.math.abs(index - anchorIndex) }
+        .map { it.value }
+
     /** Whether a row with [facts] still needs work to show [target] titles. */
     fun needsWork(target: Int, facts: RowFacts?): Boolean {
         if (facts == null) return false

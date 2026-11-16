@@ -188,6 +188,14 @@ fun HomeScreen(
     // One buffered trailer, for the title after the one now playing.
     val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
     DisposableEffect(trailerPreloader) { onDispose { trailerPreloader.release() } }
+    // The trailer held ready for the next title is speculation: the first thing given back when
+    // memory runs short.
+    DisposableEffect(trailerPreloader, viewModel) {
+        val registration = viewModel.memoryMonitor.register(
+            com.hereliesaz.illumera.data.memory.MemoryRank.SPECULATIVE_PREVIEW
+        ) { trailerPreloader.release() }
+        onDispose { registration.close() }
+    }
     val displayState = remember(tab, state, currentProfile?.id, rowSortOrders) {
         withRowSorts(
             displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext),
@@ -263,12 +271,15 @@ fun HomeScreen(
             }
     ) {
         LumeraBackground {
+        // One stable reference: a new lambda each pass would restart every preview.
+        val startsAtMidpoint = remember(viewModel) { viewModel::startsAtMidpoint }
         CompositionLocalProvider(
             com.hereliesaz.illumera.ui.components.LocalWatchedIds provides state.watchedIds,
             // The rows tag their cards with their focus keys, so a refresh that re-keys or drops
             // the focused card can put focus back on it (or its neighbour).
             LocalFocusMemory provides focusMemory,
             LocalTrailerPreloader provides trailerPreloader,
+            LocalPreviewStartsAtMidpoint provides startsAtMidpoint,
             // Thumbs up / down on the personal rows' seed titles (Home tab only).
             LocalSeedVotes provides seedVotes,
             // Sort chips on the streaming-service rows' headers.
@@ -2026,6 +2037,24 @@ internal fun cinematicVideoCoverSize(
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
 
+/**
+ * Moves [player] to the middle of its video as soon as the length is known (now, if it already
+ * is). Live streams have no middle and are left alone.
+ */
+private fun seekToMidpointWhenReady(player: ExoPlayer) {
+    fun seekIfKnown(): Boolean {
+        val duration = player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET } ?: return false
+        if (!player.isCurrentMediaItemLive) previewMidpointMs(duration)?.let(player::seekTo)
+        return true
+    }
+    if (player.playbackState == Player.STATE_READY && seekIfKnown()) return
+    player.addListener(object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY && seekIfKnown()) player.removeListener(this)
+        }
+    })
+}
+
 private const val TRAILER_VOLUME = 0.3f
 private const val TRAILER_ADVANCE_DELAY_MS = 3_000L
 // A trailer starts loading only once the viewer has stayed on a title this long.
@@ -2049,6 +2078,8 @@ internal fun TrailerPreview(
     nextItem: MetaItem? = null,
     onEnded: () -> Unit = {}
 ) {
+    // A title that is itself a web video plays from its halfway point rather than the start.
+    val startsAtMidpoint = LocalPreviewStartsAtMidpoint.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnEnded by rememberUpdatedState(onEnded)
@@ -2095,7 +2126,7 @@ internal fun TrailerPreview(
     DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
         val created = videoUrl?.let { url ->
             val readied = item?.let { preloader?.take(trailerKey(it)) }
-            (readied ?: ExoPlayer.Builder(context).build().apply {
+            (readied ?: newPreviewPlayer(context).apply {
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
             }).apply {
@@ -2112,6 +2143,7 @@ internal fun TrailerPreview(
                         ready = false
                     }
                 })
+                if (item?.let(startsAtMidpoint) == true) seekToMidpointWhenReady(this)
                 playWhenReady = shouldPlay &&
                     lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             }

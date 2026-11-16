@@ -538,8 +538,17 @@ private fun PlayStoreUpdateAvailableDialog(
     }
 }
 
+/** A page the in-app browser is showing, and what to do with an addon install link it offers. */
+private class BrowserRequest(val url: String, val onAddonLink: ((String) -> Unit)?)
+
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), com.hereliesaz.illumera.ui.browser.InAppBrowserHost {
+    private var browserRequest by androidx.compose.runtime.mutableStateOf<BrowserRequest?>(null)
+
+    override fun openBrowser(url: String, onAddonLink: ((String) -> Unit)?) {
+        browserRequest = BrowserRequest(url, onAddonLink)
+    }
+
     @Inject
     lateinit var playbackTrackSelectionStore: PlaybackTrackSelectionStore
     @Inject
@@ -1542,6 +1551,23 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             else -> Unit
+                        }
+                    }
+
+                    browserRequest?.let { request ->
+                        com.hereliesaz.illumera.ui.audio.Dialog(
+                            onDismissRequest = { browserRequest = null },
+                            properties = androidx.compose.ui.window.DialogProperties(
+                                dismissOnBackPress = false,
+                                dismissOnClickOutside = false,
+                                usePlatformDefaultWidth = false
+                            )
+                        ) {
+                            com.hereliesaz.illumera.ui.browser.InAppBrowser(
+                                url = request.url,
+                                onClose = { browserRequest = null },
+                                onAddonLink = request.onAddonLink
+                            )
                         }
                     }
 

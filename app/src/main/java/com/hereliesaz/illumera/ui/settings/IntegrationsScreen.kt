@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.settings
 
+import com.hereliesaz.illumera.ui.browser.openInAppBrowser
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -2945,8 +2946,5 @@ private fun TraktAuthDialog(
 
 
 
-private fun openExternalUrl(context: android.content.Context, url: String) {
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
-}
+private fun openExternalUrl(context: android.content.Context, url: String) =
+    context.openInAppBrowser(url)

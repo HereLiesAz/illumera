@@ -366,6 +366,77 @@ About (Settings -> About) shows, top to bottom: Version, Check for Update, **Cha
 - Each paragraph is focusable so D-pad Down walks (and scrolls) the page on a TV.
 - To change the text, edit the repo documents; there is nothing else to update.
 
+## Hero preview: web videos play from the middle
+
+A Home title that is itself a video on a website (a YouTube video, a video site) previews as
+that video, from its halfway point, instead of a trailer.
+
+- Candidate: an addon's own catalog title (`MetaItem.addonBaseUrl` set) whose id is not an IMDb
+  id (`isWebVideoCandidate`). Cinemeta-style titles keep their trailers.
+- `HomeViewModel.resolveWebVideo` asks only that addon for the title's streams (7 s), and
+  `webPreviewSource` takes the first YouTube or plain http(s) stream. Torrents, header-gated and
+  not-web-ready streams are skipped. YouTube goes through `YouTubeExtractor` as trailers do.
+  No such stream: the trailer path runs as before.
+- `startsAtMidpoint` is true for titles resolved this way. `TrailerPreview` then seeks to half the
+  duration once it is known (`seekToMidpointWhenReady`; live streams are left alone). Home provides
+  it through `LocalPreviewStartsAtMidpoint`, so the hero, the rows' previews and the persistent
+  preview all behave the same.
+
+## Home rows keep loading past the first batch
+
+Row loading is demand-driven (`RowDemandPlanner`): visible rows, then the next few below. The
+screen reports only rows it has composed, and a row that never had a title is not composed, so the
+report ended at the last loaded row and the rest of Home was never asked for. `padLookahead` tops
+the rows-below list up with the next unloaded rows (in screen order, skipping exhausted or
+repeatedly failed ones) whenever fewer than three loaded rows remain below the viewer. Loading
+still follows the viewer: it only reaches further as they near the end of what has loaded.
+
+## Memory: a monitor that dumps the least useful first
+
+`MemoryMonitor` (`data/memory`) samples the Java heap every 3 seconds, and also listens to
+Android's `onTrimMemory`. Memory is **High** at 70% of the heap and **Critical** at 85%. High must
+show on two samples in a row (uncollected garbage can make one reading look worse than it is);
+Critical acts at once. After acting it waits out a cooldown (15 s High, 5 s Critical), because the
+heap only shows a trim's effect after the next collection.
+
+Whatever holds a cache registers a trimmer with a rank, and the monitor asks them lowest rank
+first:
+
+| Rank | Holder | High | Critical |
+|---|---|---|---|
+| 5 | Trailer buffered for the next title (`TrailerPreloader`) | released | released |
+| 10 | Decoded images (Coil memory cache) | half | all (reload from the disk cache) |
+| 20 | Home data (`HomeViewModel.trimForMemory`) | trailer URLs, most of the art cache, what was fetched ahead and enrichment for rows not near the viewer | also the rows far from the viewer cut back to their first 10 titles (farthest first; they restart their catalog when reached and their scroll memory is cleared), and the snapshots of screens already left |
+
+"Near" is what the viewer is on, what is on screen, the rows just below, and the hero's row. The
+titles a row shows are otherwise kept (a row never shrinks while the viewer is near it), so
+scrolling back is instant. Also bounded all the time: the art-fallback cache (300 titles, least
+recently used out) and each preview player (`newPreviewPlayer`: 10 s / 12 MB buffer instead of
+ExoPlayer's 50 s default, tens of megabytes of heap per player).
+
+To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
+owner goes away.
+
+## In-app browser
+
+Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own
+browser (`ui/browser`) instead of the TV's, which is often missing.
+
+- `Context.openInAppBrowser(url, onAddonLink)` finds the activity (`InAppBrowserHost`, implemented
+  by `MainActivity`), which shows `InAppBrowser` in a full-screen dialog. With no host it falls
+  back to the device browser. Only http(s) addresses open.
+- Remote control: the D-pad moves a pointer, OK clicks (touch events sent to the `WebView`),
+  pushing past the bottom edge scrolls the page, and Up past the top reaches the toolbar (Back,
+  Forward, Reload, Close). Clicking a text field gives the page focus so the system keyboard types
+  into it. Back closes the keyboard, then goes back a page, then closes the browser.
+- Link catching (`classifyLink`): `stremio://` and manifest addresses are not loaded. They go to
+  the caller's `onAddonLink` and the browser closes. The Add-ons screen passes
+  `viewModel.prepareInstall`, so a configuration page's Install button ends at the install
+  confirmation. Other schemes (`intent:`, `market:`, `file:`) are blocked.
+- Callers: Add-ons Configure (`AddonsScreen`), every link in `IntegrationsScreen` (debrid API-key
+  pages, wutch, Stremio terms) and the Stremio social sign-in page in `ProfileScreen`. The TV QR
+  code for signing in from a phone is unchanged.
+
 ## Crash reports: what is filed and what is not
 
 - `AppErrors` skips expected source failures: peer-metadata timeouts, offline errors, and

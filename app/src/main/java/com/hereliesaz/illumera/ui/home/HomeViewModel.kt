@@ -147,8 +147,19 @@ class HomeViewModel @Inject constructor(
     private val youtubeExtractor: YouTubeExtractor,
     private val similarTitlesEngine: com.hereliesaz.illumera.data.recommend.SimilarTitlesEngine,
     private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore,
-    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs
+    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs,
+    val memoryMonitor: com.hereliesaz.illumera.data.memory.MemoryMonitor
 ) : ViewModel() {
+
+    // When memory runs short, Home gives back what is least useful to the viewer's surroundings.
+    private val memoryRegistration = memoryMonitor.register(
+        com.hereliesaz.illumera.data.memory.MemoryRank.HOME_DATA, ::trimForMemory
+    )
+
+    override fun onCleared() {
+        memoryRegistration.close()
+        super.onCleared()
+    }
 
     /** Thumbs up on a personal row's header: favor its seed title. */
     fun approveSeed(seedId: String) = personalRowPrefs.approve(seedId)
@@ -185,13 +196,56 @@ class HomeViewModel @Inject constructor(
     private data class CachedTrailer(val url: String, val fetchedAtMs: Long)
     private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedTrailer>()
 
+    /** Titles whose preview is the video itself (see [resolveWebVideo]); these start halfway through. */
+    private val webVideoKeys: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** True once [item]'s preview was found to be the title's own web video, not a trailer. */
+    fun startsAtMidpoint(item: MetaItem): Boolean = "${item.type}:${item.id}" in webVideoKeys
+
+    /**
+     * A title from an addon's own catalog that is a web video (YouTube, a video site) previews as
+     * that video. Asks only the addon the title came from, so the preview isn't held up by every
+     * other stream addon. Null when it has no such stream.
+     */
+    private suspend fun resolveWebVideo(item: MetaItem): String? {
+        if (!isWebVideoCandidate(item)) return null
+        val key = "${item.type}:${item.id}"
+        val base = item.addonBaseUrl.orEmpty().substringBefore('?').removeSuffix("/manifest.json").trimEnd('/')
+        val streams = try {
+            kotlinx.coroutines.withTimeoutOrNull(7_000L) {
+                trailerApi.getStreams("$base/stream/${item.type}/${item.id}.json").streams.orEmpty()
+            }.orEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("HomeTrailer", "Web video lookup failed for $key", error)
+            return null
+        }
+        val url = when (val source = webPreviewSource(streams)) {
+            is WebPreviewSource.Direct -> source.url
+            is WebPreviewSource.YouTube -> kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                youtubeExtractor.extractPlaybackSource(source.reference, preferCompatiblePreview = true)
+            }?.videoUrl
+            null -> null
+        } ?: return null
+        webVideoKeys += key
+        return url
+    }
+
     suspend fun resolveTrailer(item: MetaItem): String? {
-        if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        if (item.id.isBlank()) return null
         val trailerKey = "${item.type}:${item.id}"
         trailerUrlCache[trailerKey]?.let { cached ->
             if (System.currentTimeMillis() - cached.fetchedAtMs < 5 * 60_000L) return cached.url
             trailerUrlCache.remove(trailerKey)
         }
+        resolveWebVideo(item)?.let { url ->
+            if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+            trailerUrlCache[trailerKey] = CachedTrailer(url, System.currentTimeMillis())
+            return url
+        }
+        // Everything below finds a trailer, which only movies and series have.
+        if (item.type !in setOf("movie", "series")) return null
         return try {
             kotlinx.coroutines.withTimeout(115_000L) {
                 val addonCandidates = linkedSetOf<String>()
@@ -505,7 +559,15 @@ class HomeViewModel @Inject constructor(
     private val loadingMoreRows = mutableSetOf<String>()
     // Mutated from Dispatchers.IO and Main; must be thread-safe. Only successful
     // lookups are cached (ConcurrentHashMap cannot hold null values).
-    private val metadataFallbackCache = java.util.concurrent.ConcurrentHashMap<String, MetadataFallback>()
+    // Least recently used first out: every title whose art was ever resolved used to stay, so a
+    // long browse only grew it.
+    private val metadataFallbackCache: MutableMap<String, MetadataFallback> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, MetadataFallback>(64, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MetadataFallback>) =
+                    size > METADATA_CACHE_MAX
+            }
+        )
     // IO jobs (metadata fallback / TMDB enrichment) that patch profile-scoped state;
     // cancelled on profile switch so they cannot patch the new profile's state.
     private val profileScopedJobs = java.util.concurrent.ConcurrentHashMap.newKeySet<kotlinx.coroutines.Job>()
@@ -517,6 +579,8 @@ class HomeViewModel @Inject constructor(
     // UI batching: per-row pending buffers and dedup tracking
     companion object {
         private const val ROW_BATCH_SIZE = 50
+        private const val METADATA_CACHE_MAX = 300
+        private const val FAR_ROW_KEEP = 10
         private const val SNAPSHOT_TTL_MS = 10 * 60_000L
         // Demand-driven loading: titles shown per step, how far past the focused card to keep
         // loaded, rows looked ahead, and bounds on concurrent/repeated/per-call work.
@@ -599,12 +663,25 @@ class HomeViewModel @Inject constructor(
         )
     }
 
+    /** Rows, in screen order, that show nothing yet and can still be tried. */
+    private fun unloadedRowIds(): List<String> =
+        _state.value.rows
+            .filter { row ->
+                row.items.isEmpty() && row.configId !in exhaustedCatalogRows &&
+                    (demandAttempts[row.configId] ?: 0) < RowDemandPlanner.MAX_ATTEMPTS
+            }
+            .map { it.configId }
+
     private fun currentDemands(): List<Pair<String, Int>> = RowDemandPlanner.demands(
         focusedRowId = focusedRowId,
         focusedTarget = focusedRowId?.let { revealTarget(it) } ?: 0,
         visible = visibleRowIds,
         heroRowId = heroSourceRowId(),
-        lookahead = lookaheadRowIds
+        // The screen reports only rows it has shown; unloaded ones are added as the viewer nears
+        // the end of the loaded ones.
+        lookahead = RowDemandPlanner.padLookahead(
+            lookaheadRowIds, visibleRowIds, unloadedRowIds(), LOOKAHEAD_ROWS
+        )
     )
 
     /** Gives up a running load; whatever it had not recorded is fetched again when it is next asked for. */
@@ -672,9 +749,9 @@ class HomeViewModel @Inject constructor(
      * Drops what was fetched ahead for rows the viewer is not near, and enrichment for titles
      * they are not near. It is fetched again when their movements ask for it.
      */
-    private fun trimCaches() {
+    private fun trimCaches(force: Boolean = false) {
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastTrimMs < TRIM_INTERVAL_MS) return
+        if (!force && now - lastTrimMs < TRIM_INTERVAL_MS) return
         lastTrimMs = now
         val state = _state.value
         val near = (visibleRowIds + lookaheadRowIds + listOfNotNull(focusedRowId)).toSet()
@@ -698,13 +775,63 @@ class HomeViewModel @Inject constructor(
             state.heroRow?.items?.forEach { add("${it.type}:${it.id}") }
         }
         val stale = (state.enrichedMeta.keys + state.tmdbEnrichedIds).filterNot { it in keep }.toSet()
-        if (stale.size > 40) {
+        if (force && stale.isNotEmpty() || stale.size > 40) {
             _state.update {
                 it.copy(
                     enrichedMeta = it.enrichedMeta - stale,
                     tmdbEnrichedIds = it.tmdbEnrichedIds - stale
                 )
             }
+        }
+    }
+
+    /**
+     * Memory is short. Least useful first: lookups that can be made again, then what was fetched
+     * ahead for rows the viewer is not near, and (only when critical) the tail of rows far from
+     * the viewer and the screens they have left.
+     */
+    private fun trimForMemory(pressure: com.hereliesaz.illumera.data.memory.Pressure) {
+        val critical = pressure == com.hereliesaz.illumera.data.memory.Pressure.Critical
+        trailerUrlCache.clear()
+        synchronized(metadataFallbackCache) {
+            val keep = if (critical) 0 else METADATA_CACHE_MAX / 3
+            val iterator = metadataFallbackCache.keys.iterator()
+            while (metadataFallbackCache.size > keep && iterator.hasNext()) {
+                iterator.next(); iterator.remove()
+            }
+        }
+        trimCaches(force = true)
+        if (!critical) return
+        trimFarRows()
+        // Screens the viewer has left come back by refetching; the one in front stays.
+        screenSnapshots.keys.retainAll(setOfNotNull(activeScreen))
+    }
+
+    /**
+     * Cuts rows far from the viewer back to their first [FAR_ROW_KEEP] titles. The row restarts
+     * its catalog the next time it is asked for, as when its backlog is dropped, and what it
+     * shows is not fetched twice.
+     */
+    private fun trimFarRows() {
+        val state = _state.value
+        val near = (visibleRowIds + lookaheadRowIds + listOfNotNull(focusedRowId, heroSourceRowId())).toSet()
+        val order = state.rows.map { it.configId }
+        val shown = state.rows.associate { it.configId to it.items.size }
+        val anchor = (visibleRowIds.firstOrNull() ?: focusedRowId)?.let(order::indexOf)?.takeIf { it >= 0 } ?: 0
+        val far = RowDemandPlanner.farRowsToTrim(order, { shown[it] ?: 0 }, near, anchor, FAR_ROW_KEEP).toSet()
+        if (far.isEmpty()) return
+        _state.update { current ->
+            val rows = current.rows.map { if (it.configId in far) it.copy(items = it.items.take(FAR_ROW_KEEP)) else it }
+            current.copy(rows = rows, mixedRows = reconcileGenreMixedRows(current.mixedRows, rows))
+        }
+        far.forEach { id ->
+            rowBacklogs.remove(id); candidateBacklogs.remove(id); pendingRowItems.remove(id)
+            allFetchedRowIds.remove(id); seenAggregateCandidates.remove(id)
+            rowFetchOffsets.remove(id); pairedRowFetchOffsets.remove(id)
+            exhaustedCatalogRows.remove(id); emptyCatalogPageStreak.remove(id)
+            demandAttempts.remove(id); revealTargets.remove(id)
+            // Back at the row it starts from its first title, not a position that is gone.
+            activeScreen?.let { positions(it).rowScrollPositions.remove(id) }
         }
     }
 
