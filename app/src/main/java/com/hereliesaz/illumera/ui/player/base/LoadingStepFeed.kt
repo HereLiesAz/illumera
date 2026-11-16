@@ -48,6 +48,8 @@ internal data class LoadingSnapshot(
     val peers: Int = 0,
     val downloadSpeed: Long = 0,
     val progress: Float? = null,
+    /** [progress] is a debrid service's download of the source, shown as its own percent readout. */
+    val isDebrid: Boolean = false,
     val isTorrent: Boolean = false,
     val isReady: Boolean = false,
     val hasRenderedFirstFrame: Boolean = false,
@@ -67,6 +69,7 @@ internal fun LoadingSnapshot(
     peers = torrentProgress?.peers ?: 0,
     downloadSpeed = torrentProgress?.downloadSpeed ?: 0,
     progress = torrentProgress?.progress,
+    isDebrid = torrentProgress?.debrid == true,
     isTorrent = torrentProgress != null,
     isReady = isReady,
     hasRenderedFirstFrame = hasRenderedFirstFrame,
@@ -103,9 +106,12 @@ internal fun loadingStepsBetween(previous: LoadingSnapshot?, current: LoadingSna
         steps += "Downloading at ${formatStepSpeed(current.downloadSpeed)}"
     }
 
-    val before = ((previous?.progress ?: 0f) * 100).toInt()
-    val now = ((current.progress ?: 0f) * 100).toInt()
-    listOf(25, 50, 75).lastOrNull { it in (before + 1)..now }?.let { steps += "Preloaded $it%" }
+    // A debrid download has its own live percent readout; "Preloaded" is the local torrent's.
+    if (!current.isDebrid) {
+        val before = ((previous?.progress ?: 0f) * 100).toInt()
+        val now = ((current.progress ?: 0f) * 100).toInt()
+        listOf(25, 50, 75).lastOrNull { it in (before + 1)..now }?.let { steps += "Preloaded $it%" }
+    }
 
     if (previous != null) {
         // The torrent engine handed over its local stream; the player takes it from here.
@@ -124,6 +130,10 @@ private fun formatStepSpeed(bytesPerSec: Long): String = when {
     bytesPerSec >= 1_024 -> "%.0f KB/s".format(bytesPerSec / 1_024.0)
     else -> "$bytesPerSec B/s"
 }
+
+/** The debrid download's percent (0-100) while one is being waited on, else null. */
+internal fun LoadingSnapshot.debridPercent(): Int? =
+    if (isDebrid) progress?.let { (it * 100).toInt().coerceIn(0, 100) } else null
 
 private data class FeedLine(val id: Long, val text: String)
 

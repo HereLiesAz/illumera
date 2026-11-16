@@ -9,5 +9,7 @@ data class TorrentProgress(
     val sourceError: Boolean = false,
     val attemptId: Long = 0L,
     /** The source failed in a way that must move on to the next source, whatever auto-fallback says. */
-    val forceFallback: Boolean = false
+    val forceFallback: Boolean = false,
+    /** [progress] is a debrid service's download of this source, not a local torrent's preload. */
+    val debrid: Boolean = false
 )

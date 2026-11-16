@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -2156,6 +2157,28 @@ private fun LoadingOverlay(snapshot: LoadingSnapshot) {
         contentAlignment = Alignment.Center
     ) {
         LoadingStepFeed(snapshot = snapshot)
+        // The feed only logs milestones; this is the live percent of the source being loaded into debrid.
+        snapshot.debridPercent()?.let { percent ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 72.dp)
+                    .width(240.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Debrid · $percent%",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                LinearProgressIndicator(
+                    progress = { percent / 100f },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    color = Color.White,
+                    trackColor = Color.White.copy(alpha = 0.25f)
+                )
+            }
+        }
     }
 }
 

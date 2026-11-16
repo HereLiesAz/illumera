@@ -64,7 +64,6 @@ class DebridManager @Inject constructor(
         private val READY_STATUSES = setOf(
             "downloaded", "ready", "finished", "completed", "cached", "seeding", "available"
         )
-        private val HASH_IN_MAGNET = Regex("btih:([0-9a-fA-F]{40})")
     }
 
     private val prefs: SharedPreferences? by lazy {
@@ -324,7 +323,7 @@ class DebridManager @Inject constructor(
     ): String? {
         val keys = connectedKeys()
         if (keys.isEmpty()) return null
-        val infoHash = HASH_IN_MAGNET.find(magnet)?.groupValues?.get(1)?.lowercase()
+        val infoHash = magnetInfoHash(magnet)
 
         onStatus("Checking ${keys.first().first.displayName}", null)
         // Already in the account (a repeat watch, or a transfer finished earlier): no re-add.
@@ -342,7 +341,7 @@ class DebridManager @Inject constructor(
                 continue
             }
             return awaitPlayableSource(infoHash, wanted.fileName, maxWaitSeconds, wanted) { percent ->
-                onStatus("${provider.displayName} is downloading this · $percent%", percent)
+                onStatus("${provider.displayName} is downloading this", percent)
             }
         }
         return null
@@ -360,6 +359,24 @@ class DebridManager @Inject constructor(
             }
         }
         return null
+    }
+
+    /**
+     * A single look (no waiting) at whether a source sent to a connected service earlier is
+     * ready: its direct link when it is, null while it is still downloading, gone, or its pack
+     * lacks the [wanted] file.
+     */
+    suspend fun readyUrlFor(infoHash: String?, fileName: String?, wanted: WantedFile): String? {
+        if (connectedKeys().isEmpty()) return null
+        val wantedHash = infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        if (wantedHash == null && normalizeFileName(fileName) == null) return null
+        val library = (listLibrary() as? DebridResult.Success)?.value ?: return null
+        val item = library.firstOrNull { candidate ->
+            (wantedHash != null && candidate.infoHash?.lowercase()?.contains(wantedHash) == true) ||
+                fileNamesMatch(fileName, candidate.name)
+        } ?: return null
+        if (!isReady(item)) return null
+        return (streamUrlFor(item, wanted) as? DebridResult.Success)?.value
     }
 
     /** True when a connected service can take a magnet: torrents then go through debrid only. */
@@ -446,6 +463,12 @@ class DebridManager @Inject constructor(
         return null
     }
 }
+
+/** The lowercase info hash of [magnet], or null when it carries none. */
+internal fun magnetInfoHash(magnet: String): String? =
+    HASH_IN_MAGNET.find(magnet)?.groupValues?.get(1)?.lowercase()
+
+private val HASH_IN_MAGNET = Regex("btih:([0-9a-fA-F]{40})")
 
 /**
  * True when [wanted] and [candidate] name the same release: equal after normalization, or
