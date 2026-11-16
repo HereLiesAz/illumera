@@ -382,6 +382,26 @@ that video, from its halfway point, instead of a trailer.
   it through `LocalPreviewStartsAtMidpoint`, so the hero, the rows' previews and the persistent
   preview all behave the same.
 
+## In-app browser
+
+Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own
+browser (`ui/browser`) instead of the TV's, which is often missing.
+
+- `Context.openInAppBrowser(url, onAddonLink)` finds the activity (`InAppBrowserHost`, implemented
+  by `MainActivity`), which shows `InAppBrowser` in a full-screen dialog. With no host it falls
+  back to the device browser. Only http(s) addresses open.
+- Remote control: the D-pad moves a pointer, OK clicks (touch events sent to the `WebView`),
+  pushing past the bottom edge scrolls the page, and Up past the top reaches the toolbar (Back,
+  Forward, Reload, Close). Clicking a text field gives the page focus so the system keyboard types
+  into it. Back closes the keyboard, then goes back a page, then closes the browser.
+- Link catching (`classifyLink`): `stremio://` and manifest addresses are not loaded. They go to
+  the caller's `onAddonLink` and the browser closes. The Add-ons screen passes
+  `viewModel.prepareInstall`, so a configuration page's Install button ends at the install
+  confirmation. Other schemes (`intent:`, `market:`, `file:`) are blocked.
+- Callers: Add-ons Configure (`AddonsScreen`), every link in `IntegrationsScreen` (debrid API-key
+  pages, wutch, Stremio terms) and the Stremio social sign-in page in `ProfileScreen`. The TV QR
+  code for signing in from a phone is unchanged.
+
 ## Crash reports: what is filed and what is not
 
 - `AppErrors` skips expected source failures: peer-metadata timeouts, offline errors, and

@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.profiles
 
+import com.hereliesaz.illumera.ui.browser.openInAppBrowser
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -838,11 +839,7 @@ private fun SetupSocialLoginDialog(
 
     LaunchedEffect(url, isTvDevice) {
         if (!isTvDevice && !url.isNullOrBlank()) {
-            runCatching {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
+            context.openInAppBrowser(url)
         }
     }
 
@@ -921,13 +918,7 @@ private fun SetupSocialLoginDialog(
                 if (!url.isNullOrBlank()) {
                     VoidButton(
                         text = "Open Browser",
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                )
-                            }
-                        },
+                        onClick = { context.openInAppBrowser(url) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
