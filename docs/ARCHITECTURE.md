@@ -331,3 +331,6 @@ The Add-ons tab row has a **Not installed** toggle after **Installed**. It hides
 ## Two button highlights only (November 16, 2026)
 
 A button has two highlights: **active** (the cursor: accent border, tinted fill, accent label) and **selected** (a tab, choice or toggle that is on: a brighter neutral fill and border, deliberately not the accent). Only the cursor uses the accent, so nothing at rest can be mistaken for it, and nothing else is lit at rest. The old "main action" glow (`isPrimary = true` on Update, Save, Confirm, Connect, Retry, Install and the like) is gone, because it read as a selection nobody had made. `VoidButton` takes `isSelected`; `ButtonEmphasis` is `Normal`, `Selected` and `Destructive`. `IntegrationButton` and the Theme editor's `EditorButton` no longer take an emphasis flag. Destructive buttons are ordinary at rest and turn red only under the cursor.
+
+The same rule holds outside buttons: nav drawer and top bar current-page markers, season and episode tabs, the player's audio and subtitle choice chips, settings segment and swatch choices, sort lists, the theme card title, and switch tracks and checkboxes show "on" with a neutral tint (`onBackground` at about 0.2 to 0.6 alpha), never the accent. Status colors (a connected integration, the reorder banner) are not interactive highlights and keep the accent.
+

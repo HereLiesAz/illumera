@@ -461,7 +461,7 @@ fun TopNavItem(
     val bubbleColor by animateColorAsState(
         targetValue = when {
             isFocused -> accentColor.copy(alpha = 0.2f)
-            showIndicator -> accentColor.copy(alpha = 0.2f)
+            showIndicator -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f)
             else -> Color.Transparent
         },
         animationSpec = tween(250),
@@ -573,7 +573,7 @@ fun TopNavProfileAvatar(
     
     // Border color animation
     val borderColor by animateColorAsState(
-        targetValue = if (showIndicator) accentColor else Color.Transparent,
+        targetValue = if (showIndicator) (if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)) else Color.Transparent,
         animationSpec = tween(200),
         label = "borderColor"
     )

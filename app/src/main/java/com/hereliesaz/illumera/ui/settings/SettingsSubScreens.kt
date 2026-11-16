@@ -1185,9 +1185,9 @@ fun RowScope.SegmentItem(
     
     val scale by animateFloatAsState(if (isFocused) 1.04f else 1f)
 
-    val bgColor = MaterialTheme.colorScheme.onBackground.copy(0.05f)
+    val bgColor = MaterialTheme.colorScheme.onBackground.copy(if (isSelected) 0.22f else 0.05f)
     val textColor = when {
-        isSelected -> MaterialTheme.colorScheme.primary
+        isSelected -> MaterialTheme.colorScheme.onBackground
         isFocused -> MaterialTheme.colorScheme.onBackground
         else -> MaterialTheme.colorScheme.onBackground.copy(0.7f)
     }
@@ -1195,11 +1195,10 @@ fun RowScope.SegmentItem(
     val borderColor by animateColorAsState(
         when {
             isFocused -> MaterialTheme.colorScheme.onBackground
-            isSelected -> MaterialTheme.colorScheme.primary
             else -> Color.Transparent
         }
     )
-    val borderWidth = if (isFocused || isSelected) 2.dp else 0.dp
+    val borderWidth = if (isFocused) 2.dp else 0.dp
 
     Box(
         modifier = Modifier
@@ -1244,7 +1243,7 @@ fun ColorItemFixed(
     val borderColor by animateColorAsState(
         when {
             isFocused -> MaterialTheme.colorScheme.onBackground
-            isSelected -> MaterialTheme.colorScheme.primary
+            isSelected -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
             else -> Color.Transparent
         }
     )

@@ -638,7 +638,7 @@ fun SourceColumnItem(name: String, isSelected: Boolean, modifier: Modifier = Mod
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused }
             .clip(RoundedCornerShape(6.dp))
-            .background(if (isSelected) primary.copy(alpha = 0.15f) else Color.Transparent)
+            .background(if (isSelected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f) else Color.Transparent)
             .border(if (isFocused) 2.dp else 0.dp, if (isFocused) primary else Color.Transparent, RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
             .focusable()
@@ -651,8 +651,8 @@ fun SourceColumnItem(name: String, isSelected: Boolean, modifier: Modifier = Mod
             maxLines = 1,
             softWrap = false,
             color = when {
-                isSelected -> primary
-                isFocused -> MaterialTheme.colorScheme.onBackground
+                isSelected -> MaterialTheme.colorScheme.onBackground
+                isFocused -> primary
                 else -> Color.LightGray
             },
             modifier = Modifier.verticalText()
@@ -764,7 +764,7 @@ fun SeasonTab(number: Int, isSelected: Boolean, modifier: Modifier, onClick: () 
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier.clip(RoundedCornerShape(4.dp))
-            .background(if (isFocused) primary else if (isSelected) primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
+            .background(if (isFocused) primary else if (isSelected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
             .onFocusChanged { isFocused = it.isFocused }
             .clickable(onClick = onClick).focusable().padding(horizontal = 16.dp, vertical = 8.dp)
     ) {

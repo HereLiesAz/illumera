@@ -2482,7 +2482,7 @@ private fun AudioLanguageListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
-        selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selectedLanguage -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -2567,7 +2567,7 @@ private fun AudioVariantListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
-        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+        selected -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -3035,7 +3035,7 @@ private fun SubtitleLanguageListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
-        selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selectedLanguage -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -3122,7 +3122,7 @@ private fun SubtitleVariantListItem(
     val targetBackground = when {
         !enabled -> Color.White.copy(alpha = 0.06f)
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
-        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+        selected -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 

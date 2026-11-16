@@ -2037,7 +2037,7 @@ private fun TmdbToggleItem(
                 .size(width = 40.dp, height = 22.dp)
                 .clip(RoundedCornerShape(11.dp))
                 .background(
-                    if (isEnabled) MaterialTheme.colorScheme.primary.copy(0.8f)
+                    if (isEnabled) MaterialTheme.colorScheme.onBackground.copy(0.6f)
                     else MaterialTheme.colorScheme.onBackground.copy(0.15f)
                 ),
             contentAlignment = if (isEnabled) Alignment.CenterEnd else Alignment.CenterStart
