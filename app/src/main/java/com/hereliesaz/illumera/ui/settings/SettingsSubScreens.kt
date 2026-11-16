@@ -8,7 +8,9 @@ import androidx.compose.ui.platform.LocalContext
 import com.hereliesaz.illumera.crash.CrashReporting
 import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import com.hereliesaz.illumera.ui.audio.setCinematicAudioPreference
+import com.hereliesaz.illumera.ui.addons.VoidButton
 import com.hereliesaz.illumera.ui.addons.VoidDialog
+import com.hereliesaz.illumera.ui.components.ButtonEmphasis
 import com.hereliesaz.illumera.ui.addons.VoidInput
 import com.hereliesaz.illumera.ui.components.buttonColors
 import com.hereliesaz.illumera.ui.details.FilterDropdown
@@ -2250,18 +2252,21 @@ fun SourcePreferencesSettings(
 
 // --- ABOUT SETTINGS ---
 
-/**
- * About -> Check for Update. Runs the build's own check; the activity then shows the update
- * dialog if there is an update, or a "No new updates" dialog with Close and Play Store.
- */
+/** One full-width About button. Left on the D-pad goes back to the settings list. */
 @Composable
-private fun CheckForUpdateRow(manualCheck: ManualUpdateCheck, onGoBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val isChecking by manualCheck.checking.collectAsStateWithLifecycle()
+private fun AboutActionRow(
+    text: String,
+    onGoBack: () -> Unit,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.02f else 1f)
-    val colors = buttonColors(focused = focused)
+    val colors = buttonColors(
+        focused = focused,
+        emphasis = if (selected) ButtonEmphasis.Selected else ButtonEmphasis.Normal
+    )
 
     Row(
         modifier = Modifier
@@ -2276,22 +2281,96 @@ private fun CheckForUpdateRow(manualCheck: ManualUpdateCheck, onGoBack: () -> Un
             .clip(RoundedCornerShape(8.dp))
             .background(colors.container)
             .border(colors.borderWidth, colors.border, RoundedCornerShape(8.dp))
-            .clickable(interactionSource = interaction, indication = null) {
-                if (!isChecking) scope.launch { manualCheck.run() }
-            }
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .focusable(interactionSource = interaction)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = if (isChecking) "Checking..." else "Check for Update",
+            text = text,
             color = colors.content,
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp)
         )
     }
 }
 
+/**
+ * About -> Check for Update. Runs the build's own check; the activity then shows the update
+ * dialog if there is an update, or a "No new updates" dialog with Close and Play Store.
+ */
+@Composable
+private fun CheckForUpdateRow(manualCheck: ManualUpdateCheck, onGoBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val isChecking by manualCheck.checking.collectAsStateWithLifecycle()
+    AboutActionRow(
+        text = if (isChecking) "Checking..." else "Check for Update",
+        onGoBack = onGoBack
+    ) { if (!isChecking) scope.launch { manualCheck.run() } }
+}
+
+/** About -> Change Log: what the bundled what's-new file says changed in this version. */
+@Composable
+private fun ChangeLogRow(onGoBack: () -> Unit) {
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    AboutActionRow(text = "Change Log", onGoBack = onGoBack) { open = true }
+    if (open) {
+        val log = remember { AboutContent.changeLog(context) }
+        VoidDialog(title = "What's new in ${BuildConfig.VERSION_NAME}", onDismissRequest = { open = false }) {
+            Text(
+                text = log.ifBlank { "No change log is bundled with this build." },
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(16.dp))
+            VoidButton(text = "Close", onClick = { open = false }, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/**
+ * The bottom of About: the README intro, or the user guide when [showGuide] is on. Each
+ * paragraph can take focus so D-pad Down walks the page; that is how it scrolls on a TV.
+ */
+@Composable
+private fun AboutText(showGuide: Boolean, onGoBack: () -> Unit) {
+    val context = LocalContext.current
+    val text = remember(showGuide) {
+        if (showGuide) AboutContent.userGuide(context) else AboutContent.readmeIntro(context)
+    }
+    text.split("\n\n").filter { it.isNotBlank() }.forEach { paragraph ->
+        val interaction = remember { MutableInteractionSource() }
+        val focused by interaction.collectIsFocusedAsState()
+        Text(
+            text = paragraph,
+            color = MaterialTheme.colorScheme.onBackground.copy(if (focused) 1f else 0.75f),
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onPreviewKeyEvent {
+                    if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
+                        onGoBack(); true
+                    } else false
+                }
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    if (focused) MaterialTheme.colorScheme.onBackground.copy(0.08f) else Color.Transparent
+                )
+                .focusable(interactionSource = interaction)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+    }
+}
+
+/** The User Guide button and the text under it (README intro, or the guide when toggled on). */
+@Composable
+private fun AboutGuideAndText(showGuide: Boolean, onToggle: () -> Unit, onGoBack: () -> Unit) {
+    Spacer(Modifier.height(20.dp))
+    AboutActionRow(text = "User Guide", onGoBack = onGoBack, selected = showGuide, onClick = onToggle)
+    Spacer(Modifier.height(12.dp))
+    AboutText(showGuide = showGuide, onGoBack = onGoBack)
+}
 
 @Composable
 fun AboutSettings(
@@ -2303,6 +2382,8 @@ fun AboutSettings(
     val updateState by updateManager.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val accentColor = MaterialTheme.colorScheme.primary
+
+    var showGuide by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         if (BuildConfig.USE_PLAY_UPDATES) playStoreUpdateManager.checkForUpdate()
@@ -2366,6 +2447,8 @@ fun AboutSettings(
 
         if (BuildConfig.USE_PLAY_UPDATES) {
             CheckForUpdateRow(manualCheck = viewModel.manualUpdateCheck, onGoBack = onGoBack)
+            ChangeLogRow(onGoBack = onGoBack)
+            AboutGuideAndText(showGuide, { showGuide = !showGuide }, onGoBack)
             return@Column
         }
 
@@ -2384,6 +2467,7 @@ fun AboutSettings(
 
         // CHECK FOR UPDATE: shows the update dialog, or "No new updates".
         CheckForUpdateRow(manualCheck = viewModel.manualUpdateCheck, onGoBack = onGoBack)
+        ChangeLogRow(onGoBack = onGoBack)
 
         // UPDATE AVAILABLE SECTION
         if (updateState is UpdateState.UpdateAvailable) {
@@ -2503,5 +2587,7 @@ fun AboutSettings(
                 )
             }
         }
+
+        AboutGuideAndText(showGuide, { showGuide = !showGuide }, onGoBack)
     }
 }

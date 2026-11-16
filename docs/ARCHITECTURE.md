@@ -351,3 +351,17 @@ While a source loads, the overlay lists **every torrent source this playback sen
 ## About → Check for Update (November 16, 2026)
 
 About has one **Check for Update** button for both builds. It runs `ManualUpdateCheck`, which calls the build's own check (`AppUpdateManager.checkForUpdate(force = true)` for a GitHub build; `PlayStoreUpdateManager.checkForUpdate` for a Play build, waiting up to 20 seconds for Play Core, or on TV the store listing, to finish) and emits a `ManualUpdateResult`. `MainActivity` collects it. **Available** clears any earlier "Later" and the popup opt-out for this prompt and shows the existing update dialog (GitHub: Update / Later / Don't show again; Play: Update / Later). **NoUpdate** shows a **No new updates** dialog with **Close** and **Play Store** (opens the Play listing), plus the failure message when the check itself could not finish. A download or install already under way reports nothing, because its own dialog is showing. Launch and foreground checks are unchanged and stay quiet when there is nothing to say.
+
+## About: Change Log, User Guide and README text
+
+About (Settings -> About) shows, top to bottom: Version, Check for Update, **Change Log**, then
+**User Guide** and the text under it.
+
+- Content is never duplicated in code. `syncAboutAssets` (app/build.gradle.kts) copies
+  `README.md`, `docs/USER_GUIDE.md` and `distribution/whatsnew/whatsnew-en-US` into the app's
+  `assets/about/` on every `merge*Assets`; `AboutContent` reads them.
+- The text block shows the README intro (title to first image, `AboutContent.introOf`). The User
+  Guide button swaps it for `USER_GUIDE.md` and back (Selected highlight while on).
+- Change Log opens a dialog with the bundled what's-new text, the same file Play shows.
+- Each paragraph is focusable so D-pad Down walks (and scrolls) the page on a TV.
+- To change the text, edit the repo documents; there is nothing else to update.

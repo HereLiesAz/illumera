@@ -69,6 +69,15 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// About screen content comes straight from the repo documents, so the app never carries a
+// second copy: README.md (intro), docs/USER_GUIDE.md and the store what's-new file.
+val syncAboutAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("README.md")) { rename { "README.md" } }
+    from(rootProject.file("docs/USER_GUIDE.md")) { rename { "USER_GUIDE.md" } }
+    from(rootProject.file("distribution/whatsnew/whatsnew-en-US")) { rename { "WHATS_NEW.txt" } }
+    into(layout.buildDirectory.dir("generated/aboutAssets/about"))
+}
+
 android {
     namespace = "com.hereliesaz.illumera"
     compileSdk = 37
@@ -105,6 +114,8 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
+
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/aboutAssets").get().asFile)
 
     signingConfigs {
         if (hasReleaseKeystore) {
@@ -290,3 +301,6 @@ dependencies {
     implementation(libs.acra.http)
     implementation(libs.acra.toast)
 }
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
+    .configureEach { dependsOn(syncAboutAssets) }
