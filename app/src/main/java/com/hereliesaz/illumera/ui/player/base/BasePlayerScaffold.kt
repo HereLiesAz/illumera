@@ -1,5 +1,7 @@
 package com.hereliesaz.illumera.ui.player.base
 
+import androidx.compose.ui.platform.LocalContext
+import com.hereliesaz.illumera.ui.browser.openInAppBrowser
 import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
@@ -1095,6 +1097,11 @@ fun BasePlayerScaffold(
         }
 
         if (!uiState.errorMessage.isNullOrBlank()) {
+            val context = LocalContext.current
+            val pageUrl = if (isUnreadableSourceMessage(uiState.errorMessage)) {
+                sources.firstOrNull { it.id == uiState.currentSourceId }?.url
+                    ?.takeIf { it.startsWith("http", ignoreCase = true) }
+            } else null
             PlayerErrorOverlay(
                 errorMessage = uiState.errorMessage.orEmpty(),
                 onBack = onBack,
@@ -1110,6 +1117,11 @@ fun BasePlayerScaffold(
                 onRetry = {
                     markInteraction()
                     playbackController.retryPlayback()
+                },
+                // A source that is a web page rather than a video file can still be looked at:
+                // open its address in the app's browser.
+                onOpenPage = pageUrl?.let { url ->
+                    { context.openInAppBrowser(url) }
                 }
             )
         }
@@ -2059,7 +2071,8 @@ private fun PlayerErrorOverlay(
     errorMessage: String,
     onBack: () -> Unit,
     onSwitchSource: (() -> Unit)? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    onOpenPage: (() -> Unit)? = null
 ) {
     val backFocusRequester = remember { FocusRequester() }
 
@@ -2105,6 +2118,13 @@ private fun PlayerErrorOverlay(
                         icon = Icons.Default.SwapHoriz,
                         label = "SWITCH SOURCE",
                         onClick = onSwitchSource
+                    )
+                }
+                if (onOpenPage != null) {
+                    PlayerErrorButton(
+                        icon = Icons.Default.Refresh,
+                        label = "OPEN PAGE",
+                        onClick = onOpenPage
                     )
                 }
             }

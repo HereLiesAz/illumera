@@ -108,6 +108,26 @@ internal const val END_OF_STREAM_WINDOW_MS = 60_000L
 internal fun isWithinEndWindow(positionMs: Long, durationMs: Long): Boolean =
     durationMs > 0L && positionMs > 0L && durationMs - positionMs <= END_OF_STREAM_WINDOW_MS
 
+/**
+ * What the error screen says. A source the player cannot read as video (an HTML page where a video
+ * file was expected, or a format it has no parser for) gets a plain sentence; the code stays in
+ * brackets for reports. Other failures keep their code, with the HTTP status or runtime detail.
+ */
+internal fun playbackErrorText(code: String, httpStatus: Int?, runtimeDetail: String?): String = when {
+    code.equals(UNREADABLE_SOURCE_CODE, ignoreCase = true) || code.equals("ERROR_CODE_PARSING_CONTAINER_MALFORMED", ignoreCase = true) ->
+        "This source isn't a video file the player can read. It may be a web page. ($code)"
+    httpStatus != null -> "$code (HTTP $httpStatus)"
+    runtimeDetail != null -> "$code: $runtimeDetail"
+    else -> code
+}
+
+/** The error Media3 reports when the address does not lead to a container it can parse. */
+internal const val UNREADABLE_SOURCE_CODE = "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED"
+
+/** True when [errorMessage] (as built by [playbackErrorText]) is the unreadable-source error. */
+internal fun isUnreadableSourceMessage(errorMessage: String?): Boolean =
+    errorMessage?.contains(UNREADABLE_SOURCE_CODE, ignoreCase = true) == true
+
 internal fun isFailedRuntimeCheckCode(errorCodeName: String): Boolean =
     errorCodeName.equals("ERROR_CODE_FAILED_RUNTIME_CHECK", ignoreCase = true)
 
@@ -2131,11 +2151,7 @@ class ExoPlayerBackend(
         val runtimeDetail = if (isFailedRuntimeCheckCode(code)) {
             error.cause?.message?.takeIf { it.isNotBlank() } ?: error.message?.takeIf { it.isNotBlank() }
         } else null
-        return when {
-            status != null -> "$code (HTTP $status)"
-            runtimeDetail != null -> "$code: $runtimeDetail"
-            else -> code
-        }
+        return playbackErrorText(code, status, runtimeDetail)
     }
 
     private fun scheduleAudioSwitchRecovery(player: ExoPlayer) {

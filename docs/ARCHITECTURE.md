@@ -417,6 +417,34 @@ ExoPlayer's 50 s default, tens of megabytes of heap per player).
 To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
 owner goes away.
 
+## Screen Editor: move, hold for options, group by addon
+
+- On a row in Settings -> Screen Editor, **OK picks the row up to move it** (▲▼, OK to put it
+  down, Back to cancel). The options dialog (rename, layout, hide, hub settings) opens on a **hold**
+  of OK or a touch (`Modifier.longPressClick`, `LONG_PRESS_MS` = 1 s, shared with the cards).
+- **Group by addon** (button above the Home list) folds each addon that has two or more rows into
+  one line (`EditorDisplayItem.Group`) that OK opens or shuts. Hubs and single-row addons stay as
+  they are. A group sits where its addon's first row was. Moving a row inside a group trades places
+  with the next row of the same addon (`moveNeighbour`, `DashboardViewModel.swapEditorItems`),
+  so a move never jumps over a header. Grouping is a view; the real row order is unchanged.
+
+## Configuring addons
+
+- Browse tab: Configure on a catalog item opens its page in the in-app browser (Torrentio keeps
+  its own dialog).
+- Installed tab: every addon served over http(s) gets Configure (`installedAddonCanBeConfigured`),
+  opening `<addon>/configure` in the browser, unless the catalog knows its manifest isn't
+  configurable. The page's Install button comes back as an addon link and goes to the install
+  confirmation.
+- If the device has no WebView, `MainActivity.openBrowser` hands the page to the device's browser.
+
+## Player error screen
+
+`playbackErrorText` gives a plain sentence for `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED` (the
+source isn't a video file: usually a web page) and keeps the code in brackets. For that error with
+an http(s) source the screen also offers **Open page**, which opens the address in the in-app
+browser. With other sources and auto-fallback on, the player still moves to the next source silently.
+
 ## Stremio addon sync: add-only, with an explicit reset
 
 Syncing addons from a Stremio account never removes a local addon. `IntegrationsViewModel.syncAddons()`
