@@ -10,7 +10,6 @@ import com.hereliesaz.illumera.ui.audio.rememberCinematicAudioPreferences
 import com.hereliesaz.illumera.ui.audio.setCinematicAudioPreference
 import com.hereliesaz.illumera.ui.addons.VoidDialog
 import com.hereliesaz.illumera.ui.addons.VoidInput
-import com.hereliesaz.illumera.ui.components.ButtonEmphasis
 import com.hereliesaz.illumera.ui.components.buttonColors
 import com.hereliesaz.illumera.ui.details.FilterDropdown
 import androidx.compose.foundation.layout.widthIn
@@ -2456,7 +2455,7 @@ fun AboutSettings(
             val dlInteraction = remember { MutableInteractionSource() }
             val isDlFocused by dlInteraction.collectIsFocusedAsState()
             val dlScale by animateFloatAsState(if (isDlFocused) 1.02f else 1f)
-            val dlColors = buttonColors(focused = isDlFocused, emphasis = ButtonEmphasis.Primary)
+            val dlColors = buttonColors(focused = isDlFocused)
 
             Row(
                 modifier = Modifier
@@ -2521,7 +2520,7 @@ fun AboutSettings(
             val retryInteraction = remember { MutableInteractionSource() }
             val isRetryFocused by retryInteraction.collectIsFocusedAsState()
             val retryScale by animateFloatAsState(if (isRetryFocused) 1.02f else 1f)
-            val retryColors = buttonColors(focused = isRetryFocused, emphasis = ButtonEmphasis.Primary)
+            val retryColors = buttonColors(focused = isRetryFocused)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

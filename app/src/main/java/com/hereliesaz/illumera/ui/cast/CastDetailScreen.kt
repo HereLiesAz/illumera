@@ -115,7 +115,6 @@ fun CastDetailScreen(
                         text = "Retry",
                         onClick = { viewModel.retry() },
                         modifier = Modifier.width(120.dp),
-                        isPrimary = true
                     )
                 }
             }

@@ -222,7 +222,6 @@ fun AddonsScreen(
                     }
                 },
                 enabled = installUrl.isNotBlank() && !state.isLoading,
-                isPrimary = true,
                 modifier = Modifier.fillMaxWidth(),
                 compact = true
             )
@@ -248,7 +247,6 @@ fun AddonsScreen(
             VoidButton(
                 text = "Install and show catalogs",
                 onClick = { viewModel.confirmInstall(pending.url, true, true, true) },
-                isPrimary = true,
                 modifier = Modifier.fillMaxWidth()
             )
             VoidButton(

@@ -125,7 +125,7 @@ fun AddonCatalogContent(
                     VoidButton(
                         text = "All",
                         onClick = { onSourceSelected(AddonCatalogSource.ALL) },
-                        isPrimary = !showingInstalled && state.catalogSource == AddonCatalogSource.ALL,
+                        isSelected = !showingInstalled && state.catalogSource == AddonCatalogSource.ALL,
                         modifier = Modifier.width(66.dp).focusRequester(entryRequester ?: initialFocusRequester).restorableFocus("addons:all", focusMemory),
                         compact = true
                     )
@@ -134,7 +134,7 @@ fun AddonCatalogContent(
                     VoidButton(
                         text = "Installed (${state.addons.size})",
                         onClick = onInstalledSelected,
-                        isPrimary = showingInstalled,
+                        isSelected = showingInstalled,
                         modifier = Modifier.width(120.dp).restorableFocus("addons:installed", focusMemory),
                         compact = true
                     )
@@ -143,7 +143,7 @@ fun AddonCatalogContent(
                     VoidButton(
                         text = "Not installed",
                         onClick = onNotInstalledToggled,
-                        isPrimary = !showingInstalled && notInstalledOnly,
+                        isSelected = !showingInstalled && notInstalledOnly,
                         modifier = Modifier.width(126.dp).restorableFocus("addons:not-installed", focusMemory),
                         compact = true
                     )
@@ -154,7 +154,7 @@ fun AddonCatalogContent(
                         VoidButton(
                             text = source.displayName,
                             onClick = { onSourceSelected(source) },
-                            isPrimary = !showingInstalled && state.catalogSource == source,
+                            isSelected = !showingInstalled && state.catalogSource == source,
                             modifier = Modifier.width(if (source in listOf(AddonCatalogSource.AIOMETADATA, AddonCatalogSource.GITHUB_STREMIO_ADDONS)) 148.dp else if (source == AddonCatalogSource.STREMIO_ADDONS_NET) 98.dp else 90.dp).restorableFocus("addons:source:${source.name}", focusMemory),
                             compact = true
                         )
@@ -167,7 +167,7 @@ fun AddonCatalogContent(
                         VoidButton(
                             text = repository.name.take(22),
                             onClick = { onCollectionSelected(repository) },
-                            isPrimary = !showingInstalled &&
+                            isSelected = !showingInstalled &&
                                 state.catalogSource == AddonCatalogSource.COLLECTION &&
                                 state.activeCollection?.url == repository.url,
                             modifier = Modifier.width(172.dp)

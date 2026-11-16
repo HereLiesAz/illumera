@@ -327,3 +327,7 @@ While a source is loaded into a debrid service, the player's loading overlay sho
 ## Not installed filter on Add-ons (November 16, 2026)
 
 The Add-ons tab row has a **Not installed** toggle after **Installed**. It hides catalog entries whose normalized endpoint (`normalizeCatalogTransportUrl`, same rule as removal) matches an installed addon, so a configured variant with a different query string still shows. It applies to whichever catalog is selected (All, a built-in source or a custom repository) and composes with search (`filterCatalogItems`). Choosing it from the Installed list opens the catalog with the filter on; choosing it again turns it off. When it leaves nothing, the list says every addon in the catalog is already installed. State lives in `AddonsScreen`; the control is tagged `addons:not-installed` in the screen's `FocusMemory`.
+
+## Two button highlights only (November 16, 2026)
+
+A button has two highlights: **active** (focused: accent border, tinted fill, accent label) and **selected** (a tab, choice or toggle that is on: accent fill and border at rest). Nothing else is lit at rest. The old "main action" glow (`isPrimary = true` on Update, Save, Confirm, Connect, Retry, Install and the like) is gone, because it read as a selection nobody had made. `VoidButton` takes `isSelected`; `ButtonEmphasis` is `Normal`, `Selected` and `Destructive`. `IntegrationButton` and the Theme editor's `EditorButton` no longer take an emphasis flag. Destructive buttons keep their red accent at rest.

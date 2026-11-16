@@ -142,7 +142,7 @@ fun VoidButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
+    isSelected: Boolean = false,
     isDestructive: Boolean = false,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
@@ -156,7 +156,7 @@ fun VoidButton(
         focused = isFocused,
         emphasis = when {
             isDestructive -> ButtonEmphasis.Destructive
-            isPrimary -> ButtonEmphasis.Primary
+            isSelected -> ButtonEmphasis.Selected
             else -> ButtonEmphasis.Normal
         },
         enabled = enabled
@@ -266,7 +266,7 @@ fun VoidIconButton(
     val scale by animateFloatAsState(if (isFocused && enabled) 1.1f else 1f, label = "VoidIconButtonScale")
     val colors = buttonColors(
         focused = isFocused,
-        emphasis = if (isActive) ButtonEmphasis.Primary else ButtonEmphasis.Normal,
+        emphasis = if (isActive) ButtonEmphasis.Selected else ButtonEmphasis.Normal,
         enabled = enabled
     )
 

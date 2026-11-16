@@ -84,7 +84,6 @@ fun MoreLikeThisScreen(
                             onClick = { viewModel.retry() },
                             modifier = Modifier.width(120.dp),
                             focusRequester = retryFocus,
-                            isPrimary = true
                         )
                     }
                     LaunchedEffect(current) { runCatching { retryFocus.requestFocus() } }

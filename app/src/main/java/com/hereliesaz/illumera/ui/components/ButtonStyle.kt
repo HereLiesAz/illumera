@@ -11,12 +11,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** How much a button stands out before it is focused. */
+/**
+ * What a button looks like before it is focused. There are only two highlights: the active
+ * (focused) one, and the selected one for a tab, choice or toggle that is on. An action is
+ * never lit at rest, however important it is.
+ */
 enum class ButtonEmphasis {
-    /** Ordinary action. */
+    /** Not selected: an ordinary action, or a choice that is off. */
     Normal,
-    /** The screen's main action, or a toggle that is on. */
-    Primary,
+    /** A tab, choice or toggle that is on. */
+    Selected,
     /** Removes or resets something. */
     Destructive
 }
@@ -33,7 +37,7 @@ data class ButtonColors(
  * The one highlighted/unhighlighted scheme every action button uses, so buttons that
  * sit side by side light up the same way. Shape and size stay each button's own.
  *
- * - At rest: faint fill, faint border, theme text label (Primary and Destructive show their
+ * - At rest: faint fill, faint border, theme text label (Selected and Destructive show their
  *   accent at rest).
  * - Focused: accent-tinted fill, 2dp accent border, accent label.
  * - Disabled: dimmed, never highlighted.

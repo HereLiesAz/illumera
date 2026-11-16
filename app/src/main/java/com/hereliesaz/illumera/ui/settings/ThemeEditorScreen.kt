@@ -319,7 +319,6 @@ fun ThemeEditorScreen(
             ) {
                 EditorButton(
                     text = "Cancel",
-                    isPrimary = false,
                     onClick = onCancel,
                     modifier = Modifier
                         .weight(1f)
@@ -333,7 +332,6 @@ fun ThemeEditorScreen(
                 )
                 EditorButton(
                     text = "Save",
-                    isPrimary = true,
                     onClick = {
                         onSave(
                             themeName.trim().ifBlank { editingTheme?.name ?: "My Theme" },
@@ -695,7 +693,6 @@ private fun HslSlider(
 @Composable
 private fun EditorButton(
     text: String,
-    isPrimary: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -703,8 +700,7 @@ private fun EditorButton(
     val isFocused by interactionSource.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (isFocused) 1.05f else 1f)
     val colors = buttonColors(
-        focused = isFocused,
-        emphasis = if (isPrimary) ButtonEmphasis.Primary else ButtonEmphasis.Normal
+        focused = isFocused
     )
 
     Box(

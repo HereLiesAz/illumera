@@ -1086,7 +1086,7 @@ private fun WatchedToggleButton(
 
     val colors = buttonColors(
         focused = isFocused,
-        emphasis = if (isWatched) ButtonEmphasis.Primary else ButtonEmphasis.Normal
+        emphasis = if (isWatched) ButtonEmphasis.Selected else ButtonEmphasis.Normal
     )
 
     Row(

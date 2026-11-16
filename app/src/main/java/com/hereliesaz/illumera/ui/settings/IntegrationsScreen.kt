@@ -553,7 +553,6 @@ private fun TorrentClawSettingsDialog(
                             error = "Could not store the API key securely"
                         }
                     },
-                    isPrimary = true,
                     modifier = Modifier.weight(1f)
                 )
                 IntegrationButton(
@@ -820,7 +819,6 @@ private fun ConnectStremioDialog(
                                 text = if (isLoading) "Connecting..." else "Connect",
                                 onClick = { onLogin(email, password) },
                                 enabled = email.isNotBlank() && password.isNotBlank() && !isLoading,
-                                isPrimary = true,
                                 modifier = Modifier.width(140.dp)
                             )
 
@@ -828,14 +826,12 @@ private fun ConnectStremioDialog(
                                 text = "Login with Facebook",
                                 onClick = onLoginWithFacebook,
                                 enabled = !isLoading,
-                                isPrimary = false,
                                 modifier = Modifier.width(180.dp)
                             )
                             IntegrationButton(
                                 text = "Sign in with Apple",
                                 onClick = onLoginWithApple,
                                 enabled = !isLoading,
-                                isPrimary = false,
                                 modifier = Modifier.width(170.dp)
                             )
                         }
@@ -1089,7 +1085,6 @@ private fun StremioSignupDialog(
                         if (error == null) onRegister(cleanEmail, password, marketingAccepted)
                     },
                     enabled = !isLoading,
-                    isPrimary = true,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -1190,7 +1185,6 @@ private fun StremioPasswordResetDialog(
                                 }
                             }
                         },
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1284,7 +1278,6 @@ private fun AppleLoginDialog(
                             IntegrationButton(
                                 text = "Open Browser",
                                 onClick = { url?.let { openExternalUrl(context, it) } },
-                                isPrimary = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1302,7 +1295,7 @@ private fun AppleLoginDialog(
                         )
                         Spacer(Modifier.height(20.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            IntegrationButton(text = "Retry", onClick = onRetry, isPrimary = true, modifier = Modifier.width(120.dp))
+                            IntegrationButton(text = "Retry", onClick = onRetry, modifier = Modifier.width(120.dp))
                             IntegrationButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.width(120.dp))
                         }
                     }
@@ -1379,7 +1372,6 @@ private fun FacebookLoginDialog(
                             IntegrationButton(
                                 text = "Open Browser",
                                 onClick = { url?.let { openExternalUrl(context, it) } },
-                                isPrimary = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1397,7 +1389,7 @@ private fun FacebookLoginDialog(
                         )
                         Spacer(Modifier.height(20.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            IntegrationButton(text = "Retry", onClick = onRetry, isPrimary = true, modifier = Modifier.width(120.dp))
+                            IntegrationButton(text = "Retry", onClick = onRetry, modifier = Modifier.width(120.dp))
                             IntegrationButton(text = "Cancel", onClick = onDismiss, modifier = Modifier.width(120.dp))
                         }
                     }
@@ -1681,7 +1673,6 @@ private fun StremioExternalLinkDialog(
                 IntegrationButton(
                     text = "Open Browser",
                     onClick = { openExternalUrl(context, url) },
-                    isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -2164,7 +2155,6 @@ private fun IntegrationButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = false,
     isDestructive: Boolean = false,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null
@@ -2178,7 +2168,6 @@ private fun IntegrationButton(
         focused = isFocused,
         emphasis = when {
             isDestructive -> ButtonEmphasis.Destructive
-            isPrimary -> ButtonEmphasis.Primary
             else -> ButtonEmphasis.Normal
         },
         enabled = enabled
@@ -2312,7 +2301,6 @@ private fun WutchDialog(
                                 text = if (isBusy) "Syncing..." else "Sync now",
                                 onClick = onSync,
                                 enabled = !isBusy,
-                                isPrimary = true,
                                 modifier = Modifier.width(130.dp),
                                 focusRequester = focusRequester
                             )
@@ -2409,7 +2397,6 @@ private fun WutchDialog(
                                 text = if (isBusy) "Connecting..." else "Connect",
                                 onClick = connect,
                                 enabled = canConnect,
-                                isPrimary = true,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -2651,7 +2638,7 @@ private fun DebridDialog(
                             )
                             Spacer(Modifier.height(16.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
-                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, isPrimary = true, modifier = Modifier.width(130.dp))
+                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, modifier = Modifier.width(130.dp))
                                 IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
                             }
                         } else {
@@ -2670,7 +2657,7 @@ private fun DebridDialog(
                             Spacer(Modifier.height(16.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 IntegrationButton(text = "Get API Key", onClick = { openExternalUrl(context, selectedProvider.apiKeyUrl) }, enabled = !isConnecting, modifier = Modifier.weight(1f))
-                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, isPrimary = true, modifier = Modifier.weight(1f))
+                                IntegrationButton(text = if (isConnecting) "Connecting..." else "Connect", onClick = { onConnect(selectedProvider, apiKey) }, enabled = apiKey.isNotBlank() && !isConnecting, modifier = Modifier.weight(1f))
                             }
                             Spacer(Modifier.height(12.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -2785,7 +2772,6 @@ private fun TraktAuthDialog(
                                 IntegrationButton(
                                     text = "Connect",
                                     onClick = onConnect,
-                                    isPrimary = true,
                                     modifier = Modifier.width(130.dp),
                                     focusRequester = focusRequester
                                 )
@@ -2888,7 +2874,6 @@ private fun TraktAuthDialog(
                                 IntegrationButton(
                                     text = "Done",
                                     onClick = onDismiss,
-                                    isPrimary = true,
                                     modifier = Modifier.width(100.dp),
                                     focusRequester = focusRequester
                                 )
@@ -2904,7 +2889,7 @@ private fun TraktAuthDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
                             ) {
-                                IntegrationButton(text = "Retry", onClick = onConnect, isPrimary = true, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
+                                IntegrationButton(text = "Retry", onClick = onConnect, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
                                 IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
                             }
                         }
@@ -2934,7 +2919,7 @@ private fun TraktAuthDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.End
                             ) {
-                                IntegrationButton(text = "Close", onClick = onDismiss, isPrimary = true, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
+                                IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
                             }
                         }
 
@@ -2947,7 +2932,7 @@ private fun TraktAuthDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
                             ) {
-                                IntegrationButton(text = "Retry", onClick = onConnect, isPrimary = true, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
+                                IntegrationButton(text = "Retry", onClick = onConnect, modifier = Modifier.width(100.dp), focusRequester = focusRequester)
                                 IntegrationButton(text = "Close", onClick = onDismiss, modifier = Modifier.width(100.dp))
                             }
                         }

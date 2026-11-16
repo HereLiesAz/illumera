@@ -277,7 +277,6 @@ fun BasePlayerScaffold(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 com.hereliesaz.illumera.ui.addons.VoidButton(
                     text = "Play in 2D",
-                    isPrimary = true,
                     focusRequester = playIn2dFocus,
                     onClick = {
                         playbackController.setStereoLayout(detectedStereo)
