@@ -78,4 +78,17 @@ class LoadingStepFeedTest {
             lines
         )
     }
+
+    @Test
+    fun debridDownloadHasAPercentReadoutAndNoPreloadedLines() {
+        val checking = LoadingSnapshot(torrentStatus = "Real-Debrid is downloading this", isDebrid = true, isTorrent = true)
+        val half = checking.copy(progress = 0.5f)
+        assertEquals(null, checking.debridPercent())
+        assertEquals(50, half.debridPercent())
+        assertEquals(emptyList<String>(), loadingStepsBetween(checking, half))
+        // A local torrent keeps its milestone lines and has no debrid percent.
+        val local = LoadingSnapshot(torrentStatus = "Connecting to peers", progress = 0.5f, isTorrent = true)
+        assertEquals(null, local.debridPercent())
+        assertEquals(listOf("Preloaded 50%"), loadingStepsBetween(local.copy(progress = 0f), local))
+    }
 }

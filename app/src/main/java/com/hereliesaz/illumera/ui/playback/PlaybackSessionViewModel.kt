@@ -18,6 +18,7 @@ import com.hereliesaz.illumera.data.repository.AddonRepository
 import com.hereliesaz.illumera.data.repository.SubtitleRepository
 import com.hereliesaz.illumera.data.stream.StreamSortingService
 import com.hereliesaz.illumera.data.debrid.WantedFile
+import com.hereliesaz.illumera.data.debrid.magnetInfoHash
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.domain.AddonSubtitle
@@ -329,11 +330,15 @@ class PlaybackSessionViewModel @Inject constructor(
         val waitSeconds = if (debridOnly) DEBRID_RESOLVE_WAIT_SECONDS else DEBRID_PREFERRED_WAIT_SECONDS
 
         torrent.stop()
-        torrent.progress = TorrentProgress("Checking your debrid service")
+        torrent.progress = TorrentProgress("Checking your debrid service", debrid = true)
+        val wanted = wantedFileFor(fileName)
+        val attempt = DebridAttempt(currentStream, magnetInfoHash(magnet), wanted)
+        debridAttempts.removeAll { it.sameSourceAs(attempt) }
+        debridAttempts += attempt
         debridJob = viewModelScope.launch {
             val url = try {
-                debridManager.resolveMagnet(magnet, wantedFileFor(fileName), waitSeconds) { status, percent ->
-                    torrent.progress = TorrentProgress(status, progress = percent?.div(100f))
+                debridManager.resolveMagnet(magnet, wanted, waitSeconds) { status, percent ->
+                    torrent.progress = TorrentProgress(status, progress = percent?.div(100f), debrid = true)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -343,6 +348,8 @@ class PlaybackSessionViewModel @Inject constructor(
             }
             when {
                 url != null -> {
+                    debridAttempts.remove(attempt)
+                    if (heldReady?.first === attempt) heldReady = null
                     torrent.progress = null
                     onReady(url)
                 }
@@ -364,6 +371,80 @@ class PlaybackSessionViewModel @Inject constructor(
     }
 
     private var debridJob: Job? = null
+
+    /**
+     * A source sent to a debrid service that hasn't delivered yet: it may still finish while
+     * the viewer moves on, so every move to another source looks at these first.
+     */
+    private class DebridAttempt(val stream: Stream?, val infoHash: String?, val wanted: WantedFile) {
+        fun sameSourceAs(other: DebridAttempt) =
+            infoHash != null && infoHash == other.infoHash && wanted == other.wanted
+    }
+
+    private val debridAttempts = mutableListOf<DebridAttempt>()
+
+    /** An earlier debrid source found ready; it plays once the source tried after it has failed. */
+    private var heldReady: Pair<DebridAttempt, String>? = null
+
+    private fun forgetDebridAttempts() {
+        debridAttempts.clear()
+        heldReady = null
+    }
+
+    /**
+     * Checks every earlier debrid source and holds the first one that is ready. Holding is all
+     * it does: the ready source loads only after the next source has had its turn.
+     */
+    private suspend fun holdReadyDebridSource() {
+        if (heldReady != null || debridAttempts.isEmpty()) return
+        for (attempt in debridAttempts.toList()) {
+            val url = try {
+                debridManager.readyUrlFor(attempt.infoHash, attempt.wanted.fileName, attempt.wanted)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                AppErrors.e("LumeraTorrent", "Checking an earlier debrid source failed", e)
+                null
+            }
+            if (url != null) {
+                heldReady = attempt to url
+                return
+            }
+        }
+    }
+
+    /**
+     * The viewer chose to leave [stream] themselves: there is a reason, so it is never brought
+     * back on its own, even if its debrid download finishes. Only sources the app gave up on
+     * (a debrid wait that ran out) stay eligible.
+     */
+    private fun abandonDebridSource(stream: Stream?) {
+        stream ?: return
+        debridAttempts.removeAll { it.stream === stream || (it.infoHash != null && it.infoHash == stream.infoHash) }
+        if (heldReady?.first?.let { it in debridAttempts } == false) heldReady = null
+    }
+
+    /** Plays the held debrid source. Returns false when none is held. */
+    private fun playHeldDebridSource(): Boolean {
+        val (attempt, url) = heldReady ?: return false
+        heldReady = null
+        debridAttempts.remove(attempt)
+        playbackStatus = "A source sent to your debrid service earlier is ready · opening it"
+        torrent.progress = null
+        debridJob?.cancel()
+        debridJob = null
+        val stream = attempt.stream
+        if (stream != null) {
+            val candidates = pendingSourceSelection?.candidateStreams.orEmpty()
+            currentStream = stream.copy(url = url)
+            if (candidates.isNotEmpty()) {
+                pendingSourceSelection = PendingSourceSelection(selectedPlaybackId, stream, candidates)
+                selectedPlayerSources = buildSourcePayload(candidates, stream)
+            }
+        }
+        selectedVideoUrl = url
+        return true
+    }
 
     /**
      * The file this playback wants from a torrent: the addon's file name, and the season and
@@ -402,6 +483,7 @@ class PlaybackSessionViewModel @Inject constructor(
         playerPreference: String?,
         persistProfileState: suspend () -> Unit
     ) {
+        forgetDebridAttempts()
         queuePlaybackActive = queueStartPending
         if (!queuePlaybackActive) queueWholeShowActive = false
         queueStartPending = false
@@ -457,6 +539,7 @@ class PlaybackSessionViewModel @Inject constructor(
      */
     fun startResolved(id: String, url: String, title: String, playerPreference: String?) {
         stopTorrent()
+        forgetDebridAttempts()
         queueStartPending = false
         queuePlaybackActive = false
         queueWholeShowActive = false
@@ -969,15 +1052,18 @@ class PlaybackSessionViewModel @Inject constructor(
         onReady: (String) -> Unit,
         onError: (String) -> Unit
     ) {
-        pendingSourceSelection?.candidateStreams
+        val target = pendingSourceSelection?.candidateStreams
             ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
-            ?.let { currentStream = it }
+        if (target != null && target !== currentStream) abandonDebridSource(currentStream)
+        target?.let { currentStream = it }
         startTorrent(
             magnetUrl, fileIdx, fileName,
             errorContext = "Source switch error",
             onError = onError,
             onReady = onReady
         )
+        // The viewer moved on: look at the earlier debrid sources; a ready one waits its turn.
+        viewModelScope.launch { holdReadyDebridSource() }
     }
 
     /**
@@ -990,10 +1076,14 @@ class PlaybackSessionViewModel @Inject constructor(
             ?.firstOrNull { playerSourceId(it) == sourceId }
             ?: return
         if (stream === currentStream) return
+        abandonDebridSource(currentStream)
         currentStream = stream
         val sourceUrl = resolvePlayableSourceUrl(stream) ?: return
         // Unconditional: a streaming torrent has already cleared its progress.
-        if (!sourceUrl.startsWith("magnet:")) stopTorrent()
+        if (!sourceUrl.startsWith("magnet:")) {
+            stopTorrent()
+            viewModelScope.launch { holdReadyDebridSource() }
+        }
     }
 
     fun onFirstFrame() {
@@ -1020,8 +1110,11 @@ class PlaybackSessionViewModel @Inject constructor(
                     maxWaitSeconds = maxWait,
                     wanted = wantedFileFor(stream.behaviorHints?.filename.orEmpty())
                 ) { percent ->
-                    playbackStatus = "Your debrid service is downloading this · $percent% · waiting up to ${maxWait}s"
+                    torrent.progress = TorrentProgress(
+                        "Your debrid service is downloading this", progress = percent / 100f, debrid = true
+                    )
                 }
+                torrent.progress = null
                 if (!readyUrl.isNullOrBlank()) {
                     playbackStatus = "Download finished · opening the video"
                     selectedVideoUrl = readyUrl
@@ -1035,6 +1128,12 @@ class PlaybackSessionViewModel @Inject constructor(
 
     /** Opens the source ranked after the current one, or leaves the player when none is left. */
     internal suspend fun tryNextRankedSource() {
+        // An earlier debrid source found ready on the last step has now waited out the source
+        // tried after it: it plays before anything further down the list.
+        if (playHeldDebridSource()) return
+        // Look at every earlier debrid source before the next one is tried; a ready one is only
+        // held here and plays once that next source has failed.
+        holdReadyDebridSource()
         val pending = pendingSourceSelection
         val candidates = pending?.candidateStreams.orEmpty()
         val current = currentStream
@@ -1047,6 +1146,8 @@ class PlaybackSessionViewModel @Inject constructor(
         val nextStream = if (currentIndex < 0) null
         else candidates.drop(currentIndex + 1).firstOrNull(::isPlayable)
         if (nextStream == null) {
+            // Nothing left to try first, so a ready earlier debrid source goes now.
+            if (playHeldDebridSource()) return
             playbackStatus = null
             pendingSourceSelection = null
             navChannel.trySend(PlaybackNav.ReturnFromPlayer())
@@ -1057,6 +1158,7 @@ class PlaybackSessionViewModel @Inject constructor(
 
         val nextUrl = resolvePlayableSourceUrl(nextStream)
         if (nextUrl == null) {
+            if (playHeldDebridSource()) return
             playbackStatus = null
             navChannel.trySend(PlaybackNav.ReturnFromPlayer())
             return
@@ -1254,6 +1356,7 @@ class PlaybackSessionViewModel @Inject constructor(
         // A debrid wait or ranked fallback for the episode being left must not land on this one.
         fallbackJob?.cancel()
         fallbackJob = null
+        forgetDebridAttempts()
         val subtitlePayload = buildSubtitlePayload(stream, subtitles)
         val sourcePayload = buildSourcePayload(candidates, stream)
         pendingSourceSelection = PendingSourceSelection(
@@ -1312,6 +1415,7 @@ class PlaybackSessionViewModel @Inject constructor(
         cancelWatchdogs()
         fallbackJob?.cancel()
         fallbackJob = null
+        forgetDebridAttempts()
         if (pendingEpisodeSwitch?.streams == null) pendingEpisodeSwitch = null
         isEpisodeSwitchLoading = false
         awaitingFirstFrameId = null

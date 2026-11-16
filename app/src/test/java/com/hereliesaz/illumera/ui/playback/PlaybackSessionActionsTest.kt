@@ -902,6 +902,86 @@ class PlaybackSessionActionsTest {
         assertEquals(1, launcher.starts.size)
     }
 
+    // ---- Earlier debrid sources ----
+
+    private val hashA = "a".repeat(40)
+    private val debridA = Stream(name = "A", infoHash = hashA, fileIdx = 0)
+    private val directB = Stream(name = "B", url = "https://cdn/b.mkv")
+    private val directC = Stream(name = "C", url = "https://cdn/c.mkv")
+
+    /** A session whose first source, [debridA], was sent to debrid and did not deliver in time. */
+    private fun TestScope.sessionAfterDebridMiss(candidates: List<Stream>): PlaybackSessionViewModel {
+        every { debridManager.canRouteTorrents() } returns true
+        coEvery { debridManager.resolveMagnet(any(), any(), any(), any()) } returns null
+        val vm = session()
+        vm.pendingSourceSelection = PendingSourceSelection("tt1:1:1", debridA, candidates)
+        vm.currentStream = debridA
+        vm.selectedVideoUrl = ""
+        vm.startTorrent("magnet:?xt=urn:btih:$hashA", 0, "")
+        runCurrent()
+        return vm
+    }
+
+    @Test
+    fun `an earlier debrid source that turned ready plays only after the next source has failed`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns "https://debrid/a.mkv"
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        // A missed its wait; A turns out ready, but B gets its turn first.
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+        assertEquals("https://cdn/b.mkv", vm.selectedVideoUrl)
+
+        // B fails: the ready A plays before C is tried.
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+        assertEquals("https://debrid/a.mkv", vm.selectedVideoUrl)
+        assertEquals("https://debrid/a.mkv", vm.currentStream?.url)
+    }
+
+    @Test
+    fun `a debrid source the viewer moved on from is never brought back`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns "https://debrid/a.mkv"
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        // The viewer picks B themselves, leaving A.
+        vm.onPlayerSourceChanged(playerSourceId(directB)!!)
+        runCurrent()
+        // B fails: the ready A must not return; C is next.
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+
+        assertEquals("https://cdn/c.mkv", vm.selectedVideoUrl)
+        coVerify(exactly = 0) { debridManager.readyUrlFor(hashA, any(), any()) }
+    }
+
+    @Test
+    fun `an earlier debrid source that is not ready is not loaded`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns null
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+        assertEquals("https://cdn/b.mkv", vm.selectedVideoUrl)
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+
+        assertEquals("https://cdn/c.mkv", vm.selectedVideoUrl)
+    }
+
+    @Test
+    fun `a ready earlier debrid source plays instead of leaving when no source is left to try`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns "https://debrid/a.mkv"
+        val vm = sessionAfterDebridMiss(listOf(debridA))
+        val events = events(vm)
+
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+
+        assertEquals("https://debrid/a.mkv", vm.selectedVideoUrl)
+        assertTrue(events.isEmpty())
+    }
+
     // ---- Debrid and the VPN ----
 
     private val vpnMagnet = "magnet:?xt=urn:btih:${"d".repeat(40)}"
