@@ -74,6 +74,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.hereliesaz.illumera.ui.playback.DebridStatusViewModel
+import com.hereliesaz.illumera.data.model.debrid.DebridSourceEntry
+import com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -206,6 +208,8 @@ fun BasePlayerScaffold(
      * their picks go to [onSkipSourceBeforeLoad] / [onSelectSourceBeforeLoad].
      */
     availableSources: List<PlayerSourceOption> = emptyList(),
+    /** Every torrent source this playback sent to debrid, listed with its progress while loading. */
+    debridSources: List<DebridSourceEntry> = emptyList(),
     onSkipSourceBeforeLoad: (() -> Unit)? = null,
     onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
@@ -936,7 +940,8 @@ fun BasePlayerScaffold(
                     hasRenderedFirstFrame = uiState.hasRenderedFirstFrame,
                     isBuffering = uiState.isBuffering,
                     statusMessage = playbackStatus
-                )
+                ),
+                debridSources = debridSources
             )
         }
 
@@ -2164,8 +2169,22 @@ private fun PlayerStatusPill(
     }
 }
 
+/** The most debrid rows the loading overlay lists; older ones fold into "+N more". */
+private const val MAX_DEBRID_ROWS = 8
+
 @Composable
-private fun LoadingOverlay(snapshot: LoadingSnapshot) {
+private fun LoadingOverlay(snapshot: LoadingSnapshot, debridSources: List<DebridSourceEntry>) {
+    // Where each source sent to debrid stands; read again every few seconds while any is listed.
+    val debridStatusModel: DebridStatusViewModel = hiltViewModel()
+    val statuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
+    val listed = debridSources.isNotEmpty()
+    LaunchedEffect(listed) {
+        while (listed) {
+            debridStatusModel.refresh()
+            delay(5_000L)
+        }
+    }
+
     // The video behind is blurred by the scaffold; this darkens it and shows the step feed.
     Box(
         modifier = Modifier
@@ -2174,38 +2193,91 @@ private fun LoadingOverlay(snapshot: LoadingSnapshot) {
         contentAlignment = Alignment.Center
     ) {
         LoadingStepFeed(snapshot = snapshot)
-        // The feed only logs milestones; this is the live state of the source being loaded
-        // into debrid. It shows from the first moment (indeterminate while the torrent is
-        // still being sent) and sits just under the feed, clear of the control bar.
-        if (snapshot.isDebrid) {
+        // Immediately under the feed (its newest row ends just below the center), in the same
+        // type: every source this title sent to debrid, each with its own progress. A source the
+        // app could not tell apart by hash still shows as one row, from the live snapshot.
+        val rows = if (debridSources.isNotEmpty()) {
+            debridSources.map { entry -> DebridRow(entry.label, statuses[entry.infoHash]) }
+        } else if (snapshot.isDebrid) {
             val percent = snapshot.debridPercent()
+            listOf(
+                DebridRow(
+                    "Debrid",
+                    percent?.let { DebridSourceStatus(DebridSourceStatus.Kind.DOWNLOADING, it) }
+                        ?: DebridSourceStatus(DebridSourceStatus.Kind.ADDING)
+                )
+            )
+        } else emptyList()
+        if (rows.isNotEmpty()) {
             Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = 56.dp)
-                    .width(240.dp),
+                modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = if (percent != null) "Debrid · $percent%" else "Debrid · adding…",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                if (percent != null) {
-                    LinearProgressIndicator(
-                        progress = { percent / 100f },
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.25f)
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        color = Color.White,
-                        trackColor = Color.White.copy(alpha = 0.25f)
-                    )
+                Spacer(Modifier.fillMaxHeight(0.5f))
+                Spacer(Modifier.height(20.dp))
+                val shown = rows.takeLast(MAX_DEBRID_ROWS)
+                Column(
+                    modifier = Modifier.width(460.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    shown.forEach { row -> DebridProgressRow(row) }
+                    val hidden = rows.size - shown.size
+                    if (hidden > 0) {
+                        Text(
+                            text = "+$hidden more",
+                            color = Color.White.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+private data class DebridRow(val label: String, val status: DebridSourceStatus?)
+
+@Composable
+private fun DebridProgressRow(row: DebridRow) {
+    val status = row.status
+    val detail = when (status?.kind) {
+        DebridSourceStatus.Kind.READY -> "100%"
+        DebridSourceStatus.Kind.ADDING -> "adding"
+        DebridSourceStatus.Kind.DOWNLOADING -> status?.percent?.let { "$it%" } ?: "downloading"
+        null -> "not added"
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "${row.label} · $detail",
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
+        )
+        val barModifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+        when {
+            status?.kind == DebridSourceStatus.Kind.ADDING ->
+                LinearProgressIndicator(
+                    modifier = barModifier,
+                    color = Color.White,
+                    trackColor = Color.White.copy(alpha = 0.25f)
+                )
+            else -> LinearProgressIndicator(
+                progress = {
+                    when (status?.kind) {
+                        DebridSourceStatus.Kind.READY -> 1f
+                        DebridSourceStatus.Kind.DOWNLOADING -> (status?.percent ?: 0) / 100f
+                        else -> 0f
+                    }
+                },
+                modifier = barModifier,
+                color = Color.White,
+                trackColor = Color.White.copy(alpha = 0.25f)
+            )
         }
     }
 }

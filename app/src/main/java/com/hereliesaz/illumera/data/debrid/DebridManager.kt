@@ -158,11 +158,18 @@ class DebridManager @Inject constructor(
 
     /** Re-reads every connected library once; cheap when no service is connected. */
     suspend fun refreshSourceStatuses() {
-        libraryStatuses = if (connectedKeys().isEmpty()) {
-            emptyMap()
+        if (connectedKeys().isEmpty()) {
+            synchronized(inFlightStatuses) { libraryStatuses = emptyMap() }
+            publishSourceStatuses()
         } else {
-            val library = (listLibrary() as? DebridResult.Success)?.value ?: return
-            library.mapNotNull { item ->
+            applyLibrary((listLibrary() as? DebridResult.Success)?.value ?: return)
+        }
+    }
+
+    /** Every library read, wherever it happens, brings every source's status up to date. */
+    private fun applyLibrary(library: List<DebridItem>) {
+        synchronized(inFlightStatuses) {
+            libraryStatuses = library.mapNotNull { item ->
                 val hash = item.infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
                 hash to if (isReady(item)) DebridSourceStatus(DebridSourceStatus.Kind.READY)
                 else DebridSourceStatus(DebridSourceStatus.Kind.DOWNLOADING, item.progress?.coerceIn(0, 100))
@@ -379,6 +386,7 @@ class DebridManager @Inject constructor(
         onStatus("Checking ${keys.first().first.displayName}", null)
         // Already in the account (a repeat watch, or a transfer finished earlier): no re-add.
         (listLibrary() as? DebridResult.Success)?.value
+            ?.also(::applyLibrary)
             ?.firstOrNull { item ->
                 infoHash != null && item.infoHash?.lowercase()?.contains(infoHash) == true && isReady(item)
             }
@@ -478,6 +486,7 @@ class DebridManager @Inject constructor(
                 is DebridResult.Success -> result.value
                 is DebridResult.Failure -> return null
             }
+            applyLibrary(library)
             val item = library.firstOrNull { candidate ->
                 val hashMatches = wantedHash != null && candidate.infoHash?.lowercase()?.contains(wantedHash) == true
                 hashMatches || fileNamesMatch(fileName, candidate.name)

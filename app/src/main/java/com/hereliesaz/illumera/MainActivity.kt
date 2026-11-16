@@ -1321,6 +1321,7 @@ class MainActivity : ComponentActivity() {
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status -> session.onSuspectSource(status, currentProfile) },
                                 onSourceChanged = session::onPlayerSourceChanged,
+                                debridSources = session.debridSources,
                                 onSkipSourceBeforeLoad = session::skipSourceBeforeLoad,
                                 onSelectSourceBeforeLoad = session::selectSourceBeforeLoad,
                                 onBack = { sessionResult -> session.end(sessionResult, currentProfile) },
