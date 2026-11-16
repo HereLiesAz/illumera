@@ -55,4 +55,29 @@ class AddonsScreenReviewTest {
             normalizeCatalogTransportUrl("https://example.org/b/manifest.json?token=y")
         )
     }
+
+    private fun item(url: String, name: String) = AddonCatalogItem(
+        transportUrl = url,
+        manifest = Manifest(id = name.lowercase(), name = name)
+    )
+
+    @Test
+    fun notInstalledFilterHidesOnlyExactlyInstalledEndpoints() {
+        val a = item("https://example.org/a/manifest.json", "Alpha")
+        val b = item("https://example.org/b/manifest.json", "Beta")
+        val bConfigured = item("https://example.org/b/manifest.json?token=x", "Beta configured")
+        val installedUrls = listOf("https://example.org/b")
+
+        assertEquals(listOf(a, b, bConfigured), filterCatalogItems(listOf(a, b, bConfigured), installedUrls, "", false))
+        // A different configured query is a different installation, so it stays listed.
+        assertEquals(listOf(a, bConfigured), filterCatalogItems(listOf(a, b, bConfigured), installedUrls, "", true))
+    }
+
+    @Test
+    fun notInstalledFilterComposesWithSearch() {
+        val a = item("https://example.org/a/manifest.json", "Alpha")
+        val b = item("https://example.org/b/manifest.json", "Beta")
+        assertEquals(listOf(b), filterCatalogItems(listOf(a, b), listOf("https://example.org/a"), "bet", true))
+        assertTrue(filterCatalogItems(listOf(a, b), listOf("https://example.org/a"), "alp", true).isEmpty())
+    }
 }

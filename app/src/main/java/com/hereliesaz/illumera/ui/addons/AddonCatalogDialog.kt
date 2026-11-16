@@ -68,6 +68,8 @@ fun AddonCatalogContent(
     onRemove: (AddonCatalogItem) -> Unit,
     onConfigure: (AddonCatalogItem) -> Unit,
     showingInstalled: Boolean = false,
+    notInstalledOnly: Boolean = false,
+    onNotInstalledToggled: () -> Unit = {},
     onInstalledSelected: () -> Unit = {},
     onRemoveInstalled: (String) -> Unit = {},
     onToggleInstalled: (String, Boolean) -> Unit = { _, _ -> },
@@ -92,19 +94,9 @@ fun AddonCatalogContent(
                 addon.transportUrl.contains(needle, true)
         }
     }
-    val filteredItems = remember(state.catalogItems, query) {
-        val needle = query.trim().lowercase()
-        if (needle.isEmpty()) {
-            state.catalogItems
-        } else {
-            state.catalogItems.filter { item ->
-                val manifest = item.manifest
-                manifest.name.lowercase().contains(needle) ||
-                    manifest.description.orEmpty().lowercase().contains(needle) ||
-                    manifest.types.orEmpty().any { it.lowercase().contains(needle) } ||
-                    manifest.id.lowercase().contains(needle)
-            }
-        }
+    val installedUrls = remember(state.addons) { state.addons.map { it.transportUrl } }
+    val filteredItems = remember(state.catalogItems, installedUrls, query, notInstalledOnly) {
+        filterCatalogItems(state.catalogItems, installedUrls, query, notInstalledOnly)
     }
 
     Column(
@@ -144,6 +136,15 @@ fun AddonCatalogContent(
                         onClick = onInstalledSelected,
                         isPrimary = showingInstalled,
                         modifier = Modifier.width(120.dp).restorableFocus("addons:installed", focusMemory),
+                        compact = true
+                    )
+                }
+                item(key = "not_installed") {
+                    VoidButton(
+                        text = "Not installed",
+                        onClick = onNotInstalledToggled,
+                        isPrimary = !showingInstalled && notInstalledOnly,
+                        modifier = Modifier.width(126.dp).restorableFocus("addons:not-installed", focusMemory),
                         compact = true
                     )
                 }
@@ -306,7 +307,11 @@ fun AddonCatalogContent(
 
                     if (filteredItems.isEmpty()) {
                         Text(
-                            if (query.isBlank()) "No addons were returned by this catalog." else "No addons match your search.",
+                            when {
+                                query.isNotBlank() -> "No addons match your search."
+                                notInstalledOnly && state.catalogItems.isNotEmpty() -> "Every addon in this catalog is already installed."
+                                else -> "No addons were returned by this catalog."
+                            },
                             color = Color.Gray,
                             modifier = Modifier.padding(vertical = 28.dp)
                         )
@@ -319,9 +324,7 @@ fun AddonCatalogContent(
                                 AddonCatalogRow(
                                     item = item,
                                     focusMemory = focusMemory,
-                                    installed = state.addons.any { installed ->
-                                        normalizeCatalogTransportUrl(installed.transportUrl) == normalizeCatalogTransportUrl(item.transportUrl)
-                                    },
+                                    installed = isCatalogItemInstalled(item, installedUrls),
                                     onInstall = { onInstall(item) },
                                     onRemove = { onRemove(item) },
                                     onConfigure = { onConfigure(item) }
@@ -498,6 +501,31 @@ private fun catalogSourceName(state: AddonsViewModel.UiState): String = when (st
     AddonCatalogSource.OFFICIAL -> AddonCatalogSource.OFFICIAL.displayName
     AddonCatalogSource.COMMUNITY -> AddonCatalogSource.COMMUNITY.displayName
     AddonCatalogSource.COLLECTION -> state.activeCollection?.name ?: AddonCatalogSource.COLLECTION.displayName
+}
+
+/** True when an installed addon has exactly [item]'s normalized endpoint. */
+internal fun isCatalogItemInstalled(item: AddonCatalogItem, installedUrls: List<String>): Boolean {
+    val url = normalizeCatalogTransportUrl(item.transportUrl)
+    return installedUrls.any { normalizeCatalogTransportUrl(it) == url }
+}
+
+/** [items] matching [query], without the ones already installed when [notInstalledOnly]. */
+internal fun filterCatalogItems(
+    items: List<AddonCatalogItem>,
+    installedUrls: List<String>,
+    query: String,
+    notInstalledOnly: Boolean
+): List<AddonCatalogItem> {
+    val needle = query.trim().lowercase()
+    return items.filter { item ->
+        val manifest = item.manifest
+        (!notInstalledOnly || !isCatalogItemInstalled(item, installedUrls)) &&
+            (needle.isEmpty() ||
+                manifest.name.lowercase().contains(needle) ||
+                manifest.description.orEmpty().lowercase().contains(needle) ||
+                manifest.types.orEmpty().any { it.lowercase().contains(needle) } ||
+                manifest.id.lowercase().contains(needle))
+    }
 }
 
 /** Keep configured paths and query parameters distinct; only strip the manifest suffix. */
