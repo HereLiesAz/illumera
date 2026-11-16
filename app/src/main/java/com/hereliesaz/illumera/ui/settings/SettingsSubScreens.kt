@@ -73,6 +73,7 @@ import com.hereliesaz.illumera.R
 import com.hereliesaz.illumera.data.model.ProfileEntity
 import com.hereliesaz.illumera.data.model.ThemeEntity
 import com.hereliesaz.illumera.data.update.AppUpdateManager
+import com.hereliesaz.illumera.data.update.ManualUpdateCheck
 import com.hereliesaz.illumera.data.update.PlayStoreUpdateState
 import com.hereliesaz.illumera.data.update.UpdateState
 import com.hereliesaz.illumera.ui.details.GlassSidebarScaffold
@@ -2249,6 +2250,49 @@ fun SourcePreferencesSettings(
 
 // --- ABOUT SETTINGS ---
 
+/**
+ * About -> Check for Update. Runs the build's own check; the activity then shows the update
+ * dialog if there is an update, or a "No new updates" dialog with Close and Play Store.
+ */
+@Composable
+private fun CheckForUpdateRow(manualCheck: ManualUpdateCheck, onGoBack: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val isChecking by manualCheck.checking.collectAsStateWithLifecycle()
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val scale by animateFloatAsState(if (focused) 1.02f else 1f)
+    val colors = buttonColors(focused = focused)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .onPreviewKeyEvent {
+                if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
+                    onGoBack(); true
+                } else false
+            }
+            .scale(scale)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.container)
+            .border(colors.borderWidth, colors.border, RoundedCornerShape(8.dp))
+            .clickable(interactionSource = interaction, indication = null) {
+                if (!isChecking) scope.launch { manualCheck.run() }
+            }
+            .focusable(interactionSource = interaction)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = if (isChecking) "Checking..." else "Check for Update",
+            color = colors.content,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp)
+        )
+    }
+}
+
+
 @Composable
 fun AboutSettings(
     onGoBack: () -> Unit,
@@ -2257,7 +2301,6 @@ fun AboutSettings(
     val updateManager = viewModel.updateManager
     val playStoreUpdateManager = viewModel.playStoreUpdateManager
     val updateState by updateManager.state.collectAsStateWithLifecycle()
-    val playStoreUpdateState by playStoreUpdateManager.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val accentColor = MaterialTheme.colorScheme.primary
 
@@ -2322,50 +2365,7 @@ fun AboutSettings(
         Spacer(Modifier.height(12.dp))
 
         if (BuildConfig.USE_PLAY_UPDATES) {
-            val playInteraction = remember { MutableInteractionSource() }
-            val playFocused by playInteraction.collectIsFocusedAsState()
-            val playScale by animateFloatAsState(if (playFocused) 1.02f else 1f)
-            val playColors = buttonColors(focused = playFocused)
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .onPreviewKeyEvent {
-                        if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
-                            onGoBack(); true
-                        } else false
-                    }
-                    .scale(playScale)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(playColors.container)
-                    .border(playColors.borderWidth, playColors.border, RoundedCornerShape(8.dp))
-                    .clickable(interactionSource = playInteraction, indication = null) {
-                        playStoreUpdateManager.openPlayStoreListing()
-                    }
-                    .focusable(interactionSource = playInteraction)
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    when (playStoreUpdateState) {
-                        PlayStoreUpdateState.Checking -> "Checking Google Play..."
-                        is PlayStoreUpdateState.UpdateAvailable -> "Update available"
-                        PlayStoreUpdateState.UpToDate -> "You're up to date"
-                        PlayStoreUpdateState.InProgress -> "Update in progress"
-                        is PlayStoreUpdateState.Error -> "Open Google Play"
-                        PlayStoreUpdateState.Idle -> "Check for updates"
-                    },
-                    color = playColors.content,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                )
-                Text(
-                    "Google Play",
-                    color = accentColor,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                )
-            }
+            CheckForUpdateRow(manualCheck = viewModel.manualUpdateCheck, onGoBack = onGoBack)
             return@Column
         }
 
@@ -2382,48 +2382,8 @@ fun AboutSettings(
             blockUp = true
         )
 
-        // CHECK FOR UPDATES BUTTON
-        val checkInteraction = remember { MutableInteractionSource() }
-        val isCheckFocused by checkInteraction.collectIsFocusedAsState()
-        val checkScale by animateFloatAsState(if (isCheckFocused) 1.02f else 1f)
-        val isChecking = updateState is UpdateState.Checking
-        val isDownloading = updateState is UpdateState.Downloading
-        val checkColors = buttonColors(focused = isCheckFocused)
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .onPreviewKeyEvent {
-                    if (it.key == Key.DirectionLeft && it.type == KeyEventType.KeyDown) {
-                        onGoBack(); true
-                    } else false
-                }
-                .scale(checkScale)
-                .clip(RoundedCornerShape(8.dp))
-                .background(checkColors.container)
-                .border(checkColors.borderWidth, checkColors.border, RoundedCornerShape(8.dp))
-                .clickable(interactionSource = checkInteraction, indication = null) {
-                    if (!isChecking && !isDownloading) {
-                        scope.launch { updateManager.checkForUpdate() }
-                    }
-                }
-                .focusable(interactionSource = checkInteraction)
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = when (updateState) {
-                    is UpdateState.Checking -> "Checking..."
-                    is UpdateState.UpToDate -> "You're up to date"
-                    is UpdateState.Error -> (updateState as UpdateState.Error).message
-                    else -> "Check for Updates"
-                },
-                color = checkColors.content,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium, fontSize = 15.sp)
-            )
-        }
+        // CHECK FOR UPDATE: shows the update dialog, or "No new updates".
+        CheckForUpdateRow(manualCheck = viewModel.manualUpdateCheck, onGoBack = onGoBack)
 
         // UPDATE AVAILABLE SECTION
         if (updateState is UpdateState.UpdateAvailable) {

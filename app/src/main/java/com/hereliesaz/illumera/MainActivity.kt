@@ -48,6 +48,8 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.hereliesaz.illumera.data.update.AppUpdateManager
+import com.hereliesaz.illumera.data.update.ManualUpdateCheck
+import com.hereliesaz.illumera.data.update.ManualUpdateResult
 import com.hereliesaz.illumera.data.update.PlayStoreUpdateManager
 import com.hereliesaz.illumera.data.update.PlayStoreUpdateState
 import com.hereliesaz.illumera.data.update.UpdateInfo
@@ -431,6 +433,57 @@ private fun UpdateReadyToInstallDialog(
     }
 }
 
+/** The answer to About -> Check for Update when nothing newer exists. */
+@Composable
+private fun NoNewUpdatesDialog(
+    detail: String?,
+    onClose: () -> Unit,
+    onPlayStore: () -> Unit
+) {
+    Dialog(onDismissRequest = onClose) {
+        Box(
+            modifier = Modifier
+                .width(rememberDialogWidth(420))
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.background)
+                .border(1.dp, Color.White.copy(0.1f), RoundedCornerShape(16.dp))
+                .padding(24.dp)
+        ) {
+            androidx.compose.foundation.layout.Column {
+                Text(
+                    "No new updates",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White
+                )
+                if (!detail.isNullOrBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    VoidButton(
+                        text = "Close",
+                        onClick = onClose,
+                        modifier = Modifier.weight(1f)
+                    )
+                    VoidButton(
+                        text = "Play Store",
+                        onClick = onPlayStore,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PlayStoreUpdateAvailableDialog(
     fromPlay: Boolean,
@@ -497,6 +550,8 @@ class MainActivity : ComponentActivity() {
     lateinit var appUpdateManager: AppUpdateManager
     @Inject
     lateinit var playStoreUpdateManager: PlayStoreUpdateManager
+    @Inject
+    lateinit var manualUpdateCheck: ManualUpdateCheck
     @Inject
     lateinit var addonDao: AddonDao
     @Inject
@@ -754,6 +809,22 @@ class MainActivity : ComponentActivity() {
             var updateDismissedFor by rememberSaveable { mutableStateOf<String?>(null) }
             // "Later" hides the prompt for that version only; a newer release asks again.
             var playUpdateDismissedFor by rememberSaveable { mutableStateOf<String?>(null) }
+            // A viewer-requested check (About -> Check for Update) shows its result whatever
+            // "Later" or the popup setting said before.
+            var manualUpdatePrompt by remember { mutableStateOf(false) }
+            var noNewUpdates by remember { mutableStateOf<ManualUpdateResult.NoUpdate?>(null) }
+            LaunchedEffect(Unit) {
+                manualUpdateCheck.results.collect { result ->
+                    when (result) {
+                        ManualUpdateResult.Available -> {
+                            updateDismissedFor = null
+                            playUpdateDismissedFor = null
+                            manualUpdatePrompt = true
+                        }
+                        is ManualUpdateResult.NoUpdate -> noNewUpdates = result
+                    }
+                }
+            }
             val updateScope = rememberCoroutineScope()
             LaunchedEffect(Unit) {
                 when {
@@ -1397,17 +1468,23 @@ class MainActivity : ComponentActivity() {
                     if (BuildConfig.ENABLE_SELF_UPDATE && _splashFinished.value) {
                         when (val state = updateState) {
                             is UpdateState.UpdateAvailable -> if (
-                                appUpdateManager.isPopupEnabled && updateDismissedFor != state.info.versionName
+                                (manualUpdatePrompt || appUpdateManager.isPopupEnabled) &&
+                                updateDismissedFor != state.info.versionName
                             ) {
                                 UpdateAvailableDialog(
                                     info = state.info,
                                     onUpdate = {
+                                        manualUpdatePrompt = false
                                         updateScope.launch { appUpdateManager.downloadAndInstall(state.info.apkUrl) }
                                     },
-                                    onDismiss = { updateDismissedFor = state.info.versionName },
+                                    onDismiss = {
+                                        updateDismissedFor = state.info.versionName
+                                        manualUpdatePrompt = false
+                                    },
                                     onDontShowAgain = {
                                         appUpdateManager.setPopupEnabled(false)
                                         updateDismissedFor = state.info.versionName
+                                        manualUpdatePrompt = false
                                     }
                                 )
                             }
@@ -1454,14 +1531,29 @@ class MainActivity : ComponentActivity() {
                                 PlayStoreUpdateAvailableDialog(
                                     fromPlay = playState.fromPlay,
                                     announcedVersion = playState.announcedVersion,
-                                    onUpdate = { playStoreUpdateManager.startUpdate(playUpdateLauncher) },
+                                    onUpdate = {
+                                        manualUpdatePrompt = false
+                                        playStoreUpdateManager.startUpdate(playUpdateLauncher)
+                                    },
                                     onDismiss = {
                                         playUpdateDismissedFor = "${playState.versionCode}:${playState.announcedVersion.orEmpty()}"
+                                        manualUpdatePrompt = false
                                     }
                                 )
                             }
                             else -> Unit
                         }
+                    }
+
+                    noNewUpdates?.let { result ->
+                        NoNewUpdatesDialog(
+                            detail = result.detail,
+                            onClose = { noNewUpdates = null },
+                            onPlayStore = {
+                                noNewUpdates = null
+                                playStoreUpdateManager.openPlayStoreListing()
+                            }
+                        )
                     }
 
                 }
