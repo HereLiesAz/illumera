@@ -81,6 +81,7 @@ fun PlayerScreen(
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
     onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null,
     onMagnetSourceSelected: ((magnetUrl: String, fileIdx: Int, fileName: String, onReady: (localUrl: String) -> Unit, onError: (message: String) -> Unit) -> Unit)? = null,
+    onResolveWebPage: (suspend (PlayerSourceOption) -> com.hereliesaz.illumera.data.web.ResolvedWebVideo?)? = null,
     torrentProgress: TorrentProgress? = null,
     playbackStatus: String? = null,
     /** Called when a stream draws its first frame, so a [playbackStatus] can be cleared. */
@@ -109,10 +110,11 @@ fun PlayerScreen(
     val playbackController = runtime.playbackController
     val renderSurface = runtime.renderSurface
 
-    LaunchedEffect(playbackController, onMagnetSourceSelected, onResolveSourceSubtitles) {
+    LaunchedEffect(playbackController, onMagnetSourceSelected, onResolveSourceSubtitles, onResolveWebPage) {
         (playbackController as? ExoPlayerBackend)?.apply {
             this.onMagnetSourceSelected = onMagnetSourceSelected
             this.onResolveSourceSubtitles = onResolveSourceSubtitles
+            this.onResolveWebPage = onResolveWebPage
         }
     }
 

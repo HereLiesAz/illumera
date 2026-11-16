@@ -201,6 +201,14 @@ class ExoPlayerBackend(
      */
     var onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null
 
+    /**
+     * Finds the video behind a source that turned out to be a web page. Asked once per source when
+     * the player reports the container as unreadable; the result replaces the source's address
+     * and headers and playback restarts on it.
+     */
+    var onResolveWebPage: (suspend (PlayerSourceOption) -> com.hereliesaz.illumera.data.web.ResolvedWebVideo?)? = null
+    private val webPagesTried = mutableSetOf<String>()
+
     override val backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER
 
     private val scopeJob = SupervisorJob()
@@ -492,6 +500,8 @@ class ExoPlayerBackend(
                 return
             }
             if (retryAfterFailedRuntimeCheck(error)) return
+            // A web page where a video file was expected: find the video on the page.
+            if (tryResolveWebPage(error)) return
             if (retryFromStartAfter416(error)) return
             // A non-2xx response means the current media URL itself was rejected. When
             // ranked fallback is enabled, advance immediately instead of retrying the same
@@ -650,6 +660,7 @@ class ExoPlayerBackend(
         loadToken++
         _excludedSourceIds.value = emptySet()
         _sourceListDisabled.value = false
+        webPagesTried.clear()
 
         // Emit loading state immediately so Compose can render the spinner
         _uiState.update {
@@ -2000,6 +2011,41 @@ class ExoPlayerBackend(
             ?: _uiState.value.positionMs.coerceAtLeast(0L)
         pendingErrorFallbackPosition = nextSource.id to resumePosition
         selectSource(nextSource.id)
+        return true
+    }
+
+    /**
+     * The source's address leads to a web page, not a video. Fetches the page and plays the video
+     * it carries (see [onResolveWebPage]); if there is none, falls back to the next source or the
+     * error screen as before. Tried once per source and address, so a page that yields a bad
+     * address can't loop.
+     */
+    private fun tryResolveWebPage(error: PlaybackException): Boolean {
+        if (!error.errorCodeName.equals(UNREADABLE_SOURCE_CODE, ignoreCase = true)) return false
+        val resolver = onResolveWebPage ?: return false
+        val source = _sourceOptions.value.firstOrNull { it.id == currentSourceId } ?: return false
+        if (!source.url.startsWith("http", ignoreCase = true)) return false
+        if (!webPagesTried.add("${source.id}|${source.url}")) return false
+        val token = loadToken
+        _uiState.update { it.copy(isBuffering = true, errorMessage = null) }
+        scope.launch {
+            val resolved = try {
+                resolver(source)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (released || loadToken != token || currentSourceId != source.id) return@launch
+            if (resolved != null && resolved.url != source.url) {
+                val updated = source.copy(url = resolved.url, requestHeaders = source.requestHeaders + resolved.headers)
+                // Retry and later switches play the video, not the page.
+                _sourceOptions.update { list -> list.map { if (it.id == source.id) updated else it } }
+                switchToSource(source.id, updated)
+            } else if (!tryNextSourceOnParsingError(error)) {
+                _uiState.update { it.copy(errorMessage = playbackErrorMessage(error), isBuffering = false) }
+            }
+        }
         return true
     }
 

@@ -444,12 +444,29 @@ owner goes away.
   confirmation.
 - If the device has no WebView, `MainActivity.openBrowser` hands the page to the device's browser.
 
-## Player error screen
+## Sources that are web pages
 
-`playbackErrorText` gives a plain sentence for `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED` (the
-source isn't a video file: usually a web page) and keeps the code in brackets. For that error with
-an http(s) source the screen also offers **Open page**, which opens the address in the in-app
-browser. With other sources and auto-fallback on, the player still moves to the next source silently.
+Some streams (video sites, some addons) hand over a page, not a file; the player reports
+`ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED`. `ExoPlayerBackend.tryResolveWebPage` catches that for an
+http(s) source and asks `WebPageVideoResolver` (`data/web`) for the video behind it, once per
+source and address:
+
+- A **YouTube** address goes to `YouTubeExtractor` (muxed, so audio comes with it).
+- Any other page is fetched with a browser User-Agent. The video address is picked out of it:
+  `og:video` / `twitter:player:stream` meta tags and `<video>` / `<source>` tags first, then any
+  `.m3u8`, `.mp4`, `.webm` or `.mpd` address in its scripts and JSON (un-escaped, relative
+  addresses resolved). `pickBestVideo` prefers HLS over MP4, the higher named quality, and drops
+  previews, thumbnails, trailers and adverts. A page with no video is searched one player frame
+  (`<iframe>`) deep.
+- The video plays with the page as `Referer` (and its origin and the User-Agent), which most hosts
+  require. The source's address and headers are replaced in the source list, so Retry and later
+  switches play the video, not the page.
+- It finds what a page links to. It does not get past a login, captcha, DRM or a player that
+  builds its address from script at run time.
+
+If nothing is found the player moves to the next source (auto-fallback) or shows the error. That
+screen says "This source isn't a video file the player can read. It may be a web page." with the
+code in brackets, and offers **Open page** (in-app browser).
 
 ## Stremio addon sync: add-only, with an explicit reset
 

@@ -543,6 +543,9 @@ private class BrowserRequest(val url: String, val onAddonLink: ((String) -> Unit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity(), com.hereliesaz.illumera.ui.browser.InAppBrowserHost {
+    @Inject
+    lateinit var webPageVideoResolver: com.hereliesaz.illumera.data.web.WebPageVideoResolver
+
     private var browserRequest by androidx.compose.runtime.mutableStateOf<BrowserRequest?>(null)
 
     override fun openBrowser(url: String, onAddonLink: ((String) -> Unit)?) {
@@ -1412,6 +1415,7 @@ class MainActivity : ComponentActivity(), com.hereliesaz.illumera.ui.browser.InA
                                 onEpisodeSwitchDismissed = session::dismissEpisodeSwitch,
                                 onResolveSourceSubtitles = session::resolveSourceSubtitles,
                                 onMagnetSourceSelected = session::selectMagnetSource,
+                                onResolveWebPage = { source -> webPageVideoResolver.resolve(source.url, source.requestHeaders) },
                                 torrentProgress = session.torrentProgress,
                                 playbackStatus = session.playbackStatus,
                                 onFirstFrameRendered = session::onFirstFrame,
