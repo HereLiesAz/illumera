@@ -53,7 +53,7 @@ fun TorrentioConfigDialog(
 
     VoidDialog(onDismissRequest = onDismiss, title = "Configure Torrentio") {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            VoidButton("Save", onClick = { onSave(config) }, isPrimary = true, compact = true, focusRequester = firstFocus)
+            VoidButton("Save", onClick = { onSave(config) }, compact = true, focusRequester = firstFocus)
             VoidButton("Cancel", onClick = onDismiss, compact = true)
         }
         Spacer(Modifier.height(12.dp))
@@ -174,5 +174,5 @@ private fun Chips(content: @Composable () -> Unit) {
 
 @Composable
 private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
-    VoidButton(text = label, onClick = onClick, isPrimary = selected, compact = true)
+    VoidButton(text = label, onClick = onClick, isSelected = selected, compact = true)
 }

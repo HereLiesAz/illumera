@@ -195,7 +195,6 @@ internal fun AddonRepositoriesDialog(
                     text = if (addState.isAdding) "Adding…" else "Add",
                     onClick = { viewModel.add(url) { url = "" } },
                     enabled = url.isNotBlank() && !addState.isAdding,
-                    isPrimary = true,
                     compact = true,
                     modifier = Modifier.width(110.dp)
                 )

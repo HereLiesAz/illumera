@@ -1203,7 +1203,7 @@ private fun ExpandableIconButton(
 
     val colors = buttonColors(
         focused = isFocused,
-        emphasis = if (isActive) ButtonEmphasis.Primary else ButtonEmphasis.Normal
+        emphasis = if (isActive) ButtonEmphasis.Selected else ButtonEmphasis.Normal
     )
 
     val scale by animateFloatAsState(

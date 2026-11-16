@@ -178,7 +178,7 @@ fun SelectCategoriesDialog(
 
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             VoidButton("Cancel", onDismiss, Modifier.weight(1f))
-            VoidButton("Confirm", { onConfirm(currentSelection) }, Modifier.weight(1f), isPrimary = true, focusRequester = confirmFocusRequester)
+            VoidButton("Confirm", { onConfirm(currentSelection) }, Modifier.weight(1f), focusRequester = confirmFocusRequester)
         }
     }
 }

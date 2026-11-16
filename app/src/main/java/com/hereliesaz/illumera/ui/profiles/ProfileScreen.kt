@@ -175,7 +175,6 @@ fun WelcomeView(onStart: () -> Unit) {
         VoidButton(
             text = "Create First Profile",
             onClick = onStart,
-            isPrimary = true,
             modifier = Modifier.width(250.dp),
             focusRequester = requester
         )
@@ -448,7 +447,6 @@ private fun ProfileInitialSetupDialog(
                     text = if (canCopy) "Copy From Another Profile" else "No Profile Available To Copy",
                     onClick = onCopy,
                     enabled = canCopy && !isLoading,
-                    isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -565,7 +563,6 @@ private fun ScratchConfirmDialog(
                     text = "Yes, Start Fresh",
                     onClick = onConfirm,
                     enabled = !isLoading,
-                    isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(12.dp))
@@ -755,7 +752,6 @@ private fun StremioConnectDialog(
                     text = if (isLoading) "Connecting…" else "Connect with Email & Password",
                     onClick = { onConnect(email, password, useAccountAvatar) { errorMessage = it } },
                     enabled = !isLoading && email.isNotBlank() && password.isNotBlank(),
-                    isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
@@ -878,7 +874,6 @@ private fun SetupSocialLoginDialog(
                 VoidButton(
                     text = "Retry",
                     onClick = onRetry,
-                    isPrimary = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
@@ -933,7 +928,6 @@ private fun SetupSocialLoginDialog(
                                 )
                             }
                         },
-                        isPrimary = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1074,7 +1068,6 @@ fun ProfileOptionsDialog(
                         onClick = {
                             if (areButtonsReady) onEdit()
                         },
-                        isPrimary = false,
                         modifier = Modifier.fillMaxWidth(),
                         focusRequester = editRequester
                     )
@@ -1084,7 +1077,6 @@ fun ProfileOptionsDialog(
                         onClick = {
                             if (areButtonsReady) showDeleteConfirmation = true
                         },
-                        isPrimary = false,
                         isDestructive = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1153,14 +1145,12 @@ fun DeleteConfirmationDialog(
                     VoidButton(
                         text = "Yes",
                         onClick = onConfirm,
-                        isPrimary = false,
                         isDestructive = true,
                         modifier = Modifier.weight(1f)
                     )
                     VoidButton(
                         text = "No",
                         onClick = onDismiss,
-                        isPrimary = false,
                         modifier = Modifier.weight(1f),
                         focusRequester = noRequester
                     )

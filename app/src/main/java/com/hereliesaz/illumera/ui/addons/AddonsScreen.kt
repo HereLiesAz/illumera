@@ -67,6 +67,7 @@ fun AddonsScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showingInstalled by remember { mutableStateOf(false) }
+    var notInstalledOnly by remember { mutableStateOf(false) }
     var showTorrentioConfig by remember { mutableStateOf(false) }
     if (showTorrentioConfig) {
         TorrentioConfigDialog(
@@ -149,6 +150,13 @@ fun AddonsScreen(
             },
             onConfigureInstalled = { showTorrentioConfig = true },
             showingInstalled = showingInstalled,
+            notInstalledOnly = notInstalledOnly,
+            onNotInstalledToggled = {
+                // From the Installed list this opens the catalog with the filter on.
+                notInstalledOnly = showingInstalled || !notInstalledOnly
+                showingInstalled = false
+                removalGuidance = null
+            },
             onInstalledSelected = { showingInstalled = true; removalGuidance = null },
             onRemoveInstalled = { pendingRemoval = it },
             onToggleInstalled = { url, enabled -> viewModel.setAddonEnabled(url, enabled) },
@@ -214,7 +222,6 @@ fun AddonsScreen(
                     }
                 },
                 enabled = installUrl.isNotBlank() && !state.isLoading,
-                isPrimary = true,
                 modifier = Modifier.fillMaxWidth(),
                 compact = true
             )
@@ -240,7 +247,6 @@ fun AddonsScreen(
             VoidButton(
                 text = "Install and show catalogs",
                 onClick = { viewModel.confirmInstall(pending.url, true, true, true) },
-                isPrimary = true,
                 modifier = Modifier.fillMaxWidth()
             )
             VoidButton(

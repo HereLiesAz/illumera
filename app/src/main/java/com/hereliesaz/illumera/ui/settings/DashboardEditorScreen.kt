@@ -584,7 +584,7 @@ fun DashboardEditorScreen(
                                         genreChanges++
                                     },
                                     modifier = Modifier.weight(1f),
-                                    isPrimary = enabled,
+                                    isSelected = enabled,
                                     compact = true
                                 )
                                 val titleOrder = viewModel.titleOrder(currentProfile.id, state.screen, genre)
@@ -684,7 +684,7 @@ fun DashboardEditorScreen(
                         viewModel.renameCatalog(state.config, newName)
                         dialogState = DialogState.None
                         showSnackbar("Renamed")
-                    }, Modifier.weight(1f), isPrimary = true, focusRequester = saveFocusRequester)
+                    }, Modifier.weight(1f), focusRequester = saveFocusRequester)
                 }
             }
         }
@@ -745,7 +745,7 @@ fun DashboardEditorScreen(
                         viewModel.updateLayoutSettings(config, isGridViewEnabled, itemCount.toInt(), isInfiniteScrolling)
                         dialogState = DialogState.None
                         showSnackbar("Layout updated")
-                    }, Modifier.weight(1f), isPrimary = true)
+                    }, Modifier.weight(1f))
                 }
             }
         }
@@ -1150,7 +1150,7 @@ fun DashboardEditorScreen(
                             )
                             dialogState = DialogState.None
                             showSnackbar("Hero carousel updated")
-                        }, Modifier.weight(1f), isPrimary = true, enabled = true)
+                        }, Modifier.weight(1f), enabled = true)
                     }
                     }
                 } else {

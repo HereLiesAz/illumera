@@ -172,7 +172,6 @@ private fun PlayerChoiceDialog(
                     VoidButton(
                         text = "Internal Player",
                         onClick = onInternal,
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                     VoidButton(
@@ -256,7 +255,6 @@ private fun UpdateAvailableDialog(
                     VoidButton(
                         text = "Update",
                         onClick = onUpdate,
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -370,7 +368,6 @@ private fun UpdateErrorDialog(
                     VoidButton(
                         text = "Retry",
                         onClick = onRetry,
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -425,7 +422,6 @@ private fun UpdateReadyToInstallDialog(
                     VoidButton(
                         text = "Install",
                         onClick = onInstall,
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -479,7 +475,6 @@ private fun PlayStoreUpdateAvailableDialog(
                     VoidButton(
                         text = "Update",
                         onClick = onUpdate,
-                        isPrimary = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1380,7 +1375,6 @@ class MainActivity : ComponentActivity() {
                                         VoidButton(
                                             text = "Dismiss",
                                             onClick = { session.showTrailerError = false },
-                                            isPrimary = true,
                                             modifier = Modifier.weight(1f)
                                         )
                                     }

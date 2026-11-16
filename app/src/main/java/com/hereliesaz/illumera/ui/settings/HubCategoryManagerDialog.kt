@@ -122,7 +122,7 @@ fun HubCategoryManagerDialog(
                 VoidButton("Cancel", onDismiss, Modifier.weight(1f))
                 VoidButton("Save Changes", {
                     onSave(currentItems)
-                }, Modifier.weight(1f), isPrimary = true, focusRequester = if (currentItems.isEmpty()) focusRequester else saveFocusRequester)
+                }, Modifier.weight(1f), focusRequester = if (currentItems.isEmpty()) focusRequester else saveFocusRequester)
             }
         }
     } else if (managingItem != null && confirmRemoveItem == null && confirmRemoveImageItem == null && renameItem == null) {
@@ -262,7 +262,7 @@ fun HubCategoryManagerDialog(
                         currentItems = mutable
                     }
                     renameItem = null
-                }, Modifier.weight(1f), isPrimary = true)
+                }, Modifier.weight(1f))
             }
         }
     }
