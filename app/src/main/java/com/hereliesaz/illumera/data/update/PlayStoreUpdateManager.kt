@@ -12,7 +12,6 @@ import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
-import com.google.gson.JsonParser
 import com.hereliesaz.illumera.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +44,10 @@ sealed class PlayStoreUpdateState {
  *
  * GitHub-distributed builds keep using [AppUpdateManager]; this class is gated
  * by BuildConfig.USE_PLAY_UPDATES and never queries Play from those builds.
+ *
+ * Only Google Play decides whether an update exists: Play Core where it works, else the
+ * version Play's own store listing shows. Nothing about GitHub (a newer release, a version
+ * marker) ever raises an update here: it says nothing about what Play has published.
  */
 @Singleton
 class PlayStoreUpdateManager @Inject constructor(
@@ -63,10 +66,10 @@ class PlayStoreUpdateManager @Inject constructor(
     private var pendingInfo: AppUpdateInfo? = null
 
     /**
-     * Asks Play, then falls back to the version the release workflow recorded as published.
-     * Play's update API can lag a new release by hours, and the app (especially on TV) can stay
-     * open for days, so this runs on every return to the foreground, at most every
-     * [RECHECK_INTERVAL_MS] unless [force] (a launch or the About screen).
+     * Asks Play Core, and where Play Core can't answer (Android TV) reads the version Play's
+     * store listing shows. The app (especially on TV) can stay open for days, so this runs on
+     * every return to the foreground, at most every [RECHECK_INTERVAL_MS] unless [force]
+     * (a launch or the About screen).
      */
     fun checkForUpdate(force: Boolean = true) {
         if (!BuildConfig.USE_PLAY_UPDATES) {
@@ -93,13 +96,13 @@ class PlayStoreUpdateManager @Inject constructor(
                         PlayStoreUpdateState.InProgress
                     else -> PlayStoreUpdateState.UpToDate
                 }
-                if (_state.value == PlayStoreUpdateState.UpToDate) checkPublishedVersion(PlayStoreUpdateState.UpToDate, generation)
             }
             .addOnFailureListener { error ->
                 if (generation != checkGeneration) return@addOnFailureListener
                 if (_state.value is PlayStoreUpdateState.InProgress) return@addOnFailureListener
                 pendingInfo = null
-                checkPublishedVersion(
+                // Play Core is unsupported on some devices (Android TV): ask the listing instead.
+                checkPlayListing(
                     PlayStoreUpdateState.Error(error.message ?: "Could not check Google Play for updates."),
                     generation
                 )
@@ -107,56 +110,32 @@ class PlayStoreUpdateManager @Inject constructor(
     }
 
     /**
-     * Play Core only supports phones, tablets and ChromeOS. On TV and when
-     * Play Core has not caught up, the repository's Play publication marker
-     * and latest release announcement may still reveal a newer build.
-     * These signals never authorize sideloading a GitHub APK into a Play install.
+     * Play Core only supports phones, tablets and ChromeOS. Where it can't answer, the version
+     * Google Play's own store listing shows says what Play has published. Only that counts: a
+     * newer GitHub release says nothing about Play. A listing that can't be read, or isn't
+     * newer, claims nothing and leaves [otherwise].
      */
-    private fun checkPublishedVersion(otherwise: PlayStoreUpdateState, generation: Long) {
+    private fun checkPlayListing(otherwise: PlayStoreUpdateState, generation: Long) {
         scope.launch {
-            val published = runCatching { fetchPublishedVersionCode() }.getOrNull()
-            val announced = if (published != null && published > BuildConfig.VERSION_CODE) {
-                null
-            } else runCatching { fetchAnnouncedVersion() }.getOrNull()
+            val listed = runCatching { fetchPlayListingVersion() }.getOrNull()
             if (generation != checkGeneration || _state.value is PlayStoreUpdateState.InProgress) {
                 return@launch
             }
-            _state.value = when {
-                published != null && published > BuildConfig.VERSION_CODE ->
-                    PlayStoreUpdateState.UpdateAvailable(published, fromPlay = false)
-                announced != null && AppUpdateManager.isVersionNewer(announced, BuildConfig.VERSION_NAME) ->
-                    PlayStoreUpdateState.UpdateAvailable(
-                        versionCode = -1,
-                        fromPlay = false,
-                        announcedVersion = announced
-                    )
-                else -> otherwise
-            }
+            _state.value = if (listed != null && AppUpdateManager.isVersionNewer(listed, BuildConfig.VERSION_NAME)) {
+                PlayStoreUpdateState.UpdateAvailable(versionCode = -1, fromPlay = false, announcedVersion = listed)
+            } else otherwise
         }
     }
 
-    private fun fetchPublishedVersionCode(): Int? {
-        val url = "https://raw.githubusercontent.com/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/main/version.properties"
-        okHttpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+    private fun fetchPlayListingVersion(): String? {
+        val request = Request.Builder()
+            .url("https://play.google.com/store/apps/details?id=${context.packageName}&hl=en_US")
+            .header("User-Agent", LISTING_USER_AGENT)
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+        okHttpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return null
-            return response.body.string().lineSequence()
-                .map { it.trim() }
-                .firstOrNull { it.startsWith("versionCode=") }
-                ?.substringAfter('=')?.trim()?.toIntOrNull()
-        }
-    }
-
-    private fun fetchAnnouncedVersion(): String? {
-        val url = "https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases/latest"
-        okHttpClient.newCall(Request.Builder().url(url)
-            .header("Accept", "application/vnd.github+json").build()).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val json = JsonParser.parseString(response.body.string()).asJsonObject
-            val tag = json.get("tag_name")?.asString ?: return null
-            val asset = json.getAsJsonArray("assets")?.firstOrNull { item ->
-                item.asJsonObject.get("name")?.asString?.endsWith(".apk", ignoreCase = true) == true
-            }?.asJsonObject?.get("name")?.asString ?: return null
-            return AppUpdateManager.githubReleaseVersion(tag, asset)
+            return parsePlayListingVersion(response.body.string())
         }
     }
 
@@ -223,6 +202,7 @@ class PlayStoreUpdateManager @Inject constructor(
 
     private companion object {
         const val RECHECK_INTERVAL_MS = 30 * 60 * 1000L
+        const val LISTING_USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
     }
 
     fun openPlayStoreListing() {
@@ -240,4 +220,15 @@ class PlayStoreUpdateManager @Inject constructor(
         runCatching { context.startActivity(marketIntent) }
             .onFailure { runCatching { context.startActivity(webIntent) } }
     }
+}
+
+// The listing embeds the current version as `[[["0.12.107.1"]],[[[37]],[[[26,"8.0"]]]]]`: the
+// version, then the target and minimum SDK.
+private val LISTING_VERSION = Regex("""\[\[\["(\d+(?:\.\d+){1,3})"\]\],\[\[\[\d+\]\]""")
+private val LISTING_VERSION_LOOSE = Regex("""\[\[\["(\d+(?:\.\d+){1,3})"\]\]""")
+
+/** The version a Google Play store listing page shows, or null when it can't be read with confidence. */
+internal fun parsePlayListingVersion(html: String): String? {
+    LISTING_VERSION.find(html)?.let { return it.groupValues[1] }
+    return LISTING_VERSION_LOOSE.findAll(html).map { it.groupValues[1] }.distinct().toList().singleOrNull()
 }
