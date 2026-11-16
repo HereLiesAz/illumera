@@ -54,6 +54,14 @@ class AppErrorsTest {
     }
 
     @Test
+    fun debridMissIsHandledAsASourceFailureNotAnAppCrash() {
+        val miss = "Your debrid service couldn't deliver this torrent"
+        assertTrue(isExpectedDebridMiss("LumeraTorrent", "Stream error: $miss"))
+        assertFalse(isExpectedDebridMiss("LumeraTorrent", "Stream error: null pointer"))
+        assertFalse(isExpectedDebridMiss("AnotherSubsystem", "Stream error: $miss"))
+    }
+
+    @Test
     fun uncaughtHandlerReceivesRedactedError() {
         var seen: Throwable? = null
         val handler = redactingHandler { _, e -> seen = e }

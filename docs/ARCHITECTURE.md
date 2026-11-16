@@ -365,3 +365,12 @@ About (Settings -> About) shows, top to bottom: Version, Check for Update, **Cha
 - Change Log opens a dialog with the bundled what's-new text, the same file Play shows.
 - Each paragraph is focusable so D-pad Down walks (and scrolls) the page on a TV.
 - To change the text, edit the repo documents; there is nothing else to update.
+
+## Crash reports: what is filed and what is not
+
+- `AppErrors` skips expected source failures: peer-metadata timeouts, offline errors, and
+  "Your debrid service couldn't deliver this torrent" (the session moves to the next source).
+- Managers that keep tokens in `EncryptedSharedPreferences` (`DebridManager`, `TraktAuthManager`,
+  `WutchManager`) do their first read on IO, never in the constructor: Hilt builds them on the
+  caller's thread, often main during composition, and decryption through the Android Keystore
+  can stall long enough for an ANR. Their state flows start empty and fill in a moment later.

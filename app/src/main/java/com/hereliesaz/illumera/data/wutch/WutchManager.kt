@@ -16,7 +16,10 @@ import com.hereliesaz.illumera.data.model.WatchlistEntity
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -67,8 +70,12 @@ class WutchManager @Inject constructor(
 
     private val profileId: Int get() = profileConfigurationManager.getLastActiveProfileId() ?: 1
 
+    // Keystore decryption can stall for seconds and this is built on the caller's thread
+    // (often main, during composition), so the first read runs on IO (ANR report #379).
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
-        refreshConnectionState()
+        initScope.launch { refreshConnectionState() }
     }
 
     fun refreshConnectionState() {

@@ -34,7 +34,7 @@ object AppErrors {
         if (error is CancellationException) return
         // Missing torrent peers is a source failure, not an application crash.
         // TorrentService has already signalled sourceError for ranked fallback.
-        if (isExpectedTorrentMetadataTimeout(tag, message)) return
+        if (isExpectedTorrentMetadataTimeout(tag, message) || isExpectedDebridMiss(tag, message)) return
         if (isOffline(error)) return
         if (!CrashReporting.isAvailable() || !ACRA.isInitialised) return
 
@@ -56,6 +56,13 @@ object AppErrors {
  */
 internal fun isExpectedTorrentMetadataTimeout(tag: String, message: String): Boolean =
     tag == "LumeraTorrent" && message.contains("Timed out waiting for torrent metadata from peers")
+
+/**
+ * The debrid service didn't have, or didn't finish, this torrent. That is the source failing,
+ * not the app: the session moves on to the next source (reports #380).
+ */
+internal fun isExpectedDebridMiss(tag: String, message: String): Boolean =
+    tag == "LumeraTorrent" && message.contains("Your debrid service couldn't deliver this torrent")
 
 internal fun isOffline(error: Throwable?): Boolean =
     generateSequence(error) { it.cause.takeIf { cause -> cause !== it } }
