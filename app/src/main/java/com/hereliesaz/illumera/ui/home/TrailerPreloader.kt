@@ -69,3 +69,9 @@ internal class TrailerPreloader(private val context: Context) {
 }
 
 internal val LocalTrailerPreloader = staticCompositionLocalOf<TrailerPreloader?> { null }
+
+/**
+ * True for a title whose preview is its own web video (not a trailer), which starts halfway
+ * through. Provided by the Home screen so every preview (hero, rows, persistent) agrees.
+ */
+internal val LocalPreviewStartsAtMidpoint = staticCompositionLocalOf<(MetaItem) -> Boolean> { { false } }

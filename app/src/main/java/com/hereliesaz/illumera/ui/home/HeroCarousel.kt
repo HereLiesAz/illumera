@@ -62,8 +62,6 @@ fun HeroCarousel(
     onFocusChange: (String) -> Unit,
     onCurrentItemVisible: (MetaItem) -> Unit = {},
     resolveTrailer: (suspend (MetaItem) -> String?)? = null,
-    // True for a title whose preview is its own web video, which starts halfway through.
-    previewStartsAtMidpoint: (MetaItem) -> Boolean = { false },
     autoPlayPreviews: Boolean = true,
     previewSound: Boolean = false,
     previewVisible: Boolean = true,
@@ -327,7 +325,6 @@ fun HeroCarousel(
                 // Each trailer plays once: after the last slide's, the carousel stays where it is
                 // rather than wrapping round to the first and playing it again.
                 nextItem = items.getOrNull(safeCurrentIndex + 1),
-                startsAtMidpoint = previewStartsAtMidpoint,
                 onEnded = { if (safeCurrentIndex < items.lastIndex) goToNext() }
             )
         }

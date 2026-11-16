@@ -263,12 +263,15 @@ fun HomeScreen(
             }
     ) {
         LumeraBackground {
+        // One stable reference: a new lambda each pass would restart every preview.
+        val startsAtMidpoint = remember(viewModel) { viewModel::startsAtMidpoint }
         CompositionLocalProvider(
             com.hereliesaz.illumera.ui.components.LocalWatchedIds provides state.watchedIds,
             // The rows tag their cards with their focus keys, so a refresh that re-keys or drops
             // the focused card can put focus back on it (or its neighbour).
             LocalFocusMemory provides focusMemory,
             LocalTrailerPreloader provides trailerPreloader,
+            LocalPreviewStartsAtMidpoint provides startsAtMidpoint,
             // Thumbs up / down on the personal rows' seed titles (Home tab only).
             LocalSeedVotes provides seedVotes,
             // Sort chips on the streaming-service rows' headers.
@@ -312,7 +315,6 @@ fun HomeScreen(
                         ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items?.firstOrNull(),
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
-                    previewStartsAtMidpoint = viewModel::startsAtMidpoint,
                     autoPlayPreviews = cinematicAudio.autoPlayPreviews && !isNavigating,
                     previewSound = cinematicAudio.previewSound,
                     startPadding = startPadding,
@@ -411,7 +413,6 @@ fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
-    previewStartsAtMidpoint: (MetaItem) -> Boolean = { false },
     autoPlayPreviews: Boolean,
     previewSound: Boolean,
     startPadding: androidx.compose.ui.unit.Dp,
@@ -756,7 +757,6 @@ fun CinematicLayout(
                                     },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
-                                    previewStartsAtMidpoint = previewStartsAtMidpoint,
                                     autoPlayPreviews = autoPlayPreviews,
                                     previewSound = previewSound,
                                     // Only one preview owns audio: once a row is focused,
@@ -2068,10 +2068,10 @@ internal fun TrailerPreview(
     soundEnabled: Boolean = false,
     isVisible: Boolean = true,
     nextItem: MetaItem? = null,
-    // A title that is itself a web video plays from its halfway point rather than the start.
-    startsAtMidpoint: (MetaItem) -> Boolean = { false },
     onEnded: () -> Unit = {}
 ) {
+    // A title that is itself a web video plays from its halfway point rather than the start.
+    val startsAtMidpoint = LocalPreviewStartsAtMidpoint.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestOnEnded by rememberUpdatedState(onEnded)

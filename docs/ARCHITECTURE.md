@@ -368,7 +368,7 @@ About (Settings -> About) shows, top to bottom: Version, Check for Update, **Cha
 
 ## Hero preview: web videos play from the middle
 
-A Home hero title that is itself a video on a website (a YouTube video, a video site) previews as
+A Home title that is itself a video on a website (a YouTube video, a video site) previews as
 that video, from its halfway point, instead of a trailer.
 
 - Candidate: an addon's own catalog title (`MetaItem.addonBaseUrl` set) whose id is not an IMDb
@@ -378,8 +378,9 @@ that video, from its halfway point, instead of a trailer.
   not-web-ready streams are skipped. YouTube goes through `YouTubeExtractor` as trailers do.
   No such stream: the trailer path runs as before.
 - `startsAtMidpoint` is true for titles resolved this way. `TrailerPreview` then seeks to half the
-  duration once it is known (`seekToMidpointWhenReady`; live streams are left alone). Only the
-  hero passes it; rows and the persistent preview are unchanged.
+  duration once it is known (`seekToMidpointWhenReady`; live streams are left alone). Home provides
+  it through `LocalPreviewStartsAtMidpoint`, so the hero, the rows' previews and the persistent
+  preview all behave the same.
 
 ## Crash reports: what is filed and what is not
 
