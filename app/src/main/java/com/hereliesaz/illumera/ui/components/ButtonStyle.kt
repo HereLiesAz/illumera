@@ -40,7 +40,8 @@ data class ButtonColors(
  * - At rest: faint fill, faint border, theme text label.
  * - Selected (a tab, choice or toggle that is on): a brighter neutral fill and border. It is
  *   deliberately not the accent, so it can never be mistaken for the cursor.
- * - Focused (the cursor): accent-tinted fill, 2dp accent border, accent label. Only focus
+ * - Focused (the cursor): accent-tinted fill and 2dp accent border, with the label in the
+ *   theme text color (an accent label on an accent-tinted fill is hard to read). Only focus
  *   uses the accent.
  * - Disabled: dimmed, never highlighted.
  */
@@ -63,7 +64,7 @@ fun buttonColors(
             container = accent.copy(alpha = if (emphasis == ButtonEmphasis.Normal) 0.15f else 0.35f),
             border = accent,
             borderWidth = 2.dp,
-            content = accent
+            content = MaterialTheme.colorScheme.onBackground
         )
         emphasis == ButtonEmphasis.Selected -> ButtonColors(
             container = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f),
