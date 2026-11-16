@@ -413,6 +413,17 @@ class PlaybackSessionViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The viewer chose to leave [stream] themselves: there is a reason, so it is never brought
+     * back on its own, even if its debrid download finishes. Only sources the app gave up on
+     * (a debrid wait that ran out) stay eligible.
+     */
+    private fun abandonDebridSource(stream: Stream?) {
+        stream ?: return
+        debridAttempts.removeAll { it.stream === stream || (it.infoHash != null && it.infoHash == stream.infoHash) }
+        if (heldReady?.first?.let { it in debridAttempts } == false) heldReady = null
+    }
+
     /** Plays the held debrid source. Returns false when none is held. */
     private fun playHeldDebridSource(): Boolean {
         val (attempt, url) = heldReady ?: return false
@@ -1041,9 +1052,10 @@ class PlaybackSessionViewModel @Inject constructor(
         onReady: (String) -> Unit,
         onError: (String) -> Unit
     ) {
-        pendingSourceSelection?.candidateStreams
+        val target = pendingSourceSelection?.candidateStreams
             ?.firstOrNull { resolvePlayableSourceUrl(it) == magnetUrl }
-            ?.let { currentStream = it }
+        if (target != null && target !== currentStream) abandonDebridSource(currentStream)
+        target?.let { currentStream = it }
         startTorrent(
             magnetUrl, fileIdx, fileName,
             errorContext = "Source switch error",
@@ -1064,6 +1076,7 @@ class PlaybackSessionViewModel @Inject constructor(
             ?.firstOrNull { playerSourceId(it) == sourceId }
             ?: return
         if (stream === currentStream) return
+        abandonDebridSource(currentStream)
         currentStream = stream
         val sourceUrl = resolvePlayableSourceUrl(stream) ?: return
         // Unconditional: a streaming torrent has already cleared its progress.

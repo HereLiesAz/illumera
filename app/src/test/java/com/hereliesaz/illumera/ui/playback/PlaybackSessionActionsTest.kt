@@ -940,6 +940,22 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `a debrid source the viewer moved on from is never brought back`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns "https://debrid/a.mkv"
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        // The viewer picks B themselves, leaving A.
+        vm.onPlayerSourceChanged(playerSourceId(directB)!!)
+        runCurrent()
+        // B fails: the ready A must not return; C is next.
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+
+        assertEquals("https://cdn/c.mkv", vm.selectedVideoUrl)
+        coVerify(exactly = 0) { debridManager.readyUrlFor(hashA, any(), any()) }
+    }
+
+    @Test
     fun `an earlier debrid source that is not ready is not loaded`() = runTest(dispatcher) {
         coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns null
         val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
