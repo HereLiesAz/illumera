@@ -70,12 +70,35 @@ room {
 }
 
 // About screen content comes straight from the repo documents, so the app never carries a
-// second copy: README.md (intro), docs/USER_GUIDE.md and the store what's-new file.
-val syncAboutAssets by tasks.registering(Sync::class) {
-    from(rootProject.file("README.md")) { rename { "README.md" } }
-    from(rootProject.file("docs/USER_GUIDE.md")) { rename { "USER_GUIDE.md" } }
-    from(rootProject.file("distribution/whatsnew/whatsnew-en-US")) { rename { "WHATS_NEW.txt" } }
-    into(layout.buildDirectory.dir("generated/aboutAssets/about"))
+// second copy: README.md (intro), docs/USER_GUIDE.md and the store what's-new file. They are
+// registered as a generated assets directory per variant (see androidComponents below), which
+// is what makes merge, lint and bundle tasks depend on this task.
+abstract class SyncAboutAssets : DefaultTask() {
+    @get:InputFile abstract val readme: RegularFileProperty
+    @get:InputFile abstract val guide: RegularFileProperty
+    @get:InputFile abstract val whatsNew: RegularFileProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun sync() {
+        val about = outputDir.get().asFile.resolve("about").apply { deleteRecursively(); mkdirs() }
+        readme.get().asFile.copyTo(about.resolve("README.md"))
+        guide.get().asFile.copyTo(about.resolve("USER_GUIDE.md"))
+        whatsNew.get().asFile.copyTo(about.resolve("WHATS_NEW.txt"))
+    }
+}
+
+val syncAboutAssets by tasks.registering(SyncAboutAssets::class) {
+    readme.set(rootProject.layout.projectDirectory.file("README.md"))
+    guide.set(rootProject.layout.projectDirectory.file("docs/USER_GUIDE.md"))
+    whatsNew.set(rootProject.layout.projectDirectory.file("distribution/whatsnew/whatsnew-en-US"))
+    outputDir.set(layout.buildDirectory.dir("generated/aboutAssets"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(syncAboutAssets, SyncAboutAssets::outputDir)
+    }
 }
 
 android {
@@ -114,8 +137,6 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
-
-    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/aboutAssets").get().asFile)
 
     signingConfigs {
         if (hasReleaseKeystore) {
@@ -301,6 +322,3 @@ dependencies {
     implementation(libs.acra.http)
     implementation(libs.acra.toast)
 }
-
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
-    .configureEach { dependsOn(syncAboutAssets) }
