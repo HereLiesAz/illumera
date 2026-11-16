@@ -336,7 +336,7 @@ fun WatchlistScreen(
                             Text(
                                 mode.second,
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                color = if (selected || focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                                color = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (focused) MaterialTheme.colorScheme.primary.copy(alpha = 0.27f)

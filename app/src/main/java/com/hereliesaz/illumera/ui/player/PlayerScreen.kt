@@ -88,6 +88,8 @@ fun PlayerScreen(
     autoFallbackEnabled: Boolean = false,
     onSuspectSource: ((PlaybackDurationStatus) -> Unit)? = null,
     onSourceChanged: ((String) -> Unit)? = null,
+    onSkipSourceBeforeLoad: (() -> Unit)? = null,
+    onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -505,6 +507,9 @@ fun PlayerScreen(
             episodeSwitchTitle = episodeSwitchTitle,
             onEpisodeSwitchSourceSelected = onEpisodeSwitchSourceSelected,
             onEpisodeSwitchDismissed = onEpisodeSwitchDismissed,
+            availableSources = sources,
+            onSkipSourceBeforeLoad = onSkipSourceBeforeLoad,
+            onSelectSourceBeforeLoad = onSelectSourceBeforeLoad,
             torrentProgress = torrentProgress,
             playbackStatus = playbackStatus,
             isTrailer = movieId.startsWith("trailer_")

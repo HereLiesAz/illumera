@@ -22,6 +22,7 @@ import com.hereliesaz.illumera.data.model.debrid.DebridConnection
 import com.hereliesaz.illumera.data.model.debrid.DebridItem
 import com.hereliesaz.illumera.data.model.debrid.DebridProvider
 import com.hereliesaz.illumera.data.model.debrid.DebridResult
+import com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus
 import com.hereliesaz.illumera.data.profile.ProfileConfigurationManager
 import com.hereliesaz.illumera.data.profile.ProfileMutationCoordinator
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -119,6 +120,56 @@ class DebridManager @Inject constructor(
     val connectedUsername: StateFlow<String?> = _connectedUsername
 
     init { refreshConnectionState() }
+
+    // Where each torrent source (by lowercase info hash) stands: what the accounts' libraries
+    // hold, overlaid with what this app is sending right now. Lists show it next to each source.
+    private var libraryStatuses: Map<String, DebridSourceStatus> = emptyMap()
+    private val inFlightStatuses = mutableMapOf<String, DebridSourceStatus>()
+    private val _sourceStatuses = MutableStateFlow<Map<String, DebridSourceStatus>>(emptyMap())
+    val sourceStatuses: StateFlow<Map<String, DebridSourceStatus>> = _sourceStatuses
+
+    private fun publishSourceStatuses() = synchronized(inFlightStatuses) {
+        _sourceStatuses.value = libraryStatuses + inFlightStatuses
+    }
+
+    private fun setInFlight(infoHash: String?, status: DebridSourceStatus) {
+        infoHash ?: return
+        synchronized(inFlightStatuses) { inFlightStatuses[infoHash] = status }
+        publishSourceStatuses()
+    }
+
+    /**
+     * The send to [infoHash] is over. What the service holds is kept as its library status
+     * ([ready] or still downloading) until the next library read replaces it, so the list
+     * doesn't flicker; a send that never got accepted leaves nothing behind.
+     */
+    private fun settleInFlight(infoHash: String?, ready: Boolean) {
+        infoHash ?: return
+        synchronized(inFlightStatuses) {
+            val last = inFlightStatuses.remove(infoHash)
+            libraryStatuses = when {
+                ready -> libraryStatuses + (infoHash to DebridSourceStatus(DebridSourceStatus.Kind.READY))
+                last != null && last.kind != DebridSourceStatus.Kind.ADDING -> libraryStatuses + (infoHash to last)
+                else -> libraryStatuses
+            }
+        }
+        publishSourceStatuses()
+    }
+
+    /** Re-reads every connected library once; cheap when no service is connected. */
+    suspend fun refreshSourceStatuses() {
+        libraryStatuses = if (connectedKeys().isEmpty()) {
+            emptyMap()
+        } else {
+            val library = (listLibrary() as? DebridResult.Success)?.value ?: return
+            library.mapNotNull { item ->
+                val hash = item.infoHash?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                hash to if (isReady(item)) DebridSourceStatus(DebridSourceStatus.Kind.READY)
+                else DebridSourceStatus(DebridSourceStatus.Kind.DOWNLOADING, item.progress?.coerceIn(0, 100))
+            }.toMap()
+        }
+        publishSourceStatuses()
+    }
 
     fun refreshConnectionState() {
         val profileId = activeProfileId()
@@ -333,18 +384,30 @@ class DebridManager @Inject constructor(
             }
             ?.let { item -> (streamUrlFor(item, wanted) as? DebridResult.Success)?.let { return it.value } }
 
-        for ((provider, key) in keys.filter { serviceFor(it.first).supportsAddMagnet }) {
-            onStatus("Sending the torrent to ${provider.displayName}", null)
-            val added = guarded { serviceFor(provider).addMagnet(key, magnet) }
-            if (added is DebridResult.Failure) {
-                Log.w(TAG, "${provider.displayName} did not take the magnet: ${added.message}")
-                continue
+        var delivered = false
+        try {
+            for ((provider, key) in keys.filter { serviceFor(it.first).supportsAddMagnet }) {
+                onStatus("Sending the torrent to ${provider.displayName}", null)
+                setInFlight(infoHash, DebridSourceStatus(DebridSourceStatus.Kind.ADDING))
+                val added = guarded { serviceFor(provider).addMagnet(key, magnet) }
+                if (added is DebridResult.Failure) {
+                    Log.w(TAG, "${provider.displayName} did not take the magnet: ${added.message}")
+                    continue
+                }
+                // Accepted by the service: it is at 0% until the library reports otherwise.
+                onStatus("${provider.displayName} is downloading this", 0)
+                setInFlight(infoHash, DebridSourceStatus(DebridSourceStatus.Kind.DOWNLOADING, 0))
+                val url = awaitPlayableSource(infoHash, wanted.fileName, maxWaitSeconds, wanted) { percent ->
+                    setInFlight(infoHash, DebridSourceStatus(DebridSourceStatus.Kind.DOWNLOADING, percent))
+                    onStatus("${provider.displayName} is downloading this", percent)
+                }
+                delivered = url != null
+                return url
             }
-            return awaitPlayableSource(infoHash, wanted.fileName, maxWaitSeconds, wanted) { percent ->
-                onStatus("${provider.displayName} is downloading this", percent)
-            }
+            return null
+        } finally {
+            settleInFlight(infoHash, delivered)
         }
-        return null
     }
 
     /**

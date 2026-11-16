@@ -490,7 +490,7 @@ private fun WatchlistSettings(
                 val focused by interactionSource.collectIsFocusedAsState()
                 Text(
                     text = "${if (selected) "✓  " else ""}${mode.second}",
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                    color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))

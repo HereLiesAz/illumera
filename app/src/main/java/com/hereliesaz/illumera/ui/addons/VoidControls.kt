@@ -198,7 +198,7 @@ fun VoidToggleRow(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val bgColor = if (isFocused) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f) else Color.Transparent
-    val iconColor = if (isChecked) MaterialTheme.colorScheme.primary else Color.Gray
+    val iconColor = if (isChecked) MaterialTheme.colorScheme.onBackground else Color.Gray
 
     Row(
         verticalAlignment = Alignment.CenterVertically,

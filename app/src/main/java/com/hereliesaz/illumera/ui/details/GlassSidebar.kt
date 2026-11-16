@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -145,6 +146,8 @@ fun GlassSidebar(
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
     streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
+    /** Torrent sources being added to, or already in, a debrid service, by lowercase info hash. */
+    debridStatuses: Map<String, com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus> = emptyMap(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onToggleWatched: (MetaVideo) -> Unit = {},
@@ -240,6 +243,7 @@ fun GlassSidebar(
                     excludedSourceIds = excludedSourceIds,
                     sourceListDisabled = sourceListDisabled,
                     streamOutcomes = streamOutcomes,
+                    debridStatuses = debridStatuses,
                     onToggleSourceExcluded = onToggleSourceExcluded,
                     onToggleSourceListDisabled = onToggleSourceListDisabled,
                     onSourceClick = onSourceSelected,
@@ -490,6 +494,7 @@ fun SourcesContent(
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
     streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
+    debridStatuses: Map<String, com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus> = emptyMap(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onSourceClick: (Stream) -> Unit,
@@ -604,6 +609,7 @@ fun SourcesContent(
                                 isPlaying = index == selectedIndex && selectedStreamId != null,
                                 isExcluded = (s.sourceSelectionId ?: s.addonTransportUrl ?: s.url) in excludedSourceIds,
                                 sourceListDisabled = sourceListDisabled,
+                                debridStatus = s.infoHash?.trim()?.lowercase()?.let(debridStatuses::get),
                                 onToggleExcluded = onToggleSourceExcluded?.let { callback -> { callback(s) } },
                                 onToggleSourceListDisabled = onToggleSourceListDisabled,
                                 modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier
@@ -638,7 +644,7 @@ fun SourceColumnItem(name: String, isSelected: Boolean, modifier: Modifier = Mod
             .fillMaxWidth()
             .onFocusChanged { isFocused = it.isFocused }
             .clip(RoundedCornerShape(6.dp))
-            .background(if (isSelected) primary.copy(alpha = 0.15f) else Color.Transparent)
+            .background(if (isSelected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f) else Color.Transparent)
             .border(if (isFocused) 2.dp else 0.dp, if (isFocused) primary else Color.Transparent, RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
             .focusable()
@@ -651,8 +657,8 @@ fun SourceColumnItem(name: String, isSelected: Boolean, modifier: Modifier = Mod
             maxLines = 1,
             softWrap = false,
             color = when {
-                isSelected -> primary
-                isFocused -> MaterialTheme.colorScheme.onBackground
+                isSelected -> MaterialTheme.colorScheme.onBackground
+                isFocused -> primary
                 else -> Color.LightGray
             },
             modifier = Modifier.verticalText()
@@ -764,7 +770,7 @@ fun SeasonTab(number: Int, isSelected: Boolean, modifier: Modifier, onClick: () 
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier.clip(RoundedCornerShape(4.dp))
-            .background(if (isFocused) primary else if (isSelected) primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
+            .background(if (isFocused) primary else if (isSelected) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.12f))
             .onFocusChanged { isFocused = it.isFocused }
             .clickable(onClick = onClick).focusable().padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
@@ -1136,6 +1142,7 @@ fun RawSourceItem(
     isPlaying: Boolean = false,
     isExcluded: Boolean = false,
     sourceListDisabled: Boolean = false,
+    debridStatus: com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus? = null,
     onToggleExcluded: (() -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -1184,8 +1191,19 @@ fun RawSourceItem(
                     if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .border(
-                    if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
-                    if (isFocused) primary else if (isExcluded) MaterialTheme.colorScheme.onBackground.copy(0.25f) else Color.Transparent,
+                    when {
+                        isFocused -> 3.dp
+                        isExcluded || debridStatus?.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> 1.dp
+                        else -> 0.dp
+                    },
+                    when {
+                        isFocused -> primary
+                        isExcluded -> MaterialTheme.colorScheme.onBackground.copy(0.25f)
+                        // Already in a debrid account: a plain outline, never the cursor's accent.
+                        debridStatus?.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY ->
+                            MaterialTheme.colorScheme.onBackground.copy(0.5f)
+                        else -> Color.Transparent
+                    },
                     RoundedCornerShape(8.dp)
                 )
                 .touchClick(
@@ -1232,6 +1250,21 @@ fun RawSourceItem(
                         },
                         modifier = Modifier.weight(1f)
                     )
+                    debridStatus?.let { status ->
+                        Text(
+                            // Every state carries its percentage: a send that has not been
+                            // accepted is 0%, a ready one is 100%.
+                            when (status.kind) {
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> "In debrid · 100%"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.ADDING -> "Adding to debrid · 0%"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.DOWNLOADING ->
+                                    status.percent?.let { "In debrid · $it%" } ?: "In debrid · downloading"
+                            },
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.85f),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                     when {
                         isPlaying -> Text(
                             "Playing",
@@ -1254,6 +1287,26 @@ fun RawSourceItem(
                         color = if (isFocused) primary else Color.Gray,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+                // A source on its way into a debrid service shows how far it got.
+                if (debridStatus != null &&
+                    debridStatus.kind != com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY
+                ) {
+                    val percent = debridStatus.percent
+                    if (percent != null && debridStatus.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.DOWNLOADING) {
+                        LinearProgressIndicator(
+                            progress = { percent / 100f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
+                            trackColor = MaterialTheme.colorScheme.onBackground.copy(0.15f)
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
+                            trackColor = MaterialTheme.colorScheme.onBackground.copy(0.15f)
+                        )
+                    }
                 }
             }
         }

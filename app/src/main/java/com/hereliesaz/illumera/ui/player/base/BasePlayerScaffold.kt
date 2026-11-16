@@ -72,6 +72,8 @@ import androidx.compose.ui.res.painterResource
 import com.hereliesaz.illumera.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.playback.DebridStatusViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -198,6 +200,14 @@ fun BasePlayerScaffold(
     episodeSwitchTitle: String? = null,
     onEpisodeSwitchSourceSelected: ((sourceUrl: String) -> Unit)? = null,
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
+    /**
+     * The session's sources for this title. The player only knows its own list once it has a
+     * video, so until then (a debrid or torrent wait) the source controls use this one, and
+     * their picks go to [onSkipSourceBeforeLoad] / [onSelectSourceBeforeLoad].
+     */
+    availableSources: List<PlayerSourceOption> = emptyList(),
+    onSkipSourceBeforeLoad: (() -> Unit)? = null,
+    onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
     /** What the app is doing around playback (source fallback, debrid wait); keeps the loading overlay up. */
     playbackStatus: String? = null,
@@ -212,6 +222,9 @@ fun BasePlayerScaffold(
     val subtitleTracks by playbackController.subtitleTracks.collectAsStateWithLifecycle()
 
     val currentSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
+    // Before the player has a video it has no source list; the session's list stands in.
+    val sourcesNotLoaded = sources.isEmpty() && availableSources.isNotEmpty()
+    val selectableSources = if (sourcesNotLoaded) availableSources else sources
 
     val containerFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -957,8 +970,8 @@ fun BasePlayerScaffold(
                 currentPositionMs = displayPositionMs,
                 durationMs = uiState.durationMs,
                 isPlaying = isPlaybackIntended,
-                showSourceControl = !isTrailer && !sourceListDisabled && sources.size > 1,
-                showNextSourceControl = !isTrailer && !sourceListDisabled && sources.count { it.id !in excludedSourceIds } > 1,
+                showSourceControl = !isTrailer && !sourceListDisabled && selectableSources.size > 1,
+                showNextSourceControl = !isTrailer && !sourceListDisabled && selectableSources.count { it.id !in excludedSourceIds } > 1,
                 showNextEpisodeControl = !isTrailer && nextEpisodeInfo != null && onAutoplayNextEpisode != null,
                 showAudioControl = !isTrailer && audioTracks.isNotEmpty(),
                 showSubtitleControl = !isTrailer && subtitleTracks.isNotEmpty(),
@@ -977,14 +990,18 @@ fun BasePlayerScaffold(
                 },
                 onNextSource = {
                     markInteraction()
-                    val currentIndex = sources.indexOfFirst { it.id == uiState.currentSourceId }
-                    val ordered = if (currentIndex >= 0) {
-                        sources.drop(currentIndex + 1) + sources.take(currentIndex + 1)
+                    if (sourcesNotLoaded) {
+                        onSkipSourceBeforeLoad?.invoke()
                     } else {
-                        sources
+                        val currentIndex = sources.indexOfFirst { it.id == uiState.currentSourceId }
+                        val ordered = if (currentIndex >= 0) {
+                            sources.drop(currentIndex + 1) + sources.take(currentIndex + 1)
+                        } else {
+                            sources
+                        }
+                        ordered.firstOrNull { it.id != uiState.currentSourceId && it.id !in excludedSourceIds }
+                            ?.let { playbackController.selectSource(it.id) }
                     }
-                    ordered.firstOrNull { it.id != uiState.currentSourceId && it.id !in excludedSourceIds }
-                        ?.let { playbackController.selectSource(it.id) }
                     showControlsTemporarily()
                 },
                 onNextEpisode = {
@@ -1092,8 +1109,8 @@ fun BasePlayerScaffold(
             visible = activePanel == PlayerPanel.SOURCES,
             title = headerInfo.primaryText,
             onClose = { closePanel() },
-            sources = sources,
-            currentSourceId = uiState.currentSourceId,
+            sources = selectableSources,
+            currentSourceId = if (sourcesNotLoaded) availableSources.firstOrNull()?.id else uiState.currentSourceId,
             excludedSourceIds = excludedSourceIds,
             sourceListDisabled = sourceListDisabled,
             onToggleSourceExcluded = { sourceId ->
@@ -1103,7 +1120,8 @@ fun BasePlayerScaffold(
                 playbackController.setSourceListDisabled(!sourceListDisabled)
             },
             onSelectSource = { sourceId ->
-                playbackController.selectSource(sourceId)
+                if (sourcesNotLoaded) onSelectSourceBeforeLoad?.invoke(sourceId)
+                else playbackController.selectSource(sourceId)
                 // A real attempt to play the new source, not a dismissal — don't exit to Details.
                 sourcesPanelOpenedFromError = false
                 sourcesPanelOpenedAsBackStop = false
@@ -2156,26 +2174,37 @@ private fun LoadingOverlay(snapshot: LoadingSnapshot) {
         contentAlignment = Alignment.Center
     ) {
         LoadingStepFeed(snapshot = snapshot)
-        // The feed only logs milestones; this is the live percent of the source being loaded into debrid.
-        snapshot.debridPercent()?.let { percent ->
+        // The feed only logs milestones; this is the live state of the source being loaded
+        // into debrid. It shows from the first moment (indeterminate while the torrent is
+        // still being sent) and sits just under the feed, clear of the control bar.
+        if (snapshot.isDebrid) {
+            val percent = snapshot.debridPercent()
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 72.dp)
+                    .align(Alignment.Center)
+                    .offset(y = 56.dp)
                     .width(240.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Debrid · $percent%",
+                    text = if (percent != null) "Debrid · $percent%" else "Debrid · adding…",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium
                 )
-                LinearProgressIndicator(
-                    progress = { percent / 100f },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.25f)
-                )
+                if (percent != null) {
+                    LinearProgressIndicator(
+                        progress = { percent / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                }
             }
         }
     }
@@ -2482,7 +2511,7 @@ private fun AudioLanguageListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
-        selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selectedLanguage -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -2567,7 +2596,7 @@ private fun AudioVariantListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
-        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+        selected -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -3035,7 +3064,7 @@ private fun SubtitleLanguageListItem(
 
     val targetBackground = when {
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.95f)
-        selectedLanguage -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+        selectedLanguage -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -3122,7 +3151,7 @@ private fun SubtitleVariantListItem(
     val targetBackground = when {
         !enabled -> Color.White.copy(alpha = 0.06f)
         isFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.93f)
-        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.44f)
+        selected -> Color.White.copy(alpha = 0.22f)
         else -> Color.Transparent
     }
 
@@ -3336,6 +3365,15 @@ private fun BoxScope.PlayerSourceSidebar(
     val sourceStreams = remember(sources) {
         sources.map(PlayerSourceOption::toSourceUiStream)
     }
+    // Which sources are being added to, or already in, a debrid service; refreshed while open.
+    val debridStatusModel: DebridStatusViewModel = hiltViewModel()
+    val debridStatuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
+    LaunchedEffect(visible) {
+        while (visible) {
+            debridStatusModel.refresh()
+            delay(5_000L)
+        }
+    }
 
     val sidebarState = if (visible) {
         SidebarState.Sources(
@@ -3351,6 +3389,7 @@ private fun BoxScope.PlayerSourceSidebar(
         state = sidebarState,
         excludedSourceIds = excludedSourceIds,
         sourceListDisabled = sourceListDisabled,
+        debridStatuses = debridStatuses,
         onToggleSourceExcluded = { stream ->
             val sourceId = stream.sourceSelectionId ?: stream.addonTransportUrl ?: stream.url
             if (sourceId != null) onToggleSourceExcluded(sourceId)
