@@ -2172,26 +2172,37 @@ private fun LoadingOverlay(snapshot: LoadingSnapshot) {
         contentAlignment = Alignment.Center
     ) {
         LoadingStepFeed(snapshot = snapshot)
-        // The feed only logs milestones; this is the live percent of the source being loaded into debrid.
-        snapshot.debridPercent()?.let { percent ->
+        // The feed only logs milestones; this is the live state of the source being loaded
+        // into debrid. It shows from the first moment (indeterminate while the torrent is
+        // still being sent) and sits just under the feed, clear of the control bar.
+        if (snapshot.isDebrid) {
+            val percent = snapshot.debridPercent()
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 72.dp)
+                    .align(Alignment.Center)
+                    .offset(y = 56.dp)
                     .width(240.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Debrid · $percent%",
+                    text = if (percent != null) "Debrid · $percent%" else "Debrid · adding…",
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium
                 )
-                LinearProgressIndicator(
-                    progress = { percent / 100f },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    color = Color.White,
-                    trackColor = Color.White.copy(alpha = 0.25f)
-                )
+                if (percent != null) {
+                    LinearProgressIndicator(
+                        progress = { percent / 100f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.25f)
+                    )
+                }
             }
         }
     }

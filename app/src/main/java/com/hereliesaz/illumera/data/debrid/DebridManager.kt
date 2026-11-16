@@ -340,6 +340,8 @@ class DebridManager @Inject constructor(
                 Log.w(TAG, "${provider.displayName} did not take the magnet: ${added.message}")
                 continue
             }
+            // Accepted by the service: it is at 0% until the library reports otherwise.
+            onStatus("${provider.displayName} is downloading this", 0)
             return awaitPlayableSource(infoHash, wanted.fileName, maxWaitSeconds, wanted) { percent ->
                 onStatus("${provider.displayName} is downloading this", percent)
             }
