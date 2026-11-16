@@ -188,6 +188,14 @@ fun HomeScreen(
     // One buffered trailer, for the title after the one now playing.
     val trailerPreloader = remember { TrailerPreloader(genreContext.applicationContext) }
     DisposableEffect(trailerPreloader) { onDispose { trailerPreloader.release() } }
+    // The trailer held ready for the next title is speculation: the first thing given back when
+    // memory runs short.
+    DisposableEffect(trailerPreloader, viewModel) {
+        val registration = viewModel.memoryMonitor.register(
+            com.hereliesaz.illumera.data.memory.MemoryRank.SPECULATIVE_PREVIEW
+        ) { trailerPreloader.release() }
+        onDispose { registration.close() }
+    }
     val displayState = remember(tab, state, currentProfile?.id, rowSortOrders) {
         withRowSorts(
             displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext),

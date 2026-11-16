@@ -391,17 +391,31 @@ the rows-below list up with the next unloaded rows (in screen order, skipping ex
 repeatedly failed ones) whenever fewer than three loaded rows remain below the viewer. Loading
 still follows the viewer: it only reaches further as they near the end of what has loaded.
 
-## Memory: what is kept and what is dropped
+## Memory: a monitor that dumps the least useful first
 
-- **Dropped for rows away from the viewer** (`HomeViewModel.trimCaches`, every 5 s at most): the
-  fetched-but-unshown backlog, the catalog cursors, and title enrichment for titles not in a
-  near row. Near = visible, the rows just below, and the focused one.
-- **Kept**: the titles a row already shows (a row never shrinks), so scrolling back is instant.
-- **Bounded**: the art-fallback cache (`metadataFallbackCache`, 300 titles, least recently used
-  first out) and the image cache (15% of app memory, handed back on `onTrimMemory`).
-- **Preview players** (`newPreviewPlayer`) buffer at most 12 MB / 10 s each. ExoPlayer's default
-  is up to 50 s, which is tens of megabytes of Java heap per player, and Home can hold three
-  (focused, next-ready, persistent preview).
+`MemoryMonitor` (`data/memory`) samples the Java heap every 3 seconds, and also listens to
+Android's `onTrimMemory`. Memory is **High** at 70% of the heap and **Critical** at 85%. High must
+show on two samples in a row (uncollected garbage can make one reading look worse than it is);
+Critical acts at once. After acting it waits out a cooldown (15 s High, 5 s Critical), because the
+heap only shows a trim's effect after the next collection.
+
+Whatever holds a cache registers a trimmer with a rank, and the monitor asks them lowest rank
+first:
+
+| Rank | Holder | High | Critical |
+|---|---|---|---|
+| 5 | Trailer buffered for the next title (`TrailerPreloader`) | released | released |
+| 10 | Decoded images (Coil memory cache) | half | all (reload from the disk cache) |
+| 20 | Home data (`HomeViewModel.trimForMemory`) | trailer URLs, most of the art cache, what was fetched ahead and enrichment for rows not near the viewer | also the rows far from the viewer cut back to their first 10 titles (farthest first; they restart their catalog when reached and their scroll memory is cleared), and the snapshots of screens already left |
+
+"Near" is what the viewer is on, what is on screen, the rows just below, and the hero's row. The
+titles a row shows are otherwise kept (a row never shrinks while the viewer is near it), so
+scrolling back is instant. Also bounded all the time: the art-fallback cache (300 titles, least
+recently used out) and each preview player (`newPreviewPlayer`: 10 s / 12 MB buffer instead of
+ExoPlayer's 50 s default, tens of megabytes of heap per player).
+
+To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
+owner goes away.
 
 ## In-app browser
 

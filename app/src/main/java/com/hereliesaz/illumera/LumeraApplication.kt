@@ -15,6 +15,7 @@ import org.acra.data.StringFormat
 import org.acra.ktx.initAcra
 import org.acra.sender.HttpSender
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @HiltAndroidApp
 class LumeraApplication : Application(), ImageLoaderFactory {
@@ -24,6 +25,9 @@ class LumeraApplication : Application(), ImageLoaderFactory {
 
     @Inject
     lateinit var startupOptimizer: StartupOptimizer
+
+    @Inject
+    lateinit var memoryMonitor: com.hereliesaz.illumera.data.memory.MemoryMonitor
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
@@ -73,6 +77,7 @@ class LumeraApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         CrashReporting.startAnrReporting(this)
         startupOptimizer.warmup()
+        memoryMonitor.start()
         try {
             TraktSyncWorker.schedule(this)
         } catch (e: IllegalStateException) {
@@ -83,13 +88,11 @@ class LumeraApplication : Application(), ImageLoaderFactory {
 
     override fun newImageLoader(): ImageLoader = imageLoader
 
-    /**
-     * The system asking for memory back: hand the image cache's share over (everything at
-     * moderate levels and worse, the older part while the app is merely hidden). Without this
-     * the cache only ever shrinks by its own size limit, however short the box is on memory.
-     */
+    /** The system asking for memory back: handed to the monitor, which drops the least useful first. */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (::imageLoader.isInitialized) imageLoader.memoryCache?.trimMemory(level)
+        if (::memoryMonitor.isInitialized) {
+            kotlinx.coroutines.MainScope().launch { memoryMonitor.onSystemTrim(level) }
+        }
     }
 }

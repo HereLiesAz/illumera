@@ -147,8 +147,19 @@ class HomeViewModel @Inject constructor(
     private val youtubeExtractor: YouTubeExtractor,
     private val similarTitlesEngine: com.hereliesaz.illumera.data.recommend.SimilarTitlesEngine,
     private val tasteStore: com.hereliesaz.illumera.data.taste.TasteStore,
-    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs
+    private val personalRowPrefs: com.hereliesaz.illumera.data.recommend.PersonalRowPrefs,
+    val memoryMonitor: com.hereliesaz.illumera.data.memory.MemoryMonitor
 ) : ViewModel() {
+
+    // When memory runs short, Home gives back what is least useful to the viewer's surroundings.
+    private val memoryRegistration = memoryMonitor.register(
+        com.hereliesaz.illumera.data.memory.MemoryRank.HOME_DATA, ::trimForMemory
+    )
+
+    override fun onCleared() {
+        memoryRegistration.close()
+        super.onCleared()
+    }
 
     /** Thumbs up on a personal row's header: favor its seed title. */
     fun approveSeed(seedId: String) = personalRowPrefs.approve(seedId)
@@ -569,6 +580,7 @@ class HomeViewModel @Inject constructor(
     companion object {
         private const val ROW_BATCH_SIZE = 50
         private const val METADATA_CACHE_MAX = 300
+        private const val FAR_ROW_KEEP = 10
         private const val SNAPSHOT_TTL_MS = 10 * 60_000L
         // Demand-driven loading: titles shown per step, how far past the focused card to keep
         // loaded, rows looked ahead, and bounds on concurrent/repeated/per-call work.
@@ -737,9 +749,9 @@ class HomeViewModel @Inject constructor(
      * Drops what was fetched ahead for rows the viewer is not near, and enrichment for titles
      * they are not near. It is fetched again when their movements ask for it.
      */
-    private fun trimCaches() {
+    private fun trimCaches(force: Boolean = false) {
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastTrimMs < TRIM_INTERVAL_MS) return
+        if (!force && now - lastTrimMs < TRIM_INTERVAL_MS) return
         lastTrimMs = now
         val state = _state.value
         val near = (visibleRowIds + lookaheadRowIds + listOfNotNull(focusedRowId)).toSet()
@@ -763,13 +775,63 @@ class HomeViewModel @Inject constructor(
             state.heroRow?.items?.forEach { add("${it.type}:${it.id}") }
         }
         val stale = (state.enrichedMeta.keys + state.tmdbEnrichedIds).filterNot { it in keep }.toSet()
-        if (stale.size > 40) {
+        if (force && stale.isNotEmpty() || stale.size > 40) {
             _state.update {
                 it.copy(
                     enrichedMeta = it.enrichedMeta - stale,
                     tmdbEnrichedIds = it.tmdbEnrichedIds - stale
                 )
             }
+        }
+    }
+
+    /**
+     * Memory is short. Least useful first: lookups that can be made again, then what was fetched
+     * ahead for rows the viewer is not near, and (only when critical) the tail of rows far from
+     * the viewer and the screens they have left.
+     */
+    private fun trimForMemory(pressure: com.hereliesaz.illumera.data.memory.Pressure) {
+        val critical = pressure == com.hereliesaz.illumera.data.memory.Pressure.Critical
+        trailerUrlCache.clear()
+        synchronized(metadataFallbackCache) {
+            val keep = if (critical) 0 else METADATA_CACHE_MAX / 3
+            val iterator = metadataFallbackCache.keys.iterator()
+            while (metadataFallbackCache.size > keep && iterator.hasNext()) {
+                iterator.next(); iterator.remove()
+            }
+        }
+        trimCaches(force = true)
+        if (!critical) return
+        trimFarRows()
+        // Screens the viewer has left come back by refetching; the one in front stays.
+        screenSnapshots.keys.retainAll(setOfNotNull(activeScreen))
+    }
+
+    /**
+     * Cuts rows far from the viewer back to their first [FAR_ROW_KEEP] titles. The row restarts
+     * its catalog the next time it is asked for, as when its backlog is dropped, and what it
+     * shows is not fetched twice.
+     */
+    private fun trimFarRows() {
+        val state = _state.value
+        val near = (visibleRowIds + lookaheadRowIds + listOfNotNull(focusedRowId, heroSourceRowId())).toSet()
+        val order = state.rows.map { it.configId }
+        val shown = state.rows.associate { it.configId to it.items.size }
+        val anchor = (visibleRowIds.firstOrNull() ?: focusedRowId)?.let(order::indexOf)?.takeIf { it >= 0 } ?: 0
+        val far = RowDemandPlanner.farRowsToTrim(order, { shown[it] ?: 0 }, near, anchor, FAR_ROW_KEEP).toSet()
+        if (far.isEmpty()) return
+        _state.update { current ->
+            val rows = current.rows.map { if (it.configId in far) it.copy(items = it.items.take(FAR_ROW_KEEP)) else it }
+            current.copy(rows = rows, mixedRows = reconcileGenreMixedRows(current.mixedRows, rows))
+        }
+        far.forEach { id ->
+            rowBacklogs.remove(id); candidateBacklogs.remove(id); pendingRowItems.remove(id)
+            allFetchedRowIds.remove(id); seenAggregateCandidates.remove(id)
+            rowFetchOffsets.remove(id); pairedRowFetchOffsets.remove(id)
+            exhaustedCatalogRows.remove(id); emptyCatalogPageStreak.remove(id)
+            demandAttempts.remove(id); revealTargets.remove(id)
+            // Back at the row it starts from its first title, not a position that is gone.
+            activeScreen?.let { positions(it).rowScrollPositions.remove(id) }
         }
     }
 

@@ -111,4 +111,15 @@ class RowDemandPlannerTest {
             RowDemandPlanner.padLookahead(listOf("a"), listOf("r7x"), listOf("a", "r7x", "r7"), 2)
         )
     }
+
+    @Test fun farRowsAreTrimmedFarthestFirstAndNearOnesKept() {
+        val order = listOf("a", "b", "c", "d", "e", "f", "g")
+        val shown = mapOf("a" to 40, "b" to 40, "c" to 40, "d" to 40, "e" to 5, "f" to 40, "g" to 40)
+        // The viewer is at "c" (index 2): g is 4 rows away, f 3, a 2. "e" shows five titles,
+        // nothing to cut; b, c and d are near and never touched.
+        val result = RowDemandPlanner.farRowsToTrim(
+            order, { shown.getValue(it) }, near = setOf("b", "c", "d"), anchorIndex = 2, keep = 10
+        )
+        assertEquals(listOf("g", "f", "a"), result)
+    }
 }
