@@ -20,6 +20,7 @@ import com.hereliesaz.illumera.data.stream.StreamSortingService
 import com.hereliesaz.illumera.data.debrid.WantedFile
 import com.hereliesaz.illumera.data.debrid.magnetInfoHash
 import com.hereliesaz.illumera.data.model.debrid.DebridSourceEntry
+import com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.domain.AddonSubtitle
@@ -40,6 +41,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -396,6 +398,13 @@ class PlaybackSessionViewModel @Inject constructor(
      */
     var debridSources by mutableStateOf<List<DebridSourceEntry>>(emptyList())
         private set
+
+    /** Where each torrent source stands in the viewer's debrid services, by lowercase info hash. */
+    val debridStatuses: StateFlow<Map<String, DebridSourceStatus>>
+        get() = debridManager.sourceStatuses
+
+    /** Reads the debrid accounts again so [debridStatuses] stays current. */
+    suspend fun refreshDebridStatuses() = debridManager.refreshSourceStatuses()
 
     private fun debridSourceLabel(stream: Stream?): String =
         listOfNotNull(stream?.title, stream?.name, stream?.description)

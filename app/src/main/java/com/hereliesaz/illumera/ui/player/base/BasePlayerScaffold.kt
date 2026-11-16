@@ -72,8 +72,6 @@ import androidx.compose.ui.res.painterResource
 import com.hereliesaz.illumera.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.hereliesaz.illumera.ui.playback.DebridStatusViewModel
 import com.hereliesaz.illumera.data.model.debrid.DebridSourceEntry
 import com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -210,6 +208,10 @@ fun BasePlayerScaffold(
     availableSources: List<PlayerSourceOption> = emptyList(),
     /** Every torrent source this playback sent to debrid, listed with its progress while loading. */
     debridSources: List<DebridSourceEntry> = emptyList(),
+    /** Where each torrent source stands in the viewer's debrid services, by lowercase info hash. */
+    debridStatuses: Map<String, DebridSourceStatus> = emptyMap(),
+    /** Reads the debrid accounts again so [debridStatuses] stays current; null when there is none. */
+    onRefreshDebridStatuses: (suspend () -> Unit)? = null,
     onSkipSourceBeforeLoad: (() -> Unit)? = null,
     onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
@@ -941,7 +943,9 @@ fun BasePlayerScaffold(
                     isBuffering = uiState.isBuffering,
                     statusMessage = playbackStatus
                 ),
-                debridSources = debridSources
+                debridSources = debridSources,
+                statuses = debridStatuses,
+                onRefreshStatuses = onRefreshDebridStatuses
             )
         }
 
@@ -1118,6 +1122,8 @@ fun BasePlayerScaffold(
             currentSourceId = if (sourcesNotLoaded) availableSources.firstOrNull()?.id else uiState.currentSourceId,
             excludedSourceIds = excludedSourceIds,
             sourceListDisabled = sourceListDisabled,
+            debridStatuses = debridStatuses,
+            onRefreshDebridStatuses = onRefreshDebridStatuses,
             onToggleSourceExcluded = { sourceId ->
                 playbackController.setSourceExcluded(sourceId, sourceId !in excludedSourceIds)
             },
@@ -2173,14 +2179,17 @@ private fun PlayerStatusPill(
 private const val MAX_DEBRID_ROWS = 8
 
 @Composable
-private fun LoadingOverlay(snapshot: LoadingSnapshot, debridSources: List<DebridSourceEntry>) {
+private fun LoadingOverlay(
+    snapshot: LoadingSnapshot,
+    debridSources: List<DebridSourceEntry>,
+    statuses: Map<String, DebridSourceStatus>,
+    onRefreshStatuses: (suspend () -> Unit)?
+) {
     // Where each source sent to debrid stands; read again every few seconds while any is listed.
-    val debridStatusModel: DebridStatusViewModel = hiltViewModel()
-    val statuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
     val listed = debridSources.isNotEmpty()
-    LaunchedEffect(listed) {
-        while (listed) {
-            debridStatusModel.refresh()
+    LaunchedEffect(listed, onRefreshStatuses) {
+        while (listed && onRefreshStatuses != null) {
+            onRefreshStatuses()
             delay(5_000L)
         }
     }
@@ -3432,17 +3441,17 @@ private fun BoxScope.PlayerSourceSidebar(
     onToggleSourceExcluded: (String) -> Unit,
     onToggleSourceListDisabled: () -> Unit,
     onClose: () -> Unit,
-    onSelectSource: (String) -> Unit
+    onSelectSource: (String) -> Unit,
+    debridStatuses: Map<String, DebridSourceStatus> = emptyMap(),
+    onRefreshDebridStatuses: (suspend () -> Unit)? = null
 ) {
     val sourceStreams = remember(sources) {
         sources.map(PlayerSourceOption::toSourceUiStream)
     }
     // Which sources are being added to, or already in, a debrid service; refreshed while open.
-    val debridStatusModel: DebridStatusViewModel = hiltViewModel()
-    val debridStatuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
-    LaunchedEffect(visible) {
-        while (visible) {
-            debridStatusModel.refresh()
+    LaunchedEffect(visible, onRefreshDebridStatuses) {
+        while (visible && onRefreshDebridStatuses != null) {
+            onRefreshDebridStatuses()
             delay(5_000L)
         }
     }

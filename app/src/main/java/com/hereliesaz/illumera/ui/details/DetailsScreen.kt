@@ -157,7 +157,11 @@ fun DetailsScreen(
     // Scoped to this page's back-stack entry: every Details page has its own.
     viewModel: DetailsViewModel = hiltViewModel(),
     // Love / Like / Don't like buttons and the dislike filter on this page's TMDB rows.
-    tasteActions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel()
+    tasteActions: com.hereliesaz.illumera.ui.components.MediaActionsViewModel = hiltViewModel(),
+    // Torrent sources being added to, or already in, a debrid service (by lowercase info hash),
+    // and a read of the accounts that keeps them current while the source list is open.
+    debridStatuses: Map<String, com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus> = emptyMap(),
+    onRefreshDebridStatuses: (suspend () -> Unit)? = null
 ) {
     LaunchedEffect(type, id, addonBaseUrl) { viewModel.loadDetails(type, id, addonBaseUrl) }
     val context = LocalContext.current
@@ -177,13 +181,11 @@ fun DetailsScreen(
         }
     }
     val sidebarState = if (isCurrentMovie) state.sidebarState else SidebarState.Closed
-    // Which sources are being added to, or already in, a debrid service; refreshed while the list is open.
-    val debridStatusModel: com.hereliesaz.illumera.ui.playback.DebridStatusViewModel = hiltViewModel()
-    val debridStatuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
+    // Debrid status is read again every few seconds while the source list is open.
     val sourcesOpen = sidebarState is SidebarState.Sources
-    LaunchedEffect(sourcesOpen) {
-        while (sourcesOpen) {
-            debridStatusModel.refresh()
+    LaunchedEffect(sourcesOpen, onRefreshDebridStatuses) {
+        while (sourcesOpen && onRefreshDebridStatuses != null) {
+            onRefreshDebridStatuses()
             delay(5_000L)
         }
     }

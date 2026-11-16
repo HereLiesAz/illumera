@@ -41,6 +41,7 @@ import com.hereliesaz.illumera.ui.audio.Dialog
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.entryProvider
@@ -667,6 +668,7 @@ class MainActivity : ComponentActivity() {
             // Playback state lives in the activity-scoped session, so it outlives a
             // configuration change and TorrentService's callbacks always reach it.
             val session = hiltViewModel<PlaybackSessionViewModel>(viewModelStoreOwner = this@MainActivity)
+            val debridStatuses by session.debridStatuses.collectAsStateWithLifecycle()
             // A queue start stays pending while the viewer is on the advanced-to title's pages.
             LaunchedEffect(topKey) {
                 if (topKey !is DetailsKey && topKey !is CastKey && topKey !is StudioKey && topKey !is com.hereliesaz.illumera.ui.navigation.MoreLikeThisKey && topKey != PlayerKey) {
@@ -1092,6 +1094,8 @@ class MainActivity : ComponentActivity() {
                                 // playback this page started ends part-way. DetailsScreen still
                                 // ignores a hint for another title.
                                 resumePlaybackHint = session.resumeHintFor(detailsKey.playbackOwnerTag),
+                                debridStatuses = debridStatuses,
+                                onRefreshDebridStatuses = session::refreshDebridStatuses,
                                 autoSelectSource = currentProfile?.autoSelectSource ?: false,
                                 rememberSourceSelection = currentProfile?.rememberSourceSelection ?: true,
                                 onPosterResolved = { resolvedPoster = it },
@@ -1322,6 +1326,8 @@ class MainActivity : ComponentActivity() {
                                 onSuspectSource = { status -> session.onSuspectSource(status, currentProfile) },
                                 onSourceChanged = session::onPlayerSourceChanged,
                                 debridSources = session.debridSources,
+                                debridStatuses = debridStatuses,
+                                onRefreshDebridStatuses = session::refreshDebridStatuses,
                                 onSkipSourceBeforeLoad = session::skipSourceBeforeLoad,
                                 onSelectSourceBeforeLoad = session::selectSourceBeforeLoad,
                                 onBack = { sessionResult -> session.end(sessionResult, currentProfile) },
