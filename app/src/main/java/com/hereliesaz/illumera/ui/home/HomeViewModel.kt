@@ -642,12 +642,25 @@ class HomeViewModel @Inject constructor(
         )
     }
 
+    /** Rows, in screen order, that show nothing yet and can still be tried. */
+    private fun unloadedRowIds(): List<String> =
+        _state.value.rows
+            .filter { row ->
+                row.items.isEmpty() && row.configId !in exhaustedCatalogRows &&
+                    (demandAttempts[row.configId] ?: 0) < RowDemandPlanner.MAX_ATTEMPTS
+            }
+            .map { it.configId }
+
     private fun currentDemands(): List<Pair<String, Int>> = RowDemandPlanner.demands(
         focusedRowId = focusedRowId,
         focusedTarget = focusedRowId?.let { revealTarget(it) } ?: 0,
         visible = visibleRowIds,
         heroRowId = heroSourceRowId(),
-        lookahead = lookaheadRowIds
+        // The screen reports only rows it has shown; unloaded ones are added as the viewer nears
+        // the end of the loaded ones.
+        lookahead = RowDemandPlanner.padLookahead(
+            lookaheadRowIds, visibleRowIds, unloadedRowIds(), LOOKAHEAD_ROWS
+        )
     )
 
     /** Gives up a running load; whatever it had not recorded is fetched again when it is next asked for. */

@@ -382,6 +382,15 @@ that video, from its halfway point, instead of a trailer.
   it through `LocalPreviewStartsAtMidpoint`, so the hero, the rows' previews and the persistent
   preview all behave the same.
 
+## Home rows keep loading past the first batch
+
+Row loading is demand-driven (`RowDemandPlanner`): visible rows, then the next few below. The
+screen reports only rows it has composed, and a row that never had a title is not composed, so the
+report ended at the last loaded row and the rest of Home was never asked for. `padLookahead` tops
+the rows-below list up with the next unloaded rows (in screen order, skipping exhausted or
+repeatedly failed ones) whenever fewer than three loaded rows remain below the viewer. Loading
+still follows the viewer: it only reaches further as they near the end of what has loaded.
+
 ## In-app browser
 
 Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own
