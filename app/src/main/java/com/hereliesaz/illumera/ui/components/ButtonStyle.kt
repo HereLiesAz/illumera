@@ -21,7 +21,7 @@ enum class ButtonEmphasis {
     Normal,
     /** A tab, choice or toggle that is on. */
     Selected,
-    /** Removes or resets something. */
+    /** Removes or resets something: red under the cursor only, never lit at rest. */
     Destructive
 }
 
@@ -37,9 +37,11 @@ data class ButtonColors(
  * The one highlighted/unhighlighted scheme every action button uses, so buttons that
  * sit side by side light up the same way. Shape and size stay each button's own.
  *
- * - At rest: faint fill, faint border, theme text label (Selected and Destructive show their
- *   accent at rest).
- * - Focused: accent-tinted fill, 2dp accent border, accent label.
+ * - At rest: faint fill, faint border, theme text label.
+ * - Selected (a tab, choice or toggle that is on): a brighter neutral fill and border. It is
+ *   deliberately not the accent, so it can never be mistaken for the cursor.
+ * - Focused (the cursor): accent-tinted fill, 2dp accent border, accent label. Only focus
+ *   uses the accent.
  * - Disabled: dimmed, never highlighted.
  */
 @Composable
@@ -63,12 +65,13 @@ fun buttonColors(
             borderWidth = 2.dp,
             content = accent
         )
-        emphasis != ButtonEmphasis.Normal -> ButtonColors(
-            container = accent.copy(alpha = 0.25f),
-            border = accent.copy(alpha = 0.60f),
+        emphasis == ButtonEmphasis.Selected -> ButtonColors(
+            container = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f),
+            border = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.60f),
             borderWidth = 1.dp,
-            content = accent
+            content = MaterialTheme.colorScheme.onBackground
         )
+        // Destructive is red only under the cursor; at rest it is an ordinary button.
         else -> ButtonColors(
             container = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f),
             border = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.20f),
