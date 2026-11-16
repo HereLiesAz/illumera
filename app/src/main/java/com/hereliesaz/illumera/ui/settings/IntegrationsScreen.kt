@@ -94,7 +94,7 @@ fun IntegrationsScreen(
     var showDisconnectConfirm by remember { mutableStateOf(false) }
     var showResetSyncConfirm by remember { mutableStateOf(false) }
     var confirmPushCount by remember { mutableStateOf<Int?>(null) }
-    var confirmSyncRemoveCount by remember { mutableStateOf<Int?>(null) }
+    var confirmResetAddonsCount by remember { mutableStateOf<Int?>(null) }
     var externalLink by remember { mutableStateOf<ExternalLinkOperation?>(null) }
     var showTmdbSettings by remember { mutableStateOf(false) }
     var showTraktDialog by remember { mutableStateOf(false) }
@@ -123,7 +123,7 @@ fun IntegrationsScreen(
                     Toast.makeText(context, "Pushed ${event.count} addon(s) to Stremio", Toast.LENGTH_SHORT).show()
                 }
                 is IntegrationsEvent.ConfirmPushAddons -> confirmPushCount = event.count
-                is IntegrationsEvent.ConfirmSyncAddons -> confirmSyncRemoveCount = event.removeCount
+                is IntegrationsEvent.ConfirmResetAddons -> confirmResetAddonsCount = event.removeCount
                 is IntegrationsEvent.Disconnected -> {
                     Toast.makeText(context, "Disconnected from Stremio", Toast.LENGTH_SHORT).show()
                 }
@@ -331,6 +331,10 @@ fun IntegrationsScreen(
                 showManagementDialog = false
                 viewModel.requestSyncAddons()
             },
+            onResetAddons = {
+                showManagementDialog = false
+                viewModel.requestResetAddonsToStremio()
+            },
             onSyncLibrary = {
                 showManagementDialog = false
                 viewModel.syncLibrary()
@@ -406,16 +410,22 @@ fun IntegrationsScreen(
         )
     }
 
-    confirmSyncRemoveCount?.let { count ->
+    confirmResetAddonsCount?.let { count ->
         DisconnectConfirmDialog(
-            title = "Import Stremio addons?",
-            message = "$count addon(s) on this profile aren't in your Stremio account and will be removed. " +
-                "Addons from your account are installed.",
-            confirmText = "Import",
-            onDismiss = { confirmSyncRemoveCount = null },
+            title = "Reset addons to Stremio?",
+            message = if (count == 0) {
+                "This profile's addons are made to match your Stremio account's, in its order. " +
+                    "Nothing on this profile is removed. Your Stremio account isn't changed."
+            } else {
+                "$count addon(s) on this profile aren't in your Stremio account and will be removed, " +
+                    "with their settings. Your account's addons are installed, in its order. " +
+                    "Your Stremio account isn't changed. To keep these addons, choose Push Addons to Stremio first."
+            },
+            confirmText = "Reset",
+            onDismiss = { confirmResetAddonsCount = null },
             onConfirm = {
-                confirmSyncRemoveCount = null
-                viewModel.syncAddons()
+                confirmResetAddonsCount = null
+                viewModel.syncAddons(prune = true)
             }
         )
     }
@@ -1410,6 +1420,7 @@ private fun StremioManagementDialog(
     email: String,
     onDismiss: () -> Unit,
     onSyncAddons: () -> Unit,
+    onResetAddons: () -> Unit,
     onSyncLibrary: () -> Unit,
     onPushAddons: () -> Unit,
     onExportData: () -> Unit,
@@ -1459,9 +1470,19 @@ private fun StremioManagementDialog(
                 ManagementMenuItem(
                     icon = Icons.Default.Sync,
                     title = "Add New Addons",
-                    subtitle = "Import addons from your Stremio account",
+                    subtitle = "Install addons from your Stremio account. Nothing is removed",
                     onClick = onSyncAddons,
                     focusRequester = syncFocusRequester
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                ManagementMenuItem(
+                    icon = Icons.Default.RestartAlt,
+                    title = "Reset Addons to Stremio",
+                    subtitle = "Make this profile's addons match your account's, removing the others",
+                    onClick = onResetAddons,
+                    isDestructive = true
                 )
 
                 Spacer(Modifier.height(12.dp))

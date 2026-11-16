@@ -417,6 +417,21 @@ ExoPlayer's 50 s default, tens of megabytes of heap per player).
 To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
 owner goes away.
 
+## Stremio addon sync: add-only, with an explicit reset
+
+Syncing addons from a Stremio account never removes a local addon. `IntegrationsViewModel.syncAddons()`
+(signing in by email, register, Facebook or Apple; Integrations -> Stremio -> Add New Addons) and
+`StremioAddonsViewModel.syncFromStremio()` install what the account has and this profile lacks
+(and fill in placeholder rows), keep every local addon with its settings, and order the account's
+addons first in its order, then the rest as they were.
+
+The one destructive path is **Reset Addons to Stremio** (Stremio management dialog). It first
+asks: it counts the local addons (not the built-in Cinemeta and Streaming Catalogs) the account
+doesn't list, shows that number and warns that their settings go too, then calls
+`syncAddons(prune = true)` / `syncFromStremio(prune = true)`. An account that lists no addons is
+refused rather than reset to an empty profile. The Stremio account is never changed by either.
+Separate from this, **Reset Stremio Sync** signs out and removes every non-built-in addon.
+
 ## In-app browser
 
 Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own

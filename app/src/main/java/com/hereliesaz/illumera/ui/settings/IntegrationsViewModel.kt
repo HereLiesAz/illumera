@@ -56,8 +56,8 @@ sealed class IntegrationsEvent {
     data class PushComplete(val count: Int) : IntegrationsEvent()
     /** Ask the user before replacing the account's addon collection with [count] local addons. */
     data class ConfirmPushAddons(val count: Int) : IntegrationsEvent()
-    /** Ask the user before an addon import that removes [removeCount] local addons. */
-    data class ConfirmSyncAddons(val removeCount: Int) : IntegrationsEvent()
+    /** Ask the user before replacing this profile's addons with the account's, removing [removeCount] local ones. */
+    data class ConfirmResetAddons(val removeCount: Int) : IntegrationsEvent()
     object Disconnected : IntegrationsEvent()
     data class StremioSyncReset(val removedAddons: Int) : IntegrationsEvent()
     data class DebridConnected(val provider: DebridProvider) : IntegrationsEvent()
@@ -425,37 +425,44 @@ class IntegrationsViewModel @Inject constructor(
         }
     }
 
+    /** Manual addon import: adds what the account has and this profile lacks. Never removes anything. */
+    fun requestSyncAddons() = syncAddons()
+
     /**
-     * Manual addon import: if it would remove local addons, emits
-     * [IntegrationsEvent.ConfirmSyncAddons] with the count first; otherwise syncs directly.
+     * "Reset addons to Stremio": the one way a sync removes addons. Emits
+     * [IntegrationsEvent.ConfirmResetAddons] with how many local addons would go; the screen then
+     * calls [syncAddons] with `prune = true`. An account that lists no addons is refused (it is
+     * far more likely a bad response than a wish for an empty profile).
      */
-    fun requestSyncAddons() {
+    fun requestResetAddonsToStremio() {
         if (addonSyncJob?.isActive == true) return
         viewModelScope.launch {
             val entries = stremioAuthManager.fetchAddons().getOrElse { error ->
-                _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not import Stremio addons."))
+                _events.send(IntegrationsEvent.LoginError(error.message ?: "Could not read your Stremio addons."))
                 return@launch
             }
             val remoteSet = entries.map { normalizeTransportUrl(it.transportUrl) }.filter { it.isNotBlank() }.toSet()
-            val removeCount = if (remoteSet.isEmpty()) 0 else {
-                addonRepository.getAddons().first().count { addon ->
-                    val localUrl = normalizeTransportUrl(addon.transportUrl)
-                    !BakedAddons.isBaked(localUrl) && localUrl !in remoteSet
-                }
+            if (remoteSet.isEmpty()) {
+                _events.send(IntegrationsEvent.LoginError("Your Stremio account lists no addons, so there is nothing to reset to."))
+                return@launch
             }
-            if (removeCount > 0) {
-                _events.send(IntegrationsEvent.ConfirmSyncAddons(removeCount))
-            } else {
-                syncAddons()
+            val removeCount = addonRepository.getAddons().first().count { addon ->
+                val localUrl = normalizeTransportUrl(addon.transportUrl)
+                !BakedAddons.isBaked(localUrl) && localUrl !in remoteSet
             }
+            _events.send(IntegrationsEvent.ConfirmResetAddons(removeCount))
         }
     }
 
     /**
-     * Syncs addons from the connected Stremio account.
-     * Uses the stored authKey - does not require password.
+     * Syncs addons from the connected Stremio account. Uses the stored authKey, not the password.
+     *
+     * By default this only **adds**: addons the account has and this profile lacks are installed
+     * (and a placeholder is filled in); nothing local is ever removed, so signing in cannot cost
+     * anyone the addons they set up here. With [prune] the profile is made to match the account:
+     * local addons the account doesn't list (except the built-in ones) are removed.
      */
-    fun syncAddons() {
+    fun syncAddons(prune: Boolean = false) {
         if (addonSyncJob?.isActive == true) return
         val initiatingProfileId = profileConfigurationManager.getLastActiveProfileId() ?: return
         addonSyncJob = viewModelScope.launch {
@@ -491,7 +498,7 @@ class IntegrationsViewModel @Inject constructor(
                     val remoteSet = remoteUrls.toSet()
                     // An empty remote collection (new account, or a server hiccup) must not
                     // wipe every local addon; only prune when the account lists some.
-                    if (remoteSet.isNotEmpty()) current.forEach { addon ->
+                    if (prune && remoteSet.isNotEmpty()) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
                         if (!BakedAddons.isBaked(localUrl) && localUrl !in remoteSet) {
                             try {
@@ -516,6 +523,8 @@ class IntegrationsViewModel @Inject constructor(
                             compareBy(
                                 { remoteOrder[normalizeTransportUrl(it.transportUrl)] ?: Int.MAX_VALUE },
                                 { if (normalizeTransportUrl(it.transportUrl) == CINEMETA_TRANSPORT_URL) 0 else 1 },
+                                // Addons the account doesn't list keep the order they had.
+                                { it.sortOrder },
                                 { it.name.lowercase() }
                             )
                         )
