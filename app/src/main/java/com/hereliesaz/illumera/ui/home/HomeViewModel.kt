@@ -548,7 +548,15 @@ class HomeViewModel @Inject constructor(
     private val loadingMoreRows = mutableSetOf<String>()
     // Mutated from Dispatchers.IO and Main; must be thread-safe. Only successful
     // lookups are cached (ConcurrentHashMap cannot hold null values).
-    private val metadataFallbackCache = java.util.concurrent.ConcurrentHashMap<String, MetadataFallback>()
+    // Least recently used first out: every title whose art was ever resolved used to stay, so a
+    // long browse only grew it.
+    private val metadataFallbackCache: MutableMap<String, MetadataFallback> =
+        java.util.Collections.synchronizedMap(
+            object : LinkedHashMap<String, MetadataFallback>(64, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MetadataFallback>) =
+                    size > METADATA_CACHE_MAX
+            }
+        )
     // IO jobs (metadata fallback / TMDB enrichment) that patch profile-scoped state;
     // cancelled on profile switch so they cannot patch the new profile's state.
     private val profileScopedJobs = java.util.concurrent.ConcurrentHashMap.newKeySet<kotlinx.coroutines.Job>()
@@ -560,6 +568,7 @@ class HomeViewModel @Inject constructor(
     // UI batching: per-row pending buffers and dedup tracking
     companion object {
         private const val ROW_BATCH_SIZE = 50
+        private const val METADATA_CACHE_MAX = 300
         private const val SNAPSHOT_TTL_MS = 10 * 60_000L
         // Demand-driven loading: titles shown per step, how far past the focused card to keep
         // loaded, rows looked ahead, and bounds on concurrent/repeated/per-call work.

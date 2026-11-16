@@ -82,4 +82,14 @@ class LumeraApplication : Application(), ImageLoaderFactory {
     }
 
     override fun newImageLoader(): ImageLoader = imageLoader
+
+    /**
+     * The system asking for memory back: hand the image cache's share over (everything at
+     * moderate levels and worse, the older part while the app is merely hidden). Without this
+     * the cache only ever shrinks by its own size limit, however short the box is on memory.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (::imageLoader.isInitialized) imageLoader.memoryCache?.trimMemory(level)
+    }
 }

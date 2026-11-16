@@ -7,6 +7,25 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 
+/**
+ * A player for a muted, looping-free preview. ExoPlayer's defaults buffer up to 50 seconds (tens
+ * of megabytes of Java heap) per player, and Home can hold several at once: the focused one, the
+ * next one made ready, and one in the persistent preview. A preview only needs seconds ahead.
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+internal fun newPreviewPlayer(context: Context): ExoPlayer =
+    ExoPlayer.Builder(context)
+        .setLoadControl(
+            androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                .setBufferDurationsMs(3_000, 10_000, 1_000, 2_000)
+                .setTargetBufferBytes(PREVIEW_BUFFER_BYTES)
+                .setPrioritizeTimeOverSizeThresholds(false)
+                .build()
+        )
+        .build()
+
+internal const val PREVIEW_BUFFER_BYTES = 12 * 1024 * 1024
+
 internal fun trailerKey(item: MetaItem) = "${item.type}:${item.id}"
 
 /**
@@ -32,7 +51,7 @@ internal class TrailerPreloader(private val context: Context) {
         val resolved = resolve(item)
         // The viewer moved on while this was being resolved.
         if (resolved == null || wanted != itemKey) return
-        player = ExoPlayer.Builder(context).build().apply {
+        player = newPreviewPlayer(context).apply {
             volume = 0f
             repeatMode = Player.REPEAT_MODE_OFF
             setMediaItem(MediaItem.fromUri(resolved))

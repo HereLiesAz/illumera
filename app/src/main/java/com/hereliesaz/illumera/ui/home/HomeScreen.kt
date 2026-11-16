@@ -2118,7 +2118,7 @@ internal fun TrailerPreview(
     DisposableEffect(videoUrl, item?.id, item?.type, lifecycleOwner) {
         val created = videoUrl?.let { url ->
             val readied = item?.let { preloader?.take(trailerKey(it)) }
-            (readied ?: ExoPlayer.Builder(context).build().apply {
+            (readied ?: newPreviewPlayer(context).apply {
                 setMediaItem(PlayerMediaItem.fromUri(url))
                 prepare()
             }).apply {

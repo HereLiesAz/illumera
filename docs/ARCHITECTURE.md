@@ -391,6 +391,18 @@ the rows-below list up with the next unloaded rows (in screen order, skipping ex
 repeatedly failed ones) whenever fewer than three loaded rows remain below the viewer. Loading
 still follows the viewer: it only reaches further as they near the end of what has loaded.
 
+## Memory: what is kept and what is dropped
+
+- **Dropped for rows away from the viewer** (`HomeViewModel.trimCaches`, every 5 s at most): the
+  fetched-but-unshown backlog, the catalog cursors, and title enrichment for titles not in a
+  near row. Near = visible, the rows just below, and the focused one.
+- **Kept**: the titles a row already shows (a row never shrinks), so scrolling back is instant.
+- **Bounded**: the art-fallback cache (`metadataFallbackCache`, 300 titles, least recently used
+  first out) and the image cache (15% of app memory, handed back on `onTrimMemory`).
+- **Preview players** (`newPreviewPlayer`) buffer at most 12 MB / 10 s each. ExoPlayer's default
+  is up to 50 s, which is tens of megabytes of Java heap per player, and Home can hold three
+  (focused, next-ready, persistent preview).
+
 ## In-app browser
 
 Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own
