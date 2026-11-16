@@ -432,8 +432,6 @@ private fun UpdateReadyToInstallDialog(
 
 @Composable
 private fun PlayStoreUpdateAvailableDialog(
-    fromPlay: Boolean,
-    announcedVersion: String?,
     onUpdate: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -454,11 +452,7 @@ private fun PlayStoreUpdateAvailableDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (fromPlay) {
-                        "A newer version of illumera is available from Google Play. Update now to get the latest fixes and features."
-                    } else {
-                        "A newer version${announcedVersion?.let { " ($it)" }.orEmpty()} has been announced. Check Google Play for availability; installation stays with the Play Store."
-                    },
+                    "A newer version of illumera is available from Google Play. Update now to get the latest fixes and features.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -1441,14 +1435,12 @@ class MainActivity : ComponentActivity() {
                     if (BuildConfig.USE_PLAY_UPDATES && _splashFinished.value) {
                         when (val playState = playUpdateState) {
                             is PlayStoreUpdateState.UpdateAvailable -> if (
-                                playUpdateDismissedFor != "${playState.versionCode}:${playState.announcedVersion.orEmpty()}"
+                                playUpdateDismissedFor != playState.versionCode.toString()
                             ) {
                                 PlayStoreUpdateAvailableDialog(
-                                    fromPlay = playState.fromPlay,
-                                    announcedVersion = playState.announcedVersion,
                                     onUpdate = { playStoreUpdateManager.startUpdate(playUpdateLauncher) },
                                     onDismiss = {
-                                        playUpdateDismissedFor = "${playState.versionCode}:${playState.announcedVersion.orEmpty()}"
+                                        playUpdateDismissedFor = playState.versionCode.toString()
                                     }
                                 )
                             }
