@@ -130,6 +130,48 @@ fun DashboardEditorScreen(
         groupEditorItems(editorItems, groupByAddon, expandedAddons)
     }
 
+    // Moving several rows in a row: the one put down last is where the next one lands, and focus
+    // goes back to the place the row was picked up from, ready to pick up the next.
+    var lastMovedKey by remember(selectedTab) { mutableStateOf<String?>(null) }
+    var returnOriginIndex by remember(selectedTab) { mutableStateOf<Int?>(null) }
+    var returnFocusTo by remember(selectedTab) { mutableStateOf<Int?>(null) }
+
+    /** Starts moving [item]: notes where it came from and jumps it under the row moved last. */
+    fun pickUp(item: EditorListItem) {
+        returnOriginIndex = displayItems.indexOfFirst { it.key == item.key }.takeIf { it >= 0 }
+        when (item) {
+            is EditorListItem.CategoryItem -> { reorderingHub = null; reorderingConfig = item.config }
+            is EditorListItem.HubRowItem -> { reorderingConfig = null; reorderingHub = item.hub }
+        }
+        val anchor = pickupAnchor(groupByAddon, lastMovedKey, item.key, editorItems) ?: return
+        val from = editorItems.indexOfFirst { it.key == item.key }
+        val anchorIndex = editorItems.indexOfFirst { it.key == anchor.key }
+        viewModel.moveEditorItemAfter(item, anchor, selectedTab)
+        val target = jumpTargetIndex(from, anchorIndex)
+        scope.launch {
+            androidx.compose.runtime.withFrameNanos { }
+            listState.animateScrollToItem((target - 1).coerceAtLeast(0))
+        }
+    }
+
+    /** Puts the row down where it is and sends focus back to where it was picked up from. */
+    fun putDown(item: EditorListItem) {
+        reorderingConfig = null
+        reorderingHub = null
+        lastMovedKey = item.key
+        returnFocusTo = returnOriginIndex
+        returnOriginIndex = null
+    }
+
+    LaunchedEffect(returnFocusTo, displayItems) {
+        val origin = returnFocusTo ?: return@LaunchedEffect
+        returnFocusTo = null
+        val key = returnFocusKey(displayItems, origin) ?: return@LaunchedEffect
+        val index = displayItems.indexOfFirst { it.key == key }
+        listState.scrollToItem((index - 1).coerceAtLeast(0))
+        pendingFocusKey = key
+    }
+
     val availableToAdd = remember(configs, hubRows, selectedTab) {
         val unusedConfigs = configs.filter {
             val isUsed = when (selectedTab) {
@@ -165,8 +207,6 @@ fun DashboardEditorScreen(
         "series" -> "Series"
         else -> ""
     }
-
-    val isReorderActive = reorderingConfig != null || reorderingHub != null
 
     fun showSnackbar(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short) }
@@ -356,25 +396,6 @@ fun DashboardEditorScreen(
             // Only Home uses individually managed addon rows. Movies/Series
             // are generated entirely from enabled genres.
             if (selectedTab == "home") {
-            // --- REORDER BANNER ---
-            if (isReorderActive) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(0.15f))
-                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(0.4f), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        "Moving  ·  ▲▼ move  ·  OK done  ·  Back cancel",
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
             // --- SECTION LABEL ---
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -486,15 +507,7 @@ fun DashboardEditorScreen(
                                             modifier = goBackModifier,
                                             // OK picks the row up to move it (and puts it down); the
                                             // options dialog is behind a long press.
-                                            onClick = {
-                                                if (isReordering) {
-                                                    reorderingHub = null
-                                                    showSnackbar("Reorder complete")
-                                                } else {
-                                                    reorderingConfig = null
-                                                    reorderingHub = item.hub
-                                                }
-                                            },
+                                            onClick = { if (isReordering) putDown(item) else pickUp(item) },
                                             onLongClick = {
                                                 reorderingHub = null
                                                 dialogState = DialogState.ManageHub(item)
@@ -529,15 +542,7 @@ fun DashboardEditorScreen(
                                             isReordering = isReordering,
                                             focusRequester = itemRequester,
                                             modifier = goBackModifier,
-                                            onClick = {
-                                                if (isReordering) {
-                                                    reorderingConfig = null
-                                                    showSnackbar("Reorder complete")
-                                                } else {
-                                                    reorderingHub = null
-                                                    reorderingConfig = config
-                                                }
-                                            },
+                                            onClick = { if (isReordering) putDown(item) else pickUp(item) },
                                             onLongClick = {
                                                 reorderingConfig = null
                                                 dialogState = DialogState.ManageCategory(config)
@@ -666,9 +671,8 @@ fun DashboardEditorScreen(
                 )
 
                 VoidButton("Move Category", {
-                    reorderingConfig = config
                     dialogState = DialogState.None
-                    showSnackbar("Use ▲▼ to reorder, OK when done")
+                    pickUp(EditorListItem.CategoryItem(config, 0))
                 }, Modifier.fillMaxWidth(), focusRequester = focusRequester)
 
                 Spacer(Modifier.height(12.dp))
@@ -866,9 +870,8 @@ fun DashboardEditorScreen(
                 )
 
                 VoidButton("Move Hub Row", {
-                    reorderingHub = hubItem.hub
                     dialogState = DialogState.None
-                    showSnackbar("Use ▲▼ to reorder, OK when done")
+                    pickUp(hubItem)
                 }, Modifier.fillMaxWidth(), focusRequester = focusRequester)
 
                 Spacer(Modifier.height(12.dp))

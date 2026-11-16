@@ -69,4 +69,48 @@ class EditorGroupingTest {
         assertNull(moveNeighbour(display, items[0], -1))
         assertNull(moveNeighbour(display, items.last(), 1))
     }
+
+    // ---- moving several rows in a row
+
+    private val flat = listOf(cat("a", "1", 0), cat("b", "1", 1), cat("c", "1", 2), cat("d", "1", 3), cat("e", "1", 4))
+
+    @Test fun aPickedUpRowJumpsUnderTheOneMovedLast() {
+        val anchor = pickupAnchor(grouped = false, lastMovedKey = flat[0].key, pickedKey = flat[3].key, items = flat)
+        assertEquals(flat[0].key, anchor?.key)
+    }
+
+    @Test fun nothingJumpsWithoutALastMovedRowOrWhenItIsAlreadyThere() {
+        assertNull(pickupAnchor(false, null, flat[3].key, flat))
+        assertNull(pickupAnchor(false, flat[3].key, flat[3].key, flat))
+        // Already right under it.
+        assertNull(pickupAnchor(false, flat[1].key, flat[2].key, flat))
+        // The last moved row is gone (hidden): stay put.
+        assertNull(pickupAnchor(false, "cat:gone", flat[2].key, flat))
+    }
+
+    @Test fun nothingJumpsInTheGroupedView() {
+        assertNull(pickupAnchor(grouped = true, lastMovedKey = flat[0].key, pickedKey = flat[3].key, items = flat))
+    }
+
+    @Test fun theJumpLandsJustUnderTheAnchorWhicheverWayItMoves() {
+        // d (3) up under a (0): lands at 1. a (3) down under e (4): everything shifts up, lands at 4.
+        assertEquals(1, jumpTargetIndex(from = 3, anchorIndex = 0))
+        assertEquals(4, jumpTargetIndex(from = 0, anchorIndex = 4))
+    }
+
+    @Test fun focusReturnsToTheRowNowAtTheOriginalPlace() {
+        val display = groupEditorItems(flat, grouped = false, expanded = emptySet())
+        assertEquals(flat[2].key, returnFocusKey(display, 2))
+        // Picked up from the last place and the list got shorter: the nearest row.
+        assertEquals(flat[4].key, returnFocusKey(display, 9))
+        assertNull(returnFocusKey(emptyList(), 0))
+    }
+
+    @Test fun focusSkipsAGroupHeaderToTheNearestRow() {
+        val grouped = groupEditorItems(
+            listOf(cat("a", "1", 0), cat("a", "2", 1), cat("c", "1", 2)), grouped = true, expanded = setOf("a")
+        )
+        // [group:a, a1, a2, c1]; origin 0 is the header, so the first row after it.
+        assertEquals("cat:a/movie/1", returnFocusKey(grouped, 0))
+    }
 }

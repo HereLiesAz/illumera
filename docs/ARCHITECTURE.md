@@ -422,6 +422,12 @@ owner goes away.
 - On a row in Settings -> Screen Editor, **OK picks the row up to move it** (▲▼, OK to put it
   down, Back to cancel). The options dialog (rename, layout, hide, hub settings) opens on a **hold**
   of OK or a touch (`Modifier.longPressClick`, `LONG_PRESS_MS` = 1 s, shared with the cards).
+- **Moving several rows in a row.** There is no "reorder mode" banner. The row put down last
+  (`lastMovedKey`) is where the next picked-up row lands: picking up jumps it right under that row
+  (`pickupAnchor`, `DashboardViewModel.moveEditorItemAfter`), so building an order is pick, OK,
+  pick, OK. Putting a row down sends focus back to the place it was picked up from
+  (`returnFocusKey`: the row that moved up into the gap), ready for the next. The jump is off in
+  the grouped view, where the display doesn't follow the order. The memory resets per tab.
 - **Group by addon** (button above the Home list) folds each addon that has two or more rows into
   one line (`EditorDisplayItem.Group`) that OK opens or shuts. Hubs and single-row addons stay as
   they are. A group sits where its addon's first row was. Moving a row inside a group trades places

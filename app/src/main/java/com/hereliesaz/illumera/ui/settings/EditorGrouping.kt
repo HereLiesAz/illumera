@@ -68,3 +68,41 @@ internal fun moveNeighbour(
     val next = display.getOrNull(index + delta) as? EditorDisplayItem.Row ?: return null
     return next.item.takeIf { next.groupKey == here.groupKey }
 }
+
+/**
+ * The row a row being picked up should jump to sit under: the row put down last, when the list is
+ * shown as it is ordered (grouped, the display does not follow the order, so nothing jumps) and the
+ * picked-up row is not that row nor already right under it. Null means stay where it is.
+ */
+internal fun pickupAnchor(
+    grouped: Boolean,
+    lastMovedKey: String?,
+    pickedKey: String,
+    items: List<EditorListItem>
+): EditorListItem? {
+    if (grouped || lastMovedKey == null || lastMovedKey == pickedKey) return null
+    val anchorIndex = items.indexOfFirst { it.key == lastMovedKey }
+    val pickedIndex = items.indexOfFirst { it.key == pickedKey }
+    if (anchorIndex < 0 || pickedIndex < 0 || pickedIndex == anchorIndex + 1) return null
+    return items[anchorIndex]
+}
+
+/** Where a row picked up from [from] ends up when it jumps under the one at [anchorIndex]. */
+internal fun jumpTargetIndex(from: Int, anchorIndex: Int): Int =
+    if (anchorIndex < from) anchorIndex + 1 else anchorIndex
+
+/**
+ * Where focus goes once a row has been put down: the row now at the place it was picked up from
+ * (the one that moved up into the gap), or the nearest row if that place is a group header or past
+ * the end. Null when there are no rows.
+ */
+internal fun returnFocusKey(display: List<EditorDisplayItem>, originIndex: Int): String? {
+    if (display.isEmpty()) return null
+    val start = originIndex.coerceIn(0, display.lastIndex)
+    for (distance in 0..display.lastIndex) {
+        for (candidate in listOf(start + distance, start - distance)) {
+            (display.getOrNull(candidate) as? EditorDisplayItem.Row)?.let { return it.key }
+        }
+    }
+    return null
+}
