@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.settings
 
+import com.hereliesaz.illumera.ui.util.longPressClick
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -81,6 +82,11 @@ fun DashboardEditorScreen(
 
     var dialogState by remember { mutableStateOf<DialogState>(DialogState.None) }
 
+    // Home's list can run to dozens of rows. Grouped, each addon with several rows is one line that
+    // opens to its rows, so the D-pad can step over a whole addon at once.
+    var groupByAddon by remember { mutableStateOf(false) }
+    var expandedAddons by remember { mutableStateOf(setOf<String>()) }
+
     var reorderingConfig by remember { mutableStateOf<CatalogConfigEntity?>(null) }
     var reorderingHub by remember { mutableStateOf<HubRowEntity?>(null) }
 
@@ -118,6 +124,10 @@ fun DashboardEditorScreen(
 
     val editorItems = remember(configs, hubRows, selectedTab) {
         viewModel.getEditorItems(selectedTab)
+    }
+
+    val displayItems = remember(editorItems, groupByAddon, expandedAddons) {
+        groupEditorItems(editorItems, groupByAddon, expandedAddons)
     }
 
     val availableToAdd = remember(configs, hubRows, selectedTab) {
@@ -357,7 +367,7 @@ fun DashboardEditorScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Text(
-                        "Reorder mode  ·  ▲▼ move  ·  OK done  ·  Back cancel",
+                        "Moving  ·  ▲▼ move  ·  OK done  ·  Back cancel",
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
@@ -366,12 +376,22 @@ fun DashboardEditorScreen(
             }
 
             // --- SECTION LABEL ---
-            Text(
-                "$tabLabel rows",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "$tabLabel rows",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground.copy(0.5f)
+                )
+                VoidCompactActionButton(
+                    label = if (groupByAddon) "Ungroup" else "Group by addon",
+                    onClick = { groupByAddon = !groupByAddon },
+                    modifier = Modifier.width(150.dp).then(goBackModifier)
+                )
+            }
 
             // --- LIST ---
             if (editorItems.isEmpty()) {
@@ -405,108 +425,128 @@ fun DashboardEditorScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     itemsIndexed(
-                        items = editorItems,
-                        key = { _, item -> item.key }
-                    ) { index, item ->
-                        when (item) {
-                            is EditorListItem.HubRowItem -> {
-                                val isReordering = (reorderingHub?.id == item.hub.id)
-                                val itemRequester = remember { FocusRequester() }
-
-                                LaunchedEffect(isReordering, item.order) {
-                                    if (isReordering) {
-                                        delay(50)
-                                        runCatching { itemRequester.requestFocus() }
-                                    }
-                                }
-
-                                LaunchedEffect(pendingFocusKey) {
-                                    if (pendingFocusKey == item.key) {
-                                        delay(50)
-                                        runCatching { itemRequester.requestFocus() }
-                                        pendingFocusKey = null
-                                    }
-                                }
-
-                                VoidHubEditorItem(
-                                    hub = item.hub,
-                                    itemCount = item.items.size,
-                                    isReordering = isReordering,
-                                    focusRequester = itemRequester,
-                                    modifier = goBackModifier,
+                        items = displayItems,
+                        key = { _, display -> display.key }
+                    ) { index, display ->
+                        when (display) {
+                            is EditorDisplayItem.Group -> {
+                                VoidGroupHeader(
+                                    title = display.title,
+                                    rowCount = display.rowCount,
+                                    expanded = display.expanded,
                                     onClick = {
-                                        if (isReordering) {
-                                            reorderingHub = null
-                                            showSnackbar("Reorder complete")
-                                        } else {
-                                            dialogState = DialogState.ManageHub(item)
-                                        }
+                                        expandedAddons = if (display.expanded) expandedAddons - display.addonKey
+                                        else expandedAddons + display.addonKey
                                     },
-                                    onMoveUp = {
-                                        if (index > 0) {
-                                            viewModel.moveEditorItem(item, -1, selectedTab)
-                                            val target = index - 1
-                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
-                                        }
-                                    },
-                                    onMoveDown = {
-                                        if (index < editorItems.size - 1) {
-                                            viewModel.moveEditorItem(item, 1, selectedTab)
-                                            val target = index + 1
-                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
-                                        }
-                                    }
+                                    modifier = goBackModifier
                                 )
                             }
 
-                            is EditorListItem.CategoryItem -> {
-                                val config = item.config
-                                val isReordering = (reorderingConfig?.uniqueId == config.uniqueId)
-                                val itemRequester = remember { FocusRequester() }
-
-                                LaunchedEffect(isReordering) {
-                                    if (isReordering) {
-                                        delay(50)
-                                        runCatching { itemRequester.requestFocus() }
+                            is EditorDisplayItem.Row -> {
+                                val item = display.item
+                                // Rows trade places with their neighbour: the next row in the
+                                // list, or inside a group the next row of the same addon.
+                                val moveUp: () -> Unit = {
+                                    moveNeighbour(displayItems, item, -1)?.let { other ->
+                                        viewModel.swapEditorItems(item, other, selectedTab)
+                                        scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((index - 2).coerceAtLeast(0)) }
                                     }
                                 }
-
-                                LaunchedEffect(pendingFocusKey) {
-                                    if (pendingFocusKey == item.key) {
-                                        delay(50)
-                                        runCatching { itemRequester.requestFocus() }
-                                        pendingFocusKey = null
+                                val moveDown: () -> Unit = {
+                                    moveNeighbour(displayItems, item, 1)?.let { other ->
+                                        viewModel.swapEditorItems(item, other, selectedTab)
+                                        scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem(index.coerceAtLeast(0)) }
                                     }
                                 }
+                                when (item) {
+                                    is EditorListItem.HubRowItem -> {
+                                        val isReordering = (reorderingHub?.id == item.hub.id)
+                                        val itemRequester = remember { FocusRequester() }
 
-                                VoidEditorItem(
-                                    config = config,
-                                    isReordering = isReordering,
-                                    focusRequester = itemRequester,
-                                    modifier = goBackModifier,
-                                    onClick = {
-                                        if (isReordering) {
-                                            reorderingConfig = null
-                                            showSnackbar("Reorder complete")
-                                        } else {
-                                            dialogState = DialogState.ManageCategory(config)
+                                        LaunchedEffect(isReordering, item.order) {
+                                            if (isReordering) {
+                                                delay(50)
+                                                runCatching { itemRequester.requestFocus() }
+                                            }
                                         }
-                                    },
-                                    onMoveUp = {
-                                        if (index > 0) {
-                                            viewModel.moveEditorItem(item, -1, selectedTab)
-                                            val target = index - 1
-                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
+
+                                        LaunchedEffect(pendingFocusKey) {
+                                            if (pendingFocusKey == item.key) {
+                                                delay(50)
+                                                runCatching { itemRequester.requestFocus() }
+                                                pendingFocusKey = null
+                                            }
                                         }
-                                    },
-                                    onMoveDown = {
-                                        if (index < editorItems.size - 1) {
-                                            viewModel.moveEditorItem(item, 1, selectedTab)
-                                            val target = index + 1
-                                            scope.launch { androidx.compose.runtime.withFrameNanos { }; listState.animateScrollToItem((target - 1).coerceAtLeast(0)) }
-                                        }
+
+                                        VoidHubEditorItem(
+                                            hub = item.hub,
+                                            itemCount = item.items.size,
+                                            isReordering = isReordering,
+                                            focusRequester = itemRequester,
+                                            modifier = goBackModifier,
+                                            // OK picks the row up to move it (and puts it down); the
+                                            // options dialog is behind a long press.
+                                            onClick = {
+                                                if (isReordering) {
+                                                    reorderingHub = null
+                                                    showSnackbar("Reorder complete")
+                                                } else {
+                                                    reorderingConfig = null
+                                                    reorderingHub = item.hub
+                                                }
+                                            },
+                                            onLongClick = {
+                                                reorderingHub = null
+                                                dialogState = DialogState.ManageHub(item)
+                                            },
+                                            onMoveUp = moveUp,
+                                            onMoveDown = moveDown
+                                        )
                                     }
-                                )
+
+                                    is EditorListItem.CategoryItem -> {
+                                        val config = item.config
+                                        val isReordering = (reorderingConfig?.uniqueId == config.uniqueId)
+                                        val itemRequester = remember { FocusRequester() }
+
+                                        LaunchedEffect(isReordering) {
+                                            if (isReordering) {
+                                                delay(50)
+                                                runCatching { itemRequester.requestFocus() }
+                                            }
+                                        }
+
+                                        LaunchedEffect(pendingFocusKey) {
+                                            if (pendingFocusKey == item.key) {
+                                                delay(50)
+                                                runCatching { itemRequester.requestFocus() }
+                                                pendingFocusKey = null
+                                            }
+                                        }
+
+                                        VoidEditorItem(
+                                            config = config,
+                                            isReordering = isReordering,
+                                            focusRequester = itemRequester,
+                                            modifier = goBackModifier,
+                                            onClick = {
+                                                if (isReordering) {
+                                                    reorderingConfig = null
+                                                    showSnackbar("Reorder complete")
+                                                } else {
+                                                    reorderingHub = null
+                                                    reorderingConfig = config
+                                                }
+                                            },
+                                            onLongClick = {
+                                                reorderingConfig = null
+                                                dialogState = DialogState.ManageCategory(config)
+                                            },
+                                            onMoveUp = moveUp,
+                                            onMoveDown = moveDown
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1244,6 +1284,7 @@ fun VoidEditorItem(
     isReordering: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     modifier: Modifier = Modifier
@@ -1276,7 +1317,7 @@ fun VoidEditorItem(
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .longPressClick(onClick = onClick, onLongClick = onLongClick)
             .focusRequester(focusRequester)
             .focusable(interactionSource = interactionSource)
             .onPreviewKeyEvent {
@@ -1346,8 +1387,7 @@ fun VoidEditorItem(
             }
         } else if (isFocused) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Manage", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
-                Text(" ›", color = MaterialTheme.colorScheme.onBackground.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
+                Text("OK moves  ·  hold for options", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -1360,6 +1400,7 @@ fun VoidHubEditorItem(
     isReordering: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     modifier: Modifier = Modifier
@@ -1391,7 +1432,7 @@ fun VoidHubEditorItem(
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .longPressClick(onClick = onClick, onLongClick = onLongClick)
             .focusRequester(focusRequester)
             .focusable(interactionSource = interactionSource)
             .onPreviewKeyEvent {
@@ -1470,8 +1511,7 @@ fun VoidHubEditorItem(
             }
         } else if (isFocused) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Manage", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
-                Text(" ›", color = MaterialTheme.colorScheme.onBackground.copy(0.4f), style = MaterialTheme.typography.bodyMedium)
+                Text("OK moves  ·  hold for options", color = MaterialTheme.colorScheme.onBackground.copy(0.6f), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -1879,6 +1919,57 @@ fun VoidEditorRow(
                 .size(10.dp)
                 .clip(RoundedCornerShape(5.dp))
                 .background(if (isEnabled) accentColor else MaterialTheme.colorScheme.onBackground.copy(0.3f))
+        )
+    }
+}
+
+/**
+ * One addon in the grouped Screen Editor: its name and how many rows it has on the tab. OK opens
+ * or shuts it.
+ */
+@Composable
+internal fun VoidGroupHeader(
+    title: String,
+    rowCount: Int,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val accent = MaterialTheme.colorScheme.primary
+    val borderColor by animateColorAsState(if (isFocused) accent else Color.Transparent)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .scale(if (isFocused) 1.02f else 1f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.onBackground.copy(if (expanded) 0.10f else 0.05f))
+            .border(if (isFocused) 2.dp else 0.dp, borderColor, RoundedCornerShape(8.dp))
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .focusable(interactionSource = interactionSource)
+            .padding(horizontal = 16.dp)
+    ) {
+        Text(
+            if (expanded) "▾" else "▸",
+            color = MaterialTheme.colorScheme.onBackground.copy(if (isFocused) 0.8f else 0.5f),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+        Text(
+            title,
+            color = if (isFocused) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onBackground.copy(0.8f),
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "$rowCount rows",
+            color = MaterialTheme.colorScheme.onBackground.copy(0.5f),
+            style = MaterialTheme.typography.labelMedium
         )
     }
 }

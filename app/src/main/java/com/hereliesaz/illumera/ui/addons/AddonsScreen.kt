@@ -151,7 +151,13 @@ fun AddonsScreen(
                     context.openInAppBrowser(url) { link -> viewModel.prepareInstall(link) }
                 }
             },
-            onConfigureInstalled = { showTorrentioConfig = true },
+            onConfigureInstalled = { transportUrl ->
+                if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(transportUrl)) {
+                    showTorrentioConfig = true
+                } else {
+                    context.openInAppBrowser(installedConfigureUrl(transportUrl)) { link -> viewModel.prepareInstall(link) }
+                }
+            },
             showingInstalled = showingInstalled,
             notInstalledOnly = notInstalledOnly,
             onNotInstalledToggled = {

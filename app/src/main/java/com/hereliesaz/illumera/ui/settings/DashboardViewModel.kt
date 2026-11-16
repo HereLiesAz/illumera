@@ -284,7 +284,23 @@ class DashboardViewModel @Inject constructor(
         if (index == -1) return
 
         val newIndex = index + direction
-        if (newIndex in 0 until currentList.size) {
+        if (newIndex in 0 until currentList.size) swapAt(currentList, index, newIndex, screen)
+    }
+
+    /**
+     * Trades the places of two rows that need not be next to each other (rows of one addon, with
+     * other addons' rows between them in the grouped editor): everything else keeps its place.
+     */
+    fun swapEditorItems(a: EditorListItem, b: EditorListItem, screen: String) {
+        val currentList = getEditorItems(screen).toMutableList()
+        val first = currentList.indexOfFirst { it.key == a.key }
+        val second = currentList.indexOfFirst { it.key == b.key }
+        if (first == -1 || second == -1 || first == second) return
+        swapAt(currentList, first, second, screen)
+    }
+
+    private fun swapAt(currentList: MutableList<EditorListItem>, index: Int, newIndex: Int, screen: String) {
+        run {
             Collections.swap(currentList, index, newIndex)
 
             val updatedConfigs = ArrayList<CatalogConfigEntity>()

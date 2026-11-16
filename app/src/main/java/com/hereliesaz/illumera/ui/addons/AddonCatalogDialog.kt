@@ -95,6 +95,9 @@ fun AddonCatalogContent(
         }
     }
     val installedUrls = remember(state.addons) { state.addons.map { it.transportUrl } }
+    val catalogByUrl = remember(state.catalogItems) {
+        state.catalogItems.associateBy { normalizeCatalogTransportUrl(it.transportUrl) }
+    }
     val filteredItems = remember(state.catalogItems, installedUrls, query, notInstalledOnly) {
         filterCatalogItems(state.catalogItems, installedUrls, query, notInstalledOnly)
     }
@@ -229,7 +232,7 @@ fun AddonCatalogContent(
                                 )
                             }
                             val addonLabel = addon.nickname ?: addon.name
-                            if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(addon.transportUrl)) {
+                            if (installedAddonCanBeConfigured(addon.transportUrl, catalogByUrl[normalizeCatalogTransportUrl(addon.transportUrl)])) {
                                 AddonIconAction(
                                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                                     label = "Configure $addonLabel",
@@ -536,6 +539,23 @@ internal fun normalizeCatalogTransportUrl(url: String): String {
     val withoutManifest = base.removeSuffix("/manifest.json").trimEnd('/')
     return withoutManifest + (query?.let { "?$it" } ?: "")
 }
+
+/**
+ * Whether an installed addon gets a Configure button. Torrentio has its own dialog. Any other addon
+ * served over http(s) gets one that opens its `/configure` page, unless the catalog knows it has
+ * none (its manifest doesn't say it is configurable). An addon the catalog doesn't list is given
+ * the benefit of the doubt: the page either opens or says it isn't there.
+ */
+internal fun installedAddonCanBeConfigured(transportUrl: String, catalogItem: AddonCatalogItem?): Boolean {
+    if (com.hereliesaz.illumera.data.debrid.TorrentioConfig.isTorrentio(transportUrl)) return true
+    if (!transportUrl.startsWith("http", ignoreCase = true) || isLocalTransport(transportUrl)) return false
+    return catalogItem == null || catalogItem.configureUrl != null || catalogItem.discoveryUrl != null
+}
+
+/** An installed addon's own configuration page: its address with `manifest.json` swapped for `configure`. */
+internal fun installedConfigureUrl(transportUrl: String): String =
+    normalizeCatalogTransportUrl(transportUrl).substringBefore('?').trimEnd('/') + "/configure" +
+        transportUrl.substringAfter('?', "").let { if (it.isEmpty()) "" else "?$it" }
 
 private fun isLocalTransport(url: String): Boolean {
     val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true
