@@ -956,6 +956,32 @@ class PlaybackSessionActionsTest {
     }
 
     @Test
+    fun `next source before the player has a video skips the waiting source for good`() = runTest(dispatcher) {
+        coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns "https://debrid/a.mkv"
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        vm.skipSourceBeforeLoad()
+        runCurrent()
+        assertEquals("https://cdn/b.mkv", vm.selectedVideoUrl)
+
+        vm.onSuspectSource(PlaybackDurationStatus.SOURCE_ERROR, autoplayProfile)
+        runCurrent()
+        assertEquals("https://cdn/c.mkv", vm.selectedVideoUrl)
+        coVerify(exactly = 0) { debridManager.readyUrlFor(hashA, any(), any()) }
+    }
+
+    @Test
+    fun `picking a source before the player has a video opens exactly that source`() = runTest(dispatcher) {
+        val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))
+
+        vm.selectSourceBeforeLoad(playerSourceId(directC)!!)
+
+        assertEquals("https://cdn/c.mkv", vm.selectedVideoUrl)
+        assertEquals(directC, vm.currentStream)
+        assertEquals("https://cdn/c.mkv", vm.selectedPlayerSources.first().url)
+    }
+
+    @Test
     fun `an earlier debrid source that is not ready is not loaded`() = runTest(dispatcher) {
         coEvery { debridManager.readyUrlFor(hashA, any(), any()) } returns null
         val vm = sessionAfterDebridMiss(listOf(debridA, directB, directC))

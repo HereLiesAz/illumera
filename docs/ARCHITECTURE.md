@@ -334,3 +334,7 @@ A button has two highlights: **active** (the cursor: accent border, tinted fill,
 
 The same rule holds outside buttons: nav drawer and top bar current-page markers, season and episode tabs, the player's audio and subtitle choice chips, settings segment and swatch choices, sort lists, the theme card title, and switch tracks and checkboxes show "on" with a neutral tint (`onBackground` at about 0.2 to 0.6 alpha), never the accent. Status colors (a connected integration, the reorder banner) are not interactive highlights and keep the accent.
 
+
+## Source controls while a source is still loading (November 16, 2026)
+
+The player's own source list exists only once it has a video, so during a debrid or torrent wait (no URL yet) the **Next source** and **More sources** controls were hidden even though the session already knew every candidate. `BasePlayerScaffold` now takes `availableSources` (the session's `selectedPlayerSources`) and uses it until the player has loaded its own. Before load, Next source calls `PlaybackSessionViewModel.skipSourceBeforeLoad()` and a pick from the list calls `selectSourceBeforeLoad(id)`; both go through the same `openRankedSource` path as ranked fallback, and both count as the viewer leaving the current source, so it is dropped from the earlier-debrid-sources memory and not brought back on its own. Back still exits as before: the back-key source-list step keeps using the player's own list.

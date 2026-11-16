@@ -1163,36 +1163,65 @@ class PlaybackSessionViewModel @Inject constructor(
             navChannel.trySend(PlaybackNav.ReturnFromPlayer())
             return
         }
-        currentStream = nextStream
+        openRankedSource(nextStream, nextUrl, candidates)
+    }
+
+    /** Opens [stream] (playable at [url]) as the current source of the ranked [candidates]. */
+    private fun openRankedSource(stream: Stream, url: String, candidates: List<Stream>) {
+        currentStream = stream
         pendingSourceSelection = PendingSourceSelection(
             playbackId = selectedPlaybackId,
-            launchedStream = nextStream,
+            launchedStream = stream,
             candidateStreams = candidates
         )
-        selectedPlayerSources = buildSourcePayload(candidates, nextStream)
+        selectedPlayerSources = buildSourcePayload(candidates, stream)
+        val position = candidates.indexOf(stream) + 1
 
-        val requestType = nextStream.addonRequestType
-        val requestId = nextStream.addonRequestId
+        val requestType = stream.addonRequestType
+        val requestId = stream.addonRequestId
         if (!requestType.isNullOrBlank() && !requestId.isNullOrBlank()) {
             // Opens with the stream's own subtitles; addon matches follow in the background.
-            selectedPlayerSubtitles = buildSubtitlePayload(nextStream, emptyList())
-            refineSubtitlesInBackground(requestType, requestId, nextStream, null)
+            selectedPlayerSubtitles = buildSubtitlePayload(stream, emptyList())
+            refineSubtitlesInBackground(requestType, requestId, stream, null)
         }
-        playbackStatus = "Opening source $nextPosition of ${candidates.size}"
+        playbackStatus = "Opening source $position of ${candidates.size}"
 
-        if (nextUrl.startsWith("magnet:")) {
+        if (url.startsWith("magnet:")) {
             selectedVideoUrl = ""
             // TorrentProgress(sourceError=true) is the one signal that advances
             // the ranked list, so an error here only logs (and keeps the progress).
             startTorrent(
-                nextUrl, nextStream.fileIdx ?: -1, nextStream.behaviorHints?.filename ?: "",
+                url, stream.fileIdx ?: -1, stream.behaviorHints?.filename ?: "",
                 errorContext = "Ranked fallback source error",
                 clearProgressOnError = false
             )
         } else {
             stopTorrent()
-            selectedVideoUrl = nextUrl
+            selectedVideoUrl = url
         }
+    }
+
+    /**
+     * The viewer pressed Next source while the current one is still being sent to a service or
+     * resolved, before the player has a video to switch from. Leaving it is their choice, so it
+     * is not brought back on its own.
+     */
+    fun skipSourceBeforeLoad() {
+        abandonDebridSource(currentStream)
+        fallbackJob?.cancel()
+        fallbackJob = viewModelScope.launch { tryNextRankedSource() }
+    }
+
+    /** The viewer picked [sourceId] from the sources list before the player has a video. */
+    fun selectSourceBeforeLoad(sourceId: String) {
+        val candidates = pendingSourceSelection?.candidateStreams.orEmpty()
+        val stream = candidates.firstOrNull { playerSourceId(it) == sourceId } ?: return
+        if (stream === currentStream) return
+        val url = resolvePlayableSourceUrl(stream) ?: return
+        fallbackJob?.cancel()
+        fallbackJob = null
+        abandonDebridSource(currentStream)
+        openRankedSource(stream, url, candidates)
     }
 
     /**

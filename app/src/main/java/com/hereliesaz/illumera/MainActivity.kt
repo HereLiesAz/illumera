@@ -1320,6 +1320,8 @@ class MainActivity : ComponentActivity() {
                                 autoFallbackEnabled = currentProfile?.autoSelectSource == true && currentProfile?.sourceAutoFallback != false,
                                 onSuspectSource = { status -> session.onSuspectSource(status, currentProfile) },
                                 onSourceChanged = session::onPlayerSourceChanged,
+                                onSkipSourceBeforeLoad = session::skipSourceBeforeLoad,
+                                onSelectSourceBeforeLoad = session::selectSourceBeforeLoad,
                                 onBack = { sessionResult -> session.end(sessionResult, currentProfile) },
                                 onPlaybackCompleted = { sessionResult ->
                                     session.end(sessionResult, currentProfile, advanceQueue = true)

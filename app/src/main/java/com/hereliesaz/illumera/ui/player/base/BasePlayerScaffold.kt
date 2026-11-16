@@ -198,6 +198,14 @@ fun BasePlayerScaffold(
     episodeSwitchTitle: String? = null,
     onEpisodeSwitchSourceSelected: ((sourceUrl: String) -> Unit)? = null,
     onEpisodeSwitchDismissed: (() -> Unit)? = null,
+    /**
+     * The session's sources for this title. The player only knows its own list once it has a
+     * video, so until then (a debrid or torrent wait) the source controls use this one, and
+     * their picks go to [onSkipSourceBeforeLoad] / [onSelectSourceBeforeLoad].
+     */
+    availableSources: List<PlayerSourceOption> = emptyList(),
+    onSkipSourceBeforeLoad: (() -> Unit)? = null,
+    onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
     torrentProgress: TorrentProgress? = null,
     /** What the app is doing around playback (source fallback, debrid wait); keeps the loading overlay up. */
     playbackStatus: String? = null,
@@ -212,6 +220,9 @@ fun BasePlayerScaffold(
     val subtitleTracks by playbackController.subtitleTracks.collectAsStateWithLifecycle()
 
     val currentSourceUrl = sources.firstOrNull { it.id == uiState.currentSourceId }?.url
+    // Before the player has a video it has no source list; the session's list stands in.
+    val sourcesNotLoaded = sources.isEmpty() && availableSources.isNotEmpty()
+    val selectableSources = if (sourcesNotLoaded) availableSources else sources
 
     val containerFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -957,8 +968,8 @@ fun BasePlayerScaffold(
                 currentPositionMs = displayPositionMs,
                 durationMs = uiState.durationMs,
                 isPlaying = isPlaybackIntended,
-                showSourceControl = !isTrailer && !sourceListDisabled && sources.size > 1,
-                showNextSourceControl = !isTrailer && !sourceListDisabled && sources.count { it.id !in excludedSourceIds } > 1,
+                showSourceControl = !isTrailer && !sourceListDisabled && selectableSources.size > 1,
+                showNextSourceControl = !isTrailer && !sourceListDisabled && selectableSources.count { it.id !in excludedSourceIds } > 1,
                 showNextEpisodeControl = !isTrailer && nextEpisodeInfo != null && onAutoplayNextEpisode != null,
                 showAudioControl = !isTrailer && audioTracks.isNotEmpty(),
                 showSubtitleControl = !isTrailer && subtitleTracks.isNotEmpty(),
@@ -977,14 +988,18 @@ fun BasePlayerScaffold(
                 },
                 onNextSource = {
                     markInteraction()
-                    val currentIndex = sources.indexOfFirst { it.id == uiState.currentSourceId }
-                    val ordered = if (currentIndex >= 0) {
-                        sources.drop(currentIndex + 1) + sources.take(currentIndex + 1)
+                    if (sourcesNotLoaded) {
+                        onSkipSourceBeforeLoad?.invoke()
                     } else {
-                        sources
+                        val currentIndex = sources.indexOfFirst { it.id == uiState.currentSourceId }
+                        val ordered = if (currentIndex >= 0) {
+                            sources.drop(currentIndex + 1) + sources.take(currentIndex + 1)
+                        } else {
+                            sources
+                        }
+                        ordered.firstOrNull { it.id != uiState.currentSourceId && it.id !in excludedSourceIds }
+                            ?.let { playbackController.selectSource(it.id) }
                     }
-                    ordered.firstOrNull { it.id != uiState.currentSourceId && it.id !in excludedSourceIds }
-                        ?.let { playbackController.selectSource(it.id) }
                     showControlsTemporarily()
                 },
                 onNextEpisode = {
@@ -1092,8 +1107,8 @@ fun BasePlayerScaffold(
             visible = activePanel == PlayerPanel.SOURCES,
             title = headerInfo.primaryText,
             onClose = { closePanel() },
-            sources = sources,
-            currentSourceId = uiState.currentSourceId,
+            sources = selectableSources,
+            currentSourceId = if (sourcesNotLoaded) availableSources.firstOrNull()?.id else uiState.currentSourceId,
             excludedSourceIds = excludedSourceIds,
             sourceListDisabled = sourceListDisabled,
             onToggleSourceExcluded = { sourceId ->
@@ -1103,7 +1118,8 @@ fun BasePlayerScaffold(
                 playbackController.setSourceListDisabled(!sourceListDisabled)
             },
             onSelectSource = { sourceId ->
-                playbackController.selectSource(sourceId)
+                if (sourcesNotLoaded) onSelectSourceBeforeLoad?.invoke(sourceId)
+                else playbackController.selectSource(sourceId)
                 // A real attempt to play the new source, not a dismissal — don't exit to Details.
                 sourcesPanelOpenedFromError = false
                 sourcesPanelOpenedAsBackStop = false
