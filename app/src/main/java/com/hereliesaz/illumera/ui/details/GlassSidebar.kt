@@ -145,6 +145,8 @@ fun GlassSidebar(
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
     streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
+    /** Torrent sources being added to, or already in, a debrid service, by lowercase info hash. */
+    debridStatuses: Map<String, com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus> = emptyMap(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onToggleWatched: (MetaVideo) -> Unit = {},
@@ -240,6 +242,7 @@ fun GlassSidebar(
                     excludedSourceIds = excludedSourceIds,
                     sourceListDisabled = sourceListDisabled,
                     streamOutcomes = streamOutcomes,
+                    debridStatuses = debridStatuses,
                     onToggleSourceExcluded = onToggleSourceExcluded,
                     onToggleSourceListDisabled = onToggleSourceListDisabled,
                     onSourceClick = onSourceSelected,
@@ -490,6 +493,7 @@ fun SourcesContent(
     excludedSourceIds: Set<String> = emptySet(),
     sourceListDisabled: Boolean = false,
     streamOutcomes: List<com.hereliesaz.illumera.data.repository.AddonRepository.AddonStreamOutcome> = emptyList(),
+    debridStatuses: Map<String, com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus> = emptyMap(),
     onToggleSourceExcluded: ((Stream) -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     onSourceClick: (Stream) -> Unit,
@@ -604,6 +608,7 @@ fun SourcesContent(
                                 isPlaying = index == selectedIndex && selectedStreamId != null,
                                 isExcluded = (s.sourceSelectionId ?: s.addonTransportUrl ?: s.url) in excludedSourceIds,
                                 sourceListDisabled = sourceListDisabled,
+                                debridStatus = s.infoHash?.trim()?.lowercase()?.let(debridStatuses::get),
                                 onToggleExcluded = onToggleSourceExcluded?.let { callback -> { callback(s) } },
                                 onToggleSourceListDisabled = onToggleSourceListDisabled,
                                 modifier = if (index == focusIndex) Modifier.focusRequester(focusRequester) else Modifier
@@ -1136,6 +1141,7 @@ fun RawSourceItem(
     isPlaying: Boolean = false,
     isExcluded: Boolean = false,
     sourceListDisabled: Boolean = false,
+    debridStatus: com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus? = null,
     onToggleExcluded: (() -> Unit)? = null,
     onToggleSourceListDisabled: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -1184,8 +1190,19 @@ fun RawSourceItem(
                     if (!it.isFocused && !dpadLongPressTriggered) dpadKeyHeld = false
                 }
                 .border(
-                    if (isFocused) 3.dp else if (isExcluded) 1.dp else 0.dp,
-                    if (isFocused) primary else if (isExcluded) MaterialTheme.colorScheme.onBackground.copy(0.25f) else Color.Transparent,
+                    when {
+                        isFocused -> 3.dp
+                        isExcluded || debridStatus?.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> 1.dp
+                        else -> 0.dp
+                    },
+                    when {
+                        isFocused -> primary
+                        isExcluded -> MaterialTheme.colorScheme.onBackground.copy(0.25f)
+                        // Already in a debrid account: a plain outline, never the cursor's accent.
+                        debridStatus?.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY ->
+                            MaterialTheme.colorScheme.onBackground.copy(0.5f)
+                        else -> Color.Transparent
+                    },
                     RoundedCornerShape(8.dp)
                 )
                 .touchClick(
@@ -1232,6 +1249,19 @@ fun RawSourceItem(
                         },
                         modifier = Modifier.weight(1f)
                     )
+                    debridStatus?.let { status ->
+                        Text(
+                            when (status.kind) {
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> "In debrid"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.ADDING -> "Adding to debrid…"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.DOWNLOADING ->
+                                    status.percent?.let { "Debrid · $it%" } ?: "In debrid · downloading"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.85f),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                     when {
                         isPlaying -> Text(
                             "Playing",
@@ -1254,6 +1284,26 @@ fun RawSourceItem(
                         color = if (isFocused) primary else Color.Gray,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+                // A source on its way into a debrid service shows how far it got.
+                if (debridStatus != null &&
+                    debridStatus.kind != com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY
+                ) {
+                    val percent = debridStatus.percent
+                    if (percent != null && debridStatus.kind == com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.DOWNLOADING) {
+                        LinearProgressIndicator(
+                            progress = { percent / 100f },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
+                            trackColor = MaterialTheme.colorScheme.onBackground.copy(0.15f)
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            color = MaterialTheme.colorScheme.onBackground.copy(0.8f),
+                            trackColor = MaterialTheme.colorScheme.onBackground.copy(0.15f)
+                        )
+                    }
                 }
             }
         }

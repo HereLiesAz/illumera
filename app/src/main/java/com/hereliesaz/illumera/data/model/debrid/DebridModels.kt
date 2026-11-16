@@ -49,6 +49,18 @@ enum class DebridItemOrigin {
     DOWNLOAD
 }
 
+/** Where a torrent source stands in the viewer's debrid services. */
+data class DebridSourceStatus(val kind: Kind, val percent: Int? = null) {
+    enum class Kind {
+        /** Being sent to a service; nothing reported back yet. */
+        ADDING,
+        /** In an account and still downloading ([percent] when the service reports it). */
+        DOWNLOADING,
+        /** In an account and ready to play. */
+        READY
+    }
+}
+
 /** A service connected to the active profile, with the account name it reported. */
 data class DebridConnection(
     val provider: DebridProvider,

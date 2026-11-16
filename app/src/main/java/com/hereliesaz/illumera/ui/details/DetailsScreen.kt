@@ -177,6 +177,16 @@ fun DetailsScreen(
         }
     }
     val sidebarState = if (isCurrentMovie) state.sidebarState else SidebarState.Closed
+    // Which sources are being added to, or already in, a debrid service; refreshed while the list is open.
+    val debridStatusModel: com.hereliesaz.illumera.ui.playback.DebridStatusViewModel = hiltViewModel()
+    val debridStatuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
+    val sourcesOpen = sidebarState is SidebarState.Sources
+    LaunchedEffect(sourcesOpen) {
+        while (sourcesOpen) {
+            debridStatusModel.refresh()
+            delay(5_000L)
+        }
+    }
 
     val accentColor = MaterialTheme.colorScheme.primary
     val bg = MaterialTheme.colorScheme.background
@@ -1041,6 +1051,7 @@ fun DetailsScreen(
 
         GlassSidebar(
             state = sidebarState,
+            debridStatuses = debridStatuses,
             episodeProgressMap = state.episodeProgressMap,
             episodeEnrichmentMap = state.episodeEnrichmentMap,
             mediaActionTarget = movie?.let { com.hereliesaz.illumera.ui.components.MediaActionTarget.fromMeta(it) },

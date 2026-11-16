@@ -72,6 +72,8 @@ import androidx.compose.ui.res.painterResource
 import com.hereliesaz.illumera.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.hereliesaz.illumera.ui.playback.DebridStatusViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -3363,6 +3365,15 @@ private fun BoxScope.PlayerSourceSidebar(
     val sourceStreams = remember(sources) {
         sources.map(PlayerSourceOption::toSourceUiStream)
     }
+    // Which sources are being added to, or already in, a debrid service; refreshed while open.
+    val debridStatusModel: DebridStatusViewModel = hiltViewModel()
+    val debridStatuses by debridStatusModel.statuses.collectAsStateWithLifecycle()
+    LaunchedEffect(visible) {
+        while (visible) {
+            debridStatusModel.refresh()
+            delay(5_000L)
+        }
+    }
 
     val sidebarState = if (visible) {
         SidebarState.Sources(
@@ -3378,6 +3389,7 @@ private fun BoxScope.PlayerSourceSidebar(
         state = sidebarState,
         excludedSourceIds = excludedSourceIds,
         sourceListDisabled = sourceListDisabled,
+        debridStatuses = debridStatuses,
         onToggleSourceExcluded = { stream ->
             val sourceId = stream.sourceSelectionId ?: stream.addonTransportUrl ?: stream.url
             if (sourceId != null) onToggleSourceExcluded(sourceId)
