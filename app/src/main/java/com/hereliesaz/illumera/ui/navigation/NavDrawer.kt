@@ -661,8 +661,9 @@ fun SidebarItem(
                 .width(indicatorWidth)
                 .zIndex(10f)
                 .background(
-                    // Only the cursor is accent; the current page is a neutral marker.
-                    color = if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    // Only the cursor is accent; the current page is a neutral marker. While the
+                    // menu is active the marker only shows on the focused item.
+                    color = if (isDrawerActive) accentColor else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     shape = RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp)
                 )
         )
@@ -689,7 +690,7 @@ fun ProfileAvatarItem(
     )
     
     val borderColor by animateColorAsState(
-        targetValue = if (showIndicator) (if (isFocused) accentColor else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)) else Color.Transparent,
+        targetValue = if (showIndicator) accentColor else Color.Transparent,
         animationSpec = tween(200),
         label = "borderColor"
     )
