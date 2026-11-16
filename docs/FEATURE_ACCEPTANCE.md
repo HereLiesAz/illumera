@@ -254,8 +254,8 @@ The Play release for commit `7119e8e` failed two of 509 unit tests in `GenreRowR
 
 - Launch or return to foreground with a GitHub-installed build behind a signed GitHub release: an update popup is shown after splash; selecting Update downloads/verifies the release APK, while Later suppresses only this version. Compare the four-component `versionName` in the APK filename; a three-component tag alone cannot determine a build-level update.
 - A later GitHub release must notify again, even if the previous version was dismissed. Stop checking every frame; foreground checks are capped at 30-minute intervals unless requested in About.
-- Play builds must never offer a GitHub APK. When Play Core confirms an update, offer its in-app install. If Play Core is unsupported, an announced upstream version can prompt to *check Play* without claiming availability; pressing Update opens the Play Store listing.
-- For Play fallback announcements without a versionCode, dismissals must key on the announced version, so the next announcement still pops up.
+- Play builds must never offer a GitHub APK, and a newer GitHub release must not raise any update dialog in a Play build. When Play Core confirms an update, offer its in-app install. Where Play Core is unsupported (TV), the dialog appears only if Google Play's own store listing shows a newer version than the installed one; pressing Update opens the Play listing. An unreadable listing shows nothing.
+- For listing-confirmed updates without a versionCode, dismissals key on the listed version, so a later version still pops up.
 - Existing opt-out preference for GitHub automatic popups remains functional. Verify offline/error handling does not claim an update exists.
 - Gates: Android FOSS debug/release unit tests, Play build compile, GitHub APK release build, Android TV with Play and GitHub installations, and actual Google Play release visibility.
 ## Fast navigation and deferred previews (October 15, 2026) — validation pending

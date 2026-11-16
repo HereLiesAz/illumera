@@ -454,10 +454,11 @@ private fun PlayStoreUpdateAvailableDialog(
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (fromPlay) {
+                    // Either way Google Play itself has it: Play Core, or the version its listing shows.
+                    if (fromPlay || announcedVersion == null) {
                         "A newer version of illumera is available from Google Play. Update now to get the latest fixes and features."
                     } else {
-                        "A newer version${announcedVersion?.let { " ($it)" }.orEmpty()} has been announced. Check Google Play for availability; installation stays with the Play Store."
+                        "Version $announcedVersion of illumera is available on Google Play. Update now to get the latest fixes and features."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
