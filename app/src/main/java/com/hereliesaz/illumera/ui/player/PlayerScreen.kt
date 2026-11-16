@@ -90,6 +90,7 @@ fun PlayerScreen(
     onSourceChanged: ((String) -> Unit)? = null,
     onSkipSourceBeforeLoad: (() -> Unit)? = null,
     onSelectSourceBeforeLoad: ((sourceId: String) -> Unit)? = null,
+    debridSources: List<com.hereliesaz.illumera.data.model.debrid.DebridSourceEntry> = emptyList(),
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -508,6 +509,7 @@ fun PlayerScreen(
             onEpisodeSwitchSourceSelected = onEpisodeSwitchSourceSelected,
             onEpisodeSwitchDismissed = onEpisodeSwitchDismissed,
             availableSources = sources,
+            debridSources = debridSources,
             onSkipSourceBeforeLoad = onSkipSourceBeforeLoad,
             onSelectSourceBeforeLoad = onSelectSourceBeforeLoad,
             torrentProgress = torrentProgress,

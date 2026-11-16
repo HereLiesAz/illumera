@@ -19,6 +19,7 @@ import com.hereliesaz.illumera.data.repository.SubtitleRepository
 import com.hereliesaz.illumera.data.stream.StreamSortingService
 import com.hereliesaz.illumera.data.debrid.WantedFile
 import com.hereliesaz.illumera.data.debrid.magnetInfoHash
+import com.hereliesaz.illumera.data.model.debrid.DebridSourceEntry
 import com.hereliesaz.illumera.data.torrent.TorrentProgress
 import com.hereliesaz.illumera.data.trailer.YouTubeExtractor
 import com.hereliesaz.illumera.domain.AddonSubtitle
@@ -335,6 +336,11 @@ class PlaybackSessionViewModel @Inject constructor(
         val attempt = DebridAttempt(currentStream, magnetInfoHash(magnet), wanted)
         debridAttempts.removeAll { it.sameSourceAs(attempt) }
         debridAttempts += attempt
+        attempt.infoHash?.let { hash ->
+            if (debridSources.none { it.infoHash == hash }) {
+                debridSources = debridSources + DebridSourceEntry(hash, debridSourceLabel(attempt.stream))
+            }
+        }
         debridJob = viewModelScope.launch {
             val url = try {
                 debridManager.resolveMagnet(magnet, wanted, waitSeconds) { status, percent ->
@@ -383,11 +389,25 @@ class PlaybackSessionViewModel @Inject constructor(
 
     private val debridAttempts = mutableListOf<DebridAttempt>()
 
+    /**
+     * Every torrent source this playback has sent to debrid, in order, for the loading overlay.
+     * Unlike [debridAttempts] it keeps the ones the viewer moved on from: it is a record, not a
+     * queue of sources that may be loaded.
+     */
+    var debridSources by mutableStateOf<List<DebridSourceEntry>>(emptyList())
+        private set
+
+    private fun debridSourceLabel(stream: Stream?): String =
+        listOfNotNull(stream?.title, stream?.name, stream?.description)
+            .firstNotNullOfOrNull { text -> text.lineSequence().map(String::trim).firstOrNull(String::isNotEmpty) }
+            ?: "Source"
+
     /** An earlier debrid source found ready; it plays once the source tried after it has failed. */
     private var heldReady: Pair<DebridAttempt, String>? = null
 
     private fun forgetDebridAttempts() {
         debridAttempts.clear()
+        debridSources = emptyList()
         heldReady = null
     }
 

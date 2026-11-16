@@ -61,6 +61,9 @@ data class DebridSourceStatus(val kind: Kind, val percent: Int? = null) {
     }
 }
 
+/** A torrent source this playback sent to a debrid service, for the loading overlay's list. */
+data class DebridSourceEntry(val infoHash: String, val label: String)
+
 /** A service connected to the active profile, with the account name it reported. */
 data class DebridConnection(
     val provider: DebridProvider,
