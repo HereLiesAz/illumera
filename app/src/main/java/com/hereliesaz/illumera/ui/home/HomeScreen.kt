@@ -312,6 +312,7 @@ fun HomeScreen(
                         ?: displayState.rows.firstOrNull { it.items.isNotEmpty() }?.items?.firstOrNull(),
                     heroAutoScrollSeconds = heroConfig.autoScrollSeconds,
                     resolveTrailer = viewModel::resolveTrailer,
+                    previewStartsAtMidpoint = viewModel::startsAtMidpoint,
                     autoPlayPreviews = cinematicAudio.autoPlayPreviews && !isNavigating,
                     previewSound = cinematicAudio.previewSound,
                     startPadding = startPadding,
@@ -410,6 +411,7 @@ fun CinematicLayout(
     heroItems: List<MetaItem>,
     heroAutoScrollSeconds: Int,
     resolveTrailer: suspend (MetaItem) -> String?,
+    previewStartsAtMidpoint: (MetaItem) -> Boolean = { false },
     autoPlayPreviews: Boolean,
     previewSound: Boolean,
     startPadding: androidx.compose.ui.unit.Dp,
@@ -754,6 +756,7 @@ fun CinematicLayout(
                                     },
                                     onCurrentItemVisible = onPreviewItemVisible,
                                     resolveTrailer = resolveTrailer,
+                                    previewStartsAtMidpoint = previewStartsAtMidpoint,
                                     autoPlayPreviews = autoPlayPreviews,
                                     previewSound = previewSound,
                                     // Only one preview owns audio: once a row is focused,
@@ -2026,6 +2029,24 @@ internal fun cinematicVideoCoverSize(
 internal fun shouldResolveCinematicPreview(autoPlay: Boolean, visible: Boolean): Boolean =
     autoPlay && visible
 
+/**
+ * Moves [player] to the middle of its video as soon as the length is known (now, if it already
+ * is). Live streams have no middle and are left alone.
+ */
+private fun seekToMidpointWhenReady(player: ExoPlayer) {
+    fun seekIfKnown(): Boolean {
+        val duration = player.duration.takeIf { it != androidx.media3.common.C.TIME_UNSET } ?: return false
+        if (!player.isCurrentMediaItemLive) previewMidpointMs(duration)?.let(player::seekTo)
+        return true
+    }
+    if (player.playbackState == Player.STATE_READY && seekIfKnown()) return
+    player.addListener(object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY && seekIfKnown()) player.removeListener(this)
+        }
+    })
+}
+
 private const val TRAILER_VOLUME = 0.3f
 private const val TRAILER_ADVANCE_DELAY_MS = 3_000L
 // A trailer starts loading only once the viewer has stayed on a title this long.
@@ -2047,6 +2068,8 @@ internal fun TrailerPreview(
     soundEnabled: Boolean = false,
     isVisible: Boolean = true,
     nextItem: MetaItem? = null,
+    // A title that is itself a web video plays from its halfway point rather than the start.
+    startsAtMidpoint: (MetaItem) -> Boolean = { false },
     onEnded: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -2112,6 +2135,7 @@ internal fun TrailerPreview(
                         ready = false
                     }
                 })
+                if (item?.let(startsAtMidpoint) == true) seekToMidpointWhenReady(this)
                 playWhenReady = shouldPlay &&
                     lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             }

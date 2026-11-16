@@ -185,13 +185,56 @@ class HomeViewModel @Inject constructor(
     private data class CachedTrailer(val url: String, val fetchedAtMs: Long)
     private val trailerUrlCache = java.util.concurrent.ConcurrentHashMap<String, CachedTrailer>()
 
+    /** Titles whose preview is the video itself (see [resolveWebVideo]); these start halfway through. */
+    private val webVideoKeys: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** True once [item]'s preview was found to be the title's own web video, not a trailer. */
+    fun startsAtMidpoint(item: MetaItem): Boolean = "${item.type}:${item.id}" in webVideoKeys
+
+    /**
+     * A title from an addon's own catalog that is a web video (YouTube, a video site) previews as
+     * that video. Asks only the addon the title came from, so the preview isn't held up by every
+     * other stream addon. Null when it has no such stream.
+     */
+    private suspend fun resolveWebVideo(item: MetaItem): String? {
+        if (!isWebVideoCandidate(item)) return null
+        val key = "${item.type}:${item.id}"
+        val base = item.addonBaseUrl.orEmpty().substringBefore('?').removeSuffix("/manifest.json").trimEnd('/')
+        val streams = try {
+            kotlinx.coroutines.withTimeoutOrNull(7_000L) {
+                trailerApi.getStreams("$base/stream/${item.type}/${item.id}.json").streams.orEmpty()
+            }.orEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("HomeTrailer", "Web video lookup failed for $key", error)
+            return null
+        }
+        val url = when (val source = webPreviewSource(streams)) {
+            is WebPreviewSource.Direct -> source.url
+            is WebPreviewSource.YouTube -> kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                youtubeExtractor.extractPlaybackSource(source.reference, preferCompatiblePreview = true)
+            }?.videoUrl
+            null -> null
+        } ?: return null
+        webVideoKeys += key
+        return url
+    }
+
     suspend fun resolveTrailer(item: MetaItem): String? {
-        if (item.id.isBlank() || item.type !in setOf("movie", "series")) return null
+        if (item.id.isBlank()) return null
         val trailerKey = "${item.type}:${item.id}"
         trailerUrlCache[trailerKey]?.let { cached ->
             if (System.currentTimeMillis() - cached.fetchedAtMs < 5 * 60_000L) return cached.url
             trailerUrlCache.remove(trailerKey)
         }
+        resolveWebVideo(item)?.let { url ->
+            if (trailerUrlCache.size > 128) trailerUrlCache.clear()
+            trailerUrlCache[trailerKey] = CachedTrailer(url, System.currentTimeMillis())
+            return url
+        }
+        // Everything below finds a trailer, which only movies and series have.
+        if (item.type !in setOf("movie", "series")) return null
         return try {
             kotlinx.coroutines.withTimeout(115_000L) {
                 val addonCandidates = linkedSetOf<String>()

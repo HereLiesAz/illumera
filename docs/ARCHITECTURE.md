@@ -366,6 +366,21 @@ About (Settings -> About) shows, top to bottom: Version, Check for Update, **Cha
 - Each paragraph is focusable so D-pad Down walks (and scrolls) the page on a TV.
 - To change the text, edit the repo documents; there is nothing else to update.
 
+## Hero preview: web videos play from the middle
+
+A Home hero title that is itself a video on a website (a YouTube video, a video site) previews as
+that video, from its halfway point, instead of a trailer.
+
+- Candidate: an addon's own catalog title (`MetaItem.addonBaseUrl` set) whose id is not an IMDb
+  id (`isWebVideoCandidate`). Cinemeta-style titles keep their trailers.
+- `HomeViewModel.resolveWebVideo` asks only that addon for the title's streams (7 s), and
+  `webPreviewSource` takes the first YouTube or plain http(s) stream. Torrents, header-gated and
+  not-web-ready streams are skipped. YouTube goes through `YouTubeExtractor` as trailers do.
+  No such stream: the trailer path runs as before.
+- `startsAtMidpoint` is true for titles resolved this way. `TrailerPreview` then seeks to half the
+  duration once it is known (`seekToMidpointWhenReady`; live streams are left alone). Only the
+  hero passes it; rows and the persistent preview are unchanged.
+
 ## Crash reports: what is filed and what is not
 
 - `AppErrors` skips expected source failures: peer-metadata timeouts, offline errors, and
