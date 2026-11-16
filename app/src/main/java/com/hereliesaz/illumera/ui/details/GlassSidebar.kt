@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -1251,13 +1252,15 @@ fun RawSourceItem(
                     )
                     debridStatus?.let { status ->
                         Text(
+                            // Every state carries its percentage: a send that has not been
+                            // accepted is 0%, a ready one is 100%.
                             when (status.kind) {
-                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> "In debrid"
-                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.ADDING -> "Adding to debrid…"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.READY -> "In debrid · 100%"
+                                com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.ADDING -> "Adding to debrid · 0%"
                                 com.hereliesaz.illumera.data.model.debrid.DebridSourceStatus.Kind.DOWNLOADING ->
-                                    status.percent?.let { "Debrid · $it%" } ?: "In debrid · downloading"
+                                    status.percent?.let { "In debrid · $it%" } ?: "In debrid · downloading"
                             },
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onBackground.copy(0.85f),
                             modifier = Modifier.padding(start = 8.dp)
                         )
