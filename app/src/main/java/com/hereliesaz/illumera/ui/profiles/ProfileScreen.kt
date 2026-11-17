@@ -163,7 +163,9 @@ fun WelcomeView(onStart: () -> Unit) {
         Text(
             "WELCOME TO ILLUMERA",
             style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
-            color = MaterialTheme.colorScheme.onBackground
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp)
         )
         Spacer(Modifier.height(16.dp))
         Text(

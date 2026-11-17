@@ -505,12 +505,15 @@ Separate from this, **Reset Stremio Sync** signs out and removes every non-built
 
 ## In-app browser
 
-Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own
-browser (`ui/browser`) instead of the TV's, which is often missing.
+On a TV, addon configuration pages and the integrations' sign-in and API-key pages open in the
+app's own browser (`ui/browser`) instead of the TV's, which is often missing. **The in-app browser
+is for TVs only.** On a phone, tablet or Chromebook the same calls open the device's browser; an
+addon's `stremio://` Install link then goes to whatever app handles it, not to the app's own
+install confirmation.
 
-- `Context.openInAppBrowser(url, onAddonLink)` finds the activity (`InAppBrowserHost`, implemented
-  by `MainActivity`), which shows `InAppBrowser` in a full-screen dialog. With no host it falls
-  back to the device browser. Only http(s) addresses open.
+- `Context.openInAppBrowser(url, onAddonLink)` on a TV finds the activity (`InAppBrowserHost`,
+  implemented by `MainActivity`), which shows `InAppBrowser` in a full-screen dialog. Off a TV, or
+  with no host, it goes to the device browser. Only http(s) addresses open.
 - Remote control: the D-pad moves a pointer, OK clicks (touch events sent to the `WebView`),
   pushing past the bottom edge scrolls the page, and Up past the top reaches the toolbar (Back,
   Forward, Reload, Close). Clicking a text field gives the page focus so the system keyboard types
