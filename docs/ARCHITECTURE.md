@@ -444,6 +444,26 @@ owner goes away.
   confirmation.
 - If the device has no WebView, `MainActivity.openBrowser` hands the page to the device's browser.
 
+## Play updates: the `play-release` issues
+
+The Play build asks Play Core whether an update exists. Play Core does not run on Android TV, and
+the public store page only shows the production track (while builds go to internal and alpha), so
+a TV on an internal-track build used to be told "no update" while Play had one. Now, when Play Core
+cannot answer, `PlayStoreUpdateManager.checkPlayListing` reads this repository's issues:
+
+- The central Play release workflow (HereLiesAz/workflows, `android-play-release.yml`, step
+  "Announce Play release") files one **closed** issue per build it publishes, labelled
+  `play-release`, titled `Play release <versionName> (<versionCode>)`. Re-runs are not announced
+  twice; a deferred publish announces nothing.
+- The app lists the ten most recent (`GET /repos/<owner>/<repo>/issues?labels=play-release&state=closed`),
+  takes the highest versionCode (`latestPlayRelease`; pull requests and other titles are ignored)
+  and offers the update when it is above `BuildConfig.VERSION_CODE`. Play owns the install, so the
+  dialog sends the user to the Play Store.
+- Announcements read, nothing newer: up to date. No announcements yet (or the API unreachable):
+  the store-page version is the last resort, then the Play Core error as before.
+- GitHub builds are unaffected (they read GitHub releases; `newestApkAsset` picks the newest APK of
+  a grouped release).
+
 ## Sources that are web pages
 
 Some streams (video sites, some addons) hand over a page, not a file; the player reports
