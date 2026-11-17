@@ -284,9 +284,45 @@ class DashboardViewModel @Inject constructor(
         if (index == -1) return
 
         val newIndex = index + direction
-        if (newIndex in 0 until currentList.size) {
-            Collections.swap(currentList, index, newIndex)
+        if (newIndex in 0 until currentList.size) swapAt(currentList, index, newIndex, screen)
+    }
 
+    /**
+     * Trades the places of two rows that need not be next to each other (rows of one addon, with
+     * other addons' rows between them in the grouped editor): everything else keeps its place.
+     */
+    fun swapEditorItems(a: EditorListItem, b: EditorListItem, screen: String) {
+        val currentList = getEditorItems(screen).toMutableList()
+        val first = currentList.indexOfFirst { it.key == a.key }
+        val second = currentList.indexOfFirst { it.key == b.key }
+        if (first == -1 || second == -1 || first == second) return
+        swapAt(currentList, first, second, screen)
+    }
+
+    private fun swapAt(currentList: MutableList<EditorListItem>, index: Int, newIndex: Int, screen: String) {
+        Collections.swap(currentList, index, newIndex)
+        persistOrder(currentList, screen)
+    }
+
+    /**
+     * Takes [item] out of its place and puts it right after [anchor]. The rows in between each
+     * move up (or down) one, so the rest keep their order. Used to land the row being moved under
+     * the one moved before it.
+     */
+    fun moveEditorItemAfter(item: EditorListItem, anchor: EditorListItem, screen: String) {
+        if (item.key == anchor.key) return
+        val currentList = getEditorItems(screen).toMutableList()
+        val from = currentList.indexOfFirst { it.key == item.key }
+        if (from == -1 || currentList.none { it.key == anchor.key }) return
+        val moved = currentList.removeAt(from)
+        val anchorIndex = currentList.indexOfFirst { it.key == anchor.key }
+        currentList.add(anchorIndex + 1, moved)
+        persistOrder(currentList, screen)
+    }
+
+    /** Numbers every row by its place in [currentList] and saves, showing the result at once. */
+    private fun persistOrder(currentList: List<EditorListItem>, screen: String) {
+        run {
             val updatedConfigs = ArrayList<CatalogConfigEntity>()
             val updatedHubs = ArrayList<HubRowEntity>()
 

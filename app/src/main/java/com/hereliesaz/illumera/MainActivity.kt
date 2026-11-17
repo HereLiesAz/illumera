@@ -543,9 +543,25 @@ private class BrowserRequest(val url: String, val onAddonLink: ((String) -> Unit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity(), com.hereliesaz.illumera.ui.browser.InAppBrowserHost {
+    @Inject
+    lateinit var webPageVideoResolver: com.hereliesaz.illumera.data.web.WebPageVideoResolver
+
     private var browserRequest by androidx.compose.runtime.mutableStateOf<BrowserRequest?>(null)
 
     override fun openBrowser(url: String, onAddonLink: ((String) -> Unit)?) {
+        // Some TV images ship without a WebView; building one there throws. Hand the page to
+        // the device's browser instead (with a message if it has none either).
+        if (android.webkit.WebView.getCurrentWebViewPackage() == null) {
+            runCatching {
+                startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }.onFailure {
+                android.widget.Toast.makeText(this, "This device has no browser to open $url", android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         browserRequest = BrowserRequest(url, onAddonLink)
     }
 
@@ -1399,6 +1415,7 @@ class MainActivity : ComponentActivity(), com.hereliesaz.illumera.ui.browser.InA
                                 onEpisodeSwitchDismissed = session::dismissEpisodeSwitch,
                                 onResolveSourceSubtitles = session::resolveSourceSubtitles,
                                 onMagnetSourceSelected = session::selectMagnetSource,
+                                onResolveWebPage = { source -> webPageVideoResolver.resolve(source.url, source.requestHeaders) },
                                 torrentProgress = session.torrentProgress,
                                 playbackStatus = session.playbackStatus,
                                 onFirstFrameRendered = session::onFirstFrame,

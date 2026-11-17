@@ -116,7 +116,7 @@ class StremioAddonsViewModelTest {
         )
 
         val viewModel = newViewModel()
-        viewModel.syncFromStremio()
+        viewModel.syncFromStremio(prune = true)
         advanceUntilIdle()
 
         coVerify(exactly = 1) { addonRepository.installAddon("https://add.example/manifest.json") }
@@ -133,6 +133,28 @@ class StremioAddonsViewModelTest {
         coVerify(exactly = 1) { profileManager.saveRuntimeStateWithinActiveRuntime(7) }
         assertTrue(viewModel.uiState.value.error == null)
         assertTrue(viewModel.uiState.value.message?.contains("Synced 2 Stremio addons") == true)
+    }
+
+    @Test
+    fun aPlainSyncOnlyAddsAndNeverRemovesLocalAddons() = runTest(dispatcher) {
+        val cinemeta = addon("https://v3-cinemeta.strem.io", "Cinemeta", 0)
+        val mine = addon("https://mine.example", "Mine", 1)
+        val added = addon("https://add.example", "Added", 99)
+        coEvery { authManager.fetchAddons() } returns Result.success(
+            listOf(StremioAddonEntry("https://add.example/manifest.json", null))
+        )
+        every { addonRepository.getAddons() } returnsMany listOf(
+            flowOf(listOf(cinemeta, mine)),
+            flowOf(listOf(cinemeta, mine, added))
+        )
+
+        val viewModel = newViewModel()
+        viewModel.syncFromStremio()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { addonRepository.installAddon("https://add.example/manifest.json") }
+        coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
+        assertTrue(viewModel.uiState.value.error == null)
     }
 
     @Test
@@ -179,7 +201,7 @@ class StremioAddonsViewModelTest {
         every { addonRepository.getAddons() } returns flowOf(listOf(cinemeta, local))
 
         val viewModel = newViewModel()
-        viewModel.syncFromStremio()
+        viewModel.syncFromStremio(prune = true)
         advanceUntilIdle()
 
         coVerify(exactly = 0) { addonRepository.deleteAddon(any()) }
@@ -206,7 +228,7 @@ class StremioAddonsViewModelTest {
             IllegalStateException("bad manifest")
 
         val viewModel = newViewModel()
-        viewModel.syncFromStremio()
+        viewModel.syncFromStremio(prune = true)
         advanceUntilIdle()
 
         coVerify(exactly = 1) { addonRepository.installAddon("https://good.example/manifest.json") }

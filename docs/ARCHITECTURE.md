@@ -417,6 +417,72 @@ ExoPlayer's 50 s default, tens of megabytes of heap per player).
 To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
 owner goes away.
 
+## Screen Editor: move, hold for options, group by addon
+
+- On a row in Settings -> Screen Editor, **OK picks the row up to move it** (▲▼, OK to put it
+  down, Back to cancel). The options dialog (rename, layout, hide, hub settings) opens on a **hold**
+  of OK or a touch (`Modifier.longPressClick`, `LONG_PRESS_MS` = 1 s, shared with the cards).
+- **Moving several rows in a row.** There is no "reorder mode" banner. The row put down last
+  (`lastMovedKey`) is where the next picked-up row lands: picking up jumps it right under that row
+  (`pickupAnchor`, `DashboardViewModel.moveEditorItemAfter`), so building an order is pick, OK,
+  pick, OK. Putting a row down sends focus back to the place it was picked up from
+  (`returnFocusKey`: the row that moved up into the gap), ready for the next. The jump is off in
+  the grouped view, where the display doesn't follow the order. The memory resets per tab.
+- **Group by addon** (button above the Home list) folds each addon that has two or more rows into
+  one line (`EditorDisplayItem.Group`) that OK opens or shuts. Hubs and single-row addons stay as
+  they are. A group sits where its addon's first row was. Moving a row inside a group trades places
+  with the next row of the same addon (`moveNeighbour`, `DashboardViewModel.swapEditorItems`),
+  so a move never jumps over a header. Grouping is a view; the real row order is unchanged.
+
+## Configuring addons
+
+- Browse tab: Configure on a catalog item opens its page in the in-app browser (Torrentio keeps
+  its own dialog).
+- Installed tab: every addon served over http(s) gets Configure (`installedAddonCanBeConfigured`),
+  opening `<addon>/configure` in the browser, unless the catalog knows its manifest isn't
+  configurable. The page's Install button comes back as an addon link and goes to the install
+  confirmation.
+- If the device has no WebView, `MainActivity.openBrowser` hands the page to the device's browser.
+
+## Sources that are web pages
+
+Some streams (video sites, some addons) hand over a page, not a file; the player reports
+`ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED`. `ExoPlayerBackend.tryResolveWebPage` catches that for an
+http(s) source and asks `WebPageVideoResolver` (`data/web`) for the video behind it, once per
+source and address:
+
+- A **YouTube** address goes to `YouTubeExtractor` (muxed, so audio comes with it).
+- Any other page is fetched with a browser User-Agent. The video address is picked out of it:
+  `og:video` / `twitter:player:stream` meta tags and `<video>` / `<source>` tags first, then any
+  `.m3u8`, `.mp4`, `.webm` or `.mpd` address in its scripts and JSON (un-escaped, relative
+  addresses resolved). `pickBestVideo` prefers HLS over MP4, the higher named quality, and drops
+  previews, thumbnails, trailers and adverts. A page with no video is searched one player frame
+  (`<iframe>`) deep.
+- The video plays with the page as `Referer` (and its origin and the User-Agent), which most hosts
+  require. The source's address and headers are replaced in the source list, so Retry and later
+  switches play the video, not the page.
+- It finds what a page links to. It does not get past a login, captcha, DRM or a player that
+  builds its address from script at run time.
+
+If nothing is found the player moves to the next source (auto-fallback) or shows the error. That
+screen says "This source isn't a video file the player can read. It may be a web page." with the
+code in brackets, and offers **Open page** (in-app browser).
+
+## Stremio addon sync: add-only, with an explicit reset
+
+Syncing addons from a Stremio account never removes a local addon. `IntegrationsViewModel.syncAddons()`
+(signing in by email, register, Facebook or Apple; Integrations -> Stremio -> Add New Addons) and
+`StremioAddonsViewModel.syncFromStremio()` install what the account has and this profile lacks
+(and fill in placeholder rows), keep every local addon with its settings, and order the account's
+addons first in its order, then the rest as they were.
+
+The one destructive path is **Reset Addons to Stremio** (Stremio management dialog). It first
+asks: it counts the local addons (not the built-in Cinemeta and Streaming Catalogs) the account
+doesn't list, shows that number and warns that their settings go too, then calls
+`syncAddons(prune = true)` / `syncFromStremio(prune = true)`. An account that lists no addons is
+refused rather than reset to an empty profile. The Stremio account is never changed by either.
+Separate from this, **Reset Stremio Sync** signs out and removes every non-built-in addon.
+
 ## In-app browser
 
 Addon configuration pages and the integrations' sign-in and API-key pages open in the app's own

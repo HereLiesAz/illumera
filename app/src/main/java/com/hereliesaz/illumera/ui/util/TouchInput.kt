@@ -5,7 +5,17 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -47,4 +57,51 @@ fun Modifier.touchClick(
             } while (event.changes.any { it.pressed })
         }
     }
+}
+
+/** How long OK (or a finger) is held to count as a long press. */
+const val LONG_PRESS_MS = 1_000L
+
+/**
+ * A tap or OK press runs [onClick]; holding it for [LONG_PRESS_MS] runs [onLongClick] instead, once,
+ * with no click when it is let go. Works for touch and for the remote's OK / Enter / A button,
+ * so a control can do its common thing on a plain press and keep the rarer one (a menu) behind
+ * a hold. It replaces `clickable`; keep the control focusable separately.
+ */
+fun Modifier.longPressClick(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+): Modifier = composed {
+    var held by remember { mutableStateOf(false) }
+    var fired by remember { mutableStateOf(false) }
+    LaunchedEffect(held) {
+        if (held) {
+            kotlinx.coroutines.delay(LONG_PRESS_MS)
+            if (held && !fired) {
+                fired = true
+                onLongClick()
+            }
+        }
+    }
+    this
+        .touchClick(onClick = onClick, onLongClick = onLongClick)
+        .onPreviewKeyEvent { event ->
+            val activation = event.key == Key.DirectionCenter || event.key == Key.Enter ||
+                event.key == Key.NumPadEnter || event.key == Key.ButtonA
+            if (!activation) return@onPreviewKeyEvent false
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    if (!held) { held = true; fired = false }
+                    true
+                }
+                KeyEventType.KeyUp -> {
+                    val wasLong = fired
+                    held = false
+                    fired = false
+                    if (!wasLong) onClick()
+                    true
+                }
+                else -> false
+            }
+        }
 }

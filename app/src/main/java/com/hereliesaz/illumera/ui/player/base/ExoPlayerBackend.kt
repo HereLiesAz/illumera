@@ -108,6 +108,26 @@ internal const val END_OF_STREAM_WINDOW_MS = 60_000L
 internal fun isWithinEndWindow(positionMs: Long, durationMs: Long): Boolean =
     durationMs > 0L && positionMs > 0L && durationMs - positionMs <= END_OF_STREAM_WINDOW_MS
 
+/**
+ * What the error screen says. A source the player cannot read as video (an HTML page where a video
+ * file was expected, or a format it has no parser for) gets a plain sentence; the code stays in
+ * brackets for reports. Other failures keep their code, with the HTTP status or runtime detail.
+ */
+internal fun playbackErrorText(code: String, httpStatus: Int?, runtimeDetail: String?): String = when {
+    code.equals(UNREADABLE_SOURCE_CODE, ignoreCase = true) || code.equals("ERROR_CODE_PARSING_CONTAINER_MALFORMED", ignoreCase = true) ->
+        "This source isn't a video file the player can read. It may be a web page. ($code)"
+    httpStatus != null -> "$code (HTTP $httpStatus)"
+    runtimeDetail != null -> "$code: $runtimeDetail"
+    else -> code
+}
+
+/** The error Media3 reports when the address does not lead to a container it can parse. */
+internal const val UNREADABLE_SOURCE_CODE = "ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED"
+
+/** True when [errorMessage] (as built by [playbackErrorText]) is the unreadable-source error. */
+internal fun isUnreadableSourceMessage(errorMessage: String?): Boolean =
+    errorMessage?.contains(UNREADABLE_SOURCE_CODE, ignoreCase = true) == true
+
 internal fun isFailedRuntimeCheckCode(errorCodeName: String): Boolean =
     errorCodeName.equals("ERROR_CODE_FAILED_RUNTIME_CHECK", ignoreCase = true)
 
@@ -180,6 +200,14 @@ class ExoPlayerBackend(
      * so source-specific subtitle hooks do not require a second reload.
      */
     var onResolveSourceSubtitles: (suspend (PlayerSourceOption) -> List<PlayerSubtitleSource>)? = null
+
+    /**
+     * Finds the video behind a source that turned out to be a web page. Asked once per source when
+     * the player reports the container as unreadable; the result replaces the source's address
+     * and headers and playback restarts on it.
+     */
+    var onResolveWebPage: (suspend (PlayerSourceOption) -> com.hereliesaz.illumera.data.web.ResolvedWebVideo?)? = null
+    private val webPagesTried = mutableSetOf<String>()
 
     override val backendType: PlayerBackendType = PlayerBackendType.EXOPLAYER
 
@@ -472,6 +500,8 @@ class ExoPlayerBackend(
                 return
             }
             if (retryAfterFailedRuntimeCheck(error)) return
+            // A web page where a video file was expected: find the video on the page.
+            if (tryResolveWebPage(error)) return
             if (retryFromStartAfter416(error)) return
             // A non-2xx response means the current media URL itself was rejected. When
             // ranked fallback is enabled, advance immediately instead of retrying the same
@@ -630,6 +660,7 @@ class ExoPlayerBackend(
         loadToken++
         _excludedSourceIds.value = emptySet()
         _sourceListDisabled.value = false
+        webPagesTried.clear()
 
         // Emit loading state immediately so Compose can render the spinner
         _uiState.update {
@@ -1983,6 +2014,41 @@ class ExoPlayerBackend(
         return true
     }
 
+    /**
+     * The source's address leads to a web page, not a video. Fetches the page and plays the video
+     * it carries (see [onResolveWebPage]); if there is none, falls back to the next source or the
+     * error screen as before. Tried once per source and address, so a page that yields a bad
+     * address can't loop.
+     */
+    private fun tryResolveWebPage(error: PlaybackException): Boolean {
+        if (!error.errorCodeName.equals(UNREADABLE_SOURCE_CODE, ignoreCase = true)) return false
+        val resolver = onResolveWebPage ?: return false
+        val source = _sourceOptions.value.firstOrNull { it.id == currentSourceId } ?: return false
+        if (!source.url.startsWith("http", ignoreCase = true)) return false
+        if (!webPagesTried.add("${source.id}|${source.url}")) return false
+        val token = loadToken
+        _uiState.update { it.copy(isBuffering = true, errorMessage = null) }
+        scope.launch {
+            val resolved = try {
+                resolver(source)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (released || loadToken != token || currentSourceId != source.id) return@launch
+            if (resolved != null && resolved.url != source.url) {
+                val updated = source.copy(url = resolved.url, requestHeaders = source.requestHeaders + resolved.headers)
+                // Retry and later switches play the video, not the page.
+                _sourceOptions.update { list -> list.map { if (it.id == source.id) updated else it } }
+                switchToSource(source.id, updated)
+            } else if (!tryNextSourceOnParsingError(error)) {
+                _uiState.update { it.copy(errorMessage = playbackErrorMessage(error), isBuffering = false) }
+            }
+        }
+        return true
+    }
+
     private fun tryNextSourceOnParsingError(error: PlaybackException): Boolean {
         val codeName = error.errorCodeName.uppercase(Locale.US)
         if (
@@ -2131,11 +2197,7 @@ class ExoPlayerBackend(
         val runtimeDetail = if (isFailedRuntimeCheckCode(code)) {
             error.cause?.message?.takeIf { it.isNotBlank() } ?: error.message?.takeIf { it.isNotBlank() }
         } else null
-        return when {
-            status != null -> "$code (HTTP $status)"
-            runtimeDetail != null -> "$code: $runtimeDetail"
-            else -> code
-        }
+        return playbackErrorText(code, status, runtimeDetail)
     }
 
     private fun scheduleAudioSwitchRecovery(player: ExoPlayer) {

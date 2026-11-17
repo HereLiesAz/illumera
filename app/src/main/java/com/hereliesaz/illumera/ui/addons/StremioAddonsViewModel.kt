@@ -40,13 +40,14 @@ class StremioAddonsViewModel @Inject constructor(
      * Reconciles Illumera's active-profile runtime with the connected Stremio
      * account after the user manages addons in Stremio's official UI.
      *
-     * Stremio is authoritative for the addon set and ordering. Existing Illumera-
-     * specific configuration for an unchanged transport URL is preserved because
-     * those rows are left in place; only missing/removed addons are installed or
-     * deleted. Baked addons (Cinemeta, Streaming Catalogs) are always retained, even if the
+     * By default this only adds: addons the account has and this profile lacks are installed,
+     * and nothing local is removed. With [prune], Stremio is authoritative for the addon set and
+     * ordering and local addons the account doesn't list are deleted. Existing Illumera-specific
+     * configuration for an unchanged transport URL is preserved because those rows are left in
+     * place. Baked addons (Cinemeta, Streaming Catalogs) are always retained, even if the
      * account endpoint omits Stremio's built-in addon from its mutable collection.
      */
-    fun syncFromStremio() {
+    fun syncFromStremio(prune: Boolean = false) {
         if (connectionState.value !is StremioConnectionState.Connected) {
             _uiState.value = StremioAddonsUiState(
                 message = "Connect a Stremio account in Settings → Integrations first.",
@@ -100,7 +101,7 @@ class StremioAddonsViewModel @Inject constructor(
 
                     // An empty remote list is far more likely a bad/partial account response
                     // than a user who removed every addon; never wipe local addons on it.
-                    val skipDeletions = remoteUrls.isEmpty()
+                    val skipDeletions = !prune || remoteUrls.isEmpty()
                     val remoteSet = remoteUrls.toSet()
                     if (!skipDeletions) current.forEach { addon ->
                         val localUrl = normalizeTransportUrl(addon.transportUrl)
@@ -132,7 +133,7 @@ class StremioAddonsViewModel @Inject constructor(
                     profileConfigurationManager.saveRuntimeStateWithinActiveRuntime(initiatingProfileId)
                     profileConfigurationManager.resetStartupCapture()
 
-                    val summary = if (skipDeletions) {
+                    val summary = if (remoteUrls.isEmpty()) {
                         "Stremio returned no addons; local addons were left unchanged."
                     } else buildString {
                         append("Synced ${remoteUrls.size} Stremio addon")
@@ -149,7 +150,7 @@ class StremioAddonsViewModel @Inject constructor(
                         isSyncing = false,
                         message = summary,
                         error = when {
-                            skipDeletions -> "Stremio returned an empty addon list."
+                            remoteUrls.isEmpty() -> "Stremio returned an empty addon list."
                             failedCount > 0 -> "Some addons could not be refreshed."
                             else -> null
                         }
