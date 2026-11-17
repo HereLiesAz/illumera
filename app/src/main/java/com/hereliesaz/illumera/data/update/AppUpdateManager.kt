@@ -99,7 +99,10 @@ class AppUpdateManager @Inject constructor(
         _state.value = UpdateState.Checking
         try {
             val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
-            val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+            // A grouped release (one per major.minor.patch) can hold several builds' APKs; the
+            // newest is the update, not whichever the listing happens to show first.
+            val apkAsset = newestApkAsset(release.tagName, release.assets.map { it.name })
+                ?.let { name -> release.assets.first { it.name == name } }
             val remoteVersion = apkAsset?.let { githubReleaseVersion(release.tagName, it.name) }
                 ?: release.tagName.removePrefix("v")
             if (isNewerVersion(remoteVersion, BuildConfig.VERSION_NAME)) {
@@ -384,6 +387,17 @@ class AppUpdateManager @Inject constructor(
                 assetVersion
             } else tag
         }
+
+        /**
+         * The name of the APK among [assetNames] whose version is highest. A release lists its
+         * assets in upload order, and one release can carry several builds (0.18.2.1 and 0.18.2.2),
+         * so taking the first APK would offer the oldest and never the update.
+         */
+        internal fun newestApkAsset(tagName: String, assetNames: List<String>): String? =
+            assetNames.filter { it.endsWith(".apk", ignoreCase = true) }
+                .reduceOrNull { best, next ->
+                    if (isNewerVersion(githubReleaseVersion(tagName, next), githubReleaseVersion(tagName, best))) next else best
+                }
 
         internal fun isVersionNewer(remote: String, current: String): Boolean =
             isNewerVersion(remote, current)
