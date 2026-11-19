@@ -301,6 +301,45 @@ Home, Movies and Series publish their row shells and accept D-pad focus before a
 
 `DpadRepeatGate` still debounces duplicate first presses but passes Android's native long-press key repeats without artificial 150/200ms delays. Home's navigation listener never consumes directional events; it pauses all cinematic trailer resolution and playback while directional events continue, preserving still backdrops/posters and resuming preview requests only 750ms after the final key-down (then the existing 500ms preview startup delay). Cancelling preview fetches never gates row focus or catalog pagination.
 
+## Home: a focus move does not rebuild the rows (November 19, 2026)
+
+A D-pad move used to publish a new `HomeState` (it held `lastFocusedKey`), and `HomeScreen` rebuilt
+everything from it on the main thread: every row filtered for watched and disliked titles, the
+Movies/Series genre rows sorted (with a SharedPreferences read per row), the streaming-service sorts
+applied, and a new list instance handed to every effect keyed on the rows. Now:
+
+- The remembered card is its own flow, `HomeViewModel.lastFocusedKey` (a `StateFlow<String?>`), not a
+  field of `HomeState`. A focus move changes only that flow. Readers: `HomeScreen` (passes it to the
+  rows to restore focus onto the remembered card) and `mergeRowHead` (a row the viewer is on keeps
+  its cards). Row and vertical scroll memory were already outside the state (`PositionMemory`).
+- What a tab shows is derived once per real data change in the ViewModel, not in composition.
+  `HomeViewModel.displayState(tab, profileId)` returns a `StateFlow<HomeState>` built by
+  `displayStates` (`ui/home/HomeDisplay.kt`): `combine(state, rowSortOrders)`, derived by a
+  `HomeDisplayDeriver`, `distinctUntilChanged`, `flowOn(Dispatchers.Default)`. `HomeScreen` only
+  collects it. The derivation is the former `displayStateFor` / `withPersonalRows` /
+  `withoutDisliked` / `withRowSorts` chain, unchanged in effect: Home hides watched titles, every tab
+  hides disliked ones, Movies and Series sort each genre row by its stored order, streaming-service
+  rows follow their header chip, Home gets its personal rows.
+- The deriver remembers the inputs of its last result (rows, mixed rows, hero, watched and disliked
+  ids, personal rows, header sorts, and the stored genre sort of each row title) and returns the
+  **same row list instances** while they are equal. Unrelated state changes (Continue Watching
+  progress, enrichment of another title) therefore emit a state with the rows untouched. The
+  genre sort setting is read once per row title per derivation, off the main thread; the Dashboard
+  Editor saves it and calls `HomeViewModel.invalidate()`, which emits a state and so re-reads it.
+- One derivation is live at a time (the tab in front): asking again for the same tab restarts it and
+  keeps its last value, so returning to Home from a detail page shows the rows at once; a different
+  tab or profile starts afresh.
+- The two `visibleMixedRows` effects in `CinematicLayout` (which rows are on screen; art
+  preload of the first three titles of the visible and next rows) are keyed on `rowOrderKeyOf` /
+  `artPreloadKeyOf` (row ids in order; first-title ids and backdrops), and read the current rows
+  through `rememberUpdatedState`. A title appended to some row no longer restarts them and re-requests
+  up to 15 backdrops.
+
+`HomeScreen` still recomposes on a focus move (the rows need the live key to put `entryRequester` on
+the remembered card), but it now only compares unchanged list instances: no allocation, filtering,
+sorting or preference read. Tests: `HomeDisplayTest` (filtering, sorting, stable instances, flow),
+`HomeViewModelFocusTest` (a focus move emits neither a new state nor new rows).
+
 ## Empty rows, baked addons, personal rows and taste (October 22, 2026)
 
 **Empty rows are not composed.** Home, Movies and Series drop a row from the `LazyColumn` until it has a title (a row that was shown and later emptied stays mounted, invisible, for focus stability). Their first catalog fetch is started by a screen-level effect instead of by the absent row item. Details (cast, studios, recommendations), Studio rails, Cast filmography, Queue rows and the Watchlist cloud-storage section render nothing when empty, and focus fallbacks are only handed out when a populated row will carry them.

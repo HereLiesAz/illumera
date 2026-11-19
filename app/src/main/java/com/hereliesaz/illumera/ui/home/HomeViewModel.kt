@@ -422,7 +422,6 @@ class HomeViewModel @Inject constructor(
         val history: List<WatchHistoryEntity> = emptyList(),
         val seriesNextUp: List<com.hereliesaz.illumera.data.model.SeriesNextUpEntity> = emptyList(),
         val isLoading: Boolean = true,
-        val lastFocusedKey: String? = null,
         val loadedScreen: String? = null,
         // Row scroll positions: rowKey -> Pair(firstVisibleItemIndex, firstVisibleItemScrollOffset)
         val rowScrollPositions: Map<String, Pair<Int, Int>> = emptyMap(),
@@ -455,6 +454,60 @@ class HomeViewModel @Inject constructor(
     }
 
     val state: StateFlow<HomeState> = _state
+
+    // The card the viewer is on, in the screen in front. Deliberately NOT part of [HomeState]:
+    // it changes on every D-pad move, and a state emission per move rebuilt every row list.
+    private val _lastFocusedKey = MutableStateFlow<String?>(null)
+
+    /** The remembered focus key of the screen in front (null until a card is focused). */
+    val lastFocusedKey: StateFlow<String?> = _lastFocusedKey
+
+    private data class DisplayKey(val tab: DashboardTab, val profileId: Int?)
+
+    private var displayKey: DisplayKey? = null
+    private var displayOut: MutableStateFlow<HomeState>? = null
+    private var displayJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * [state] as [tab] shows it for [profileId]: watched / disliked titles filtered out, Movies and
+     * Series genre rows and streaming-service rows sorted, personal rows added. Derived once per
+     * real data change on [Dispatchers.Default] (see [HomeDisplayDeriver]), so Compose collects
+     * ready lists instead of rebuilding them on the main thread; list instances are reused while
+     * the data they come from is unchanged.
+     *
+     * One derivation is live at a time (the screen in front); asking again restarts it, which
+     * also re-reads the genre sort settings, and keeps the last value for the same tab.
+     */
+    fun displayState(tab: DashboardTab, profileId: Int?): StateFlow<HomeState> {
+        val key = DisplayKey(tab, profileId)
+        displayJob?.cancel()
+        val screen = screenNameOf(tab)
+        val titleOrderFor: (String) -> ScreenGenreRows.TitleOrder = { title ->
+            if (profileId == null) ScreenGenreRows.TitleOrder.CATALOG
+            else ScreenGenreRows.titleOrder(context, profileId, screen, title)
+        }
+        val deriver = HomeDisplayDeriver(tab, profileId, titleOrderFor)
+        val out = displayOut?.takeIf { displayKey == key } ?: run {
+            val current = _state.value
+            // Rows exist only once the tab is loaded, so this is not the main-thread work it
+            // replaces: it is a single pass on entering a tab that already has its rows.
+            MutableStateFlow(
+                if (current.loadedScreen == screen) deriver.derive(current, _rowSortOrders.value) else current
+            )
+        }
+        displayKey = key
+        displayOut = out
+        displayJob = viewModelScope.launch {
+            displayStates(_state, _rowSortOrders, deriver).collect { out.value = it }
+        }
+        return out
+    }
+
+    private fun screenNameOf(tab: DashboardTab) = when (tab) {
+        DashboardTab.HOME -> "home"
+        DashboardTab.MOVIES -> "movies"
+        DashboardTab.SERIES -> "series"
+    }
 
     // Set when something Home's loaded rows depend on changed outside the load key (TMDB
     // on/off or language, the installed/enabled addon set): the next loadScreen rebuilds
@@ -508,6 +561,7 @@ class HomeViewModel @Inject constructor(
                 positionMemories.values.forEach { it.clear() }
                 screenSnapshots.clear()
                 clearDemand()
+                _lastFocusedKey.value = null
                 _state.value = HomeState(isLoading = false)
             }
         }
@@ -522,8 +576,9 @@ class HomeViewModel @Inject constructor(
      */
     fun forgetPosition(screen: String) {
         positions(screen).clear()
+        _lastFocusedKey.value = null
         _state.update {
-            it.copy(lastFocusedKey = null, rowScrollPositions = emptyMap(), verticalScrollPosition = Pair(0, 0))
+            it.copy(rowScrollPositions = emptyMap(), verticalScrollPosition = Pair(0, 0))
         }
     }
 
@@ -534,7 +589,7 @@ class HomeViewModel @Inject constructor(
         if (memory.lastFocusedKey == key) return
         memory.lastFocusedKey = key
         // Only the screen in front shows this key; one being left must not overwrite it.
-        if (screen == activeScreen) _state.value = _state.value.copy(lastFocusedKey = key)
+        if (screen == activeScreen) _lastFocusedKey.value = key
     }
 
     fun setRowScrollPosition(rowKey: String, position: Pair<Int, Int>, screen: String) {
@@ -1600,6 +1655,7 @@ class HomeViewModel @Inject constructor(
         ) {
             loadJob?.cancel()
             loadJob = null
+            _lastFocusedKey.value = null
             _state.value = HomeState(isLoading = false)
             return
         }
@@ -1645,12 +1701,12 @@ class HomeViewModel @Inject constructor(
             emptyCatalogPageStreak.clear()
             seenAggregateCandidates.clear()
             clearDemand()
+            _lastFocusedKey.value = null  // Reset focus when loading new screen
             _state.value = _state.value.copy(
                 isLoading = true,
                 mixedRows = emptyList(),
                 rows = emptyList(),
                 hubRows = emptyList(),
-                lastFocusedKey = null,  // Reset focus when loading new screen
                 rowScrollPositions = emptyMap(),  // Reset scroll positions for new screen
                 verticalScrollPosition = Pair(0, 0),  // Reset vertical scroll for new screen
                 loadedProfileId = null,
@@ -2067,7 +2123,7 @@ class HomeViewModel @Inject constructor(
             if (current.loadedScreen != screenName || generation != screenDataGeneration) return@update current
             val row = current.rows.firstOrNull { it.configId == configId } ?: return@update current
             // The row the viewer is on keeps its cards where they are.
-            val focusedRowId = current.lastFocusedKey?.substringBefore('_')?.toIntOrNull()
+            val focusedRowId = _lastFocusedKey.value?.substringBefore('_')?.toIntOrNull()
                 ?.let { current.mixedRows.getOrNull(it)?.id }
             if (focusedRowId == configId) return@update current
             val elsewhere = if (configId.startsWith("catalog-aggregate:"))

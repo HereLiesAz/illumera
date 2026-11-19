@@ -104,62 +104,24 @@ internal fun firstFocusableCinematicRowIndex(
     }
 }?.index
 
-/** Per-tab presentation: profile genre ordering on Movies/Series, watched titles hidden on Home. */
-private fun displayStateFor(
-    tab: DashboardTab,
-    state: HomeViewModel.HomeState,
-    profileId: Int?,
-    genreContext: android.content.Context
-): HomeViewModel.HomeState =
-    if (tab != DashboardTab.HOME) {
-        val screen = if (tab == DashboardTab.MOVIES) "movies" else "series"
-        if (profileId == null) state else state.copy(
-            rows = state.rows.map { row ->
-                row.copy(items = ScreenGenreRows.sortTitles(
-                    row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
-                ))
-            },
-            mixedRows = state.mixedRows.map { row ->
-                if (row is CategoryRow) row.copy(items = ScreenGenreRows.sortTitles(
-                    row.items, ScreenGenreRows.titleOrder(genreContext, profileId, screen, row.title)
-                )) else row
-            }
-        )
-    } else {
-        // Home-only rule: once a movie or any episode of a series is watched,
-        // remove that title from Home catalog/hero lists immediately. The
-        // Continue Watching data remains untouched and manages itself from history.
-        val hiddenIds = state.watchedIds
-        if (hiddenIds.isEmpty()) {
-            state
-        } else {
-            state.copy(
-                rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) },
-                mixedRows = state.mixedRows.map { row ->
-                    if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in hiddenIds }) else row
-                },
-                heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in hiddenIds }) }
-            )
+/**
+ * What the visible-rows loader depends on: each row's id in order (a non-category row is null).
+ * Equal while rows only gain, lose or change titles, so the effect keyed on it keeps running.
+ */
+internal fun rowOrderKeyOf(rows: List<IndexedValue<HomeRowItem>>): List<String?> =
+    rows.map { (it.value as? CategoryRow)?.id }
+
+/**
+ * What the ahead-of-focus art preload depends on: each category row's id with the ids and
+ * backdrops of the first [ART_PRELOAD_ITEMS] titles. A title arriving past those, or a change to
+ * the others, leaves it equal; a new backdrop for one of them does not.
+ */
+internal fun artPreloadKeyOf(rows: List<IndexedValue<HomeRowItem>>): List<Any?> =
+    rows.map { indexed ->
+        (indexed.value as? CategoryRow)?.let { row ->
+            listOf(row.id) + row.items.take(ART_PRELOAD_ITEMS).flatMap { listOf(it.id, it.background) }
         }
     }
-
-/** Home gets the personal rows; they sit after every catalog row (see visibleMixedRows). */
-internal fun withPersonalRows(tab: DashboardTab, state: HomeViewModel.HomeState): HomeViewModel.HomeState =
-    if (tab != DashboardTab.HOME || state.personalRows.isEmpty()) state
-    else state.copy(mixedRows = state.mixedRows + state.personalRows)
-
-/** "Don't like" removes a title from every row and the hero. */
-internal fun withoutDisliked(state: HomeViewModel.HomeState): HomeViewModel.HomeState {
-    val disliked = state.dislikedIds
-    if (disliked.isEmpty()) return state
-    return state.copy(
-        rows = state.rows.map { row -> row.copy(items = row.items.filterNot { it.id in disliked }) },
-        mixedRows = state.mixedRows.map { row ->
-            if (row is CategoryRow) row.copy(items = row.items.filterNot { it.id in disliked }) else row
-        },
-        heroRow = state.heroRow?.let { row -> row.copy(items = row.items.filterNot { it.id in disliked }) }
-    )
-}
 
 private const val DPAD_REPEAT_INTERVAL_HORIZONTAL_MS = 60L
 private const val DPAD_REPEAT_INTERVAL_VERTICAL_MS = 70L
@@ -175,7 +137,14 @@ fun HomeScreen(
     onMovieClick: (MetaItem) -> Unit,
     onViewMore: (String, List<MetaItem>, String) -> Unit = { _, _, _ -> }
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    // What this tab shows, ready-made: filtered, sorted and personal rows are derived once per
+    // data change in the ViewModel (off the main thread), not rebuilt here on every recomposition.
+    val displayFlow = remember(tab, currentProfile?.id, viewModel) {
+        viewModel.displayState(tab, currentProfile?.id)
+    }
+    val state by displayFlow.collectAsStateWithLifecycle()
+    // The remembered card is its own flow: a focus move must not re-emit the rows.
+    val rememberedFocusKey by viewModel.lastFocusedKey.collectAsStateWithLifecycle()
     val personalRowSettings by viewModel.personalRowSettings.collectAsStateWithLifecycle()
     val seedVotes = remember(tab, personalRowSettings.approved, viewModel) {
         if (tab != DashboardTab.HOME) null
@@ -196,12 +165,7 @@ fun HomeScreen(
         ) { trailerPreloader.release() }
         onDispose { registration.close() }
     }
-    val displayState = remember(tab, state, currentProfile?.id, rowSortOrders) {
-        withRowSorts(
-            displayStateFor(tab, withoutDisliked(withPersonalRows(tab, state)), currentProfile?.id, genreContext),
-            rowSortOrders
-        )
-    }
+    val displayState = state
     // All discovery tabs share the non-configurable cinematic row hierarchy:
     // inactive landscape rails and portrait cards only in the focused row.
     val layoutMode = "cinematic"
@@ -229,7 +193,7 @@ fun HomeScreen(
     // During tab switch, ignore persisted focus/scroll until this tab is actually loaded.
     // This avoids one-frame carry-over from the previous tab.
     val isCurrentTabLoaded = state.loadedScreen == screenName && state.loadedProfileId == currentProfile?.id
-    val lastFocusedKey = if (isCurrentTabLoaded) state.lastFocusedKey else null
+    val lastFocusedKey = if (isCurrentTabLoaded) rememberedFocusKey else null
     val rowScrollPositions = if (isCurrentTabLoaded) viewModel.getRowScrollPositions(screenName) else emptyMap()
     val verticalScrollPosition = if (isCurrentTabLoaded) viewModel.getVerticalScrollPosition(screenName) else Pair(0, 0)
 
@@ -687,16 +651,22 @@ fun CinematicLayout(
                     // those first. The hero (and Continue Watching) occupy the first list slots.
                     val rowSlotOffset = (if (heroItems.isNotEmpty()) 1 else 0) +
                         (if (historyItems.isNotEmpty()) 1 else 0)
-                    LaunchedEffect(verticalListState, visibleMixedRows, rowSlotOffset) {
+                    // These effects restart on what they depend on (which rows, in what order;
+                    // which first titles and their art), not on every row-list change such as a
+                    // title appended to some row. The collectors read the current rows.
+                    val currentVisibleRows by rememberUpdatedState(visibleMixedRows)
+                    val rowOrderKey = remember(visibleMixedRows) { rowOrderKeyOf(visibleMixedRows) }
+                    LaunchedEffect(verticalListState, rowOrderKey, rowSlotOffset) {
                         snapshotFlow {
                             verticalListState.layoutInfo.visibleItemsInfo.map { it.index }
                         }.collect { slots ->
+                            val rows = currentVisibleRows
                             val rowSlots = slots.map { it - rowSlotOffset }.filter { it >= 0 }
                             val visibleIds = rowSlots
-                                .mapNotNull { visibleMixedRows.getOrNull(it)?.value }
+                                .mapNotNull { rows.getOrNull(it)?.value }
                                 .filterIsInstance<CategoryRow>().map { it.id }
                             val last = rowSlots.maxOrNull() ?: -1
-                            val nextIds = visibleMixedRows.drop(last + 1).map { it.value }
+                            val nextIds = rows.drop(last + 1).map { it.value }
                                 .filterIsInstance<CategoryRow>().take(3).map { it.id }
                             onRowsVisible(visibleIds, nextIds)
                         }
@@ -706,13 +676,14 @@ fun CinematicLayout(
                     // and next row, resolve the metadata that carries the backdrop and decode the
                     // backdrop itself ahead of focus.
                     val artContext = LocalContext.current
-                    LaunchedEffect(verticalListState, visibleMixedRows, rowSlotOffset) {
+                    val artKey = remember(visibleMixedRows) { artPreloadKeyOf(visibleMixedRows) }
+                    LaunchedEffect(verticalListState, artKey, rowSlotOffset) {
                         snapshotFlow {
                             val slots = verticalListState.layoutInfo.visibleItemsInfo.map { it.index - rowSlotOffset }
                                 .filter { it >= 0 }
                             (slots.minOrNull() ?: 0) to (slots.maxOrNull() ?: -1)
                         }.collect { (first, last) ->
-                            visibleMixedRows.drop(first).take(last - first + 1 + ART_PRELOAD_ROWS_AHEAD)
+                            currentVisibleRows.drop(first).take(last - first + 1 + ART_PRELOAD_ROWS_AHEAD)
                                 .map { it.value }.filterIsInstance<CategoryRow>()
                                 .flatMap { it.items.take(ART_PRELOAD_ITEMS) }
                                 .forEach { item ->
