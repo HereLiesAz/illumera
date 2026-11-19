@@ -478,6 +478,45 @@ class MediaActionsViewModel @Inject constructor(
     }
 }
 
+private val IMDB_ID_REGEX = Regex("tt\\d+")
+
+/** The IMDb id a title's soundtrack is looked up by, or null when it has none (an episode uses its series id). */
+internal fun soundtrackImdbIdOf(target: MediaActionTarget): String? =
+    (if (target.type == "episode") target.parentSeriesId else target.id)
+        ?.substringBefore(':')?.takeIf { IMDB_ID_REGEX.matches(it) }
+
+/**
+ * Composes [content] only once [opened] has been true, then keeps it composed while [key] is unchanged.
+ *
+ * A browse row has hundreds of cards and almost none ever open their menu, so the menu (its
+ * ViewModel lookup, state and effects) must not be set up per card. Once opened it stays composed so a
+ * dialog it owns (the soundtrack dialog) and the popup's exit animation survive the menu closing.
+ */
+@Composable
+internal fun ComposeOnceOpened(opened: Boolean, key: Any?, content: @Composable () -> Unit) {
+    val latch = remember(key) { BooleanArray(1) }
+    if (opened) latch[0] = true
+    if (latch[0]) content()
+}
+
+/** [MediaCardActionMenu] for a card: nothing is composed until the menu is first opened. */
+@Composable
+fun LazyMediaCardActionMenu(
+    target: MediaActionTarget,
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    focusable: Boolean = true
+) {
+    ComposeOnceOpened(opened = expanded, key = target.key) {
+        MediaCardActionMenu(
+            target = target,
+            expanded = expanded,
+            onDismissRequest = onDismissRequest,
+            focusable = focusable
+        )
+    }
+}
+
 @Composable
 fun MediaCardActionMenu(
     target: MediaActionTarget,
@@ -499,8 +538,7 @@ fun MediaCardActionMenu(
     }
     val watchedLabel = if (state?.watched == true) "Mark unwatched" else "Mark watched"
     // Soundtracks are keyed by IMDb id; an episode uses its series id plus season/episode.
-    val soundtrackImdbId = (if (target.type == "episode") target.parentSeriesId else target.id)
-        ?.substringBefore(':')?.takeIf { it.matches(Regex("tt\\d+")) }
+    val soundtrackImdbId = remember(target.key) { soundtrackImdbIdOf(target) }
     var showSoundtrack by remember(target.key) { mutableStateOf(false) }
 
     DropdownMenu(
