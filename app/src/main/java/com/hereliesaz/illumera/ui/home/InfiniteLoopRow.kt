@@ -388,7 +388,6 @@ fun InfiniteLoopRow(
 
     Column(
         modifier = Modifier
-            .graphicsLayer { clip = false }
             .onFocusChanged { state ->
                 if (state.hasFocus) {
                     rowPreviouslyHeldFocus = true
@@ -631,8 +630,7 @@ private fun LinearContent(
     LazyRow(
         state = listState,
         modifier = Modifier
-            .height(rowHeight)
-            .graphicsLayer { clip = false },
+            .height(rowHeight),
         contentPadding = PaddingValues(start = startPadding, end = endPadding),
         horizontalArrangement = Arrangement.spacedBy(ITEM_SPACING)
     ) {
@@ -658,7 +656,6 @@ private fun LinearContent(
                     } else effectiveItemWidth)
                     .then(if (isInlineRowActive && activeCardKey == uniqueKey)
                         Modifier.focusRequester(inlineTransitionRequester) else Modifier)
-                    .graphicsLayer { clip = false }
                     .onPreviewKeyEvent { keyEvent ->
                         if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
                         if (keyEvent.type == KeyEventType.KeyDown) {
@@ -884,8 +881,7 @@ private fun InfiniteGridContent(
     LazyRow(
         state = listState,
         modifier = Modifier
-            .height(rowHeight)
-            .graphicsLayer { clip = false },
+            .height(rowHeight),
         contentPadding = PaddingValues(start = startPadding, end = endPadding),
         horizontalArrangement = Arrangement.spacedBy(ITEM_SPACING)
     ) {
@@ -938,7 +934,6 @@ private fun InfiniteGridContent(
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .then(if (isInlineRowActive && activeCardKey == uniqueKey)
                                 Modifier.focusRequester(inlineTransitionRequester) else Modifier)
-                            .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
                                 if (keyEvent.type == KeyEventType.KeyDown) {
@@ -1145,8 +1140,7 @@ private fun FiniteGridContent(
     LazyRow(
         state = listState,
         modifier = Modifier
-            .height(rowHeight)
-            .graphicsLayer { clip = false },
+            .height(rowHeight),
         contentPadding = PaddingValues(start = startPadding, end = endPadding),
         horizontalArrangement = Arrangement.spacedBy(ITEM_SPACING)
     ) {
@@ -1188,7 +1182,6 @@ private fun FiniteGridContent(
                             } else if (isLandscapeCards) 190.dp else if (inlineCinematicPreview != null) 140.dp else ITEM_WIDTH)
                             .then(if (isInlineRowActive && activeCardKey == uniqueKey)
                                 Modifier.focusRequester(inlineTransitionRequester) else Modifier)
-                            .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
                                 if (keyEvent.type == KeyEventType.KeyDown) {
@@ -1267,7 +1260,6 @@ private fun FiniteGridContent(
                     Box(
                         modifier = Modifier
                             .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
-                            .graphicsLayer { clip = false }
                             .onPreviewKeyEvent { keyEvent ->
                                 if (repeatGate.shouldConsume(keyEvent)) return@onPreviewKeyEvent true
                                 if (keyEvent.type == KeyEventType.KeyDown) {
@@ -1354,7 +1346,6 @@ private fun InfiniteViewMoreCard(
         modifier = modifier
             .width(if (isLandscapeCards) 190.dp else ITEM_WIDTH)
             .graphicsLayer {
-                clip = false
                 alpha = animatedAlpha
             }
             .onPreviewKeyEvent { keyEvent ->

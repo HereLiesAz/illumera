@@ -21,12 +21,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -42,13 +40,29 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Scale
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
+
+// Built once and shared by every card: an 8-stop gradient is not rebuilt per card/recomposition.
+private val TitleScrimBrush: Brush = Brush.verticalGradient(
+    colorStops = arrayOf(
+        0.0f to Color.Transparent,
+        0.15f to Color.Black.copy(alpha = 0.05f),
+        0.3f to Color.Black.copy(alpha = 0.15f),
+        0.45f to Color.Black.copy(alpha = 0.30f),
+        0.6f to Color.Black.copy(alpha = 0.48f),
+        0.75f to Color.Black.copy(alpha = 0.64f),
+        0.88f to Color.Black.copy(alpha = 0.77f),
+        1.0f to Color.Black.copy(alpha = 0.85f)
+    )
+)
+
+// background(shape) paints rounded ends without the clip layer Modifier.clip would add per card.
+private val ProgressBarShape = RoundedCornerShape(1.5.dp)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -91,7 +105,6 @@ fun LumeraLandscapeCard(
             .width(190.dp)
             .aspectRatio(16f / 9f)
             .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
-            .graphicsLayer { clip = false }
     ) {
         Surface(
             onClick = onClick,
@@ -168,10 +181,9 @@ fun LumeraLandscapeCard(
                     model = imageRequest,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(cardShape)
-                        .background(MaterialTheme.colorScheme.surface)
+                    // No .clip/.background here: Surface already clips its content to its
+                    // shape and paints the same surface colour behind it.
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 Box(
@@ -179,20 +191,7 @@ fun LumeraLandscapeCard(
                         .fillMaxWidth()
                         .fillMaxHeight(0.55f)
                         .align(Alignment.BottomStart)
-                        .background(
-                            Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color.Transparent,
-                                    0.15f to Color.Black.copy(alpha = 0.05f),
-                                    0.3f to Color.Black.copy(alpha = 0.15f),
-                                    0.45f to Color.Black.copy(alpha = 0.30f),
-                                    0.6f to Color.Black.copy(alpha = 0.48f),
-                                    0.75f to Color.Black.copy(alpha = 0.64f),
-                                    0.88f to Color.Black.copy(alpha = 0.77f),
-                                    1.0f to Color.Black.copy(alpha = 0.85f)
-                                )
-                            )
-                        )
+                        .background(TitleScrimBrush)
                 )
 
                 Box(
@@ -200,22 +199,17 @@ fun LumeraLandscapeCard(
                         .align(Alignment.BottomStart)
                         .padding(start = 10.dp, bottom = if (progress > 0f) 12.dp else 6.dp)
                 ) {
-                    if (!logoUrl.isNullOrEmpty()) {
-                        SubcomposeAsyncImage(
+                    // A failed logo load falls back to the title text. Plain AsyncImage plus
+                    // an error flag replaces SubcomposeAsyncImage, which sets up a subcomposition per card.
+                    var logoFailed by remember(logoUrl) { mutableStateOf(false) }
+                    if (!logoUrl.isNullOrEmpty() && !logoFailed) {
+                        AsyncImage(
                             model = logoUrl,
                             contentDescription = title,
                             contentScale = ContentScale.Fit,
                             alignment = Alignment.BottomStart,
                             modifier = Modifier.widthIn(max = 130.dp).heightIn(max = 35.dp),
-                            error = {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
-                                    color = Color.White,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            onError = { logoFailed = true }
                         )
                     } else {
                         Text(
@@ -267,15 +261,13 @@ fun LumeraLandscapeCard(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 5.dp)
                             .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color.White.copy(0.3f))
+                            .background(Color.White.copy(0.3f), ProgressBarShape)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(MaterialTheme.colorScheme.primary, ProgressBarShape)
                         )
                     }
                 }
@@ -283,7 +275,8 @@ fun LumeraLandscapeCard(
         }
 
         if (mediaItem != null) {
-            MediaCardActionMenu(
+            // Composed (and its ViewModel/Regex/effect set up) only once the menu is opened.
+            LazyMediaCardActionMenu(
                 target = MediaActionTarget.fromMeta(mediaItem),
                 expanded = contextMenuExpanded,
                 focusable = !dpadKeyHeld,
