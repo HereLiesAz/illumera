@@ -212,6 +212,17 @@ Watchlist keeps Suggested Next (with refresh) at the top, then Queue. The Librar
 
 The previous 282→184dp above-row preview was removed entirely: it still took a full extra line of vertical space. The new 210dp-high inline card expands **in the focused poster's slot** (maximum width 340dp, screen-width-constrained), reclaiming that line. This retains the original goal—more browse rows visible at once—without making the hero or artwork persist above the rows. The backdrop remains until a playable trailer renders its first frame. Trailer discovery first consults the enabled Stremio trailer addon, then TMDB if the build has an API key, then Cinemeta's public trailer metadata. Each source failure or timeout is isolated; preview extraction prefers a muxed AVC/MP4 stream to avoid unnecessary adaptive-media merging for silent TV previews. Signed YouTube extraction remains inherently network-dependent and must be tested on a TV device.
 
+## Home card draw cost (November 19, 2026)
+
+A Home row holds hundreds of cards, so per-card work is kept small (issue #401: an ANR inside `ViewRootImpl.performDraw` on a low-memory TV, in the Compose draw tree and View clip invalidation).
+
+- **No no-op layers.** `graphicsLayer { clip = false }` is the default and only forced an extra render layer, so it is gone from the row `Column`, the `LazyRow` and each item/card `Box` in `InfiniteLoopRow`, `LumeraCard` and `LumeraLandscapeCard`. A `graphicsLayer` stays only where it does work (the View More fade sets `alpha`).
+- **One clip per card.** The TV `Surface` already clips its content to its (focused) shape and paints the surface colour, so the poster/backdrop image no longer adds its own `clip` and `background`. The thin progress bar paints rounded ends with `background(color, shape)` instead of `clip`. The watched corner triangle is built in `drawWithCache`, once per size rather than once per draw.
+- **Shared scrim.** The landscape card's 8-stop title gradient is one top-level `Brush`; the logo is a plain `AsyncImage` that falls back to the title `Text` on error, not a `SubcomposeAsyncImage`.
+- **The long-press menu is lazy.** Cards use `LazyMediaCardActionMenu`, which composes `MediaCardActionMenu` (and so `hiltViewModel()`, its state and `LaunchedEffect`) only after the menu is first opened, then keeps it composed so the soundtrack dialog and the popup's exit animation still work. The `tt\d+` Regex is a top-level value used by `soundtrackImdbIdOf`. Menu behaviour is unchanged; `GlassSidebar` still uses `MediaCardActionMenu` directly.
+
+Not verified on a device: the visual result should be identical (same shapes, scrim and badges), but the ANR itself needs a low-memory TV to confirm.
+
 ## Grid focus and demand-driven loading (October 29, 2026)
 
 Streaming-service and category full-screen grids (`GridViewScreen`) retain a fixed header but deliberately route D-pad Up from the first poster row to the selected sorting chip when the grid is sortable; Up again reaches Back, and Down from sorting returns to the previously focused poster. Non-sortable grids go directly from the first row to Back. These paths use distinct focus requesters and the currently measured LazyGrid column count, rather than treating every grid as six columns. The grid uses `LazyVerticalGrid` virtualization, stable card focus memory, pagination near the end, and only three poster prefetch requests to each side of the focused card instead of twelve.
