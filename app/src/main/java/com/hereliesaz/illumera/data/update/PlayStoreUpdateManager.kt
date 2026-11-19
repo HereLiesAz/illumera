@@ -46,8 +46,7 @@ sealed class PlayStoreUpdateState {
  * by BuildConfig.USE_PLAY_UPDATES and never queries Play from those builds.
  *
  * Only Google Play decides whether an update exists: Play Core where it works, else the
- * builds the central Play release workflow announced as closed `play-release` issues (and, as a
- * last resort, the version Play's own store listing shows). Nothing about GitHub (a newer release, a version
+ * version Play's own store listing shows. Nothing about GitHub (a newer release, a version
  * marker) ever raises an update here: it says nothing about what Play has published.
  */
 @Singleton
@@ -111,43 +110,20 @@ class PlayStoreUpdateManager @Inject constructor(
     }
 
     /**
-     * Play Core only supports phones, tablets and ChromeOS. Where it can't answer (Android TV),
-     * the central Play release workflow's announcements say what Play has published: one closed
-     * `play-release` issue per published build (see [latestPlayRelease]). The public store
-     * listing is the last resort, since it only shows the production track. Only Play counts: a
-     * newer GitHub release says nothing about Play. Nothing newer, or nothing readable, claims
-     * nothing and leaves [otherwise].
+     * Play Core only supports phones, tablets and ChromeOS. Where it can't answer, the version
+     * Google Play's own store listing shows says what Play has published. Only that counts: a
+     * newer GitHub release says nothing about Play. A listing that can't be read, or isn't
+     * newer, claims nothing and leaves [otherwise].
      */
     private fun checkPlayListing(otherwise: PlayStoreUpdateState, generation: Long) {
         scope.launch {
-            val announced = runCatching { fetchAnnouncedRelease() }.getOrNull()
-            val listed = if (announced == null) runCatching { fetchPlayListingVersion() }.getOrNull() else null
+            val listed = runCatching { fetchPlayListingVersion() }.getOrNull()
             if (generation != checkGeneration || _state.value is PlayStoreUpdateState.InProgress) {
                 return@launch
             }
-            _state.value = when {
-                announced != null && isNewerThanInstalled(announced, BuildConfig.VERSION_CODE) ->
-                    PlayStoreUpdateState.UpdateAvailable(
-                        versionCode = announced.versionCode, fromPlay = false, announcedVersion = announced.versionName
-                    )
-                announced == null && listed != null &&
-                    AppUpdateManager.isVersionNewer(listed, BuildConfig.VERSION_NAME) ->
-                    PlayStoreUpdateState.UpdateAvailable(versionCode = -1, fromPlay = false, announcedVersion = listed)
-                // The announcements were read and nothing newer is on Play.
-                announced != null -> PlayStoreUpdateState.UpToDate
-                else -> otherwise
-            }
-        }
-    }
-
-    /** The newest build the Play release workflow has announced in this repository's issues. */
-    private fun fetchAnnouncedRelease(): PlayRelease? {
-        val url = "https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}" +
-            "/issues?labels=$PLAY_RELEASE_LABEL&state=closed&per_page=10&sort=created&direction=desc"
-        val request = Request.Builder().url(url).header("Accept", "application/vnd.github+json").build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            return latestPlayRelease(response.body.string())
+            _state.value = if (listed != null && AppUpdateManager.isVersionNewer(listed, BuildConfig.VERSION_NAME)) {
+                PlayStoreUpdateState.UpdateAvailable(versionCode = -1, fromPlay = false, announcedVersion = listed)
+            } else otherwise
         }
     }
 
