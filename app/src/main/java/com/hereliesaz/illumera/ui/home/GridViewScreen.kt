@@ -439,7 +439,11 @@ private fun GridViewContent(
                             }
                             .onFocusChanged {
                                 if (it.isFocused) {
-                                    ImagePrefetcher.prefetchAround(context, imageUrls, index, count = GRID_POSTER_PREFETCH_RADIUS)
+                                    // Grid cells are sized by the grid, so their cards decode at the fixed legacy poster size.
+                                    ImagePrefetcher.prefetchAround(
+                                        context, imageUrls, index,
+                                        count = GRID_POSTER_PREFETCH_RADIUS, widthDp = null
+                                    )
                                     lastFocusedPosterIndex = index
                                     val pendingTarget = pendingDirectionalTargetIndex
                                     if (pendingTarget != null) {

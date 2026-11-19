@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,12 +41,10 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
-import coil.request.CachePolicy
-import coil.request.ImageRequest
-import coil.size.Scale
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
+import com.hereliesaz.illumera.ui.utils.CardImages
 
 // Built once and shared by every card: an 8-stop gradient is not rebuilt per card/recomposition.
 private val TitleScrimBrush: Brush = Brush.verticalGradient(
@@ -164,16 +163,10 @@ fun LumeraLandscapeCard(
             val context = LocalContext.current
             val imageUrl = backdropUrl?.takeIf { it.isNotBlank() }
                 ?: posterUrl?.takeIf { it.isNotBlank() }
-            val imageRequest = remember(imageUrl) {
-                ImageRequest.Builder(context)
-                    .data(imageUrl)
-                    .crossfade(false)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .scale(Scale.FILL)
-                    .size(380, 214)
-                    .allowHardware(true)
-                    .build()
+            val density = LocalDensity.current.density
+            // The 190dp card's own pixels, built by the same code as its prefetch (a memory hit).
+            val imageRequest = remember(imageUrl, density) {
+                CardImages.landscape(context, imageUrl, density)
             }
 
             Box(modifier = Modifier.fillMaxSize()) {

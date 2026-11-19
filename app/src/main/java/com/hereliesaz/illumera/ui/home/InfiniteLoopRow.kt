@@ -56,6 +56,7 @@ import com.hereliesaz.illumera.ui.components.LumeraCard
 import com.hereliesaz.illumera.ui.components.LocalWatchedIds
 import com.hereliesaz.illumera.ui.components.LumeraLandscapeCard
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
+import com.hereliesaz.illumera.ui.utils.POSTER_CARD_WIDTH_DP
 import com.hereliesaz.illumera.ui.navigation.focus.LocalFocusMemory
 import com.hereliesaz.illumera.ui.navigation.focus.restorableFocusIfTracked
 import kotlinx.coroutines.delay
@@ -748,6 +749,7 @@ private fun LinearContent(
                         inlineCinematicPreview = inlineCinematicPreview,
                         inlineCinematicExpanded = inlineCinematicPreview != null && activeCardKey == uniqueKey,
                         inlineCinematicWidth = inlineCinematicWidth,
+                        knownWidth = POSTER_CARD_WIDTH_DP.dp,
                         onFocused = {
                             ImagePrefetcher.prefetchAround(context, imageUrls, index)
                             onFocused(item, uniqueKey)
@@ -1444,6 +1446,7 @@ private fun GridMediaCard(
             inlineCinematicPreview = inlineCinematicPreview,
             inlineCinematicExpanded = inlineCinematicExpanded,
             inlineCinematicWidth = inlineCinematicWidth,
+            knownWidth = POSTER_CARD_WIDTH_DP.dp,
             onFocused = onFocused,
             modifier = modifier
         )

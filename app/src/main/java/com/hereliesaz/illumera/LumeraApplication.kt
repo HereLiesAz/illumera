@@ -95,4 +95,14 @@ class LumeraApplication : Application(), ImageLoaderFactory {
             kotlinx.coroutines.MainScope().launch { memoryMonitor.onSystemTrim(level) }
         }
     }
+
+    /** The whole device is low on memory (`lowMemory`): treated as the most urgent trim level. */
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (::memoryMonitor.isInitialized) {
+            kotlinx.coroutines.MainScope().launch {
+                memoryMonitor.onSystemTrim(android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL)
+            }
+        }
+    }
 }

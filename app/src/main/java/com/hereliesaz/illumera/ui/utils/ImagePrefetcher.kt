@@ -2,7 +2,6 @@ package com.hereliesaz.illumera.ui.utils
 
 import android.content.Context
 import coil.imageLoader
-import coil.request.CachePolicy
 import coil.request.ImageRequest
 
 /**
@@ -11,14 +10,9 @@ import coil.request.ImageRequest
  */
 object ImagePrefetcher {
     
-    // Standard poster size matching LumeraCard for cache hit
-    private const val POSTER_WIDTH = 280
-    private const val POSTER_HEIGHT = 420
+    // Every request is built by CardImages, the same builder the cards use, so a prefetch has the
+    // card's key, size and scale and the card finds it in the memory cache.
 
-    // Landscape card size matching LumeraLandscapeCard (2x 190dp at 16:9)
-    private const val LANDSCAPE_WIDTH = 380
-    private const val LANDSCAPE_HEIGHT = 214
-    
     // Number of items to prefetch ahead
     private const val PREFETCH_COUNT = 8
     private const val PREFETCH_DEDUP_WINDOW_MS = 450L
@@ -70,42 +64,50 @@ object ImagePrefetcher {
     }
     
     /**
-     * Prefetch a single image URL
+     * Prefetch a single poster URL at the size of a Home row poster card. [widthDp] null is for
+     * the grids and lists whose cards are sized by their parent: they decode at
+     * [CardImages.legacyPoster]'s fixed size, and so must the prefetch that warms them.
      */
-    fun prefetch(context: Context, url: String?) {
+    fun prefetch(
+        context: Context,
+        url: String?,
+        widthDp: Float? = POSTER_CARD_WIDTH_DP
+    ) {
         if (url.isNullOrBlank()) return
         if (!shouldEnqueue(url)) return
-        
-        val request = ImageRequest.Builder(context)
-            .data(url)
-            .size(POSTER_WIDTH, POSTER_HEIGHT)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            // Don't need the result, just cache it
-            .memoryCacheKey(url)
-            .diskCacheKey(url)
-            .build()
-        
-        context.imageLoader.enqueue(request)
+
+        context.imageLoader.enqueue(posterRequest(context, url, widthDp))
     }
-    
+
+    internal fun posterRequest(
+        context: Context,
+        url: String,
+        widthDp: Float?,
+        density: Float = context.resources.displayMetrics.density
+    ): ImageRequest =
+        if (widthDp == null) CardImages.legacyPoster(context, url)
+        else CardImages.poster(context, url, density, widthDp)
+
     /**
-     * Prefetch a title's cinematic backdrop at the size the preview surfaces request, so the
-     * focused card's expanded preview and the Hero paint it from cache the moment focus lands.
+     * Prefetch a title's cinematic backdrop. With [fullScreen] false (the default) it is decoded at
+     * the size of the focused card's in-row preview, which is what the card paints from cache the
+     * moment focus lands; [fullScreen] true is for the persistent preview, which fills the screen.
      */
-    fun prefetchBackdrop(context: Context, url: String?) {
+    fun prefetchBackdrop(context: Context, url: String?, fullScreen: Boolean = false) {
         if (url.isNullOrBlank()) return
-        if (!shouldEnqueue("backdrop:$url")) return
+        if (!shouldEnqueue("backdrop:${if (fullScreen) "full" else "card"}:$url")) return
 
-        val request = ImageRequest.Builder(context)
-            .data(url)
-            .size(backdropDecodeSize(context))
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            .build()
-
-        context.imageLoader.enqueue(request)
+        context.imageLoader.enqueue(backdropRequest(context, url, fullScreen))
     }
+
+    internal fun backdropRequest(
+        context: Context,
+        url: String,
+        fullScreen: Boolean,
+        density: Float = context.resources.displayMetrics.density
+    ): ImageRequest =
+        if (fullScreen) CardImages.fullBackdrop(context, url)
+        else CardImages.inlineBackdrop(context, url, density)
 
     /**
      * Prefetch multiple images around a focus index
@@ -115,7 +117,8 @@ object ImagePrefetcher {
         context: Context,
         items: List<String?>,
         focusedIndex: Int,
-        count: Int = PREFETCH_COUNT
+        count: Int = PREFETCH_COUNT,
+        widthDp: Float? = POSTER_CARD_WIDTH_DP
     ) {
         val aroundCount = effectiveAroundCount(count)
         if (aroundCount == 0) return
@@ -124,7 +127,7 @@ object ImagePrefetcher {
         for (i in 1..aroundCount) {
             val aheadIndex = focusedIndex + i
             if (aheadIndex < items.size) {
-                prefetch(context, items[aheadIndex])
+                prefetch(context, items[aheadIndex], widthDp)
             }
         }
 
@@ -132,7 +135,7 @@ object ImagePrefetcher {
         for (i in 1..aroundCount) {
             val behindIndex = focusedIndex - i
             if (behindIndex >= 0) {
-                prefetch(context, items[behindIndex])
+                prefetch(context, items[behindIndex], widthDp)
             }
         }
     }
@@ -144,17 +147,14 @@ object ImagePrefetcher {
         if (url.isNullOrBlank()) return
         if (!shouldEnqueue(url)) return
 
-        val request = ImageRequest.Builder(context)
-            .data(url)
-            .size(LANDSCAPE_WIDTH, LANDSCAPE_HEIGHT)
-            .memoryCachePolicy(CachePolicy.ENABLED)
-            .diskCachePolicy(CachePolicy.ENABLED)
-            .memoryCacheKey(url)
-            .diskCacheKey(url)
-            .build()
-
-        context.imageLoader.enqueue(request)
+        context.imageLoader.enqueue(landscapeRequest(context, url))
     }
+
+    internal fun landscapeRequest(
+        context: Context,
+        url: String,
+        density: Float = context.resources.displayMetrics.density
+    ): ImageRequest = CardImages.landscape(context, url, density)
 
     /**
      * Prefetch landscape images around a focus index

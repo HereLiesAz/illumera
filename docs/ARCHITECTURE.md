@@ -467,6 +467,54 @@ ExoPlayer's 50 s default, tens of megabytes of heap per player).
 To add a cache: `memoryMonitor.register(rank) { pressure -> ... }`, and close the result when its
 owner goes away.
 
+### Graphics and native memory, not only the heap
+
+The Java heap cannot show hardware bitmaps (graphics memory, shared with the whole box) or video
+buffers (native memory). Each 3-second sample therefore also asks
+`ActivityManager.getMemoryInfo` (`pressureOfDevice`), and the worse of the heap and device readings
+decides:
+
+- **Critical** when `lowMemory` is set or `availMem` is at or under the system's `threshold`.
+- **High** when `availMem` is within 1.5x the threshold, or within 3x while the Coil memory cache
+  holds 80% or more of its limit (the images are the likeliest thing to give back).
+- A Critical that only the device reports waits 30 s before the next one (the system reclaims
+  slowly, and trimming an already-empty cache gains nothing); a heap Critical still waits 5 s.
+
+Android's own signals go through the same trimmers: `onTrimMemory` at `RUNNING_LOW` is High and at
+`RUNNING_CRITICAL` (or `COMPLETE`) is Critical, and `Application.onLowMemory` counts as Critical.
+The Coil memory cache is 15% of the heap class as before, but on a device with little RAM it is
+held to 3.5% of the device's RAM (never under 24 MB, `imageCacheLimitBytes`); a device with RAM for
+the 15% keeps it exactly.
+
+### Home image sizes
+
+Images are decoded at the pixels they cover, not at a fixed size. All card requests are built in
+one place (`CardImages`, `ui/utils/CardImageRequests.kt`) from the sizes in `ImageSizing.kt`
+(`cardDecodeSize`: dp size x density x 1.05 for the focused card's scale):
+
+| Image | Decoded at (1.33 density) | Was |
+|---|---|---|
+| Poster card (140x210dp) | 196x294 | 280x420 |
+| Landscape card (190dp, 16:9) | 266x150 | 380x214 |
+| Focused card's in-row preview backdrop (373x210dp) | 523x294 (~0.6 MB) | 1920x1080 (~8 MB) |
+| Hero, persistent preview, hero background (full screen) | `backdropDecodeSize`, up to 1920x1080 | unchanged |
+
+Posters in grids and lists whose cell width the parent decides (Grid view, Search, Queue) pass no
+`knownWidth` to `LumeraCard` and keep the fixed 280x420, because the card cannot know its width.
+
+The card and its prefetch build the same request, so a prefetch is a memory-cache hit: one memory
+key per image URL (`CardImages.memoryKey`), the same disk key, FILL scale, INEXACT precision, hardware
+bitmaps and size. Before, the prefetch and the card agreed on the key text but not on the scale
+(the prefetch used the default, the card FILL), so a poster that did not match the card's aspect
+ratio could be decoded twice. `CardImagesTest` runs a real Coil loader and asserts the card is served
+from the memory cache after its prefetch. A larger decode of a URL replaces a smaller one under the
+same key and still serves the smaller request.
+
+The backdrop preload is bounded. In the default (inline) mode the first 3 titles of each visible row
+and the next row warm the preview-sized backdrop (about 0.6 MB each). In persistent-preview mode,
+which does show full-screen backdrops, only the first 2 are preloaded at full size (~16 MB, at most
+about half of the 38-77 MB image cache), instead of ~15 (~120 MB).
+
 ## Screen Editor: move, hold for options, group by addon
 
 - On a row in Settings -> Screen Editor, **OK picks the row up to move it** (▲▼, OK to put it

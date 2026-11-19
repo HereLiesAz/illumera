@@ -1,5 +1,6 @@
 package com.hereliesaz.illumera.ui.home
 
+import com.hereliesaz.illumera.ui.utils.CardImages
 import com.hereliesaz.illumera.ui.utils.ImagePrefetcher
 import com.hereliesaz.illumera.ui.utils.backdropDecodeSize
 import com.hereliesaz.illumera.ui.navigation.focus.FocusMemory
@@ -374,9 +375,14 @@ internal fun cinematicRailHeight(active: Boolean): Dp = if (active) 238.dp else 
 internal fun cinematicRailTrailingSpace(active: Boolean): Dp = if (active) 8.dp else 0.dp
 
 /** Cards per row whose cinematic art is resolved and decoded ahead of focus. */
-// Each 1080p backdrop is ~8 MB of graphics memory; preloading dozens at once exhausted it on
-// low-memory TV boxes and took the whole device down. Keep the ahead-of-focus set small.
+// A full-screen 1080p backdrop is ~8 MB of graphics memory; preloading dozens at once exhausted it
+// on low-memory TV boxes and took the whole device down. The in-row preview now decodes only the
+// ~373x210dp it covers (~0.6 MB at 1.33 density), so 3 per row x the visible rows + 1 is ~10 MB.
+// Only the persistent preview fills the screen: its preload is capped at ART_PRELOAD_FULL_SIZE_MAX
+// in total (2 x ~8 MB = ~16 MB), at most about half of the image cache (15% of the 256-512 MB large
+// heap class is 38-77 MB), so the visible cards stay cached; it was ~15 x 8 MB = ~120 MB.
 private const val ART_PRELOAD_ITEMS = 3
+private const val ART_PRELOAD_FULL_SIZE_MAX = 2
 private const val ART_PRELOAD_ROWS_AHEAD = 1
 
 @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -686,9 +692,13 @@ fun CinematicLayout(
                             currentVisibleRows.drop(first).take(last - first + 1 + ART_PRELOAD_ROWS_AHEAD)
                                 .map { it.value }.filterIsInstance<CategoryRow>()
                                 .flatMap { it.items.take(ART_PRELOAD_ITEMS) }
-                                .forEach { item ->
+                                .forEachIndexed { n, item ->
                                     onArtNeeded(item)
-                                    ImagePrefetcher.prefetchBackdrop(artContext, item.background)
+                                    if (!persistentPreview || n < ART_PRELOAD_FULL_SIZE_MAX) {
+                                        ImagePrefetcher.prefetchBackdrop(
+                                            artContext, item.background, fullScreen = persistentPreview
+                                        )
+                                    }
                                 }
                         }
                     }
@@ -1041,12 +1051,12 @@ private fun InlineFocusedPosterPreview(
             modifier = Modifier.fillMaxSize()
         )
         val previewContext = LocalContext.current
-        val backdropRequest = remember(current.background) {
+        val previewDensity = LocalDensity.current.density
+        // The in-row preview box is about 373x210dp, so it decodes those pixels (the request the
+        // prefetch warmed), not a full-screen 1920x1080 backdrop.
+        val backdropRequest = remember(current.background, previewDensity) {
             current.background?.takeIf { it.isNotBlank() }?.let {
-                ImageRequest.Builder(previewContext)
-                    .data(it)
-                    .size(backdropDecodeSize(previewContext))
-                    .build()
+                CardImages.inlineBackdrop(previewContext, it, previewDensity)
             }
         }
         if (backdropRequest != null) {
