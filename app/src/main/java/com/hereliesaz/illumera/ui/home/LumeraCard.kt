@@ -2,7 +2,6 @@ package com.hereliesaz.illumera.ui.components
 
 import android.view.KeyEvent
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -23,11 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +45,10 @@ import coil.size.Scale
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
+
+// One shape instance for the thin progress bar; background(shape) paints rounded ends without
+// the per-card clip layer that Modifier.clip would add.
+private val ProgressBarShape = RoundedCornerShape(1.5.dp)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 val LocalWatchedIds = compositionLocalOf { emptySet<String>() }
@@ -100,7 +103,6 @@ fun LumeraCard(
                 else Modifier.aspectRatio(2f / 3f)
             )
             .zIndex(if (isFocused || contextMenuExpanded) 10f else 0f)
-            .graphicsLayer { clip = false }
     ) {
         Surface(
             onClick = onClick,
@@ -185,27 +187,28 @@ fun LumeraCard(
                     model = imageRequest,
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(cardShape)
-                        .background(MaterialTheme.colorScheme.surface)
+                    // No .clip/.background here: Surface already clips its content to its
+                    // shape and paints the same surface colour behind it.
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 if (isWatched) {
                     val badgeColor = MaterialTheme.colorScheme.primary
-                    Canvas(
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .size(28.dp)
-                    ) {
-                        val path = androidx.compose.ui.graphics.Path().apply {
-                            moveTo(size.width, 0f)
-                            lineTo(0f, 0f)
-                            lineTo(size.width, size.height)
-                            close()
-                        }
-                        drawPath(path, badgeColor)
-                    }
+                            .drawWithCache {
+                                // Built once per size, not once per draw.
+                                val path = Path().apply {
+                                    moveTo(size.width, 0f)
+                                    lineTo(0f, 0f)
+                                    lineTo(size.width, size.height)
+                                    close()
+                                }
+                                onDrawBehind { drawPath(path, badgeColor) }
+                            }
+                    )
                     Text(
                         "✓",
                         color = Color.White,
@@ -240,15 +243,13 @@ fun LumeraCard(
                             .fillMaxWidth()
                             .padding(horizontal = 6.dp, vertical = 5.dp)
                             .height(3.dp)
-                            .clip(RoundedCornerShape(1.5.dp))
-                            .background(Color.White.copy(0.3f))
+                            .background(Color.White.copy(0.3f), ProgressBarShape)
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(MaterialTheme.colorScheme.primary)
+                                .background(MaterialTheme.colorScheme.primary, ProgressBarShape)
                         )
                     }
                 }
@@ -257,7 +258,8 @@ fun LumeraCard(
         }
 
         if (mediaItem != null && onLongClick == null) {
-            MediaCardActionMenu(
+            // Composed (and its ViewModel/Regex/effect set up) only once the menu is opened.
+            LazyMediaCardActionMenu(
                 target = MediaActionTarget.fromMeta(mediaItem),
                 expanded = contextMenuExpanded,
                 focusable = !dpadKeyHeld,
