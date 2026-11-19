@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -39,12 +40,10 @@ import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import coil.compose.AsyncImage
-import coil.request.CachePolicy
-import coil.request.ImageRequest
-import coil.size.Scale
 import com.hereliesaz.illumera.data.model.stremio.MetaItem
 import com.hereliesaz.illumera.ui.theme.LocalRoundCorners
 import com.hereliesaz.illumera.ui.util.touchClick
+import com.hereliesaz.illumera.ui.utils.CardImages
 
 // One shape instance for the thin progress bar; background(shape) paints rounded ends without
 // the per-card clip layer that Modifier.clip would add.
@@ -69,7 +68,14 @@ fun LumeraCard(
     inlineCinematicExpanded: Boolean = false,
     inlineCinematicWidth: Dp = 340.dp,
     inlineCinematicPreview: (@Composable (MetaItem) -> Unit)? = null,
-    cardWidth: Dp = 140.dp
+    cardWidth: Dp = 140.dp,
+    /**
+     * The width the caller really lays this card out at, when it is fixed (Home rows, Watchlist).
+     * The poster is then decoded at the pixels that width covers instead of the fixed legacy size.
+     * Null for grids and lists whose cell width the parent decides, which keep the legacy size
+     * because the card cannot know what it will be given.
+     */
+    knownWidth: Dp? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var dpadLongPressTriggered by remember { mutableStateOf(false) }
@@ -170,16 +176,11 @@ fun LumeraCard(
                 inlineCinematicPreview(mediaItem)
             } else {
             val context = LocalContext.current
-            val imageRequest = remember(posterUrl) {
-                ImageRequest.Builder(context)
-                    .data(posterUrl)
-                    .crossfade(false)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .scale(Scale.FILL)
-                    .size(280, 420)
-                    .allowHardware(true)
-                    .build()
+            val density = LocalDensity.current.density
+            // The same builder the prefetcher uses, so a prefetched poster is a memory-cache hit.
+            val imageRequest = remember(posterUrl, knownWidth, density) {
+                if (knownWidth != null) CardImages.poster(context, posterUrl, density, knownWidth.value)
+                else CardImages.legacyPoster(context, posterUrl)
             }
 
             Box(modifier = Modifier.fillMaxSize()) {

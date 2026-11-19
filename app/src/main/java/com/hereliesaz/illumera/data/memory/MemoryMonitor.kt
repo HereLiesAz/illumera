@@ -1,8 +1,11 @@
 package com.hereliesaz.illumera.data.memory
 
+import android.app.ActivityManager
 import android.content.ComponentCallbacks2
+import android.content.Context
 import android.os.SystemClock
 import coil.ImageLoader
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +43,59 @@ internal fun pressureOf(usedBytes: Long, maxBytes: Long): Pressure {
     }
 }
 
+/**
+ * How short of memory the whole device is, which the Java heap cannot show: hardware bitmaps live
+ * in graphics memory and video buffers in native memory, shared with every other process. From
+ * `ActivityManager.getMemoryInfo`: [availBytes] is what the system has free, [thresholdBytes] is
+ * where it starts killing background processes, [lowMemory] is that state itself. [cacheBytes] and
+ * [cacheMaxBytes] are the image memory cache's fill: when it is holding most of its limit and the
+ * device is getting close to the threshold, the images are the likeliest thing to give back.
+ */
+internal fun pressureOfDevice(
+    availBytes: Long,
+    thresholdBytes: Long,
+    lowMemory: Boolean,
+    cacheBytes: Long = 0L,
+    cacheMaxBytes: Long = 0L
+): Pressure {
+    if (lowMemory) return Pressure.Critical
+    if (thresholdBytes <= 0L) return Pressure.Normal
+    return when {
+        availBytes <= thresholdBytes -> Pressure.Critical
+        availBytes <= thresholdBytes * DEVICE_HIGH_HEADROOM -> Pressure.High
+        availBytes <= thresholdBytes * DEVICE_CACHE_HEADROOM &&
+            cacheMaxBytes > 0L && cacheBytes >= cacheMaxBytes * CACHE_FULL_FRACTION -> Pressure.High
+        else -> Pressure.Normal
+    }
+}
+
+/** The worse of two pressures. */
+internal fun worse(a: Pressure, b: Pressure): Pressure = if (a.ordinal >= b.ordinal) a else b
+
+/** Available memory within this many times the system's threshold is [Pressure.High]. */
+internal const val DEVICE_HIGH_HEADROOM = 1.5
+
+/** ...and within this many, while the image cache is nearly full, too. */
+internal const val DEVICE_CACHE_HEADROOM = 3.0
+
+/** The image cache counts as nearly full from this share of its limit. */
+internal const val CACHE_FULL_FRACTION = 0.8
+
+/**
+ * The image memory cache's limit: [defaultBytes] (Coil's 15% of the heap class) unless the device
+ * is small, where it is held to [CACHE_SHARE_OF_RAM] of the device's RAM (never below
+ * [CACHE_FLOOR_BYTES]), because hardware bitmaps are graphics memory shared with the whole box.
+ * Never above [defaultBytes], so bigger devices keep what they had.
+ */
+internal fun imageCacheLimitBytes(defaultBytes: Long, totalRamBytes: Long): Long {
+    if (totalRamBytes <= 0L) return defaultBytes
+    val cap = maxOf(CACHE_FLOOR_BYTES, (totalRamBytes * CACHE_SHARE_OF_RAM).toLong())
+    return minOf(defaultBytes, cap)
+}
+
+internal const val CACHE_SHARE_OF_RAM = 0.035
+internal const val CACHE_FLOOR_BYTES = 24L * 1024 * 1024
+
 /** What Android's own low-memory signal means here, or null when it asks for nothing. */
 internal fun pressureOfSystemTrim(level: Int): Pressure? = when {
     level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL &&
@@ -63,9 +119,17 @@ internal fun pressureOfSystemTrim(level: Int): Pressure? = when {
  * not loop on a measurement: it acts, then waits out a cooldown before it acts again. High needs
  * two samples in a row (uncollected garbage can make one reading look worse than it is);
  * Critical acts at once.
+ *
+ * The heap is not the whole picture: hardware bitmaps are graphics memory and video buffers are
+ * native memory, shared with the whole device. Each sample also asks `ActivityManager` how much
+ * the system has free against its low-memory threshold ([pressureOfDevice]), and the worse of the
+ * two readings decides. Android's own `onTrimMemory` / `onLowMemory` go through [onSystemTrim].
  */
 @Singleton
-class MemoryMonitor @Inject constructor(imageLoader: ImageLoader) {
+class MemoryMonitor @Inject constructor(
+    private val imageLoader: ImageLoader,
+    @ApplicationContext private val context: Context
+) {
     private class Entry(val rank: Int, val trim: (Pressure) -> Unit)
 
     private val entries = CopyOnWriteArrayList<Entry>()
@@ -101,11 +165,26 @@ class MemoryMonitor @Inject constructor(imageLoader: ImageLoader) {
                 delay(SAMPLE_INTERVAL_MS)
                 val runtime = Runtime.getRuntime()
                 val used = runtime.totalMemory() - runtime.freeMemory()
-                val acted = onSample(used, runtime.maxMemory(), SystemClock.uptimeMillis())
+                val acted = onSample(used, runtime.maxMemory(), SystemClock.uptimeMillis(), devicePressure())
                 if (acted != Pressure.Normal) withContext(Dispatchers.Main) { trimAll(acted) }
             }
         }
     }
+
+    /**
+     * Device-wide pressure (see [pressureOfDevice]), or [Pressure.Normal] when the system will not
+     * say. Graphics and native memory do not show in the Java heap numbers.
+     */
+    private fun devicePressure(): Pressure = runCatching {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return@runCatching Pressure.Normal
+        val info = ActivityManager.MemoryInfo().also(manager::getMemoryInfo)
+        val cache = imageLoader.memoryCache
+        pressureOfDevice(
+            info.availMem, info.threshold, info.lowMemory,
+            cache?.size?.toLong() ?: 0L, cache?.maxSize?.toLong() ?: 0L
+        )
+    }.getOrDefault(Pressure.Normal)
 
     /** Android is asking for memory back (see [pressureOfSystemTrim]). */
     suspend fun onSystemTrim(level: Int) {
@@ -115,17 +194,32 @@ class MemoryMonitor @Inject constructor(imageLoader: ImageLoader) {
     }
 
     /**
-     * One sample. Returns the pressure to act on now, or [Pressure.Normal] for none (memory is
-     * fine, High has not lasted two samples, or a trim just ran).
+     * One sample: the Java heap ([usedBytes] of [maxBytes]) and the device's own pressure
+     * ([device], whatever it says about graphics and native memory). Returns the pressure to act
+     * on now, or [Pressure.Normal] for none (memory is fine, High has not lasted two samples, or a
+     * trim just ran).
      */
-    internal fun onSample(usedBytes: Long, maxBytes: Long, nowMs: Long): Pressure {
-        val pressure = pressureOf(usedBytes, maxBytes)
+    internal fun onSample(
+        usedBytes: Long,
+        maxBytes: Long,
+        nowMs: Long,
+        device: Pressure = Pressure.Normal
+    ): Pressure {
+        val heap = pressureOf(usedBytes, maxBytes)
+        val pressure = worse(heap, device)
         if (pressure == Pressure.Normal) {
             highSamples = 0
             return Pressure.Normal
         }
         highSamples++
-        val cooldown = if (pressure == Pressure.Critical) CRITICAL_COOLDOWN_MS else HIGH_COOLDOWN_MS
+        // The system reclaims memory slowly and a trim of an already-emptied cache gains nothing,
+        // so a Critical that only the device reports waits longer before the next one than a heap
+        // Critical, which a collection settles within seconds.
+        val cooldown = when {
+            pressure != Pressure.Critical -> HIGH_COOLDOWN_MS
+            heap == Pressure.Critical -> CRITICAL_COOLDOWN_MS
+            else -> DEVICE_CRITICAL_COOLDOWN_MS
+        }
         if (nowMs - lastActedAtMs < cooldown) return Pressure.Normal
         if (pressure == Pressure.High && highSamples < 2) return Pressure.Normal
         lastActedAtMs = nowMs
@@ -144,5 +238,6 @@ class MemoryMonitor @Inject constructor(imageLoader: ImageLoader) {
         const val SAMPLE_INTERVAL_MS = 3_000L
         const val HIGH_COOLDOWN_MS = 15_000L
         const val CRITICAL_COOLDOWN_MS = 5_000L
+        const val DEVICE_CRITICAL_COOLDOWN_MS = 30_000L
     }
 }

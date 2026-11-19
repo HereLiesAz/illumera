@@ -1,9 +1,11 @@
 package com.hereliesaz.illumera.di
 
+import android.app.ActivityManager
 import android.content.Context
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.hereliesaz.illumera.data.memory.imageCacheLimitBytes
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,10 +28,15 @@ object ImageLoaderModule {
             // Use shared OkHttpClient with connection pooling
             .okHttpClient(okHttpClient)
             // Memory cache at 15% of app memory: bitmaps are hardware (graphics memory, shared
-            // with the whole box), and a larger cache starved low-memory TV boxes.
+            // with the whole box), and a larger cache starved low-memory TV boxes. On a small
+            // device it is held to a share of the RAM too; any device with RAM for the 15% keeps it.
             .memoryCache {
+                val defaultBytes = MemoryCache.Builder(context).maxSizePercent(0.15).build().maxSize
+                val totalRam = ActivityManager.MemoryInfo().also {
+                    (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.getMemoryInfo(it)
+                }.totalMem
                 MemoryCache.Builder(context)
-                    .maxSizePercent(0.15)
+                    .maxSizeBytes(imageCacheLimitBytes(defaultBytes.toLong(), totalRam).toInt())
                     .strongReferencesEnabled(true)
                     .build()
             }
